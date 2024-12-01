@@ -587,7 +587,7 @@ void M10QAsyncReceiver::state_configure() {
 				run_state_machine(500);
 				break;
 			} else if (m_step == 4) {
-                //TODO : no need to save if using VALSET
+                //INFO : no need to save if using VALSET
 				save_config();
 				break;
 			} else if (m_step == 5) {

@@ -4343,7 +4343,6 @@
 // <o> NRFX_UARTE_DEFAULT_CONFIG_PARITY  - Parity
  
 // <0=> Excluded 
-// <14=> Included 
 
 #ifndef NRFX_UARTE_DEFAULT_CONFIG_PARITY
 #define NRFX_UARTE_DEFAULT_CONFIG_PARITY 0

@@ -475,6 +475,9 @@ CMakeFiles/LinkIt_rspb_board.dir/main.cpp.obj: \
  /home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/nrf_switch.hpp \
  /home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/nrf_rtc.hpp \
  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/rtc.hpp \
+ /home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/argos_smd/argos_smd.hpp \
+ /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/scheduling/argos_scheduler.hpp \
+ /home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/argos_smd/virtual_uart.hpp \
  /home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/filesystem/flash_is25/is25_flash.hpp \
  /home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/nrf_rgb_led.hpp \
  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/rgb_led.hpp \

@@ -30,9 +30,15 @@
 #include "reed.hpp"
 #include "nrf_rtc.hpp"
 #include "gpio.hpp"
+
 #if defined(ARGOS_ARTIC_SAT) && (ARGOS_ARTIC_SAT == 1)
 #include "artic_sat.hpp"
 #endif
+
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+#include "argos_smd.hpp"
+#endif
+
 #include "is25_flash.hpp"
 #include "nrf_rgb_led.hpp"
 #include "nrf_battery_mon.hpp"
@@ -332,6 +338,14 @@ int main()
 		} catch (...) {}
 	}
 #endif
+#if (defined(ARGOS_SMD) && (ARGOS_SMD == 1)) 
+	ArgosSmd::shutdown();
+	{
+		try {
+			EZO_RTD_Sensor rtd; // Puts the device into standby mode
+		} catch (...) {}
+	}
+#endif
 	NrfI2C::uninit();
 
 	if ((is_linkit_v3 && PMU::reset_cause() == "Pseudo Power On Reset") ||
@@ -534,7 +548,7 @@ int main()
 	DEBUG_TRACE("SWS...");
 	SWSService sws;
 
-	#if ((defined(ARGOS_ARTIC_SAT) && (ARGOS_ARTIC_SAT == 1)) || (defined_ARTIC_R2) && (ARGOS_ARTIC_R2 ==1))
+	#if ((defined(ARGOS_ARTIC_SAT) && (ARGOS_ARTIC_SAT == 1)) || (ARGOS_ARTIC_R2) && (ARGOS_ARTIC_R2 ==1))
 	DEBUG_TRACE("Artic R2...");
 	try {
 		static ArticSat artic;
@@ -550,6 +564,14 @@ int main()
 #endif
 	} catch (...) {
 		DEBUG_TRACE("Artic R2 not detected");
+	#elif (defined(ARGOS_SMD) && (ARGOS_SMD == 1))
+	DEBUG_TRACE("ARGOS SMD...");
+	try {
+		static ArgosSmd argos_smd;
+		static ArgosTxService argos_tx_service(argos_smd);
+		artic_device = &argos_smd;
+	} catch (...) {
+		DEBUG_TRACE("ARGOS SMD not detected");
 	}
 	#else
 	DEBUG_TRACE("ARGOS ARTIC not configured...");

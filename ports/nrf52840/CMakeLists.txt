@@ -18,7 +18,7 @@ set(LIB_DIR       ../../libraries)
 option(BOARD "Board to compile for" NONE)
 
 if(${MODEL} MATCHES SB OR ${MODEL} MATCHES UW OR ${MODEL} MATCHES CORE OR ${MODEL} MATCHES SMD)
-    set (ARGOS_STM 0)
+    set (ARGOS_SMD 0)
     set (ARGOS_ARTIC_SAT 0)
     set (ARGOS_ARTIC_R2 1)
     set (SENSOR_BMX160 1)
@@ -353,6 +353,16 @@ if (ARGOS_ARTIC_R2)
             ${PROJ_DIR}/core/hardware/artic_r2
         )
 endif()
+if (ARGOS_SMD)
+        target_sources(${TARGET_NAME} PRIVATE
+            ${PROJ_DIR}/core/hardware/argos_smd/argos_smd.cpp
+            ${PROJ_DIR}/core/hardware/argos_smd/virtual_uart.cpp
+        )
+
+        target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
+            ${PROJ_DIR}/core/hardware/argos_smd
+        )
+endif()
 
 if (HAS_GAUGE_STC3117)
         target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
@@ -377,7 +387,7 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     GPS_${GPS_MODEL}
     ARGOS_ARTIC_SAT=${ARGOS_ARTIC_SAT}
     ARGOS_ARTIC_R2=${ARGOS_ARTIC_R2}
-    ARGOS_STM=${ARGOS_STM}
+    ARGOS_SMD=${ARGOS_SMD}
     SENSOR_BMX160=${SENSOR_BMX160}
     HAS_GAUGE_STC3117=${HAS_GAUGE_STC3117} 
     BUILD_TYPE=${CMAKE_BUILD_TYPE}

@@ -16,7 +16,7 @@ set(CMAKE_ASM_COMPILER_ID "GNU")
 set(CMAKE_TARGET_DEFINITIONS_ASM
   "ARGOS_ARTIC_R2=0"
   "ARGOS_ARTIC_SAT=0"
-  "ARGOS_STM=0"
+  "ARGOS_SMD=1"
   "ARGOS_USE_CRC8"
   "BOARD_PCA10059"
   "BOARD_RSPB"
@@ -32,8 +32,8 @@ set(CMAKE_TARGET_DEFINITIONS_ASM
   "Debug=1"
   "ETL_LOG_ERRORS"
   "FLOAT_ABI_HARD"
-  "FW_APP_VERSION_STR=\"v3.4.5-10-gacc70af5-dirty\"s"
-  "FW_APP_VERSION_STR_C=\"v3.4.5-10-gacc70af5-dirty\""
+  "FW_APP_VERSION_STR=\"v3.4.5-11-g541637d2-dirty\"s"
+  "FW_APP_VERSION_STR_C=\"v3.4.5-11-g541637d2-dirty\""
   "GPS_M10Q"
   "HAS_GAUGE_STC3117=1"
   "HAS_WCHG=0"
@@ -155,6 +155,7 @@ set(CMAKE_ASM_TARGET_INCLUDE_PATH
   "../.././core/hardware/ezo_rtd"
   "../.././core/hardware/cdt"
   "../.././core/hardware/m10qasync"
+  "../.././core/hardware/argos_smd"
   "../.././core/hardware/stc3117"
   )
 
@@ -223,6 +224,8 @@ set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/bsp/rspbtracker_v1.0/bsp.cpp" "CMakeFiles/LinkIt_rspb_board.dir/bsp.cpp.obj" "gcc" "CMakeFiles/LinkIt_rspb_board.dir/bsp.cpp.obj.d"
   "/home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/filesystem/flash_is25/is25_flash.cpp" "CMakeFiles/LinkIt_rspb_board.dir/core/filesystem/flash_is25/is25_flash.cpp.obj" "gcc" "CMakeFiles/LinkIt_rspb_board.dir/core/filesystem/flash_is25/is25_flash.cpp.obj.d"
   "/home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/ad5933/ad5933.cpp" "CMakeFiles/LinkIt_rspb_board.dir/core/hardware/ad5933/ad5933.cpp.obj" "gcc" "CMakeFiles/LinkIt_rspb_board.dir/core/hardware/ad5933/ad5933.cpp.obj.d"
+  "/home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/argos_smd/argos_smd.cpp" "CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.obj" "gcc" "CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.obj.d"
+  "/home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/argos_smd/virtual_uart.cpp" "CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.obj" "gcc" "CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.obj.d"
   "/home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/cdt/cdt.cpp" "CMakeFiles/LinkIt_rspb_board.dir/core/hardware/cdt/cdt.cpp.obj" "gcc" "CMakeFiles/LinkIt_rspb_board.dir/core/hardware/cdt/cdt.cpp.obj.d"
   "/home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/ezo_rtd/ezo_rtd.cpp" "CMakeFiles/LinkIt_rspb_board.dir/core/hardware/ezo_rtd/ezo_rtd.cpp.obj" "gcc" "CMakeFiles/LinkIt_rspb_board.dir/core/hardware/ezo_rtd/ezo_rtd.cpp.obj.d"
   "/home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/ltr_303/ltr_303.cpp" "CMakeFiles/LinkIt_rspb_board.dir/core/hardware/ltr_303/ltr_303.cpp.obj" "gcc" "CMakeFiles/LinkIt_rspb_board.dir/core/hardware/ltr_303/ltr_303.cpp.obj.d"

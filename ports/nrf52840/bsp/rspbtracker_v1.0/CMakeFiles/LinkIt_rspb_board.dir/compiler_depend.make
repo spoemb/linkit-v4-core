@@ -683,6 +683,590 @@ CMakeFiles/LinkIt_rspb_board.dir/core/hardware/ad5933/ad5933.cpp.obj: ../../core
   /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/stdlib.h \
   /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/prepass/prepass_package_code-PREPAS_V3.4/previpass_util.h
 
+CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.obj: ../../core/hardware/argos_smd/argos_smd.cpp \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/lib/gcc/arm-none-eabi/10.2.1/include/stdint.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/stdint.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/machine/_default_types.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/features.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/_newlib_version.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/_intsup.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/_stdint.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/cstring \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/c++config.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/os_defines.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/cpu_defines.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/pstl/pstl_config.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/string.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/_ansi.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/newlib.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/config.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/machine/ieeefp.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/reent.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/_ansi.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/lib/gcc/arm-none-eabi/10.2.1/include/stddef.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/_types.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/machine/_types.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/lock.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/cdefs.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/_locale.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/string.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/cmath \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/cpp_type_traits.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ext/type_traits.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/math.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/std_abs.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/stdlib.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/machine/stdlib.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/alloca.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/specfun.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_algobase.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/functexcept.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/exception_defines.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ext/numeric_traits.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_pair.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/move.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/type_traits \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/compare \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/concepts \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_iterator_base_types.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/iterator_concepts.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/ptr_traits.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/range_cmp.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_iterator_base_funcs.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/concept_check.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/debug/assertions.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_iterator.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/new \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/exception \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/exception.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/exception_ptr.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/cxxabi_init_exception.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/typeinfo \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/hash_bytes.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/nested_exception.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/debug/debug.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/predefined_ops.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/limits \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/tr1/gamma.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/tr1/special_function_util.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/tr1/bessel_function.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/tr1/beta_function.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/tr1/ell_integral.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/tr1/exp_integral.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/tr1/hypergeometric.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/tr1/legendre_function.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/tr1/modified_bessel_func.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/tr1/poly_hermite.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/tr1/poly_laguerre.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/tr1/riemann_zeta.tcc \
+  ../../core/hardware/argos_smd/argos_smd.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/scheduling/argos_scheduler.hpp \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/variant \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/utility \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_relops.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/initializer_list \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/enable_special_members.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/functional_hash.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/invoke.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ext/aligned_buffer.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/parse_numbers.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_construct.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/array \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/range_access.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/functional \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_function.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/backward/binders.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/tuple \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/uses_allocator.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/refwrap.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/std_function.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/unordered_map \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/allocator.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/c++allocator.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ext/new_allocator.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/memoryfwd.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ext/alloc_traits.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/alloc_traits.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/hashtable.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/hashtable_policy.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/node_handle.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/optional \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/unordered_map.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/erase_if.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/vector \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_algo.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/cstdlib \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/algorithmfwd.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_heap.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_tempbuf.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/uniform_int_dist.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_uninitialized.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_vector.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_bvector.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/vector.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/random \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/string \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stringfwd.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/char_traits.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/postypes.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/cwchar \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/wchar.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/lib/gcc/arm-none-eabi/10.2.1/include/stdarg.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/wctype.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/cstdint \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/localefwd.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/c++locale.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/clocale \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/locale.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/iosfwd \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/cctype \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/ctype.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/ostream_insert.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/cxxabi_forced.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/basic_string.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ext/atomicity.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/gthr.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/gthr-default.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/atomic_word.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/string_view \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/string_view.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ext/string_conversions.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/cstdio \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/stdio.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/types.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/_pthreadtypes.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/sched.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/_timespec.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/machine/types.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/stdio.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/cerrno \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/errno.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/errno.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/charconv.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/basic_string.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/random.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/opt_random.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/random.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/numeric \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_numeric.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/pstl/glue_numeric_defs.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/pstl/execution_defs.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ctime \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/time.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/machine/time.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/timespec.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/rtc.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/scheduling/service_scheduler.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/logging/messages.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/protocol/base_types.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/prepass/prepass_package_code-PREPAS_V3.4/previpass.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/lib/gcc/arm-none-eabi/10.2.1/include/stdbool.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/stdlib.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/prepass/prepass_package_code-PREPAS_V3.4/previpass_util.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/scheduling/scheduler.hpp \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/memory \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_raw_storage_iter.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/ranges_uninitialized.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/ranges_algobase.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/iterator \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stream_iterator.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/streambuf_iterator.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/streambuf \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/ios_base.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/locale_classes.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/locale_classes.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/system_error \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/error_constants.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/stdexcept \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/streambuf.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ranges \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ext/concurrence.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/unique_ptr.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ostream \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ios \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/basic_ios.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/locale_facets.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/cwctype \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/ctype_base.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/ctype_inline.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/locale_facets.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/basic_ios.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/ostream.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/shared_ptr.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/shared_ptr_base.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/allocated_ptr.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/shared_ptr_atomic.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/atomic_base.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/atomic_lockfree_defines.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/backward/auto_ptr.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bit \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/pstl/glue_memory_defs.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/scheduling/interrupt_lock.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/timer.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/inplace_function/inplace_function.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/logging/debug.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/logging/logger.hpp \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/map \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_tree.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_map.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_multimap.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/logging/messages.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/list.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/platform.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/lib/gcc/arm-none-eabi/10.2.1/include-fixed/limits.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/lib/gcc/arm-none-eabi/10.2.1/include-fixed/syslimits.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/limits.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/syslimits.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/file_error_numbers.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/profiles/determine_compiler_version.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/profiles/determine_compiler.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/profiles/determine_compiler_language_support.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/math.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/profiles/determine_development_os.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/profiles/determine_builtin_support.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/private/choose_namespace.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/algorithm.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/type_traits.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/nullptr.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/static_assert.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/iterator.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/utility.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/functional.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/private/minmax_push.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/algorithm \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/ranges_algo.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/pstl/glue_algorithm_defs.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/private/minmax_pop.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/pool.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/ipool.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/error_handler.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/assert.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/exception.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/function.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/memory.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/alignment.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/placement_new.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/generic_pool.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/debug_count.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/atomic.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/atomic/atomic_std.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/platform.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/nullptr.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/char_traits.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/atomic \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/parameter_type.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/initializer_list.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/vector.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/array.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/nth_type.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/private/vector_base.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/platform.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/exception.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/error_handler.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/debug_count.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/private/ivectorpointer.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/private/pvoidvector.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/algorithm.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/private/vector_base.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/type_traits.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/functional.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/iterator.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/private/minmax_push.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/private/minmax_pop.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/configuration/config_store.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/sm/error.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/util/haversine.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/util/timeutils.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/pmu.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/sensor.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/configuration/calibration.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/filesystem/filesystem.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/littlefs/lfs.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/wchg.hpp \
+  ../../core/hardware/argos_smd/virtual_uart.hpp \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/include/nrfx_gpiote.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/nrfx.h \
+  ../../drivers/nRF5_SDK_17.0.2/integration/nrfx/nrfx_config.h \
+  sdk_config.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/nrfx_common.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf52840.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/toolchain/cmsis/include/core_cm4.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/toolchain/cmsis/include/cmsis_version.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/toolchain/cmsis/include/cmsis_compiler.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/toolchain/cmsis/include/cmsis_gcc.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/toolchain/cmsis/include/mpu_armv7.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/system_nrf52840.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf52840_bitfields.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf51_to_nrf52840.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf52_to_nrf52840.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/compiler_abstraction.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf_peripherals.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf52840_peripherals.h \
+  ../../drivers/nRF5_SDK_17.0.2/integration/nrfx/nrfx_glue.h \
+  ../../drivers/nRF5_SDK_17.0.2/integration/nrfx/legacy/apply_old_config.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/soc/nrfx_irqs.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/soc/nrfx_irqs_nrf52840.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/nrf_assert.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/app_util.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/compiler_abstraction.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/nordic_common.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf52/nrf_mbr.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf_svc.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/nordic_common.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/app_util_platform.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf_soc.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf_svc.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf_error.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf_error_soc.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf_nvic.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/nrf_assert.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/app_error.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/sdk_errors.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf_error.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/app_error_weak.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/soc/nrfx_coredep.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/soc/nrfx_atomic.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/sdk_errors.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/sdk_resources.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf_sd_def.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf_soc.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/nrfx_errors.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/hal/nrf_gpiote.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/hal/nrf_gpio.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/delay/nrf_delay.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/artic_device.hpp \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/list \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_list.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/list.tcc \
+  bsp.hpp \
+  sdk_config.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/include/nrfx_uarte.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/hal/nrf_uarte.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/include/nrfx_qspi.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/hal/nrf_qspi.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/timer/drv_rtc.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/hal/nrf_rtc.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/include/nrfx_spim.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/hal/nrf_spim.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/include/nrfx_saadc.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/hal/nrf_saadc.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/hal/nrf_gpio.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/include/nrfx_twim.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/include/nrfx_twi_twim.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/hal/nrf_twim.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/include/nrfx_wdt.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/hal/nrf_wdt.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/libuarte/nrf_libuarte_async.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/balloc/nrf_balloc.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/log/nrf_log_instance.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/experimental_section_vars/nrf_section.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/log/nrf_log_types.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/queue/nrf_queue.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/include/nrfx_ppi.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/hal/nrf_ppi.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/include/nrfx_timer.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/hal/nrf_timer.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/include/nrfx_rtc.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/libuarte/nrf_libuarte_drv.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/hal/nrf_uarte.h \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/gpio.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/util/binascii.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/util/crc8.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/util/bitpack.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/util/crc16.hpp
+
+CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.obj: ../../core/hardware/argos_smd/virtual_uart.cpp \
+  ../../core/hardware/argos_smd/virtual_uart.hpp \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/lib/gcc/arm-none-eabi/10.2.1/include/stdint.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/stdint.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/machine/_default_types.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/features.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/_newlib_version.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/_intsup.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/_stdint.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/include/nrfx_gpiote.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/nrfx.h \
+  ../../drivers/nRF5_SDK_17.0.2/integration/nrfx/nrfx_config.h \
+  sdk_config.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/nrfx_common.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/lib/gcc/arm-none-eabi/10.2.1/include/stddef.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/lib/gcc/arm-none-eabi/10.2.1/include/stdbool.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf52840.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/toolchain/cmsis/include/core_cm4.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/toolchain/cmsis/include/cmsis_version.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/toolchain/cmsis/include/cmsis_compiler.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/toolchain/cmsis/include/cmsis_gcc.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/toolchain/cmsis/include/mpu_armv7.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/system_nrf52840.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf52840_bitfields.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf51_to_nrf52840.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf52_to_nrf52840.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/compiler_abstraction.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf_peripherals.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf52840_peripherals.h \
+  ../../drivers/nRF5_SDK_17.0.2/integration/nrfx/nrfx_glue.h \
+  ../../drivers/nRF5_SDK_17.0.2/integration/nrfx/legacy/apply_old_config.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/soc/nrfx_irqs.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/soc/nrfx_irqs_nrf52840.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/nrf_assert.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/app_util.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/compiler_abstraction.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/nordic_common.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf52/nrf_mbr.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf_svc.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/nordic_common.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/app_util_platform.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf_soc.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf_svc.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf_error.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf_error_soc.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf_nvic.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/nrf_assert.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/app_error.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/stdio.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/_ansi.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/newlib.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/config.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/machine/ieeefp.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/cdefs.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/lib/gcc/arm-none-eabi/10.2.1/include/stdarg.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/reent.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/_ansi.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/_types.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/machine/_types.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/lock.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/types.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/_pthreadtypes.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/sched.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/_timespec.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/machine/types.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/stdio.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/sdk_errors.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf_error.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/app_error_weak.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/soc/nrfx_coredep.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/soc/nrfx_atomic.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/sdk_errors.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/sdk_resources.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf_sd_def.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf_soc.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/nrfx_errors.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/hal/nrf_gpiote.h \
+  ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/hal/nrf_gpio.h \
+  ../../drivers/nRF5_SDK_17.0.2/components/libraries/delay/nrf_delay.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/iostream \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/c++config.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/os_defines.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/cpu_defines.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/pstl/pstl_config.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ostream \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ios \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/iosfwd \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stringfwd.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/memoryfwd.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/postypes.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/cwchar \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/wchar.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/wctype.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/_locale.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/exception \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/exception.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/exception_ptr.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/exception_defines.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/cxxabi_init_exception.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/typeinfo \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/hash_bytes.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/new \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/nested_exception.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/move.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/type_traits \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/char_traits.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_algobase.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/functexcept.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/cpp_type_traits.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ext/type_traits.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ext/numeric_traits.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_pair.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/compare \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/concepts \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_iterator_base_types.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/iterator_concepts.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/ptr_traits.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/range_cmp.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_iterator_base_funcs.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/concept_check.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/debug/assertions.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_iterator.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/debug/debug.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/predefined_ops.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/cstdint \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/localefwd.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/c++locale.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/clocale \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/locale.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/cctype \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/ctype.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/ios_base.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ext/atomicity.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/gthr.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/gthr-default.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/atomic_word.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/locale_classes.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/string \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/allocator.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/c++allocator.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ext/new_allocator.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/ostream_insert.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/cxxabi_forced.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_function.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/backward/binders.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_algo.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/cstdlib \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/stdlib.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/machine/stdlib.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/alloca.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/std_abs.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/algorithmfwd.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/initializer_list \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_heap.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_tempbuf.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_construct.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/uniform_int_dist.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/limits \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/range_access.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/basic_string.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ext/alloc_traits.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/alloc_traits.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/string_view \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/functional_hash.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/string_view.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ext/string_conversions.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/cstdio \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/cerrno \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/errno.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/errno.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/charconv.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/basic_string.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/locale_classes.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/system_error \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/error_constants.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/stdexcept \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/streambuf \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/streambuf.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/basic_ios.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/locale_facets.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/cwctype \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/ctype_base.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/streambuf_iterator.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/ctype_inline.h \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/locale_facets.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/basic_ios.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/ostream.tcc \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/istream \
+  /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/istream.tcc
+
 CMakeFiles/LinkIt_rspb_board.dir/core/hardware/cdt/cdt.cpp.obj: ../../core/hardware/cdt/cdt.cpp \
   ../../core/hardware/cdt/cdt.hpp \
   ../../core/hardware/ms58xx/ms58xx.hpp \
@@ -13528,6 +14112,9 @@ CMakeFiles/LinkIt_rspb_board.dir/main.cpp.obj: ../../main.cpp \
   ../../core/hardware/nrf_switch.hpp \
   ../../core/hardware/nrf_rtc.hpp \
   /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/rtc.hpp \
+  ../../core/hardware/argos_smd/argos_smd.hpp \
+  /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/scheduling/argos_scheduler.hpp \
+  ../../core/hardware/argos_smd/virtual_uart.hpp \
   ../../core/filesystem/flash_is25/is25_flash.hpp \
   ../../core/hardware/nrf_rgb_led.hpp \
   /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/rgb_led.hpp \
@@ -13612,31 +14199,11 @@ CMakeFiles/LinkIt_rspb_board.dir/main.cpp.obj: ../../main.cpp \
 
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/util/bch.hpp:
 
-/home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/prepass/prepass_package_code-PREPAS_V3.4/previpass.c:
-
-/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/random.tcc:
-
-../../core/hardware/nrf_rgb_led.hpp:
-
-/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/opt_random.h:
-
-/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/random.h:
-
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/deque:
 
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/services/argos_tx_service.hpp:
 
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/services/argos_tx_service.cpp:
-
-/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/wchg.hpp:
-
-/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/configuration/config_store.hpp:
-
-/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_list.h:
-
-/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/list:
-
-/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/artic_device.hpp:
 
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/services/argos_rx_service.hpp:
 
@@ -13666,9 +14233,39 @@ CMakeFiles/LinkIt_rspb_board.dir/main.cpp.obj: ../../main.cpp \
 
 ../../drivers/nrf_log_redirect/nrf_log_redirect.c:
 
+../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf91_erratas.h:
+
+../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf53_erratas.h:
+
+../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf52_erratas.h:
+
+../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf51_erratas.h:
+
+../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf_erratas.h:
+
+../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/system_nrf52840.c:
+
+../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_uarte.c:
+
+../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_saadc.c:
+
+../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_qspi.c:
+
+../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_ppi.c:
+
+../../drivers/nRF5_SDK_17.0.2/components/libraries/util/nrf_bitmask.h:
+
+../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_gpiote.c:
+
+../../drivers/nRF5_SDK_17.0.2/external/fprintf/nrf_fprintf_format.c:
+
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/services/pressure_detector_service.hpp:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/sstream:
+
+../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_timer.c:
+
+/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/basic_ios.h:
 
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/gpio_led.hpp:
 
@@ -13684,13 +14281,15 @@ CMakeFiles/LinkIt_rspb_board.dir/main.cpp.obj: ../../main.cpp \
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/locale_facets.h:
 
+../../drivers/nRF5_SDK_17.0.2/modules/nrfx/hal/nrf_nvmc.h:
+
+/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/locale:
+
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_tree.h:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/iomanip:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/pstl/execution_defs.h:
-
-/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/vector.tcc:
 
 ../../drivers/nRF5_SDK_17.0.2/components/libraries/crc16/crc16.c:
 
@@ -13701,6 +14300,8 @@ CMakeFiles/LinkIt_rspb_board.dir/main.cpp.obj: ../../main.cpp \
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ext/alloc_traits.h:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ranges:
+
+/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/wchg.hpp:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/streambuf.tcc:
 
@@ -13737,6 +14338,10 @@ CMakeFiles/LinkIt_rspb_board.dir/main.cpp.obj: ../../main.cpp \
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/inttypes.h:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ext/atomicity.h:
+
+../../drivers/nRF5_SDK_17.0.2/integration/nrfx/nrfx_log.h:
+
+/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/invoke.h:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/cdefs.h:
 
@@ -13776,8 +14381,6 @@ CMakeFiles/LinkIt_rspb_board.dir/main.cpp.obj: ../../main.cpp \
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/wctype.h:
 
-../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf51_erratas.h:
-
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/unordered_map.h:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/shared_ptr.h:
@@ -13800,33 +14403,15 @@ CMakeFiles/LinkIt_rspb_board.dir/main.cpp.obj: ../../main.cpp \
 
 ../../drivers/nRF5_SDK_17.0.2/components/libraries/log/src/nrf_log_backend_serial.h:
 
-/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/locale:
-
-../../drivers/nRF5_SDK_17.0.2/modules/nrfx/hal/nrf_nvmc.h:
-
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/reent.h:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/vector:
-
-/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/basic_ios.h:
-
-../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_timer.c:
-
-../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/system_nrf52840.c:
-
-../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_uarte.c:
 
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/services/uwdetector_service.cpp:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_tempbuf.h:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/charconv.h:
-
-/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/services/pressure_sensor_service.hpp:
-
-/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/util/haversine.hpp:
-
-../../core/hardware/ltr_303/ltr_303.cpp:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/uniform_int_dist.h:
 
@@ -13840,11 +14425,11 @@ CMakeFiles/LinkIt_rspb_board.dir/main.cpp.obj: ../../main.cpp \
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/hash_bytes.h:
 
-../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf91_erratas.h:
-
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/typeinfo:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/sstream.tcc:
+
+/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/artic_device.hpp:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/iterator:
 
@@ -13858,8 +14443,6 @@ CMakeFiles/LinkIt_rspb_board.dir/main.cpp.obj: ../../main.cpp \
 
 ../../drivers/nRF5_SDK_17.0.2/components/libraries/log/nrf_log_backend_interface.h:
 
-../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf53_erratas.h:
-
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/cpp_type_traits.h:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/functional:
@@ -13871,8 +14454,6 @@ CMakeFiles/LinkIt_rspb_board.dir/main.cpp.obj: ../../main.cpp \
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/services/sensor_service.hpp:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/concept_check.h:
-
-../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_gpiote.c:
 
 ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/hal/nrf_uarte.h:
 
@@ -13907,8 +14488,6 @@ CMakeFiles/LinkIt_rspb_board.dir/main.cpp.obj: ../../main.cpp \
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/initializer_list.h:
 
 ../../core/memmang/heap_4.c:
-
-../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_saadc.c:
 
 ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/include/nrfx_gpiote.h:
 
@@ -13960,6 +14539,10 @@ bsp.cpp:
 
 ../../core/hardware/stc3117/Generic_I2C.c:
 
+../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twim.c:
+
+/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/configuration/calibration.hpp:
+
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/c++config.h:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/ctype_base.h:
@@ -13981,6 +14564,10 @@ bsp.cpp:
 ../../drivers/nRF5_SDK_17.0.2/integration/nrfx/legacy/apply_old_config.h:
 
 ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf_peripherals.h:
+
+../../core/hardware/nrf_rgb_led.hpp:
+
+/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/opt_random.h:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/pstl/pstl_config.h:
 
@@ -14029,6 +14616,10 @@ bsp.hpp:
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/os_defines.h:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/erase_if.h:
+
+../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_spim.c:
+
+../../drivers/nRF5_SDK_17.0.2/components/libraries/pwr_mgmt/nrf_pwr_mgmt.c:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/arm-none-eabi/thumb/v7e-m+fp/hard/bits/cpu_defines.h:
 
@@ -14176,6 +14767,10 @@ bsp.hpp:
 
 ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/sdk_os.h:
 
+../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_rtc.c:
+
+../../drivers/nRF5_SDK_17.0.2/modules/nrfx/soc/nrfx_atomic.h:
+
 ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/sdk_resources.h:
 
 ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/nrfx_errors.h:
@@ -14248,8 +14843,6 @@ sdk_config.h:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/array:
 
-../../drivers/nRF5_SDK_17.0.2/external/fprintf/nrf_fprintf_format.c:
-
 ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/include/nrfx_rtc.h:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_pair.h:
@@ -14300,9 +14893,9 @@ sdk_config.h:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/initializer_list:
 
-/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/util/crc8.hpp:
-
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/deque.tcc:
+
+/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/util/crc8.hpp:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/tr1/bessel_function.tcc:
 
@@ -14320,8 +14913,6 @@ sdk_config.h:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/assert.h:
 
-/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/range_cmp.h:
-
 ../../core/filesystem/flash_is25/IS25LP128F.hpp:
 
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/logging/logger.hpp:
@@ -14336,11 +14927,19 @@ sdk_config.h:
 
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/function.h:
 
+/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/list:
+
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_map.h:
 
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/logging/debug.hpp:
 
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/protocol/base_types.hpp:
+
+../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_wdt.c:
+
+/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/parse_numbers.h:
+
+/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/scheduling/argos_scheduler.hpp:
 
 ../../drivers/nRF5_SDK_17.0.2/components/libraries/atomic_fifo/nrf_atfifo_internal.h:
 
@@ -14349,12 +14948,6 @@ sdk_config.h:
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/stdlib.h:
 
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/filesystem/filesystem.hpp:
-
-/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/scheduling/service_scheduler.hpp:
-
-../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf_svc.h:
-
-../../drivers/nRF5_SDK_17.0.2/external/fprintf/nrf_fprintf.h:
 
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/services/dive_mode_service.hpp:
 
@@ -14396,7 +14989,15 @@ sdk_config.h:
 
 ../../core/hardware/ad5933/ad5933.hpp:
 
+../../drivers/nRF5_SDK_17.0.2/modules/nrfx/hal/nrf_nvmc.c:
+
+../../core/hardware/nrf_i2c.hpp:
+
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/sm/error.hpp:
+
+/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/vector.tcc:
+
+../../core/hardware/argos_smd/virtual_uart.hpp:
 
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/core/ble_services/ble_service.hpp:
 
@@ -14406,53 +15007,29 @@ sdk_config.h:
 
 ../../drivers/nRF5_SDK_17.0.2/components/libraries/experimental_section_vars/nrf_section_iter.c:
 
-../../core/hardware/cdt/cdt.cpp:
+../../core/hardware/argos_smd/argos_smd.hpp:
 
-/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/std_abs.h:
+/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/random.h:
 
-../../core/hardware/cdt/cdt.hpp:
+/home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/prepass/prepass_package_code-PREPAS_V3.4/previpass.c:
 
-/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/sensor.hpp:
+/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/random.tcc:
 
-/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/cstddef:
+/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/string.h:
 
-/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/invoke.h:
+/home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/platform.h:
 
-../../drivers/nRF5_SDK_17.0.2/integration/nrfx/nrfx_log.h:
+../../drivers/nRF5_SDK_17.0.2/components/ble/common/ble_advdata.c:
 
-../../core/hardware/ltr_303/ltr_303.hpp:
+/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_numeric.h:
 
-../../drivers/nRF5_SDK_17.0.2/components/ble/ble_advertising/ble_advertising.c:
+/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/rtc.hpp:
 
-/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/irq.hpp:
+../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/headers/nrf_svc.h:
 
-../../drivers/nRF5_SDK_17.0.2/components/libraries/crc32/crc32.c:
+../../drivers/nRF5_SDK_17.0.2/external/fprintf/nrf_fprintf.h:
 
-../../drivers/nRF5_SDK_17.0.2/components/libraries/util/sdk_errors.h:
-
-/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/sched.h:
-
-../../drivers/nRF5_SDK_17.0.2/components/libraries/balloc/nrf_balloc.c:
-
-/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/algorithmfwd.h:
-
-../../core/hardware/m10qasync/m10qasync.cpp:
-
-../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_ppi.c:
-
-../../core/hardware/m10qasync/ubx_comms.hpp:
-
-../../core/hardware/m10qasync/ubx.hpp:
-
-/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/events.hpp:
-
-/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/new:
-
-../../drivers/nRF5_SDK_17.0.2/components/ble/common/ble_conn_params.h:
-
-/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/util/timeutils.hpp:
-
-/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/gps.hpp:
+/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/scheduling/service_scheduler.hpp:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/ext/concurrence.h:
 
@@ -14480,12 +15057,6 @@ sdk_config.h:
 
 ../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/prs/nrfx_prs.h:
 
-/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/string.h:
-
-/home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/platform.h:
-
-../../drivers/nRF5_SDK_17.0.2/components/ble/common/ble_advdata.c:
-
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/lib/gcc/arm-none-eabi/10.2.1/include-fixed/limits.h:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/limits.h:
@@ -14503,10 +15074,6 @@ sdk_config.h:
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/math.h:
 
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/profiles/determine_compiler_language_support.h:
-
-../../core/hardware/nrf_i2c.hpp:
-
-../../drivers/nRF5_SDK_17.0.2/modules/nrfx/hal/nrf_nvmc.c:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/postypes.h:
 
@@ -14544,17 +15111,11 @@ sdk_config.h:
 
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/functional.h:
 
-/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_numeric.h:
-
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/pool.h:
 
 /home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/locale_facets.tcc:
 
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/error_handler.h:
-
-../../core/hardware/ltr_303/ltr_303_defs.h:
-
-../../drivers/nRF5_SDK_17.0.2/components/libraries/crc16/crc16.h:
 
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/generic_pool.h:
 
@@ -14584,9 +15145,81 @@ sdk_config.h:
 
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/private/vector_base.h:
 
+../../core/hardware/argos_smd/virtual_uart.cpp:
+
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/private/ivectorpointer.h:
 
-/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/rtc.hpp:
+/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/configuration/config_store.hpp:
+
+/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/services/pressure_sensor_service.hpp:
+
+../../core/hardware/ltr_303/ltr_303.cpp:
+
+/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/util/haversine.hpp:
+
+/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/new:
+
+../../drivers/nRF5_SDK_17.0.2/components/ble/common/ble_conn_params.h:
+
+/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/util/timeutils.hpp:
+
+/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/sensor.hpp:
+
+/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/stl_list.h:
+
+/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/machine/types.h:
+
+../../core/hardware/stc3117/stc311x_gasgauge.h:
+
+../../drivers/nRF5_SDK_17.0.2/components/softdevice/common/nrf_sdh_ble.c:
+
+/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/range_cmp.h:
+
+/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/util/crc16.hpp:
+
+/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/iostream:
+
+/home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/CmBacktrace/cm_backtrace/cm_backtrace.h:
+
+../../core/hardware/cdt/cdt.cpp:
+
+/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/std_abs.h:
+
+../../core/hardware/cdt/cdt.hpp:
+
+/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/cstddef:
+
+../../drivers/nRF5_SDK_17.0.2/components/libraries/crc16/crc16.h:
+
+../../core/hardware/ltr_303/ltr_303_defs.h:
+
+../../core/hardware/ltr_303/ltr_303.hpp:
+
+../../drivers/nRF5_SDK_17.0.2/components/ble/ble_advertising/ble_advertising.c:
+
+/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/irq.hpp:
+
+../../drivers/nRF5_SDK_17.0.2/components/libraries/crc32/crc32.c:
+
+../../drivers/nRF5_SDK_17.0.2/components/libraries/util/sdk_errors.h:
+
+/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/sched.h:
+
+../../drivers/nRF5_SDK_17.0.2/components/libraries/balloc/nrf_balloc.c:
+
+/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/algorithmfwd.h:
+
+../../core/hardware/argos_smd/argos_smd.cpp:
+
+../../core/hardware/m10qasync/m10qasync.cpp:
+
+../../core/hardware/m10qasync/ubx_comms.hpp:
+
+../../core/hardware/m10qasync/ubx.hpp:
+
+/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/events.hpp:
+
+/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/hardware/gps.hpp:
 
 ../../core/hardware/ms58xx/ms58xx.cpp:
 
@@ -14614,8 +15247,6 @@ sdk_config.h:
 
 ../../drivers/nRF5_SDK_17.0.2/components/libraries/util/sdk_macros.h:
 
-/home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/CmBacktrace/cm_backtrace/cm_backtrace.h:
-
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/CmBacktrace/cm_backtrace/cmb_def.h:
 
 ../../drivers/nRF5_SDK_17.0.2/external/fprintf/nrf_fprintf.c:
@@ -14642,6 +15273,10 @@ sdk_config.h:
 
 ../../core/hardware/nrf_timer.hpp:
 
+../../core/hardware/stc3117/Generic_I2C.h:
+
+../../drivers/nRF5_SDK_17.0.2/components/ble/nrf_ble_qwr/nrf_ble_qwr.h:
+
 ../../drivers/nRF5_SDK_17.0.2/components/softdevice/common/nrf_sdh.h:
 
 ../../core/hardware/oem_ph/oem_ph.cpp:
@@ -14652,17 +15287,7 @@ sdk_config.h:
 
 ../../core/hardware/stc3117/stc3117_gasgauge.hpp:
 
-../../drivers/nRF5_SDK_17.0.2/components/ble/nrf_ble_qwr/nrf_ble_qwr.h:
-
-../../core/hardware/stc3117/Generic_I2C.h:
-
 ../../core/hardware/stc3117/stc3117_gasgauge.cpp:
-
-/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/machine/types.h:
-
-../../core/hardware/stc3117/stc311x_gasgauge.h:
-
-../../drivers/nRF5_SDK_17.0.2/components/softdevice/common/nrf_sdh_ble.c:
 
 ../../core/hardware/stc3117/stc311x_gasgauge.c:
 
@@ -14750,10 +15375,6 @@ sdk_config.h:
 
 ../../drivers/nRF5_SDK_17.0.2/components/libraries/libuarte/nrf_libuarte_async.c:
 
-../../drivers/nRF5_SDK_17.0.2/components/libraries/pwr_mgmt/nrf_pwr_mgmt.c:
-
-../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_spim.c:
-
 ../../drivers/nRF5_SDK_17.0.2/components/libraries/log/nrf_log_ctrl.h:
 
 ../../drivers/nRF5_SDK_17.0.2/components/libraries/log/src/nrf_log_str_formatter.c:
@@ -14791,23 +15412,3 @@ sdk_config.h:
 /home/schade/Linkit/CLS-Argos-Linkit-CORE/libraries/etl-20.27.3/include/etl/char_traits.h:
 
 ../../drivers/nRF5_SDK_17.0.2/external/fprintf/nrf_fprintf_format.h:
-
-../../drivers/nRF5_SDK_17.0.2/components/libraries/util/nrf_bitmask.h:
-
-../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_qspi.c:
-
-../../drivers/nRF5_SDK_17.0.2/modules/nrfx/soc/nrfx_atomic.h:
-
-../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_rtc.c:
-
-/home/schade/Linkit/CLS-Argos-Linkit-CORE/core/configuration/calibration.hpp:
-
-../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twim.c:
-
-/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/c++/10.2.1/bits/parse_numbers.h:
-
-../../drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_wdt.c:
-
-../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf_erratas.h:
-
-../../drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf52_erratas.h:

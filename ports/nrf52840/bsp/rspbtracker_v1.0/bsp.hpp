@@ -44,6 +44,8 @@
 #define BAT_ALARM_PIN	     BSP::GPIO::GPIO_ALARM
 #define SENSORS_PWR_PIN	     BSP::GPIO::GPIO_SENSORS_PWR
 #define TEMP_ANALOG_PIN	     BSP::GPIO::GPIO_TEMP_ANALOG
+#define SMD_RX               BSP::GPIO::GPIO_SMD_VRX
+#define SMD_TX               BSP::GPIO::GPIO_SMD_VTX
 
 #define REED_SWITCH_ACTIVE_STATE   true
 
@@ -128,6 +130,8 @@ namespace BSP
 	    GPIO_PRESS_INT,
 	    GPIO_SMD_OPT,
 	    GPIO_SMD_OPT2,
+	    GPIO_SMD_VRX,
+	    GPIO_SMD_VTX,
 		GPIO_TOTAL_NUMBER
 	};
 

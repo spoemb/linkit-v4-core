@@ -1454,10 +1454,38 @@ CMakeFiles/LinkIt_rspb_board.dir/core/hardware/m10qasync/ubx_comms.cpp.s: cmake_
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/LinkIt_rspb_board.dir/core/hardware/m10qasync/ubx_comms.cpp.s"
 	/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/arm-none-eabi-g++ --sysroot=/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/../arm-none-eabi $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/m10qasync/ubx_comms.cpp -o CMakeFiles/LinkIt_rspb_board.dir/core/hardware/m10qasync/ubx_comms.cpp.s
 
+CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.obj: CMakeFiles/LinkIt_rspb_board.dir/flags.make
+CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.obj: ../../core/hardware/argos_smd/argos_smd.cpp
+CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.obj: CMakeFiles/LinkIt_rspb_board.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/bsp/rspbtracker_v1.0/CMakeFiles --progress-num=$(CMAKE_PROGRESS_100) "Building CXX object CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.obj"
+	/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/arm-none-eabi-g++ --sysroot=/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/../arm-none-eabi $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.obj -MF CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.obj.d -o CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.obj -c /home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/argos_smd/argos_smd.cpp
+
+CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.i"
+	/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/arm-none-eabi-g++ --sysroot=/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/../arm-none-eabi $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/argos_smd/argos_smd.cpp > CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.i
+
+CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.s"
+	/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/arm-none-eabi-g++ --sysroot=/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/../arm-none-eabi $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/argos_smd/argos_smd.cpp -o CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.s
+
+CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.obj: CMakeFiles/LinkIt_rspb_board.dir/flags.make
+CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.obj: ../../core/hardware/argos_smd/virtual_uart.cpp
+CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.obj: CMakeFiles/LinkIt_rspb_board.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/bsp/rspbtracker_v1.0/CMakeFiles --progress-num=$(CMAKE_PROGRESS_101) "Building CXX object CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.obj"
+	/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/arm-none-eabi-g++ --sysroot=/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/../arm-none-eabi $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.obj -MF CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.obj.d -o CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.obj -c /home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/argos_smd/virtual_uart.cpp
+
+CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.i"
+	/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/arm-none-eabi-g++ --sysroot=/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/../arm-none-eabi $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/argos_smd/virtual_uart.cpp > CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.i
+
+CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.s"
+	/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/arm-none-eabi-g++ --sysroot=/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/../arm-none-eabi $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/argos_smd/virtual_uart.cpp -o CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.s
+
 CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/Generic_I2C.c.obj: CMakeFiles/LinkIt_rspb_board.dir/flags.make
 CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/Generic_I2C.c.obj: ../../core/hardware/stc3117/Generic_I2C.c
 CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/Generic_I2C.c.obj: CMakeFiles/LinkIt_rspb_board.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/bsp/rspbtracker_v1.0/CMakeFiles --progress-num=$(CMAKE_PROGRESS_100) "Building C object CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/Generic_I2C.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/bsp/rspbtracker_v1.0/CMakeFiles --progress-num=$(CMAKE_PROGRESS_102) "Building C object CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/Generic_I2C.c.obj"
 	/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/arm-none-eabi-gcc --sysroot=/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/../arm-none-eabi $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/Generic_I2C.c.obj -MF CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/Generic_I2C.c.obj.d -o CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/Generic_I2C.c.obj -c /home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/stc3117/Generic_I2C.c
 
 CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/Generic_I2C.c.i: cmake_force
@@ -1471,7 +1499,7 @@ CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/Generic_I2C.c.s: cmake_fo
 CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc311x_gasgauge.c.obj: CMakeFiles/LinkIt_rspb_board.dir/flags.make
 CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc311x_gasgauge.c.obj: ../../core/hardware/stc3117/stc311x_gasgauge.c
 CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc311x_gasgauge.c.obj: CMakeFiles/LinkIt_rspb_board.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/bsp/rspbtracker_v1.0/CMakeFiles --progress-num=$(CMAKE_PROGRESS_101) "Building C object CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc311x_gasgauge.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/bsp/rspbtracker_v1.0/CMakeFiles --progress-num=$(CMAKE_PROGRESS_103) "Building C object CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc311x_gasgauge.c.obj"
 	/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/arm-none-eabi-gcc --sysroot=/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/../arm-none-eabi $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc311x_gasgauge.c.obj -MF CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc311x_gasgauge.c.obj.d -o CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc311x_gasgauge.c.obj -c /home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/stc3117/stc311x_gasgauge.c
 
 CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc311x_gasgauge.c.i: cmake_force
@@ -1485,7 +1513,7 @@ CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc311x_gasgauge.c.s: cma
 CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc3117_gasgauge.cpp.obj: CMakeFiles/LinkIt_rspb_board.dir/flags.make
 CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc3117_gasgauge.cpp.obj: ../../core/hardware/stc3117/stc3117_gasgauge.cpp
 CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc3117_gasgauge.cpp.obj: CMakeFiles/LinkIt_rspb_board.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/bsp/rspbtracker_v1.0/CMakeFiles --progress-num=$(CMAKE_PROGRESS_102) "Building CXX object CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc3117_gasgauge.cpp.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/bsp/rspbtracker_v1.0/CMakeFiles --progress-num=$(CMAKE_PROGRESS_104) "Building CXX object CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc3117_gasgauge.cpp.obj"
 	/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/arm-none-eabi-g++ --sysroot=/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/../arm-none-eabi $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc3117_gasgauge.cpp.obj -MF CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc3117_gasgauge.cpp.obj.d -o CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc3117_gasgauge.cpp.obj -c /home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/core/hardware/stc3117/stc3117_gasgauge.cpp
 
 CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc3117_gasgauge.cpp.i: cmake_force
@@ -1597,6 +1625,8 @@ LinkIt_rspb_board_OBJECTS = \
 "CMakeFiles/LinkIt_rspb_board.dir/main.cpp.obj" \
 "CMakeFiles/LinkIt_rspb_board.dir/core/hardware/m10qasync/m10qasync.cpp.obj" \
 "CMakeFiles/LinkIt_rspb_board.dir/core/hardware/m10qasync/ubx_comms.cpp.obj" \
+"CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.obj" \
+"CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.obj" \
 "CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/Generic_I2C.c.obj" \
 "CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc311x_gasgauge.c.obj" \
 "CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc3117_gasgauge.cpp.obj"
@@ -1703,12 +1733,14 @@ LinkIt_rspb_board.elf: CMakeFiles/LinkIt_rspb_board.dir/gcc_startup_nrf52840.S.o
 LinkIt_rspb_board.elf: CMakeFiles/LinkIt_rspb_board.dir/main.cpp.obj
 LinkIt_rspb_board.elf: CMakeFiles/LinkIt_rspb_board.dir/core/hardware/m10qasync/m10qasync.cpp.obj
 LinkIt_rspb_board.elf: CMakeFiles/LinkIt_rspb_board.dir/core/hardware/m10qasync/ubx_comms.cpp.obj
+LinkIt_rspb_board.elf: CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.obj
+LinkIt_rspb_board.elf: CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.obj
 LinkIt_rspb_board.elf: CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/Generic_I2C.c.obj
 LinkIt_rspb_board.elf: CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc311x_gasgauge.c.obj
 LinkIt_rspb_board.elf: CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc3117_gasgauge.cpp.obj
 LinkIt_rspb_board.elf: CMakeFiles/LinkIt_rspb_board.dir/build.make
 LinkIt_rspb_board.elf: CMakeFiles/LinkIt_rspb_board.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/bsp/rspbtracker_v1.0/CMakeFiles --progress-num=$(CMAKE_PROGRESS_103) "Linking CXX executable LinkIt_rspb_board.elf"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/bsp/rspbtracker_v1.0/CMakeFiles --progress-num=$(CMAKE_PROGRESS_105) "Linking CXX executable LinkIt_rspb_board.elf"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/LinkIt_rspb_board.dir/link.txt --verbose=$(VERBOSE)
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --blue --bold "Generating LinkIt_rspb_board.bin"
 	arm-none-eabi-objcopy -O binary /home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/bsp/rspbtracker_v1.0/LinkIt_rspb_board.elf /home/schade/Linkit/CLS-Argos-Linkit-CORE/ports/nrf52840/bsp/rspbtracker_v1.0/LinkIt_rspb_board.bin

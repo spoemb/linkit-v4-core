@@ -34,6 +34,9 @@ namespace BSP
 		/* GPIO_PRESS_INT       */ {NRF_GPIO_PIN_MAP(0, 3), NRF_GPIO_PIN_DIR_INPUT,  NRF_GPIO_PIN_INPUT_CONNECT,    NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_S0S1, NRF_GPIO_PIN_NOSENSE, {}},
 		/* GPIO_SMD_OPT         */ {NRF_GPIO_PIN_MAP(0, 20), NRF_GPIO_PIN_DIR_INPUT,  NRF_GPIO_PIN_INPUT_CONNECT,    NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_S0S1, NRF_GPIO_PIN_NOSENSE, {}},
 		/* GPIO_SMD_OPT2        */ {NRF_GPIO_PIN_MAP(0, 16), NRF_GPIO_PIN_DIR_INPUT,  NRF_GPIO_PIN_INPUT_CONNECT,    NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_S0S1, NRF_GPIO_PIN_NOSENSE, {}},
+        //TODO Use for the moment a virtual UART for the Argos SMD communication
+        /* GPIO_SMD_VRX         */ {NRF_GPIO_PIN_MAP(0, 14), NRF_GPIO_PIN_DIR_INPUT, NRF_GPIO_PIN_INPUT_CONNECT, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_S0S1, NRF_GPIO_PIN_NOSENSE, {}},
+        /* GPIO_SMD_VTX         */ {NRF_GPIO_PIN_MAP(0, 26), NRF_GPIO_PIN_DIR_OUTPUT, NRF_GPIO_PIN_INPUT_DISCONNECT, NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_S0S1, NRF_GPIO_PIN_NOSENSE, {}},
     };
 
 /////////////////////////////////// UART definitions ////////////////////////////////
@@ -81,7 +84,7 @@ namespace BSP
             .uarte = NRFX_UARTE_INSTANCE(1),
             .config = {
                 .pseltxd = NRF_GPIO_PIN_MAP(0, 11),
-                .pselrxd = NRF_GPIO_PIN_MAP(0, 14),
+                .pselrxd = NRF_GPIO_PIN_MAP(1, 12), // Not used
                 .pselcts = NRF_UARTE_PSEL_DISCONNECTED,
                 .pselrts = NRF_UARTE_PSEL_DISCONNECTED,
                 .p_context = NULL, // Context passed to interrupt handler

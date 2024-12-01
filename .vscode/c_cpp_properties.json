@@ -1,7 +1,7 @@
 {
     "configurations": [
         {
-            "name": "NRF52840",
+            "name": "wIN",
             "includePath": [
                 "${workspaceRoot}/ports/nrf52840/drivers/nRF5_SDK_17.0.2/components/ble/ble_services/ble_ancs_c",
                 "${workspaceRoot}/ports/nrf52840/drivers/nRF5_SDK_17.0.2/components/ble/ble_services/ble_ias_c",
@@ -108,6 +108,36 @@
             "cStandard": "c11",
             "cppStandard": "c++17",
             "intelliSenseMode": "gcc-x64"
+        },
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/**"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE"
+            ],
+            "compilerPath": "C:\\msys64\\mingw64\\bin\\gcc.exe",
+            "cStandard": "c17",
+            "cppStandard": "gnu++17",
+            "intelliSenseMode": "windows-gcc-x64"
+        },
+        {
+            "name": "NRF52840",
+            "includePath": [
+                "${workspaceFolder}/**"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE"
+            ],
+            "compilerPath": "C:\\msys64\\mingw64\\bin\\gcc.exe",
+            "cStandard": "c17",
+            "cppStandard": "gnu++17",
+            "intelliSenseMode": "windows-gcc-x64"
         }
     ],
     "version": 4
