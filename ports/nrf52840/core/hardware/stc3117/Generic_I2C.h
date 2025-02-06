@@ -1,8 +1,8 @@
 //int I2C_WriteBytes(int I2cSlaveAddr, int RegAddress, unsigned char * TxBuffer, int NumberOfBytes);
 //int I2C_ReadBytes(int I2cSlaveAddr, int RegAddress, unsigned char * RxBuffer, int NumberOfBytes);
 
-#ifndef GENERIC_I2C_H
-#define GENERIC_I2C_H
+#ifndef __GENERIC_I2C_H
+#define __GENERIC_I2C_H
 
 // Function pointer types for I2C operations
 typedef int (*I2C_WriteFunc)(int I2cSlaveAddr, int RegAddress, unsigned char *TxBuffer, int NumberOfBytes);

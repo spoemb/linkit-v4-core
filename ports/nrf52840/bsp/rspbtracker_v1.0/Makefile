@@ -253,54 +253,6 @@ core/hardware/ad5933/ad5933.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/ad5933/ad5933.cpp.s
 .PHONY : core/hardware/ad5933/ad5933.cpp.s
 
-core/hardware/argos_smd/argos_smd.obj: core/hardware/argos_smd/argos_smd.cpp.obj
-.PHONY : core/hardware/argos_smd/argos_smd.obj
-
-# target to build an object file
-core/hardware/argos_smd/argos_smd.cpp.obj:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.obj
-.PHONY : core/hardware/argos_smd/argos_smd.cpp.obj
-
-core/hardware/argos_smd/argos_smd.i: core/hardware/argos_smd/argos_smd.cpp.i
-.PHONY : core/hardware/argos_smd/argos_smd.i
-
-# target to preprocess a source file
-core/hardware/argos_smd/argos_smd.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.i
-.PHONY : core/hardware/argos_smd/argos_smd.cpp.i
-
-core/hardware/argos_smd/argos_smd.s: core/hardware/argos_smd/argos_smd.cpp.s
-.PHONY : core/hardware/argos_smd/argos_smd.s
-
-# target to generate assembly for a file
-core/hardware/argos_smd/argos_smd.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/argos_smd.cpp.s
-.PHONY : core/hardware/argos_smd/argos_smd.cpp.s
-
-core/hardware/argos_smd/virtual_uart.obj: core/hardware/argos_smd/virtual_uart.cpp.obj
-.PHONY : core/hardware/argos_smd/virtual_uart.obj
-
-# target to build an object file
-core/hardware/argos_smd/virtual_uart.cpp.obj:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.obj
-.PHONY : core/hardware/argos_smd/virtual_uart.cpp.obj
-
-core/hardware/argos_smd/virtual_uart.i: core/hardware/argos_smd/virtual_uart.cpp.i
-.PHONY : core/hardware/argos_smd/virtual_uart.i
-
-# target to preprocess a source file
-core/hardware/argos_smd/virtual_uart.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.i
-.PHONY : core/hardware/argos_smd/virtual_uart.cpp.i
-
-core/hardware/argos_smd/virtual_uart.s: core/hardware/argos_smd/virtual_uart.cpp.s
-.PHONY : core/hardware/argos_smd/virtual_uart.s
-
-# target to generate assembly for a file
-core/hardware/argos_smd/virtual_uart.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/argos_smd/virtual_uart.cpp.s
-.PHONY : core/hardware/argos_smd/virtual_uart.cpp.s
-
 core/hardware/cdt/cdt.obj: core/hardware/cdt/cdt.cpp.obj
 .PHONY : core/hardware/cdt/cdt.obj
 
@@ -708,6 +660,30 @@ core/hardware/oem_rtd/oem_rtd.s: core/hardware/oem_rtd/oem_rtd.cpp.s
 core/hardware/oem_rtd/oem_rtd.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/oem_rtd/oem_rtd.cpp.s
 .PHONY : core/hardware/oem_rtd/oem_rtd.cpp.s
+
+core/hardware/smd_sat/smd_sat.obj: core/hardware/smd_sat/smd_sat.cpp.obj
+.PHONY : core/hardware/smd_sat/smd_sat.obj
+
+# target to build an object file
+core/hardware/smd_sat/smd_sat.cpp.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/smd_sat/smd_sat.cpp.obj
+.PHONY : core/hardware/smd_sat/smd_sat.cpp.obj
+
+core/hardware/smd_sat/smd_sat.i: core/hardware/smd_sat/smd_sat.cpp.i
+.PHONY : core/hardware/smd_sat/smd_sat.i
+
+# target to preprocess a source file
+core/hardware/smd_sat/smd_sat.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/smd_sat/smd_sat.cpp.i
+.PHONY : core/hardware/smd_sat/smd_sat.cpp.i
+
+core/hardware/smd_sat/smd_sat.s: core/hardware/smd_sat/smd_sat.cpp.s
+.PHONY : core/hardware/smd_sat/smd_sat.s
+
+# target to generate assembly for a file
+core/hardware/smd_sat/smd_sat.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/smd_sat/smd_sat.cpp.s
+.PHONY : core/hardware/smd_sat/smd_sat.cpp.s
 
 core/hardware/stc3117/Generic_I2C.obj: core/hardware/stc3117/Generic_I2C.c.obj
 .PHONY : core/hardware/stc3117/Generic_I2C.obj
@@ -2683,12 +2659,6 @@ help:
 	@echo "... core/hardware/ad5933/ad5933.obj"
 	@echo "... core/hardware/ad5933/ad5933.i"
 	@echo "... core/hardware/ad5933/ad5933.s"
-	@echo "... core/hardware/argos_smd/argos_smd.obj"
-	@echo "... core/hardware/argos_smd/argos_smd.i"
-	@echo "... core/hardware/argos_smd/argos_smd.s"
-	@echo "... core/hardware/argos_smd/virtual_uart.obj"
-	@echo "... core/hardware/argos_smd/virtual_uart.i"
-	@echo "... core/hardware/argos_smd/virtual_uart.s"
 	@echo "... core/hardware/cdt/cdt.obj"
 	@echo "... core/hardware/cdt/cdt.i"
 	@echo "... core/hardware/cdt/cdt.s"
@@ -2740,6 +2710,9 @@ help:
 	@echo "... core/hardware/oem_rtd/oem_rtd.obj"
 	@echo "... core/hardware/oem_rtd/oem_rtd.i"
 	@echo "... core/hardware/oem_rtd/oem_rtd.s"
+	@echo "... core/hardware/smd_sat/smd_sat.obj"
+	@echo "... core/hardware/smd_sat/smd_sat.i"
+	@echo "... core/hardware/smd_sat/smd_sat.s"
 	@echo "... core/hardware/stc3117/Generic_I2C.obj"
 	@echo "... core/hardware/stc3117/Generic_I2C.i"
 	@echo "... core/hardware/stc3117/Generic_I2C.s"

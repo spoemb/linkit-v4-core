@@ -17,10 +17,9 @@
 // Logical device mappings to physical devices
 #define RTC_DATE_TIME        BSP::RTC::RTC_1
 #define RTC_TIMER            BSP::RTC::RTC_2
-//#define SPI_SATELLITE        BSP::SPI::SPI_2
+#define SPI_SATELLITE        BSP::SPI::SPI_2
 #define BATTERY_ADC	         BSP::ADC::ADC_CHANNEL_0
-#define UART_GPS	         BSP::UART::UART_0
-#define UART_SMD	         BSP::UART::UART_1
+#define UART_GPS	         BSP::UART::UART_0 // No more used : used by ASYNC
 #define POWER_CONTROL_PIN    BSP::GPIO::GPIO_POWER_CONTROL
 #define MCU_DONE_PIN         BSP::GPIO::GPIO_MCU_DONE
 #define SWS_ENABLE_PIN       BSP::GPIO::GPIO_SLOW_SWS_SEND
@@ -94,8 +93,7 @@
 #define HW_VERSION_DETECT 2
 #define NO_GPS_POWER_REG  0
 #define NO_ARGOS_PA_GAIN_CTRL 0
-#define ARGOS_EXT 1
-#define ARGOS_SMD 1
+#define ARGOS_EXT 0
 
 namespace BSP
 {
@@ -182,6 +180,9 @@ namespace BSP
     #endif
     #if NRFX_UARTE1_ENABLED
         UART_1,
+    #endif
+    #if NRFX_UARTE2_ENABLED
+        UART_2,
     #endif
         UART_TOTAL_NUMBER
     };

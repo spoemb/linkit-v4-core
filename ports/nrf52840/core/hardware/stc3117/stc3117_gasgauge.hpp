@@ -1,4 +1,7 @@
-#pragma once
+#ifndef __stc3117_gasgauge_H
+#define __stc3117_gasgauge_H
+
+
 
 #include "battery.hpp"
 extern "C" {
@@ -25,3 +28,4 @@ public:
     static int i2c_read(int I2cSlaveAddr, int RegAddress, unsigned char* RxBuffer, int NumberOfBytes);
 
 };
+#endif

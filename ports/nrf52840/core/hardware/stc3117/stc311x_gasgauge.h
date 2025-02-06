@@ -17,17 +17,17 @@
 * IN THE ROOT DIRECTORY OF THIS FIRMWARE PACKAGE.
 *******************************************************************************/
 
+/* Define to prevent recursive inclusion ------------------------------------ */
+#ifndef __stc311x_Gasgauge_H
+#define __stc311x_Gasgauge_H
+
+
 #ifdef __cplusplus      //c++
 extern "C"              //c++
 {                       //c++
 #endif                  //c++
 
 
-
-
-/* Define to prevent recursive inclusion ------------------------------------ */
-#ifndef __Gasgauge_H
-#define __Gasgauge_H
 
 //C++ modification #include "i2c.h"
 
@@ -45,7 +45,7 @@ extern "C"              //c++
 typedef struct  {
   int Voltage;        /* battery voltage in mV */
   int Current;        /* battery current in mA */
-  int Temperature;    /* battery temperature in 0.1°C */
+  int Temperature;    /* battery temperature in 0.1ï¿½C */
   int SOC;            /* battery relative SOC (%) in 0.1% */
   int OCV;
   int AvgSOC;
@@ -67,7 +67,7 @@ typedef struct  {
   int Rint;         /* battery internal resistance */
   int RelaxCurrent; /* current for relaxation (< C/20) */
   int Adaptive;     /* adaptive mode */
-  int CapDerating[7];   /* capacity derating in 0.1%, for temp = 60, 40, 25, 10,   0, -10, -20 °C */
+  int CapDerating[7];   /* capacity derating in 0.1%, for temp = 60, 40, 25, 10,   0, -10, -20 ï¿½C */
 #ifdef STC3115
   int OCVOffset[16];   /* OCV curve adjustment */
 #else
@@ -107,13 +107,13 @@ int STC31xx_ForceCC(void);
 int STC31xx_CheckI2cDeviceId(void);
 int STC31xx_GetRunningCounter(void);
 
-#endif /* __Gasgauge_H */
 
 #ifdef __cplusplus  //c++
 }                   //c++
 #endif              //c++
  
  
+#endif /* __Gasgauge_H */
 
 
 /******************* (C) COPYRIGHT 2013 STMicroelectronics *****END OF FILE****/

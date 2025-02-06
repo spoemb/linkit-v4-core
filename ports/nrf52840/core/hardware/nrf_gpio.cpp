@@ -18,7 +18,9 @@ void GPIOPins::initialise()
 
 	// Ensure power off state for everything controlling power
 	set(GPS_POWER);
+	#ifdef GPS_RST
 	set(GPS_RST);
+	#endif
 	#ifdef SAT_PWR_EN
 	clear(SAT_PWR_EN);
 	//set(SAT_PWR_EN);

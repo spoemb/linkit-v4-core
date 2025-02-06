@@ -36,7 +36,7 @@
 #endif
 
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
-#include "argos_smd.hpp"
+#include "smd_sat.hpp"
 #endif
 
 #include "is25_flash.hpp"
@@ -330,7 +330,7 @@ int main()
 	NrfI2C::init();
 	bool is_linkit_v3 = PMU::hardware_version() == "LinkIt V3";
 
-#if ((defined(ARGOS_ARTIC_SAT) && (ARGOS_ARTIC_SAT == 1)) || (defined_ARTIC_R2) && (ARGOS_ARTIC_R2 ==1))
+#if (defined(ARGOS_ARTIC_SAT) && (ARGOS_ARTIC_SAT == 1))
 	ArticSat::shutdown();
 	{
 		try {
@@ -339,7 +339,7 @@ int main()
 	}
 #endif
 #if (defined(ARGOS_SMD) && (ARGOS_SMD == 1)) 
-	ArgosSmd::shutdown();
+	SmdSat::shutdown();
 	{
 		try {
 			EZO_RTD_Sensor rtd; // Puts the device into standby mode
@@ -548,7 +548,7 @@ int main()
 	DEBUG_TRACE("SWS...");
 	SWSService sws;
 
-	#if ((defined(ARGOS_ARTIC_SAT) && (ARGOS_ARTIC_SAT == 1)) || (ARGOS_ARTIC_R2) && (ARGOS_ARTIC_R2 ==1))
+#if defined(ARGOS_ARTIC_SAT) && (ARGOS_ARTIC_SAT == 1)
 	DEBUG_TRACE("Artic R2...");
 	try {
 		static ArticSat artic;
@@ -564,18 +564,20 @@ int main()
 #endif
 	} catch (...) {
 		DEBUG_TRACE("Artic R2 not detected");
-	#elif (defined(ARGOS_SMD) && (ARGOS_SMD == 1))
+	}
+#elif defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	DEBUG_TRACE("ARGOS SMD...");
 	try {
-		static ArgosSmd argos_smd;
+		static SmdSat argos_smd;
 		static ArgosTxService argos_tx_service(argos_smd);
+		//static ArgosRxService argos_rx_service(artic);
 		artic_device = &argos_smd;
 	} catch (...) {
 		DEBUG_TRACE("ARGOS SMD not detected");
 	}
-	#else
+#else
 	DEBUG_TRACE("ARGOS ARTIC not configured...");
-	#endif
+#endif
 
 #if defined(GPS_M8Q)
 	DEBUG_TRACE("GPS M8Q ...");
@@ -602,7 +604,7 @@ int main()
 
 	DEBUG_TRACE("MS58xx...");
 	MS58xxHardware *ms58xx_devices[BSP::I2C_TOTAL_NUMBER];
-#ifndef DUMMY_MS58xx
+#ifndef DUMMY_PRESSURE_SENSOR
 	for (unsigned int i = 0; i < BSP::I2C_TOTAL_NUMBER; i++) {
 		static unsigned int i2caddr[2] = { MS5803_ADDRESS, MS5837_ADDRESS };
 		static std::string variant[2] = { MS5803_VARIANT, MS5837_VARIANT };

@@ -34,9 +34,6 @@ namespace BSP
 		/* GPIO_PRESS_INT       */ {NRF_GPIO_PIN_MAP(0, 3), NRF_GPIO_PIN_DIR_INPUT,  NRF_GPIO_PIN_INPUT_CONNECT,    NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_S0S1, NRF_GPIO_PIN_NOSENSE, {}},
 		/* GPIO_SMD_OPT         */ {NRF_GPIO_PIN_MAP(0, 20), NRF_GPIO_PIN_DIR_INPUT,  NRF_GPIO_PIN_INPUT_CONNECT,    NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_S0S1, NRF_GPIO_PIN_NOSENSE, {}},
 		/* GPIO_SMD_OPT2        */ {NRF_GPIO_PIN_MAP(0, 16), NRF_GPIO_PIN_DIR_INPUT,  NRF_GPIO_PIN_INPUT_CONNECT,    NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_S0S1, NRF_GPIO_PIN_NOSENSE, {}},
-        //TODO Use for the moment a virtual UART for the Argos SMD communication
-        /* GPIO_SMD_VRX         */ {NRF_GPIO_PIN_MAP(0, 14), NRF_GPIO_PIN_DIR_INPUT, NRF_GPIO_PIN_INPUT_CONNECT, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_S0S1, NRF_GPIO_PIN_NOSENSE, {}},
-        /* GPIO_SMD_VTX         */ {NRF_GPIO_PIN_MAP(0, 26), NRF_GPIO_PIN_DIR_OUTPUT, NRF_GPIO_PIN_INPUT_DISCONNECT, NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_S0S1, NRF_GPIO_PIN_NOSENSE, {}},
     };
 
 /////////////////////////////////// UART definitions ////////////////////////////////
@@ -67,8 +64,8 @@ namespace BSP
         {
             .uarte = NRFX_UARTE_INSTANCE(0),
             .config = {
-                .pseltxd = NRF_GPIO_PIN_MAP(1, 9),
-                .pselrxd = NRF_GPIO_PIN_MAP(1, 8),
+                .pseltxd = NRF_GPIO_PIN_MAP(0, 26),
+                .pselrxd = NRF_GPIO_PIN_MAP(0, 14),
                 .pselcts = NRF_UARTE_PSEL_DISCONNECTED,
                 .pselrts = NRF_UARTE_PSEL_DISCONNECTED,
                 .p_context = NULL, // Context passed to interrupt handler
@@ -95,6 +92,22 @@ namespace BSP
             }
         }
     #endif
+/*     #if NRFX_UARTE2_ENABLED
+        {
+            .uarte = NRFX_UARTE_INSTANCE(2),
+            .config = {
+                .pseltxd = NRF_GPIO_PIN_MAP(0, 26),
+                .pselrxd = NRF_GPIO_PIN_MAP(0, 14),
+                .pselcts = NRF_UARTE_PSEL_DISCONNECTED,
+                .pselrts = NRF_UARTE_PSEL_DISCONNECTED,
+                .p_context = NULL, // Context passed to interrupt handler
+                .hwfc = NRF_UARTE_HWFC_DISABLED,
+                .parity = NRF_UARTE_PARITY_EXCLUDED,
+                .baudrate = NRF_UARTE_BAUDRATE_9600, // See table above
+                .interrupt_priority = INTERRUPT_PRIORITY_UART_0,
+            }
+        },
+    #endif */
     };
 
     /////////////////////////////////// QSPI definitions ////////////////////////////////
@@ -222,7 +235,7 @@ namespace BSP
                 .irq_priority = INTERRUPT_PRIORITY_SPI_2,
                 .orc = 0xFF, // Over-run character
                 .frequency = NRF_SPIM_FREQ_1M,
-                .mode = NRF_SPIM_MODE_1,
+                .mode = NRF_SPIM_MODE_0,
                 .bit_order = NRF_SPIM_BIT_ORDER_MSB_FIRST
             }
         },

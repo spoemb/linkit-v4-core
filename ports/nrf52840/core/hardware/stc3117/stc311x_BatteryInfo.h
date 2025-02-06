@@ -17,8 +17,8 @@
 *******************************************************************************/
 
 /* Define to prevent recursive inclusion ------------------------------------ */
-#ifndef __Battery_Info_H
-#define __Battery_Info_H
+#ifndef __stc311x_Battery_Info_H
+#define __stc311x_Battery_Info_H
 
 
 

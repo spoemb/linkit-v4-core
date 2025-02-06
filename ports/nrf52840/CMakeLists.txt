@@ -20,7 +20,6 @@ option(BOARD "Board to compile for" NONE)
 if(${MODEL} MATCHES SB OR ${MODEL} MATCHES UW OR ${MODEL} MATCHES CORE OR ${MODEL} MATCHES SMD)
     set (ARGOS_SMD 0)
     set (ARGOS_ARTIC_SAT 0)
-    set (ARGOS_ARTIC_R2 1)
     set (SENSOR_BMX160 1)
     set(MODEL_SB 0)
     set(MODEL_UW 0)
@@ -39,13 +38,8 @@ if(${MODEL} MATCHES SB OR ${MODEL} MATCHES UW OR ${MODEL} MATCHES CORE OR ${MODE
         set(MODEL_CORE 1)
 	    set(HAS_WCHG 1)
     elseif(${MODEL} MATCHES SMD)
-        set(GPS_MODEL M10Q)
         set(MODEL_SMD 1)
         set(HAS_GAUGE_STC3117 1)
-        set (SENSOR_BMX160 0)
-        set (SENSOR_BMA400 1)
-	    set(HAS_WCHG 0)
-        set (ARGOS_ARTIC_R2 0)
         set (ARGOS_SMD 1)
     endif()
 else()
@@ -57,6 +51,14 @@ if(${BOARD} MATCHES HORIZON)
     set(TARGET_NAME ${PROJECT_NAME}_horizon_board)
     set(BOARD_DIR     "${PROJ_DIR}/bsp/horizon_v4.0")
     set(DEVICE_MODEL "Horizon CORE")
+    set (ARGOS_ARTIC_SAT 0)
+    set (SENSOR_BMX160 0)
+    set(HAS_WCHG 0)
+    set(MODEL_SB 0)
+    set(MODEL_UW 0)
+    set(MODEL_CORE 1)
+    set(GPS_MODEL M8Q)
+    set(HAS_GAUGE_STC3117 0)
     set(HAS_WCHG 0)
     set(BOOTLOADER "bootloader/gentracker_secure_bootloader/horizon_v4.0/armgcc/_build/horizon_bootloader_v4_linkit_merged.hex")
 elseif(${BOARD} MATCHES LINKIT)
@@ -67,6 +69,10 @@ elseif(${BOARD} MATCHES RSPB)
     set(TARGET_NAME ${PROJECT_NAME}_rspb_board)
     set(BOARD_DIR     "${PROJ_DIR}/bsp/rspbtracker_v1.0")
     set(DEVICE_MODEL "RSPB ${MODEL}")
+    set(GPS_MODEL M10Q)
+    set (SENSOR_BMX160 0)
+    set (SENSOR_BMA400 1)
+    set(HAS_WCHG 0)
     set(BOOTLOADER "bootloader/gentracker_secure_bootloader/rspbtracker_v1.0/armgcc/_build/rspb_bootloader_v1_linkit_merged.hex")
 else()
     message(FATAL_ERROR "Board must be HORIZON or LINKIT or RSPB")
@@ -343,24 +349,13 @@ if (ARGOS_ARTIC_SAT)
             ${PROJ_DIR}/core/hardware/artic_sat
         )
 endif()
-if (ARGOS_ARTIC_R2)
-        target_sources(${TARGET_NAME} PRIVATE
-            ${PROJ_DIR}/core/hardware/artic_r2/artic.cpp
-            ${PROJ_DIR}/core/hardware/artic_r2/pa_driver.cpp
-        )
-
-        target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
-            ${PROJ_DIR}/core/hardware/artic_r2
-        )
-endif()
 if (ARGOS_SMD)
         target_sources(${TARGET_NAME} PRIVATE
-            ${PROJ_DIR}/core/hardware/argos_smd/argos_smd.cpp
-            ${PROJ_DIR}/core/hardware/argos_smd/virtual_uart.cpp
+            ${PROJ_DIR}/core/hardware/smd_sat/smd_sat.cpp
         )
 
         target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
-            ${PROJ_DIR}/core/hardware/argos_smd
+            ${PROJ_DIR}/core/hardware/smd_sat
         )
 endif()
 
@@ -386,7 +381,6 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     MODEL_RSPB=${MODEL_RSPB}
     GPS_${GPS_MODEL}
     ARGOS_ARTIC_SAT=${ARGOS_ARTIC_SAT}
-    ARGOS_ARTIC_R2=${ARGOS_ARTIC_R2}
     ARGOS_SMD=${ARGOS_SMD}
     SENSOR_BMX160=${SENSOR_BMX160}
     HAS_GAUGE_STC3117=${HAS_GAUGE_STC3117} 
@@ -410,7 +404,7 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     DEVICE_MODEL_NAME="${DEVICE_MODEL}"s
     #LFS_YES_TRACE
     #BATTERY_NOT_FITTED
-    DUMMY_MS58xx
+    #DUMMY_PRESSURE_SENSOR
     #DEBUG_AD5933
     DEBUG_TO_SYSTEMLOG
     ETL_LOG_ERRORS

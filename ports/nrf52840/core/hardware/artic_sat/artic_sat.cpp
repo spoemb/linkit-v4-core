@@ -856,8 +856,7 @@ void ArticSat::state_idle_pending() {
 	if (is_idle_state()) {
 		// Clear the interrupt
         clear_interrupt(INTERRUPT_1);
-        ARTIC_STATE_CHANGE(idle_pending, idle);
-	} else {
+        ARTIC_STATE_CHANGE(idle_pending, idle) else {
 		// Check retries
 		if (--m_state_counter == 0) {
 			// Failed to go IDLE
