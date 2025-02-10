@@ -1,0 +1,57 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+		{
+			"type": "shell",
+			"label": "Bootloader: build",
+			"command": "make mergehex",
+			"args": [],
+			"options": {
+			"cwd": "${workspaceFolder}/ports/nrf52840/bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc"
+			},	
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build",
+		},
+		{
+			"type": "shell",
+			"label": "Bootloader: clean build",
+			"command": "rm -rf ${workspaceFolder}/ports/nrf52840/bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc/_build && make mergehex",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}/ports/nrf52840/bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build",
+		},
+		{
+			"type": "shell",
+			"label": "Core: build",
+			"command": "./scripts/build_core.sh",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build",
+		},
+		{
+			"type": "shell",
+			"label": "Core: clean build",
+			"command": "rm -rf ports/nrf52840/build/CORE && ./scripts/build_core.sh",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build",
+		},
+    ],
+  }
