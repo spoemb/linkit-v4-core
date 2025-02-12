@@ -12,7 +12,7 @@ mergehex -m m1.hex settings.hex -o LinkIt_CORE_board_merged.hex
 rm -f m1.hex settings.hex
 rm -f LinkIt_CORE_board-* LinkIt_CORE_board_dfu-* LinkIt_CORE_board_merged-*
 mv LinkIt_CORE_board_dfu.zip LinkIt_CORE_board_dfu-`cat TAG_NAME`.zip
-mv LinkIt_CORE_board.elf LinkIt_CORE_board-`cat TAG_NAME`.elf
+cp LinkIt_CORE_board.elf LinkIt_CORE_board-`cat TAG_NAME`.elf
 mv LinkIt_CORE_board.hex LinkIt_CORE_board-`cat TAG_NAME`.hex
 mv LinkIt_CORE_board.img LinkIt_CORE_board-`cat TAG_NAME`.img
 mv LinkIt_CORE_board_merged.hex LinkIt_CORE_board_merged-`cat TAG_NAME`.hex
