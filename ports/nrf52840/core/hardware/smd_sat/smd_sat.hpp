@@ -52,8 +52,8 @@ private:
 	ArticPacket m_tx_buffer;
 	ArticPacket m_ack_buffer;
 	ArticPacket m_packet_buffer;
-	ArticMode   m_tx_mode;
-	ArticMode   m_ack_mode;
+	ArgosMode   m_tx_mode;
+	ArgosMode   m_ack_mode;
 	ArgosModulation m_modulation;
 	BaseArgosPower m_tx_power;
 	double      m_tx_freq;
@@ -66,13 +66,26 @@ private:
 	void send_command(const uint8_t *tx_data, uint8_t *rx_data, uint16_t size);
 	void get_spi_status(uint8_t *status);
 	void get_kmac_status(uint8_t *status);
+	void set_radio_conf(ArgosModulation modulation);
+	void read_radio_conf(ArgosModulation *modulation);
+	bool save_radio_conf();
+	void read_version(uint8_t *version);
+	void print_firmware_version();
+	void read_address(uint8_array_t *address);
+	void set_address(uint8_array_t *address);
+	void read_seckey(uint8_array_t *seckey);
+	void set_seckey(uint8_array_t *seckey);
+	void read_id(uint32_t *id);
+	void set_id(uint32_t id);
+	void read_serial(uint8_array_t *serial);
+	void read_lpm(uint8_t *lpm_mode);
+	void write_lpm(uint8_t *lpm_mode);
+	void read_tcxo_warmup(uint8_t *time_ms);
+	void write_tcxo_warmup(uint32_t time_ms);
 
-	void reload_kmac_profil();
+	void load_kmac_profil(uint8_t profile);
 	void set_tcxo_warmup(uint32_t time_s);
 	void set_tcxo_control(bool state);
-	void print_firmware_version();
-	bool is_idle();
-	bool is_idle_state();
 	bool smd_ping();
 	
 	bool is_tx_finished();
@@ -125,10 +138,10 @@ private:
 public:
 	SmdSat(unsigned int idle_shutdown_timeout_ms = 1000);
 	~SmdSat();
-	void send(const ArticMode mode, const ArticPacket& packet, const unsigned int size_bits) override;
-	void send_ack(const ArticMode mode, const unsigned int a_dcs, const unsigned int dl_msg_id, const unsigned int exec_report) override;
+	void send(const ArgosMode mode, const ArticPacket& packet, const unsigned int size_bits) override;
+	void send_ack(const ArgosMode mode, const unsigned int a_dcs, const unsigned int dl_msg_id, const unsigned int exec_report) override;
 	void stop_send() override;
-	void start_receive(const ArticMode mode) override;
+	void start_receive(const ArgosMode mode) override;
 	bool stop_receive() override;
 	void set_frequency(const double freq) override;
 	void set_tcxo_warmup_time(const unsigned int time) override;

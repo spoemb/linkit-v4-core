@@ -5,10 +5,10 @@
 
 class MockArticDevice : public ArticDevice {
 public:
-	void send(const ArticMode mode, ArticPacket const&, unsigned int size_bits) override {
+	void send(const ArgosMode mode, ArticPacket const&, unsigned int size_bits) override {
 		mock().actualCall("send").onObject(this).withParameter("mode", (unsigned int)mode).withParameter("size_bits", size_bits);
 	}
-	void send_ack(const ArticMode mode, const unsigned int a_dcs, const unsigned int dl_msg_id, const unsigned int exec_report) override {
+	void send_ack(const ArgosMode mode, const unsigned int a_dcs, const unsigned int dl_msg_id, const unsigned int exec_report) override {
 		mock().actualCall("send_ack").onObject(this).withParameter("mode", (unsigned int)mode).
 				withParameter("a_dcs", a_dcs).
 				withParameter("dl_msg_id", dl_msg_id).
@@ -17,7 +17,7 @@ public:
 	void stop_send() override {
 		mock().actualCall("stop_send").onObject(this);
 	}
-	void start_receive(const ArticMode mode) override {
+	void start_receive(const ArgosMode mode) override {
 		mock().actualCall("start_receive").onObject(this).withParameter("mode", (unsigned int)mode);
 	}
 	bool stop_receive() override {

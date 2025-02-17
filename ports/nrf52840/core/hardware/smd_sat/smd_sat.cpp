@@ -56,6 +56,7 @@ void SmdSat::read_byte(uint8_t *byte_read) {
     if (ret) {
        throw ErrorCode::SPI_COMMS_ERROR;
 	}
+	return;
 }
 
 void SmdSat::send_command(uint8_t command) {
@@ -67,6 +68,7 @@ void SmdSat::send_command(uint8_t command) {
     if (ret) {
        throw ErrorCode::SPI_COMMS_ERROR;
 	}
+	return;
 }
 
 void SmdSat::send_command(const uint8_t *tx_data, uint8_t *rx_data, uint16_t size) {
@@ -74,46 +76,313 @@ void SmdSat::send_command(const uint8_t *tx_data, uint8_t *rx_data, uint16_t siz
     if (ret) {
        throw ErrorCode::SPI_COMMS_ERROR;
 	}
+	return;
 }
 
-void SmdSat::reload_kmac_profil()
+void SmdSat::load_kmac_profil(uint8_t profile)
 {
-	// send_command(SMDSAT_CMD_WRITE_KMAC_REQ);
-
 	uint8_t tx[SMDSAT_CMD_WRITEKMAC_LEN] = {0};
 	uint8_t rx[SMDSAT_CMD_WRITEKMAC_LEN] = {0};
-	// tx[0] = SMDSAT_CMD_WRITE_KMAC;
-	// tx[1] = 0;
-	// nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
-	// send_command(tx, rx, (uint16_t)SMDSAT_CMD_WRITEKMAC_LEN);
-	
-	// nrf_delay_ms(SMDSAT_DELAY_LOAD_KMAC_MS);
-	
+	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
 	send_command(SMDSAT_CMD_WRITE_KMAC_REQ);
 	tx[0] = SMDSAT_CMD_WRITE_KMAC;
-	tx[1] = 1;
+	tx[1] = profile;
 	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
 	send_command(tx, rx, SMDSAT_CMD_WRITEKMAC_LEN);
+	return;
 }
 
 void SmdSat::get_spi_status(uint8_t *status) {
 	send_command(SMDSAT_CMD_SPI_STATUS);
 	read_byte(status);
 	DEBUG_TRACE("SmdSat::spi status=%s", (char *)spistatus_string[*status]);
+	return;
 }
 
 void SmdSat::get_kmac_status(uint8_t *status) {
+	DEBUG_TRACE("SmdSat::kmac status=%s", (char *)kmacstatus_string[*status]);
 	send_command(SMDSAT_CMD_MAC_STATUS);
 	read_byte(status);
-	DEBUG_TRACE("SmdSat::kmac status=%s", (char *)kmacstatus_string[*status]);
+	return;
 }
 
+void SmdSat::set_radio_conf(ArgosModulation modulation) {
+	DEBUG_TRACE("%s",__func__);
+    const char* radio_conf = nullptr;
+	switch (modulation)
+	{
+	case ARGOS_MOD_LDA2:
+		radio_conf = "44cd3a299068292a74d2126f3402610d";
+		break;
+	case ARGOS_MOD_LDA2L:
+		radio_conf = "bd176535b394a665bd86f354c5f424fb";
+		break;
+	case ARGOS_MOD_LDK:
+		radio_conf = "efd2412f8570581457f2d982e76d44d7";
+		break;
+	case ARGOS_MOD_VLDA4:
+		radio_conf = "41bc11b8980df01ba8b4b8f41099620b";
+		break;
+	
+	default:
+		DEBUG_ERROR("%s:: Unknown modulation : %u", __func__, modulation);
+		return;
+	}
+	//spi_write(spiTxBuffer, 1);
+	send_command(SMDSAT_CMD_WRITE_RCONF_REQ);
+	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+	uint8_t tx[SMDSAT_CMD_WRITECONF_LEN] = {0};
+	tx[0] = SMDSAT_CMD_WRITE_RCONF;
+	memcpy(&(tx[1]), radio_conf, sizeof(tx) - 1);
+	send_command(tx, NULL, SMDSAT_CMD_WRITECONF_LEN);
+	return;
+}
+
+void SmdSat::read_radio_conf(ArgosModulation *modulation){
+	DEBUG_TRACE("%s",__func__);
+	send_command(SMDSAT_CMD_READ_RCONF);
+	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+	uint8_t rx[SMDSAT_CMD_READCONF_LEN] = {0};
+	uint8_t tx[SMDSAT_CMD_READCONF_LEN] = {0};
+	send_command(tx, rx, SMDSAT_CMD_READCONF_LEN);
+
+    uint32_t min_frequency = (rx[3] << 24) |
+                             (rx[2] << 16) |
+                             (rx[1] << 8)  |
+                              rx[0];
+
+    uint32_t max_frequency = (rx[7] << 24) |
+                             (rx[6] << 16) |
+                             (rx[5] << 8)  |
+                              rx[4];
+
+    int8_t rf_level = rx[8];
+
+    *modulation = static_cast<ArgosModulation>(rx[9]); 
+
+
+    // Print the decoded values
+    DEBUG_INFO("Modulation: %u, Min Frequency: %u, Max Frequency: %u, RF Level %u", *modulation,
+		min_frequency, max_frequency, rf_level);
+	return;
+}
+
+bool SmdSat::save_radio_conf(){
+	DEBUG_TRACE("%s",__func__);
+	send_command(SMDSAT_CMD_SAVE_RCONF);
+	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+	uint8_t ack = 0;
+	read_byte(&ack);
+	if (ack == 1) {
+		DEBUG_INFO("%s::radio conf saved",__func__);
+		return true;
+	} else {
+		DEBUG_WARN("%s::radio conf failed to save",__func__);
+		return false;
+	}
+}
+void SmdSat::read_lpm(uint8_t *lpm_mode) {
+	DEBUG_TRACE("%s",__func__);
+	send_command(SMDSAT_CMD_READ_LPM);
+	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+	read_byte(lpm_mode);
+	DEBUG_INFO("SMD LPM mode is: %u", *lpm_mode);
+	return;
+}
+
+void SmdSat::write_lpm(uint8_t *lpm_mode){
+	DEBUG_TRACE("%s",__func__);
+	send_command(SMDSAT_CMD_WRITE_LPM_REQ);
+	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+	uint8_t tx[SMDSAT_CMD_WRITE_LPM_LEN], rx[SMDSAT_CMD_WRITE_LPM_LEN] = {0};
+	tx[0] = SMDSAT_CMD_WRITE_LPM;
+	tx[1] = *lpm_mode;
+	send_command(tx, rx, SMDSAT_CMD_WRITE_LPM_LEN);
+	DEBUG_INFO("SMD LPM mode is: %u", *lpm_mode);
+	return;
+}
+void SmdSat::read_version(uint8_t *version){
+	DEBUG_TRACE("%s",__func__);
+	send_command(SMDSAT_CMD_READ_VERSION);
+	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+	read_byte(version);
+	DEBUG_INFO("SMD SPI Version: %u", *version);
+	return;
+}
+
+void SmdSat::read_address(uint8_array_t *address){
+	DEBUG_TRACE("%s",__func__);
+	if(address->size != SMDSAT_CMD_READ_ADDR_LEN){
+		DEBUG_ERROR("%s::Size allocated to store address %u != from %u",
+			__func__, address->size, SMDSAT_CMD_READ_ADDR_LEN);
+		return;
+	}
+	send_command(SMDSAT_CMD_READ_ADDR);
+	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+
+	uint8_t tx[SMDSAT_CMD_READ_ADDR_LEN] = {0};
+	send_command(tx, address->p_data, address->size);
+	DEBUG_INFO("SMD Address: 0x%02X%02X%02X%02X",
+               address->p_data[0],
+               address->p_data[1],
+               address->p_data[2],
+               address->p_data[3]);
+	return;
+}
+
+
+void SmdSat::set_address(uint8_array_t *address){
+	DEBUG_TRACE("%s:: ",__func__);
+	if(address->size != SMDSAT_CMD_READ_ADDR_LEN){
+		DEBUG_ERROR("%s::Size allocated to store address %u != from %u",
+			__func__, address->size, SMDSAT_CMD_READ_ADDR_LEN);
+		return;
+	}
+	send_command(SMDSAT_CMD_WRITE_ADDR_REQ);
+	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+	uint8_t tx[SMDSAT_CMD_WRITE_ADDR_LEN], rx[SMDSAT_CMD_WRITE_ADDR_LEN] = {0};
+	tx[0] = SMDSAT_CMD_WRITE_ADDR;
+	memcpy(&(tx[1]), &address->p_data, address->size);
+	send_command(tx, rx, (uint16_t)SMDSAT_CMD_WRITE_ADDR_LEN);
+	
+	return;
+}
+
+void SmdSat::read_seckey(uint8_array_t *seckey){
+	DEBUG_TRACE("%s",__func__);
+	if(seckey->size != SMDSAT_CMD_READ_SECKEY_LEN){
+		DEBUG_ERROR("%s::Size allocated to store address %u != from %u",
+			__func__, seckey->size, SMDSAT_CMD_READ_SECKEY_LEN);
+		return;
+	}
+	send_command(SMDSAT_CMD_READ_SECKEY);
+	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+
+	uint8_t tx[SMDSAT_CMD_READ_SECKEY_LEN] = {0};
+	send_command(tx, seckey->p_data, seckey->size);
+	// Create a buffer to build the output string.
+    char buffer[128];
+    int offset = 0;
+
+    // Start the message
+    offset += snprintf(buffer + offset, sizeof(buffer) - offset, "SMD SecKey read:");
+
+    // Loop through each of the 16 bytes and append them in hexadecimal format.
+    for (size_t i = 0; i < seckey->size; i++) {
+        offset += snprintf(buffer + offset, sizeof(buffer) - offset, " 0x%02X", seckey->p_data[i]);
+    } 
+	DEBUG_INFO("%s", buffer);
+	return;
+}
+
+
+void SmdSat::set_seckey(uint8_array_t *seckey){
+	DEBUG_TRACE("%s:: ",__func__);
+	if(seckey->size != SMDSAT_CMD_WRITE_SECKEY_LEN){
+		DEBUG_ERROR("%s::Size allocated to store address %u != from %u",
+			__func__, seckey->size, SMDSAT_CMD_WRITE_SECKEY_LEN);
+		return;
+	}
+	send_command(SMDSAT_CMD_WRITE_SECKEY_REQ);
+	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+	uint8_t tx[SMDSAT_CMD_WRITE_SECKEY_LEN], rx[SMDSAT_CMD_WRITE_SECKEY_LEN] = {0};
+	tx[0] = SMDSAT_CMD_WRITE_SECKEY;
+	memcpy(&(tx[1]), &seckey->p_data, seckey->size);
+	send_command(tx, rx, SMDSAT_CMD_WRITE_SECKEY_LEN);
+	
+	// Create a buffer to build the output string.
+    char buffer[128];
+    int offset = 0;
+
+    // Start the message
+    offset += snprintf(buffer + offset, sizeof(buffer) - offset, "SMD SecKey write:");
+
+	for (size_t i = 0; i < seckey->size; i++) {
+        offset += snprintf(buffer + offset, sizeof(buffer) - offset, " 0x%02X", seckey->p_data[i]);
+    } 
+	DEBUG_INFO("%s", buffer);
+	return;
+}
+void SmdSat::read_id(uint32_t *id){
+	if (id == nullptr) 
+	{
+		DEBUG_ERROR("%s::id ptr is null",__func__);
+		return;
+	}
+	send_command(SMDSAT_CMD_READ_ID);
+	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+	uint8_t tx[SMDSAT_CMD_READ_ID_LEN] = {0};
+	uint8_t rx[SMDSAT_CMD_READ_ID_LEN] = {0};
+	send_command(tx, rx,SMDSAT_CMD_READ_ID_LEN);
+	for (int i = 0; i < SMDSAT_CMD_READ_ID_LEN; i++) {
+		*id |= rx[i] << (8 * i);
+	 }
+	DEBUG_INFO("%s::SMD ID: 0x%u", __func__, *id);
+	return;
+}
+void SmdSat::set_id(uint32_t id){
+	DEBUG_TRACE("%s:: id: %u",__func__, id);
+	send_command(SMDSAT_CMD_WRITE_ID_REQ);
+	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+	uint8_t tx[SMDSAT_CMD_WRITE_ID_LEN], rx[SMDSAT_CMD_WRITE_ID_LEN] = {0};
+	tx[0] = SMDSAT_CMD_WRITE_ID;
+	memcpy(&(tx[1]), &id, sizeof(id));
+	send_command(tx, rx, SMDSAT_CMD_WRITE_ID_LEN);
+	return;
+}
+
+void SmdSat::read_tcxo_warmup(uint8_t *time_ms){
+	if (time_ms == nullptr) 
+	{
+		DEBUG_ERROR("%s::tcxo ptr is null",__func__);
+		return;
+	}
+	send_command(SMDSAT_CMD_READ_ID);
+	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+	uint8_t tx[SMDSAT_CMD_READ_ID_LEN] = {0};
+	uint8_t rx[SMDSAT_CMD_READ_ID_LEN] = {0};
+	send_command(tx, rx,SMDSAT_CMD_READ_ID_LEN);
+	for (int i = 0; i < SMDSAT_CMD_READ_ID_LEN; i++) {
+		*time_ms |= rx[i] << (8 * i);
+	 }
+	DEBUG_INFO("%s::SMD TCXO wamrup time: %u", __func__, *time_ms);
+	return;
+}
+void SmdSat::write_tcxo_warmup(uint32_t time_ms){
+	DEBUG_TRACE("%s:: tcxo warmup time: %u",__func__, time_ms);
+	send_command(SMDSAT_CMD_WRITE_TCXO_REQ);
+	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+	uint8_t tx[SMDSAT_CMD_WRITE_TCXO_LEN], rx[SMDSAT_CMD_WRITE_TCXO_LEN] = {0};
+	tx[0] = SMDSAT_CMD_WRITE_TCXO;
+	memcpy(&(tx[1]), &time_ms, sizeof(time_ms));
+	send_command(tx, rx, SMDSAT_CMD_WRITE_ID_LEN);
+	
+	return;
+}
+void SmdSat::read_serial(uint8_array_t *serial){
+	DEBUG_TRACE("%s",__func__);
+	if(serial->size != SMDSAT_CMD_READ_SERIAL_LEN){
+		DEBUG_ERROR("%s::Size allocated to store address %u != from %u",
+			__func__, serial->size, SMDSAT_CMD_READ_SERIAL_LEN);
+		return;
+	}
+	send_command(SMDSAT_CMD_READ_SN);
+	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+	
+	uint8_t tx[SMDSAT_CMD_READ_SERIAL_LEN] = {0};
+	send_command(tx, serial->p_data, serial->size);
+	DEBUG_INFO("SMD SN: %.*s", serial->size, serial->p_data);
+	return;
+}
 void SmdSat::set_tcxo_warmup(uint32_t time_s)
 {
     DEBUG_TRACE("SmdSat::set_tcxo_warmup:TODO");
+	this->write_tcxo_warmup(time_s*1000);
+	return;
 }
+
 void SmdSat::set_tcxo_control(bool state) {
-    DEBUG_TRACE("SmdSat::set_tcxo_control:TODO");
+    DEBUG_TRACE("SmdSat::set_tcxo_control:Managed by SMD module");
 }
 void SmdSat::print_firmware_version() {
 	send_command(SMDSAT_CMD_READ_FIRMWARE);
@@ -121,33 +390,9 @@ void SmdSat::print_firmware_version() {
 	uint8_t rx[SMDSAT_CMD_READ_FIRMWARE_LEN] = {0};
 	send_command(tx, rx, (uint16_t)SMDSAT_CMD_READ_FIRMWARE_LEN);
     DEBUG_TRACE("SmdSat::print_firmware_version: %s", rx);
+	return;
 }
 
-bool SmdSat::is_idle_state() {
-    DEBUG_TRACE("SmdSat::%s:Waiting spi=WAITING_RX and kmac=MAC_OK",__func__);
-	uint8_t status = 0;
-    get_spi_status(&status);
-	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
-	
-	uint8_t kmac_status = 0;
-    get_kmac_status(&kmac_status);
-	
-	if ((status == SMDSAT_SPICMD_WAITING_RX) && (kmac_status == MAC_OK)) {
-		return true;
-	} else {
-		return false;
-	}
-}
-bool SmdSat::is_idle() {
-    DEBUG_TRACE("SmdSat::%s",__func__);
-	uint8_t status = 0;
-    get_spi_status(&status);
-	if (status == SMDSAT_SPICMD_WAITING_RX) {
-		return true;
-	} else {
-		return false;
-	}
-}
 
 bool SmdSat::smd_ping()
 {
@@ -199,6 +444,7 @@ void SmdSat::power_off() {
     if (!SMD_STATE_EQUAL(stopped)) {
     	m_stopping = true;
     }
+	return;
 }
 void SmdSat::power_on() {
     DEBUG_TRACE("SmdSat::power_on");
@@ -217,6 +463,7 @@ void SmdSat::power_on() {
     // This will run the state machine perpetually until a power_off is called
     DEBUG_TRACE("SmdSat::start state machine");
     state_machine();
+	return;
 }
 
 
@@ -230,6 +477,7 @@ void SmdSat::power_off_immediate()
     	system_scheduler->cancel_task(m_task);
     	SMD_STATE_CHANGE(idle, stopped);
     }
+	return;
 }
 
 
@@ -245,13 +493,16 @@ SmdSat::SmdSat(unsigned int idle_shutdown_ms) {
     m_tcxo_warmup_time = DEFAULT_TCXO_WARMUP_TIME_SECONDS;
 	this->shutdown();
 	is_kmac_profil_loaded = false; 
+	return;
 }
 SmdSat::~SmdSat() {
 	power_off_immediate();
+	return;
 }
 void SmdSat::shutdown(void) {
 	GPIOPins::clear(SAT_RESET);
 	GPIOPins::clear(SAT_PWR_EN);
+	return;
 }
 
 void SmdSat::state_machine(bool use_scheduler) {
@@ -297,13 +548,16 @@ void SmdSat::state_machine(bool use_scheduler) {
 			state_machine();
 		}, "SmdReceiverStateMachine", Scheduler::DEFAULT_PRIORITY, m_next_delay);
 	}
+	return;
 }
 
 
 void SmdSat::state_starting_enter() {
+	return;
 }
 
 void SmdSat::state_starting_exit() {
+	return;
 }
 void SmdSat::state_starting() 
 {
@@ -313,23 +567,26 @@ void SmdSat::state_starting()
 	m_state_counter = 3;
 	m_next_delay = 0;
 	SMD_STATE_CHANGE(starting, powering_on);
+	return;
 }
 
 void SmdSat::state_error_enter() {
 	// Dump device status
 	uint8_t status = 0;
-	get_spi_status(&status);
-
+	get_kmac_status(&status);
 	notify(ArticEventDeviceError({}));
 
 	SMD_STATE_CHANGE(error, stopped);
+	return;
 }
 
 void SmdSat::state_error_exit() {
+	return;
 }
 
 void SmdSat::state_error() {
 	SMD_STATE_CHANGE(error, stopped);
+	return;
 }
 
 
@@ -356,44 +613,53 @@ void SmdSat::state_stopped_enter() {
 	m_ack_buffer.clear();
 
 	notify(ArticEventPowerOff({}));
+	return;
 }
 
 void SmdSat::state_stopped_exit() {
+	return;
 }
 
 void SmdSat::state_stopped() {
+	return;
 }
 
 void SmdSat::state_powering_on_enter() {
+	return;
 }
 
 void SmdSat::state_powering_on_exit() {
 	m_next_delay = SMDSAT_DELAY_POWER_ON_MS;
+	return;
 }
 
 void SmdSat::state_powering_on() {
     GPIOPins::set(SAT_PWR_EN);
     GPIOPins::set(SAT_RESET);
-    SMD_STATE_CHANGE(powering_on, load_kmac);
+    SMD_STATE_CHANGE(powering_on, idle_pending);
+	return;
 }
 
 void SmdSat::state_load_kmac_enter() {
+	return;
 }
 
 void SmdSat::state_load_kmac_exit() {
-	m_next_delay = SMDSAT_DELAY_LOAD_KMAC_MS;
+	return;
 }
 
 void SmdSat::state_load_kmac() {
-	if (smd_ping()) {
+	uint8_t kmac_status = 0;
+	get_kmac_status(&kmac_status);
+	if (kmac_status == MAC_OK) {
 		if (!is_kmac_profil_loaded) {
-			nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
-			reload_kmac_profil();
+			load_kmac_profil(1);
+			m_next_delay = SMDSAT_DELAY_LOAD_KMAC_MS;
 			is_kmac_profil_loaded = true;
 		} else {
+			m_next_delay = SMDSAT_DELAY_CMD_MS;
 			DEBUG_TRACE("SmdSat::%s: KMAC profil already loaded", __func__);
 		}
-		
 		SMD_STATE_CHANGE(load_kmac, idle_pending);
 	} else {
 		// Check retries
@@ -405,23 +671,28 @@ void SmdSat::state_load_kmac() {
 			m_next_delay = SMDSAT_DELAY_TICK_INTERRUPT_MS;
 		}
 	}
+	return;
 }
 //TODO check if we use LPM or just turn ON/OFF device WAKEUP PIN USED in this case no CMD
 void SmdSat::state_idle_pending_enter() {
-	if (!is_kmac_profil_loaded)
-	{
-		SMD_STATE_CHANGE(idle_pending, load_kmac);
-	}
 	m_next_delay = SMDSAT_DELAY_CMD_MS;
+	m_state_counter = 10;
+	return;
 }
 
 void SmdSat::state_idle_pending_exit() {
 	m_next_delay = SMDSAT_DELAY_CMD_MS;
+	return;
 }
 
 void SmdSat::state_idle_pending() {
-	if (is_idle_state()) {
-		SMD_STATE_CHANGE(idle_pending, idle);
+	if (smd_ping()) {
+		if (!is_kmac_profil_loaded)
+		{
+			SMD_STATE_CHANGE(idle_pending, load_kmac);
+		} else {
+			SMD_STATE_CHANGE(idle_pending, idle);
+		}
 	} else {
 		// Check retries
 		if (--m_state_counter == 0) {
@@ -432,16 +703,19 @@ void SmdSat::state_idle_pending() {
 			m_next_delay = SMDSAT_DELAY_CMD_MS;
 		}
 	}
+	return;
 }
 
 void SmdSat::state_idle_enter() {
 	//TODO Check if we are already IDLE or not
 	m_next_delay = SMDSAT_DELAY_TICK_INTERRUPT_MS;
 	m_state_counter = m_idle_timeout_ms / SMDSAT_DELAY_TICK_INTERRUPT_MS;
+	return;
 }
 
 void SmdSat::state_idle_exit() {
 	m_next_delay = SMDSAT_DELAY_CMD_MS;
+	return;
 }
 
 void SmdSat::state_idle() {
@@ -468,6 +742,7 @@ void SmdSat::state_idle() {
 
 	// Reset state timeout counter
 	m_state_counter = m_idle_timeout_ms / SMDSAT_DELAY_TICK_INTERRUPT_MS;
+	return;
 	
 }
 void SmdSat::state_transmit_pending_enter() {
@@ -477,10 +752,12 @@ void SmdSat::state_transmit_pending_enter() {
 	else {
 		SMD_STATE_CHANGE(transmit_pending, idle);
 	 }*/
+	return;
 }
 
 void SmdSat::state_transmit_pending_exit() {
-	m_next_delay = SMDSAT_DELAY_CMD_TX;
+	m_next_delay = SMDSAT_DELAY_CMD_TX + (m_tcxo_warmup_time*1000);
+	return;
 	
 }
 
@@ -499,6 +776,7 @@ void SmdSat::state_transmit_pending() {
 		} else
 			m_next_delay = SMDSAT_DELAY_CMD_MS;
 	}
+	return;
 }
 
 void SmdSat::state_transmitting_enter() {
@@ -506,15 +784,17 @@ void SmdSat::state_transmitting_enter() {
 	// use a nominal timeout since no TCXO warm-up will be used
 	// TODO: NO TCXO timeout
 	//m_state_counter = m_is_first_tx ? (500 + (m_tcxo_warmup_time * 100)) : 500;
-	m_state_counter = 100; 
+	m_state_counter = 5;
 	
 	//send_command(ARTIC_CMD_START_TX_1M_SLEEP);
     DEBUG_TRACE("SmdSat::state_transmitting_enter:TODO");
+	return;
 }
 
 void SmdSat::state_transmitting_exit() {
 	//TODO: First tx not used
 	m_is_first_tx = false; 
+	return;
 }
 
 void SmdSat::state_transmitting() {
@@ -536,16 +816,19 @@ void SmdSat::state_transmitting() {
 		} else
 			m_next_delay = SMDSAT_DELAY_CMD_MS;
 	}
+	return;
 }
 void SmdSat::stop_send() {
 	DEBUG_TRACE("SmdSat::stop_send: TODO");
 	m_ack_buffer.clear();
 	m_packet_buffer.clear();
 	m_tx_buffer.clear();
+	return;
 }
 
-void SmdSat::start_receive(const ArticMode mode) {
+void SmdSat::start_receive(const ArgosMode mode) {
 	DEBUG_TRACE("SmdState::start_receive: not implemented");
+	return;
 }
 bool SmdSat::stop_receive() {
 	DEBUG_TRACE("SmdSat::stop_receive: not implemented");
@@ -555,6 +838,7 @@ bool SmdSat::stop_receive() {
 void SmdSat::set_frequency(const double freq) {
 	DEBUG_TRACE("SmdSat::set_frequency: Configure radiomodule conf");
 	m_tx_freq = freq;
+	return;
 }
 void SmdSat::initiate_tx() {
 	DEBUG_TRACE("SmdSat::%s:Size : %u",__func__, m_tx_buffer.size());
@@ -598,9 +882,10 @@ void SmdSat::initiate_tx() {
     // Free allocated memory
     free(tx_msg);
     free(rx_msg);
+	return;
 
 }
-void SmdSat::send(const ArticMode mode, const ArticPacket& user_payload, const unsigned int payload_length)
+void SmdSat::send(const ArgosMode mode, const ArticPacket& user_payload, const unsigned int payload_length)
 {
 	// Log the payload length to be sent
     DEBUG_TRACE("SmdSat::send: length %u", payload_length);
@@ -659,112 +944,20 @@ void SmdSat::send(const ArticMode mode, const ArticPacket& user_payload, const u
     // Power on if not already running
     power_on();
 
-	// Setup TX operation
-// 	DEBUG_TRACE("SmdSat::send: length %u", payload_length);
-
-// 	m_packet_buffer = user_payload; 
-//     // Directly copy the raw payload into m_packet_buffer
-// //    m_packet_buffer.assign(user_payload, user_payload + payload_length);
-
-//     // Debug log for confirmation
-//     DEBUG_TRACE("ArticSat::send_packet: raw data[%u]=%s", 
-//                 payload_length, 
-//                 Binascii::hexlify(m_packet_buffer).c_str());
-
-//     // Setup TX mode
-//     m_tx_mode = mode;
-//     DEBUG_TRACE("Packet size %u", m_packet_buffer.size());
-
-//     // Power on if not already running
-//     power_on();	
-/* 	ArticPacket packet;
-	unsigned int total_bits;
-	unsigned int stuffing_bits = 0;
- */
-	// // Only A2/A3 mode is supported
-	// // TODO: check modulation add LDK / VLDA4 / A2 stuffing bit if necessary
-	// if ((payload_length) & 31) {
-	// 	// Stuff zeros at the end to align to nearest boundary
-	// 	stuffing_bits = 32 - ((payload_length + 8) % 32);
-	// 	DEBUG_TRACE("ArticSat::send_packet: adding %u stuffing bits for alignment", stuffing_bits);
-	// }
-
-	// // uint8_t length_encoded[] = { 0x0, 0x3, 0x5, 0x6, 0x9, 0xA, 0xC, 0xF };
-	// // unsigned int length_idx = (stuffing_bits + payload_length - 8) / 32;
-	// // unsigned int length_enc = length_encoded[length_idx];
-
-	// unsigned int num_tail_bits = 0; // A2 mode
-	// // if (mode == ArticMode::A3) {
-	// // 	uint8_t tail_bits[] = { 7, 8, 9, 7, 8, 9, 7, 8 };
-	// // 	num_tail_bits = tail_bits[length_idx];
-	// // }
-	// unsigned int op_offset = 0;
-	// unsigned int ip_offset = 0;
-
-	// // Transmission is:
-	// // MSG_LEN (4)
-	// // ARGOSID (28)
-	// // USER_PAYLOAD (n*32 - 8)
-	// // STUFFING_BITS
-	// // TAIL_BITS (7,8,9)
-	// //total_bits = 4 + 28 + payload_length + stuffing_bits + num_tail_bits;
-	// total_bits = payload_length + stuffing_bits + num_tail_bits;
-
-	// // Assign the buffer to include 24-bit length indicator and rounded-up to 3 bytes for XMEM alignment
-	// //packet.assign(((((total_bits + 24) + 23) / 24) * 24) / 8, 0);
-	// packet.assign()
-
-	// // Set total length
-	// //PACK_BITS(total_bits, packet, op_offset, 24);
-
-	// // Set header
-	// //PACK_BITS(length_enc, packet, op_offset, 4);
-	// //PACK_BITS(m_device_identifier, packet, op_offset, 28);
-
-	// // Append user payload
-	// unsigned int payload_bits_remaining = payload_length;
-	// uint8_t byte;
-	// while (payload_bits_remaining) {
-	// 	unsigned int bits = std::min(8U, payload_bits_remaining);
-	// 	payload_bits_remaining -= bits;
-	// 	EXTRACT_BITS(byte, user_payload, ip_offset, bits);
-	// 	PACK_BITS(byte, packet, op_offset, bits);
-	// }
-
-	// // Add any stuffing bits
-	// payload_bits_remaining = stuffing_bits;
-	// while (payload_bits_remaining) {
-	// 	unsigned int bits = std::min(8U, payload_bits_remaining);
-	// 	payload_bits_remaining -= bits;
-	// 	PACK_BITS(0, packet, op_offset, bits);
-	// }
-
-	// // Add tail bits
-	// //PACK_BITS(0, packet, op_offset, num_tail_bits);
-
-	// // Setup TX operation
-	// DEBUG_TRACE("ArticSat::send_packet: data[%u]=%s tail=%u",
-	// 		total_bits, Binascii::hexlify(packet).c_str(),
-	// 		num_tail_bits);
-
-	// // Setup TX mode
-	// m_tx_mode = mode;
-	// DEBUG_TRACE("Packet size %u", packet.length())
-	// //m_packet_buffer = packet;
-	// m_packet_buffer = user_payload;
-
-	// // Request power on (if not already running)
-	// power_on();
+	return;
 }
 
-void SmdSat::send_ack(const ArticMode mode, const unsigned int a_dcs, const unsigned int dl_msg_id, const unsigned int exec_report)
+void SmdSat::send_ack(const ArgosMode mode, const unsigned int a_dcs, const unsigned int dl_msg_id, const unsigned int exec_report)
 {
 	DEBUG_TRACE("SmdSat::send_ack : Not implemented for the moment");
+	return;
 }
 void SmdSat::set_tcxo_warmup_time(const unsigned int time_s) {
 	m_tcxo_warmup_time = time_s;
+	return;
 }
 
 void SmdSat::set_tx_power(const BaseArgosPower power) {
 	m_tx_power = power;
+	return;
 }

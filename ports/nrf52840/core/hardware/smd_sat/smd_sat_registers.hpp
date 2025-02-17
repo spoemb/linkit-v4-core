@@ -2,7 +2,7 @@
 #define SMD_SAT_REGISTER_HPP
 
 #ifndef DEFAULT_TCXO_WARMUP_TIME_SECONDS
-#define DEFAULT_TCXO_WARMUP_TIME_SECONDS 5
+#define DEFAULT_TCXO_WARMUP_TIME_SECONDS 2
 #endif
 
 #define SMDSAT_IS_DEBUG_EN
@@ -12,7 +12,7 @@
 #define SMDSAT_DELAY_LOAD_KMAC_MS (1000)
 #define SMDSAT_DELAY_TICK_INTERRUPT_MS (10)
 #define SMDSAT_DELAY_CMD_MS (400)
-#define SMDSAT_DELAY_CMD_TX (3000)
+#define SMDSAT_DELAY_CMD_TX (1000)
 #define SMDSAT_DELAY_RST_MS (5)
 #else
 #define SMDSAT_DELAY_POWER_ON_MS (200)
@@ -29,7 +29,18 @@
 #define SMDSAT_CMD_WRITELPM_LEN 2    // 1 LPM mode + 1 cmd
 #define SMDSAT_CMD_WRITEKMAC_LEN 2    // 1 write only ID for the moment + 1 cmd
 #define SMDSAT_CMD_WRITETX_LEN 3    // 1 write only ID for the moment + 2 datasize (u16)
+#define SMDSAT_CMD_WRITECONF_LEN 33    // 1 write only ID for the moment + 2 datasize (u16)
+#define SMDSAT_CMD_READCONF_LEN 13    // 1 write only ID for the moment + 2 datasize (u16)
 #define SMDSAT_CMD_READ_FIRMWARE_LEN 128
+#define SMDSAT_CMD_READ_SERIAL_LEN 16
+#define SMDSAT_CMD_WRITE_LPM_LEN 2
+#define SMDSAT_CMD_WRITE_ID_LEN 5
+#define SMDSAT_CMD_WRITE_TCXO_LEN 5
+#define SMDSAT_CMD_READ_ADDR_LEN 4
+#define SMDSAT_CMD_READ_ID_LEN 4
+#define SMDSAT_CMD_WRITE_ADDR_LEN (SMDSAT_CMD_READ_ADDR_LEN+1)
+#define SMDSAT_CMD_READ_SECKEY_LEN 16
+#define SMDSAT_CMD_WRITE_SECKEY_LEN (SMDSAT_CMD_READ_SECKEY_LEN+1)
 typedef enum {
     ARGOS_MOD_LDA2,
     ARGOS_MOD_LDA2L,
@@ -94,7 +105,18 @@ typedef enum {
 	SMDSAT_CMD_READ_UDATE        = 0x1D,  // Set low power mode
 	SMDSAT_CMD_WRITE_UDATE_REQ   = 0x1E,  // Read low power mode
 	SMDSAT_CMD_WRITE_UDATE       = 0x1F,  // Set low power mode
-	SMDSAT_SPICMD_MAX_COUNT      = 0x20
+    SMDSAT_CMD_WRITE_ID_REQ          = 0x20,  // Write ID Request
+    SMDSAT_CMD_WRITE_ID              = 0x21,  // Write ID value
+    SMDSAT_CMD_WRITE_ADDR_REQ        = 0x22,  // Write addres REquest
+    SMDSAT_CMD_WRITE_ADDR            = 0x23,  // Write Address Value
+	SMDSAT_CMD_READ_SECKEY           = 0x24,  // Read Secret key
+	SMDSAT_CMD_WRITE_SECKEY_REQ      = 0x25,  // Write Secret key request
+	SMDSAT_CMD_WRITE_SECKEY		  = 0x26,  // Write Secret key value
+	SMDSAT_CMD_READ_SPIMAC_STATE	  = 0x27,  // Write Secret key value
+	SMDSAT_CMD_READ_TCXO  	         = 0x28,  // Write Secret key value
+    SMDSAT_CMD_WRITE_TCXO_REQ         = 0x29,  // Write ID Request
+    SMDSAT_CMD_WRITE_TCXO              = 0x2A,  // Write ID value
+	SMDSAT_SPICMD_MAX_COUNT          = 0x2B
 } SMDSAT_SPICMD;
 
 #define ARGOS_TX_LDA2_PAYLOAD_BYTE_SIZE 24

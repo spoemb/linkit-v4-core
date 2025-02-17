@@ -624,11 +624,11 @@ TEST(DTEHandler, ARGOSTX_REQ)
 	std::vector<BaseType> arg_list;
 
 	unsigned int error_code;
-	req = DTEEncoder::encode(DTECommand::ARGOSTX_REQ, (unsigned int)ArticMode::A2, 350U, 900.11, 15U, 5U);
+	req = DTEEncoder::encode(DTECommand::ARGOSTX_REQ, (unsigned int)ArgosMode::A2, 350U, 900.11, 15U, 5U);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_artic).withUnsignedIntParameter("time", 5U);
 	mock().expectOneCall("set_tx_power").onObject(mock_artic).withUnsignedIntParameter("power", (unsigned int)BaseArgosPower::POWER_350_MW);
 	mock().expectOneCall("set_frequency").onObject(mock_artic).withDoubleParameter("freq", 900.11);
-	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).withUnsignedIntParameter("size_bits", 120U);
+	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArgosMode::A2).withUnsignedIntParameter("size_bits", 120U);
 	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
 	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
 }

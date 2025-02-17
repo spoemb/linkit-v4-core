@@ -22,9 +22,9 @@ void GPIOPins::initialise()
 	set(GPS_RST);
 	#endif
 	#ifdef SAT_PWR_EN
-	clear(SAT_PWR_EN);
-	//set(SAT_PWR_EN);
-	//set(SAT_RESET);
+	//clear(SAT_PWR_EN);
+	set(SAT_PWR_EN);
+	set(SAT_RESET);
 	#endif
 	#ifdef SENSORS_PWR_PIN
 	set(SENSORS_PWR_PIN);

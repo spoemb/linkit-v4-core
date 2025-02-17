@@ -136,15 +136,15 @@ private:
 	ArticPacket m_tx_buffer;
 	ArticPacket m_ack_buffer;
 	ArticPacket m_packet_buffer;
-	ArticMode   m_tx_mode;
-	ArticMode   m_ack_mode;
+	ArgosMode   m_tx_mode;
+	ArgosMode   m_ack_mode;
 	BaseArgosPower m_tx_power;
 	double      m_tx_freq;
 	bool        m_is_first_tx;
 	uint32_t    m_tcxo_warmup_time;
 
 	// Argos RX state
-	ArticMode    m_rx_mode;
+	ArgosMode    m_rx_mode;
 	ArticPacket  m_rx_packet;
 	unsigned int m_rx_packet_bits;
 	bool         m_rx_pending;
@@ -238,10 +238,10 @@ private:
 public:
 	ArticSat(unsigned int idle_shutdown_timeout_ms = 1000);
 	~ArticSat();
-	void send(const ArticMode mode, const ArticPacket& packet, const unsigned int size_bits) override;
-	void send_ack(const ArticMode mode, const unsigned int a_dcs, const unsigned int dl_msg_id, const unsigned int exec_report) override;
+	void send(const ArgosMode mode, const ArticPacket& packet, const unsigned int size_bits) override;
+	void send_ack(const ArgosMode mode, const unsigned int a_dcs, const unsigned int dl_msg_id, const unsigned int exec_report) override;
 	void stop_send() override;
-	void start_receive(const ArticMode mode) override;
+	void start_receive(const ArgosMode mode) override;
 	bool stop_receive() override;
 	void set_frequency(const double freq) override;
 	void set_tcxo_warmup_time(const unsigned int time) override;

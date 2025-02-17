@@ -316,7 +316,7 @@ TEST(ArgosTxService, SchedulerPrepassNoLocationSet)
 {
 	ArgosTxScheduler sched;
 	ArgosConfig config;
-	ArticMode mode;
+	ArgosMode mode;
 
 	config.argos_tx_jitter_en = false;
 	config.tr_nom = 10;
@@ -342,7 +342,7 @@ TEST(ArgosTxService, SchedulerPrepassNominal)
 {
 	ArgosTxScheduler sched;
 	ArgosConfig config;
-	ArticMode mode;
+	ArgosMode mode;
 
 	config.argos_tx_jitter_en = false;
 	config.tr_nom = 10;
@@ -370,19 +370,19 @@ TEST(ArgosTxService, SchedulerPrepassNominal)
 	sched.set_last_location(0, 0);
 	unsigned int result = sched.schedule_prepass(config, pass_predict, mode, 1652100787U);
 	CHECK_EQUAL(15040000U, result);
-	CHECK_EQUAL(ArticMode::A3, mode);
+	CHECK_EQUAL(ArgosMode::A3, mode);
 	sched.notify_tx_complete();
 	result = sched.schedule_prepass(config, pass_predict, mode, 1652115827U);
 	CHECK_EQUAL(10000U, result);
-	CHECK_EQUAL(ArticMode::A3, mode);
+	CHECK_EQUAL(ArgosMode::A3, mode);
 	sched.notify_tx_complete();
 	result = sched.schedule_prepass(config, pass_predict, mode, 1652115837U);
 	CHECK_EQUAL(10000U, result);
-	CHECK_EQUAL(ArticMode::A3, mode);
+	CHECK_EQUAL(ArgosMode::A3, mode);
 	sched.notify_tx_complete();
 	result = sched.schedule_prepass(config, pass_predict, mode, 1652119000U);
 	CHECK_EQUAL(1670000U, result);
-	CHECK_EQUAL(ArticMode::A3, mode);
+	CHECK_EQUAL(ArgosMode::A3, mode);
 	sched.notify_tx_complete();
 }
 
@@ -390,7 +390,7 @@ TEST(ArgosTxService, SchedulerPrepassEmpty)
 {
 	ArgosTxScheduler sched;
 	ArgosConfig config;
-	ArticMode mode;
+	ArgosMode mode;
 
 	config.argos_tx_jitter_en = false;
 	config.tr_nom = 10;
@@ -413,7 +413,7 @@ TEST(ArgosTxService, SchedulerPrepassWithJitter)
 {
 	ArgosTxScheduler sched;
 	ArgosConfig config;
-	ArticMode mode;
+	ArgosMode mode;
 
 	config.argos_tx_jitter_en = true;
 	config.tr_nom = 10;
@@ -441,11 +441,11 @@ TEST(ArgosTxService, SchedulerPrepassWithJitter)
 	sched.set_last_location(0, 0);
 	unsigned int result = sched.schedule_prepass(config, pass_predict, mode, 1652100787U);
 	CHECK_EQUAL(15043148U, result);
-	CHECK_EQUAL(ArticMode::A3, mode);
+	CHECK_EQUAL(ArgosMode::A3, mode);
 	sched.notify_tx_complete();
 	result = sched.schedule_prepass(config, pass_predict, mode, 1652100787U);
 	CHECK_EQUAL(15049502U, result);
-	CHECK_EQUAL(ArticMode::A3, mode);
+	CHECK_EQUAL(ArgosMode::A3, mode);
 	sched.notify_tx_complete();
 }
 
@@ -568,7 +568,7 @@ TEST(ArgosTxService, TimeSyncBurstPosFix)
 
 	// First TX is time sync burst
 	mock().expectOneCall("set_tx_power").onObject(mock_artic).withUnsignedIntParameter("power", (unsigned int)power);
-	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArgosMode::A2).
 			withUnsignedIntParameter("size_bits", 120);
 
 	inject_gps_location(1, 11.8768, -33.8232, t);
@@ -621,7 +621,7 @@ TEST(ArgosTxService, TimeSyncBurstNoPosFix)
 
 	// First TX is time sync burst
 	mock().expectOneCall("set_tx_power").onObject(mock_artic).withUnsignedIntParameter("power", (unsigned int)power);
-	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArgosMode::A2).
 			withUnsignedIntParameter("size_bits", 120);
 
 	inject_gps_location(0, 11.8768, -33.8232, t);
@@ -715,7 +715,7 @@ TEST(ArgosTxService, LegacyTxServiceInv)
 	// Subsequent TX will be long packets
 	for (unsigned int i = 0; i < 1; i++) {
 		mock().expectOneCall("set_tx_power").onObject(mock_artic).withUnsignedIntParameter("power", (unsigned int)power);
-		mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+		mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArgosMode::A2).
 				withUnsignedIntParameter("size_bits", 120);
 
 		t += serv.get_last_schedule();
@@ -775,7 +775,7 @@ TEST(ArgosTxService, LegacyTxLowBattery)
 	for (unsigned int i = 0; i < 10; i++) {
 		mock().expectOneCall("set_tx_power").onObject(mock_artic).
 				withUnsignedIntParameter("power", (unsigned int)BaseArgosPower::POWER_350_MW);
-		mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+		mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArgosMode::A2).
 				withUnsignedIntParameter("size_bits", 120);
 
 		t += serv.get_last_schedule();
@@ -831,7 +831,7 @@ TEST(ArgosTxService, LegacyTxOutOfZone)
 	for (unsigned int i = 0; i < 10; i++) {
 		mock().expectOneCall("set_tx_power").onObject(mock_artic).
 				withUnsignedIntParameter("power", (unsigned int)BaseArgosPower::POWER_350_MW);
-		mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+		mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArgosMode::A2).
 				withUnsignedIntParameter("size_bits", 120);
 
 		t += serv.get_last_schedule();
@@ -900,7 +900,7 @@ TEST(ArgosTxService, TxServiceCancelledByUnderwaterBeforeTx)
 
 	// Should now transmit
 	mock().expectOneCall("set_tx_power").onObject(mock_artic).withUnsignedIntParameter("power", (unsigned int)power);
-	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArgosMode::A2).
 			withUnsignedIntParameter("size_bits", 248);
 	t += serv.get_last_schedule();
 	fake_rtc->settime(t/1000);
@@ -947,7 +947,7 @@ TEST(ArgosTxService, TxServiceCancelledDuringTx)
 	system_scheduler->run();
 
 	mock().expectOneCall("set_tx_power").onObject(mock_artic).withUnsignedIntParameter("power", (unsigned int)power);
-	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArgosMode::A2).
 			withUnsignedIntParameter("size_bits", 248);
 
 	// TX should start
@@ -969,7 +969,7 @@ TEST(ArgosTxService, TxServiceCancelledDuringTx)
 
 	// Should now transmit
 	mock().expectOneCall("set_tx_power").onObject(mock_artic).withUnsignedIntParameter("power", (unsigned int)power);
-	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArgosMode::A2).
 			withUnsignedIntParameter("size_bits", 248);
 	t += serv.get_last_schedule();
 	fake_rtc->settime(t/1000);
@@ -1020,7 +1020,7 @@ TEST(ArgosTxService, LegacyTxServiceDepthPile1)
 	// Subsequent TX will be short packets
 	for (unsigned int i = 0; i < 10; i++) {
 		mock().expectOneCall("set_tx_power").onObject(mock_artic).withUnsignedIntParameter("power", (unsigned int)power);
-		mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+		mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArgosMode::A2).
 				withUnsignedIntParameter("size_bits", 120);
 
 		t += serv.get_last_schedule();
@@ -1089,7 +1089,7 @@ TEST(ArgosTxService, UnderwaterFor24HoursBeforeTx)
 
 	// Should now transmit
 	mock().expectOneCall("set_tx_power").onObject(mock_artic).withUnsignedIntParameter("power", (unsigned int)power);
-	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArgosMode::A2).
 			withUnsignedIntParameter("size_bits", 248);
 	t += serv.get_last_schedule();
 	fake_rtc->settime(t/1000);
@@ -1290,7 +1290,7 @@ TEST(ArgosTxService, LastTxIsUpdated)
 
 	// First TX is time sync burst
 	mock().expectOneCall("set_tx_power").onObject(mock_artic).withUnsignedIntParameter("power", (unsigned int)power);
-	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArgosMode::A2).
 			withUnsignedIntParameter("size_bits", 120);
 
 	inject_gps_location(1, 11.8768, -33.8232, t);

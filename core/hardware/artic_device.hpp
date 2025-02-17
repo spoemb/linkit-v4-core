@@ -35,10 +35,14 @@ public:
 	virtual void react(ArticEventDeviceError const& ) {}
 };
 
-enum ArticMode {
+enum ArgosMode {
 	A2,
 	A3,
-	A4
+	A4,
+	VLDA4,
+	LDK,
+	LDA2,
+	LDA2L
 };
 
 class ArticDevice {
@@ -62,10 +66,10 @@ public:
 			m->react(e);
 		}
 	}
-	virtual void send(const ArticMode mode, const ArticPacket& packet, const unsigned int size_bits) = 0;
-	virtual void send_ack(const ArticMode mode, const unsigned int a_dcs, const unsigned int dl_msg_id, const unsigned int exec_report) = 0;
+	virtual void send(const ArgosMode mode, const ArticPacket& packet, const unsigned int size_bits) = 0;
+	virtual void send_ack(const ArgosMode mode, const unsigned int a_dcs, const unsigned int dl_msg_id, const unsigned int exec_report) = 0;
 	virtual void stop_send() = 0;
-	virtual void start_receive(const ArticMode mode) = 0;
+	virtual void start_receive(const ArgosMode mode) = 0;
 	virtual bool stop_receive() = 0;
 	virtual void set_frequency(const double freq) = 0;
 	virtual void set_tcxo_warmup_time(const unsigned int time) = 0;

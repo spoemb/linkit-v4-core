@@ -29,7 +29,7 @@ public:
 	static inline const unsigned int INVALID_SCHEDULE   = (unsigned int)-1;
 
 	ArgosRxScheduler();
-	unsigned int schedule(ArgosConfig& config, BasePassPredict& pass_predict, std::time_t now, unsigned int &timeout, ArticMode& scheduled_mode);
+	unsigned int schedule(ArgosConfig& config, BasePassPredict& pass_predict, std::time_t now, unsigned int &timeout, ArgosMode& scheduled_mode);
 	void set_earliest_schedule(std::time_t t);
 	void set_location(double lon, double lat);
 };
@@ -55,7 +55,7 @@ private:
 	ArticDevice& m_artic;
 	ArgosRxScheduler m_sched;
 	unsigned int m_timeout;
-	ArticMode    m_mode;
+	ArgosMode    m_mode;
 	std::map<uint8_t, AopSatelliteEntry_t> m_orbit_params_map;
 	std::map<uint8_t, AopSatelliteEntry_t> m_constellation_status_map;
 	unsigned int m_cumulative_rx_time;

@@ -501,7 +501,7 @@ public:
 		}
 
 		// Extract the argos modulation (0=>A2, 1=>A3, 2=>A4)
-		ArticMode modulation = (ArticMode)std::get<unsigned int>(arg_list[0]);
+		ArgosMode modulation = (ArgosMode)std::get<unsigned int>(arg_list[0]);
 
 		// Extract the argos power level in mW
 		BaseArgosPower power = argos_integer_to_power(std::get<unsigned int>(arg_list[1]));

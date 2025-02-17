@@ -117,7 +117,7 @@ TEST(ArgosRxService, BasicDownlinkReceive)
 	fake_rtc->settime(t);
 	fake_timer->set_counter(t*1000);
 
-	mock().expectOneCall("start_receive").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A3);
+	mock().expectOneCall("start_receive").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArgosMode::A3);
 	while (!system_scheduler->run());
 
 	std::string x = "00000C77007A5C900B7C500800C00D4C4224";
@@ -220,7 +220,7 @@ TEST(ArgosRxService, CancelledOnUnderwaterAndRescheduledOnSurfaced)
 	fake_rtc->settime(t);
 	fake_timer->set_counter(t*1000);
 
-	mock().expectOneCall("start_receive").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A3);
+	mock().expectOneCall("start_receive").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArgosMode::A3);
 	system_scheduler->run();
 
 	t += 100;
@@ -238,7 +238,7 @@ TEST(ArgosRxService, CancelledOnUnderwaterAndRescheduledOnSurfaced)
 	t += 1;
 	fake_rtc->settime(t);
 	fake_timer->set_counter(t*1000);
-	mock().expectOneCall("start_receive").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A3);
+	mock().expectOneCall("start_receive").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArgosMode::A3);
 	system_scheduler->run();
 }
 
@@ -291,7 +291,7 @@ TEST(ArgosRxService, StillRunsIfSurfacedBeforeSchedule)
 	fake_rtc->settime(t);
 	fake_timer->set_counter(t*1000);
 
-	mock().expectOneCall("start_receive").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A3);
+	mock().expectOneCall("start_receive").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArgosMode::A3);
 	system_scheduler->run();
 }
 
@@ -343,7 +343,7 @@ TEST(ArgosRxService, DeferredIfUnderwaterWhenScheduled)
 	t += 24050;
 	fake_rtc->settime(t);
 	fake_timer->set_counter(t*1000);
-	//mock().expectOneCall("start_receive").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A3);
+	//mock().expectOneCall("start_receive").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArgosMode::A3);
 	system_scheduler->run();
 #endif
 
@@ -396,7 +396,7 @@ TEST(ArgosRxService, CheckArgosRxLogging)
 	fake_rtc->settime(t);
 	fake_timer->set_counter(t*1000);
 
-	mock().expectOneCall("start_receive").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A3);
+	mock().expectOneCall("start_receive").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArgosMode::A3);
 	while (!system_scheduler->run());
 
 	std::string x = "00000BE400C48C4D08C410A717C3F2DA5B707114521C45A5";

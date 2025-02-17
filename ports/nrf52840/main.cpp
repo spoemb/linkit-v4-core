@@ -339,7 +339,7 @@ int main()
 	}
 #endif
 #if (defined(ARGOS_SMD) && (ARGOS_SMD == 1)) 
-	SmdSat::shutdown();
+	//SmdSat::shutdown();
 	{
 		try {
 			EZO_RTD_Sensor rtd; // Puts the device into standby mode

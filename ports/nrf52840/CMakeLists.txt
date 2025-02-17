@@ -316,7 +316,7 @@ else()
     message(FATAL_ERROR "GPS_MODEL should be defined")
 endif()
 
-if (HAS_WCHG)
+if (HAS_WCHG EQUAL 1)
         target_sources(${TARGET_NAME} PRIVATE
 		    ${PROJ_DIR}/core/hardware/stwlc68_otp/otphal.c
 		    ${PROJ_DIR}/core/hardware/stwlc68_otp/otp_chip_info.c
@@ -328,7 +328,7 @@ if (HAS_WCHG)
         )
 endif()
 
-if (SENSOR_BMX160)
+if (SENSOR_BMX160 EQUAL 1)
         target_sources(${TARGET_NAME} PRIVATE
             ${PROJ_DIR}/core/hardware/bmx160/bmx160.cpp
             ${PROJ_DIR}/core/hardware/bmx160/bmx160.c
@@ -339,7 +339,7 @@ if (SENSOR_BMX160)
         )
 endif()
 
-if (ARGOS_ARTIC_SAT)
+if (ARGOS_ARTIC_SAT EQUAL 1)
         target_sources(${TARGET_NAME} PRIVATE
             ${PROJ_DIR}/core/hardware/artic_sat/artic_sat.cpp
             ${PROJ_DIR}/core/hardware/artic_sat/pa_driver.cpp
@@ -349,7 +349,7 @@ if (ARGOS_ARTIC_SAT)
             ${PROJ_DIR}/core/hardware/artic_sat
         )
 endif()
-if (ARGOS_SMD)
+if (ARGOS_SMD EQUAL 1)
         target_sources(${TARGET_NAME} PRIVATE
             ${PROJ_DIR}/core/hardware/smd_sat/smd_sat.cpp
         )
@@ -359,7 +359,7 @@ if (ARGOS_SMD)
         )
 endif()
 
-if (HAS_GAUGE_STC3117)
+if (HAS_GAUGE_STC3117 EQUAL 1)
         target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
             ${PROJ_DIR}/core/hardware/stc3117
         )

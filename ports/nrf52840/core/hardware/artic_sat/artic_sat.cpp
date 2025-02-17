@@ -1048,7 +1048,7 @@ void ArticSat::initiate_rx() {
 	add_rx_packet_filter(m_device_identifier);
 
 	// Initiate RX mode command
-	send_command((m_rx_mode == ArticMode::A3) ? ARTIC_CMD_SET_ARGOS_3_RX_MODE : ARTIC_CMD_SET_ARGOS_4_RX_MODE);
+	send_command((m_rx_mode == ArgosMode::A3) ? ARTIC_CMD_SET_ARGOS_3_RX_MODE : ARTIC_CMD_SET_ARGOS_4_RX_MODE);
 }
 
 void ArticSat::initiate_tx() {
@@ -1076,7 +1076,7 @@ void ArticSat::initiate_tx() {
 	set_tcxo_control(1);  // Keep TCXO on after command
 
 	// Check which mode is required
-	uint8_t cmd = (m_tx_mode == ArticMode::A3) ? ARTIC_CMD_SET_PTT_A3_TX_MODE : ARTIC_CMD_SET_PTT_A2_TX_MODE;
+	uint8_t cmd = (m_tx_mode == ArgosMode::A3) ? ARTIC_CMD_SET_PTT_A3_TX_MODE : ARTIC_CMD_SET_PTT_A2_TX_MODE;
 
 	// Send command to enable TX mode and start packet transfer
 	send_command(cmd);
@@ -1172,7 +1172,7 @@ bool ArticSat::buffer_rx_packet() {
 	return false;
 }
 
-void ArticSat::start_receive(const ArticMode mode) {
+void ArticSat::start_receive(const ArgosMode mode) {
 	DEBUG_TRACE("ArticSat::start_receive(%u)", (unsigned int)mode);
 
 	m_rx_mode = mode;
@@ -1196,7 +1196,7 @@ void ArticSat::stop_send() {
 	m_tx_buffer.clear();
 }
 
-void ArticSat::send(const ArticMode mode, const ArticPacket& user_payload, const unsigned int payload_length)
+void ArticSat::send(const ArgosMode mode, const ArticPacket& user_payload, const unsigned int payload_length)
 {
 	ArticPacket packet;
 	unsigned int total_bits;
@@ -1214,7 +1214,7 @@ void ArticSat::send(const ArticMode mode, const ArticPacket& user_payload, const
 	unsigned int length_enc = length_encoded[length_idx];
 
 	unsigned int num_tail_bits = 0; // A2 mode
-	if (mode == ArticMode::A3) {
+	if (mode == ArgosMode::A3) {
 		uint8_t tail_bits[] = { 7, 8, 9, 7, 8, 9, 7, 8 };
 		num_tail_bits = tail_bits[length_idx];
 	}
@@ -1274,7 +1274,7 @@ void ArticSat::send(const ArticMode mode, const ArticPacket& user_payload, const
 }
 
 
-void ArticSat::send_ack(const ArticMode mode, const unsigned int a_dcs, const unsigned int dl_msg_id, const unsigned int exec_report)
+void ArticSat::send_ack(const ArgosMode mode, const unsigned int a_dcs, const unsigned int dl_msg_id, const unsigned int exec_report)
 {
 	ArticPacket packet, crc_packet;
 	unsigned int stuffing_bits = 0;
@@ -1286,7 +1286,7 @@ void ArticSat::send_ack(const ArticMode mode, const unsigned int a_dcs, const un
 	DEBUG_TRACE("ArticSat::send_ack");
 
 	unsigned int num_tail_bits = 0; // A2 mode
-	if (mode == ArticMode::A3)
+	if (mode == ArgosMode::A3)
 		num_tail_bits = 7;
 
 	// Transmission is:

@@ -188,7 +188,7 @@ ArgosRxScheduler::ArgosRxScheduler() : m_earliest_schedule(0) {
 	m_location.reset();
 }
 
-unsigned int ArgosRxScheduler::schedule(ArgosConfig& argos_config, BasePassPredict& pass_predict, std::time_t now, unsigned int &timeout, ArticMode& mode) {
+unsigned int ArgosRxScheduler::schedule(ArgosConfig& argos_config, BasePassPredict& pass_predict, std::time_t now, unsigned int &timeout, ArgosMode& mode) {
 	if (!m_location.has_value()) {
 		DEBUG_TRACE("ArgosRxService::schedule: can't schedule as last location/time is not known");
 		return Service::SCHEDULE_DISABLED;
@@ -247,7 +247,7 @@ unsigned int ArgosRxScheduler::schedule(ArgosConfig& argos_config, BasePassPredi
 		// Check we don't schedule off the end of the computed window
 		if ((start + ARGOS_RX_MARGIN_MSECS) < end) {
 			// We're good to go for this schedule, compute relative delay until the epoch arrives
-			mode = ArticMode::A3;
+			mode = ArgosMode::A3;
 			DEBUG_INFO("ArgosRxScheduler::schedule_prepass: scheduled for %llu secs from now, timeout %u secs", start - now, end - start);
 			timeout = (end - start) * MSECS_PER_SECOND;
 			return (start - now) * MSECS_PER_SECOND;

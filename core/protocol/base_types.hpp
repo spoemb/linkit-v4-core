@@ -163,6 +163,7 @@ enum class ParamID {
 	PRESSURE_SENSOR_ENABLE_TX_MODE,
 	PRESSURE_SENSOR_ENABLE_TX_MAX_SAMPLES,
 	PRESSURE_SENSOR_ENABLE_TX_SAMPLE_PERIOD,
+	ARGOS_SECKEY,
 	__PARAM_SIZE,
 	__NULL_PARAM = 0xFFFF
 };
@@ -402,7 +403,11 @@ enum class BaseSensorEnableTxMode {
 enum class BaseArgosModulation {
 	A2,
 	A3,
-	A4
+	A4,
+	VLDA4,
+	LDK,
+	LDA2,
+	LDA2L
 };
 
 static const char *argos_modulation_to_string(BaseArgosModulation m) {
@@ -415,6 +420,18 @@ static const char *argos_modulation_to_string(BaseArgosModulation m) {
 		break;
 	case BaseArgosModulation::A4:
 		return "A4";
+		break;
+	case BaseArgosModulation::VLDA4:
+		return "VLDA4";
+		break;
+	case BaseArgosModulation::LDK:
+		return "LDK";
+		break;
+	case BaseArgosModulation::LDA2:
+		return "LDA2";
+		break;
+	case BaseArgosModulation::LDA2L:
+		return "LDA2L";
 		break;
 	default:
 		return "UNKNOWN";

@@ -59,7 +59,7 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 	DEBUG_TRACE("ArgosTxService::service_next_schedule_in_ms");
 
 	if (argos_config.cert_tx_enable) {
-		m_scheduled_mode = (ArticMode)argos_config.cert_tx_modulation;
+		m_scheduled_mode = (ArgosMode)argos_config.cert_tx_modulation;
 		m_scheduled_task = [this]() { process_certification_burst(); };
 		unsigned int delta = m_is_first_tx ? 0 : argos_config.cert_tx_repetition * 1000;
 		m_sched.schedule_at(now + delta);
@@ -71,11 +71,11 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 			if (!argos_config.gnss_en) {
 				m_scheduled_task = [this]() { process_doppler_burst(); };
 				if (argos_config.mode == BaseArgosMode::DUTY_CYCLE) {
-					m_scheduled_mode = ArticMode::A2;
+					m_scheduled_mode = ArgosMode::A2;
 					return m_sched.schedule_duty_cycle(argos_config, now);
 				}
 				if (argos_config.mode == BaseArgosMode::LEGACY) {
-					m_scheduled_mode = ArticMode::A2;
+					m_scheduled_mode = ArgosMode::A2;
 					return m_sched.schedule_legacy(argos_config, now);
 				}
 				return Service::SCHEDULE_DISABLED;
@@ -88,13 +88,13 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 				return Service::SCHEDULE_DISABLED;
 			}
 			if (m_is_first_tx && argos_config.time_sync_burst_en) {
-				m_scheduled_mode = ArticMode::A2;
+				m_scheduled_mode = ArgosMode::A2;
 				m_scheduled_task = [this]() { process_time_sync_burst(); };
 				m_sched.schedule_at(now);
 				return 0;
 			}
 			if (argos_config.mode == BaseArgosMode::DUTY_CYCLE) {
-				m_scheduled_mode = ArticMode::A2;
+				m_scheduled_mode = ArgosMode::A2;
 				if (argos_config.sensor_tx_enable) {
 					m_scheduled_task = [this]() { process_sensor_burst(); };
 				} else {
@@ -103,7 +103,7 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 				return m_sched.schedule_duty_cycle(argos_config, now);
 			}
 			if (argos_config.mode == BaseArgosMode::LEGACY) {
-				m_scheduled_mode = ArticMode::A2;
+				m_scheduled_mode = ArgosMode::A2;
 				if (argos_config.sensor_tx_enable) {
 					m_scheduled_task = [this]() { process_sensor_burst(); };
 				} else {
@@ -195,7 +195,7 @@ void ArgosTxService::process_certification_burst() {
 	DEBUG_INFO("ArgosTxService::process_certification_burst: mode=%s data=%s sz=%u power=%u mW", argos_modulation_to_string(argos_config.cert_tx_modulation), Binascii::hexlify(packet).c_str(), size_bits,
 			argos_power_to_integer(argos_config.power));
 	m_artic.set_tx_power(argos_config.power);
-	m_artic.send((ArticMode)argos_config.cert_tx_modulation, packet, size_bits);
+	m_artic.send((ArgosMode)argos_config.cert_tx_modulation, packet, size_bits);
 }
 
 void ArgosTxService::process_time_sync_burst() {
@@ -211,7 +211,7 @@ void ArgosTxService::process_time_sync_burst() {
 		DEBUG_INFO("ArgosTxService::process_time_sync_burst: mode=A2 data=%s sz=%u power=%u mW", Binascii::hexlify(packet).c_str(), size_bits,
 				argos_power_to_integer(argos_config.power));
 		m_artic.set_tx_power(argos_config.power);
-		m_artic.send(ArticMode::A2, packet, size_bits);
+		m_artic.send(ArgosMode::A2, packet, size_bits);
 	} else {
 		// No eligible entries for transmission in the depth pile, so send a doppler burst instead
 		DEBUG_WARN("ArgosTxService::process_time_sync_burst: no entries eligible in depth pile");
@@ -276,7 +276,7 @@ void ArgosTxService::process_doppler_burst() {
 	DEBUG_INFO("ArgosTxService::process_doppler_burst: mode=A2 data=%s sz=%u power=%u mW", Binascii::hexlify(packet).c_str(), size_bits,
 			argos_power_to_integer(argos_config.power));
 	m_artic.set_tx_power(argos_config.power);
-	m_artic.send(ArticMode::A2, packet, size_bits);
+	m_artic.send(ArgosMode::A2, packet, size_bits);
 }
 
 void ArgosTxService::react(ArticEventTxStarted const&) {
@@ -464,9 +464,14 @@ ArticPacket ArgosPacketBuilder::build_long_packet(std::vector<GPSLogEntry*> &gps
 		DEBUG_TRACE("ArgosPacketBuilder::build_long_packet: lat=%u (%lf)", convert_latitude(gps_entries[0]->info.lat), gps_entries[0]->info.lat);
 		PACK_BITS(convert_longitude(gps_entries[0]->info.lon), packet, base_pos, 22);
 		DEBUG_TRACE("ArgosPacketBuilder::build_long_packet: lon=%u (%lf)", convert_longitude(gps_entries[0]->info.lon), gps_entries[0]->info.lon);
+
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+		// Do not pacK Speed with Long packet on LDA2
+#elif
 		unsigned int gspeed = convert_speed(gps_entries[0]->info.gSpeed);
 		PACK_BITS((unsigned int)gspeed, packet, base_pos, 7);
 		DEBUG_TRACE("ArgosPacketBuilder::build_long_packet: speed=%u", (unsigned int)gspeed);
+#endif
 	} else {
 		DEBUG_TRACE("ArgosPacketBuilder::build_long_packet: lat/lon[0] no fix");
 		PACK_BITS(0xFFFFFFFF, packet, base_pos, 21);
@@ -508,6 +513,9 @@ ArticPacket ArgosPacketBuilder::build_long_packet(std::vector<GPSLogEntry*> &gps
 		}
 	}
 
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	// Do not used CRC8 and BCH to save place on LDA2 with Kineis
+#elif
 	// Calculate CRC8
 	unsigned char crc8 = CRC8::checksum(packet.substr(1), LONG_PACKET_PAYLOAD_BITS - 8);
 	unsigned int crc_offset = 0;
@@ -523,6 +531,7 @@ ArticPacket ArgosPacketBuilder::build_long_packet(std::vector<GPSLogEntry*> &gps
 
 	// Append BCH code
 	PACK_BITS(code_word, packet, base_pos, BCHEncoder::B255_223_4_CODE_LEN);
+#endif
 
 	return packet;
 }
@@ -634,9 +643,13 @@ ArticPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 		unsigned int lon = convert_longitude(gps_entry->info.lon);
 		PACK_BITS(lon, packet, base_pos, 22);
 		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: lon=%u (%lf)", lon, gps_entry->info.lon);
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	// Do not used SPEED
+#elif
 		unsigned int gspeed = convert_speed((double)gps_entry->info.gSpeed);
 		PACK_BITS((unsigned int)gspeed, packet, base_pos, 7);
 		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: speed=%u (%lf)", (unsigned int)gspeed, (double)gps_entry->info.gSpeed);
+#endif
 
 		// OUTOFZONE_FLAG
 		PACK_BITS(is_out_of_zone, packet, base_pos, 1);
@@ -680,6 +693,9 @@ ArticPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 		PACK_BITS((unsigned int)sea_temp_sensor->port[0], packet, base_pos, 21);
 	}
 
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	// Do not used CRC8 and BCH for sensors packet
+#elif
 	// Calculate CRC8
 	unsigned char crc8 = CRC8::checksum(packet.substr(1), base_pos - 8);
 	unsigned int crc_offset = 0;
@@ -696,6 +712,7 @@ ArticPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 	// Append BCH code
 	PACK_BITS(code_word, packet, base_pos, BCHEncoder::B255_223_4_CODE_LEN);
 
+#endif
 	size_bits = base_pos;
 
 	packet.resize((size_bits+7)/8);
@@ -820,7 +837,7 @@ void ArgosTxScheduler::schedule_periodic(unsigned int period_ms, bool jitter_en,
 	throw ErrorCode::RESOURCE_NOT_AVAILABLE;
 }
 
-unsigned int ArgosTxScheduler::schedule_prepass(ArgosConfig& config, BasePassPredict& pass_predict, ArticMode& scheduled_mode, std::time_t now) {
+unsigned int ArgosTxScheduler::schedule_prepass(ArgosConfig& config, BasePassPredict& pass_predict, ArgosMode& scheduled_mode, std::time_t now) {
 
 	DEBUG_TRACE("ArgosTxScheduler::schedule_prepass");
 
@@ -910,7 +927,7 @@ unsigned int ArgosTxScheduler::schedule_prepass(ArgosConfig& config, BasePassPre
 			// and set the required Argos transmission mode
 			DEBUG_INFO("ArgosTxScheduler::schedule_prepass: scheduled for %.3f seconds from now", (double)(schedule - (now * MSECS_PER_SECOND)) / MSECS_PER_SECOND);
 			m_curr_schedule_abs = schedule;
-			scheduled_mode = next_pass.uplinkStatus >= SAT_UPLK_ON_WITH_A3 ? ArticMode::A3 : ArticMode::A2;
+			scheduled_mode = next_pass.uplinkStatus >= SAT_UPLK_ON_WITH_A3 ? ArgosMode::A3 : ArgosMode::A2;
 			return m_curr_schedule_abs.value() - now_ms;
 		} else {
 			DEBUG_TRACE("ArgosTxScheduler::schedule_prepass: computed schedule is too late for this window", next_pass.epoch, next_pass.duration);

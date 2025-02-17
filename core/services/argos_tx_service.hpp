@@ -115,13 +115,21 @@ public:
 
 class ArgosPacketBuilder {
 public:
+	//16 byte allowed with LDK and kineis
 	static inline const unsigned int SHORT_PACKET_BITS   		 = 120;
 	static inline const unsigned int SHORT_PACKET_PAYLOAD_BITS   = 99;
 	static inline const unsigned int SHORT_PACKET_BYTES			 = 15;
 
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	//24.5 bytes allowed with LDA2 and kineis stack
+	static inline const unsigned int LONG_PACKET_BITS   		 = 248;
+	static inline const unsigned int LONG_PACKET_PAYLOAD_BITS    = 192;
+	static inline const unsigned int LONG_PACKET_BYTES			 = 24;
+#elif
 	static inline const unsigned int LONG_PACKET_BITS   		 = 248;
 	static inline const unsigned int LONG_PACKET_PAYLOAD_BITS    = 216;
 	static inline const unsigned int LONG_PACKET_BYTES			 = 31;
+#endif
 
 	static inline const unsigned int DOPPLER_PACKET_BITS   		 = 24;
 	static inline const unsigned int DOPPLER_PACKET_PAYLOAD_BITS = 24;
@@ -210,7 +218,7 @@ public:
 	static bool is_in_duty_cycle(uint64_t time_ms, unsigned int duty_cycle);
 
 	ArgosTxScheduler();
-	unsigned int schedule_prepass(ArgosConfig& config, BasePassPredict& pass_predict, ArticMode& scheduled_mode, std::time_t now);
+	unsigned int schedule_prepass(ArgosConfig& config, BasePassPredict& pass_predict, ArgosMode& scheduled_mode, std::time_t now);
 	unsigned int schedule_duty_cycle(ArgosConfig& config, std::time_t now);
 	unsigned int schedule_legacy(ArgosConfig& config, std::time_t now);
 	void set_earliest_schedule(std::time_t t);
@@ -313,7 +321,7 @@ private:
 	bool m_is_first_tx;
 	bool m_is_tx_pending;
 	std::function<void()> m_scheduled_task;
-	ArticMode m_scheduled_mode;
+	ArgosMode m_scheduled_mode;
 
 	void react(ArticEventTxStarted const &) override;
 	void react(ArticEventTxComplete const &) override;

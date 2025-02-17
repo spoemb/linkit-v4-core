@@ -972,6 +972,14 @@ private:
 			return BaseArgosModulation::A3;
 		} else if (s == "2") {
 			return BaseArgosModulation::A4;
+		} else if (s == "3") {
+			return BaseArgosModulation::VLDA4;
+		} else if (s == "4") {
+			return BaseArgosModulation::LDK;
+		} else if (s == "5") {
+			return BaseArgosModulation::LDA2;
+		} else if (s == "6") {
+			return BaseArgosModulation::LDA2L;
 		} else {
 			DEBUG_ERROR("DTE_PROTOCOL_VALUE_OUT_OF_RANGE in %s(%s)", __FUNCTION__, s.c_str());
 			throw DTE_PROTOCOL_VALUE_OUT_OF_RANGE;
