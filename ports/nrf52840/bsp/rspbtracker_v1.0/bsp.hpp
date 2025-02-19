@@ -13,12 +13,11 @@
 #include "nrfx_wdt.h"
 #include "nrf_libuarte_async.h"
 
-//#define ARGOS_ARTIC_SAT
 // Logical device mappings to physical devices
 #define RTC_DATE_TIME        BSP::RTC::RTC_1
 #define RTC_TIMER            BSP::RTC::RTC_2
 #define SPI_SATELLITE        BSP::SPI::SPI_2
-#define BATTERY_ADC	         BSP::ADC::ADC_CHANNEL_0
+#define THERMISTOR_ADC       BSP::ADC::ADC_CHANNEL_0
 #define UART_GPS	         BSP::UART::UART_0 // No more used : used by ASYNC
 #define POWER_CONTROL_PIN    BSP::GPIO::GPIO_POWER_CONTROL
 #define MCU_DONE_PIN         BSP::GPIO::GPIO_MCU_DONE
@@ -81,7 +80,7 @@
 
 
 // Battery voltage ADC gain
-#define ADC_GAIN              (1.0f/3.0f)  // 1/3 gain
+#define ADC_GAIN              (1.0f/6.0f)  // 1/6 gain
 #define RP506_ADC_GAIN        4.0f
 
 // Require reed switch engaged to boot up after power on reset

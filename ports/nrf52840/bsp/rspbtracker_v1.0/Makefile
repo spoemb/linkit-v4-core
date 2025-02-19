@@ -397,30 +397,6 @@ core/hardware/ms58xx/ms58xx.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/ms58xx/ms58xx.cpp.s
 .PHONY : core/hardware/ms58xx/ms58xx.cpp.s
 
-core/hardware/nrf_battery_mon.obj: core/hardware/nrf_battery_mon.cpp.obj
-.PHONY : core/hardware/nrf_battery_mon.obj
-
-# target to build an object file
-core/hardware/nrf_battery_mon.cpp.obj:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/nrf_battery_mon.cpp.obj
-.PHONY : core/hardware/nrf_battery_mon.cpp.obj
-
-core/hardware/nrf_battery_mon.i: core/hardware/nrf_battery_mon.cpp.i
-.PHONY : core/hardware/nrf_battery_mon.i
-
-# target to preprocess a source file
-core/hardware/nrf_battery_mon.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/nrf_battery_mon.cpp.i
-.PHONY : core/hardware/nrf_battery_mon.cpp.i
-
-core/hardware/nrf_battery_mon.s: core/hardware/nrf_battery_mon.cpp.s
-.PHONY : core/hardware/nrf_battery_mon.s
-
-# target to generate assembly for a file
-core/hardware/nrf_battery_mon.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/nrf_battery_mon.cpp.s
-.PHONY : core/hardware/nrf_battery_mon.cpp.s
-
 core/hardware/nrf_gpio.obj: core/hardware/nrf_gpio.cpp.obj
 .PHONY : core/hardware/nrf_gpio.obj
 
@@ -756,6 +732,30 @@ core/hardware/stc3117/stc311x_gasgauge.s: core/hardware/stc3117/stc311x_gasgauge
 core/hardware/stc3117/stc311x_gasgauge.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/stc3117/stc311x_gasgauge.c.s
 .PHONY : core/hardware/stc3117/stc311x_gasgauge.c.s
+
+core/hardware/thermistor/thermistor.obj: core/hardware/thermistor/thermistor.cpp.obj
+.PHONY : core/hardware/thermistor/thermistor.obj
+
+# target to build an object file
+core/hardware/thermistor/thermistor.cpp.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/thermistor/thermistor.cpp.obj
+.PHONY : core/hardware/thermistor/thermistor.cpp.obj
+
+core/hardware/thermistor/thermistor.i: core/hardware/thermistor/thermistor.cpp.i
+.PHONY : core/hardware/thermistor/thermistor.i
+
+# target to preprocess a source file
+core/hardware/thermistor/thermistor.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/thermistor/thermistor.cpp.i
+.PHONY : core/hardware/thermistor/thermistor.cpp.i
+
+core/hardware/thermistor/thermistor.s: core/hardware/thermistor/thermistor.cpp.s
+.PHONY : core/hardware/thermistor/thermistor.s
+
+# target to generate assembly for a file
+core/hardware/thermistor/thermistor.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/thermistor/thermistor.cpp.s
+.PHONY : core/hardware/thermistor/thermistor.cpp.s
 
 core/interface/ble_interface.obj: core/interface/ble_interface.cpp.obj
 .PHONY : core/interface/ble_interface.obj
@@ -2677,9 +2677,6 @@ help:
 	@echo "... core/hardware/ms58xx/ms58xx.obj"
 	@echo "... core/hardware/ms58xx/ms58xx.i"
 	@echo "... core/hardware/ms58xx/ms58xx.s"
-	@echo "... core/hardware/nrf_battery_mon.obj"
-	@echo "... core/hardware/nrf_battery_mon.i"
-	@echo "... core/hardware/nrf_battery_mon.s"
 	@echo "... core/hardware/nrf_gpio.obj"
 	@echo "... core/hardware/nrf_gpio.i"
 	@echo "... core/hardware/nrf_gpio.s"
@@ -2722,6 +2719,9 @@ help:
 	@echo "... core/hardware/stc3117/stc311x_gasgauge.obj"
 	@echo "... core/hardware/stc3117/stc311x_gasgauge.i"
 	@echo "... core/hardware/stc3117/stc311x_gasgauge.s"
+	@echo "... core/hardware/thermistor/thermistor.obj"
+	@echo "... core/hardware/thermistor/thermistor.i"
+	@echo "... core/hardware/thermistor/thermistor.s"
 	@echo "... core/interface/ble_interface.obj"
 	@echo "... core/interface/ble_interface.i"
 	@echo "... core/interface/ble_interface.s"
