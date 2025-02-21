@@ -15,6 +15,7 @@
 #include "switch.hpp"
 #include "reed.hpp"
 #include "ledsm.hpp"
+#include "buzzm.hpp"
 #include "battery.hpp"
 #include "gps.hpp"
 #include "ble_service.hpp"
@@ -34,8 +35,10 @@ extern BaseDebugMode g_debug_mode;
 
 // FSM initial state -> LEDOff
 FSM_INITIAL_STATE(LEDState, LEDOff);
+FSM_INITIAL_STATE(BuzzState, BuzzOff);
 
 using led_handle = LEDState;
+using buzz_handle = BuzzState;
 
 
 void GenTracker::react(tinyfsm::Event const &) { }
@@ -51,8 +54,10 @@ void GenTracker::react(ReedSwitchEvent const &event)
 	// LONG_HOLD -- power off
 	if (event.state == ReedSwitchGesture::ENGAGE) {
 		led_handle::dispatch<SetLEDMagnetEngaged>({});
+		buzz_handle::dispatch<SetBuzzMagnetEngaged>({});
 	} else if (event.state == ReedSwitchGesture::RELEASE) {
 		led_handle::dispatch<SetLEDMagnetDisengaged>({});
+		buzz_handle::dispatch<SetBuzzMagnetDisengaged>({});
 		if (!is_in_state<OffState>()) {
 			if (led_handle::is_in_state<LEDPreOperationalPending>())
 				transit<PreOperationalState>();
@@ -60,12 +65,17 @@ void GenTracker::react(ReedSwitchEvent const &event)
 				transit<ConfigurationState>();
 		}
 	} else if (event.state == ReedSwitchGesture::SHORT_HOLD) {
-		if (is_in_state<ConfigurationState>())
+		if (is_in_state<ConfigurationState>()) {
 			led_handle::dispatch<SetLEDPreOperationalPending>({});
-		else
+			buzz_handle::dispatch<SetBuzzPreOperationalPending>({});
+		} else {
 			led_handle::dispatch<SetLEDConfigPending>({});
+			buzz_handle::dispatch<SetBuzzConfigPending>({});
+		}
 	} else if (event.state == ReedSwitchGesture::LONG_HOLD) {
 		led_handle::dispatch<SetLEDMagnetDisengaged>({});
+		buzz_handle::dispatch<SetBuzzMagnetDisengaged>({});
+		buzz_handle::dispatch<SetBuzzPowerDown>({});
 		transit<OffState>();
 	}
 }
@@ -102,6 +112,7 @@ void BootState::entry() {
 	// Turn status LED white to indicate boot up
 	led_handle::start();
 	led_handle::dispatch<SetLEDBoot>({});
+	buzz_handle::start();
 
 	// If we can't mount the filesystem then try to format it first and retry
 	if (!main_filesystem->is_mounted() && main_filesystem->mount() < 0)
@@ -154,6 +165,7 @@ void OffState::entry() {
 	led_handle::dispatch<SetLEDPowerDown>({});
 	m_off_state_task = system_scheduler->post_task_prio([](){
 		led_handle::dispatch<SetLEDOff>({});
+		buzz_handle::dispatch<SetBuzzOff>({});
 		PMU::powerdown();
 	},
 	"GenTrackerOffStateTransitPowerDown",
@@ -207,6 +219,7 @@ void OperationalState::entry() {
 
 	battery_monitor->subscribe(*this);
 	led_handle::dispatch<SetLEDOff>({});
+	buzz_handle::dispatch<SetBuzzOff>({});
 
 	ServiceManager::startall([this](ServiceEvent& e) {
 		service_event_handler(e);
@@ -274,6 +287,7 @@ void ConfigurationState::entry() {
 	// Flash the blue LED to indicate we have started BLE and we are
 	// waiting for a connection
 	led_handle::dispatch<SetLEDConfigNotConnected>({});
+	buzz_handle::dispatch<SetBuzzConfiguration>({});
 
 	set_ble_device_name();
 	ble_service->start([this](BLEServiceEvent& event) -> int { return on_ble_event(event); } );
@@ -436,6 +450,7 @@ void ConfigurationState::process_received_data() {
 void BatteryCriticalState::entry() {
 	DEBUG_INFO("entry: BatteryCriticalState");
 	led_handle::dispatch<SetLEDBatteryCritical>({});
+	buzz_handle::dispatch<SetBuzzOff>({});
 	m_transit_task = system_scheduler->post_task_prio([this](){
 		transit<OffState>();
 	},
@@ -452,6 +467,7 @@ void BatteryCriticalState::exit() {
 void ErrorState::entry() {
 	DEBUG_INFO("entry: ErrorState");
 	led_handle::dispatch<SetLEDError>({});
+	buzz_handle::dispatch<SetBuzzOff>({});
 	m_shutdown_task = system_scheduler->post_task_prio([this](){
 		transit<OffState>();
 	},
