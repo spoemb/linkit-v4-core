@@ -31,12 +31,13 @@ enum class ServiceIdentifier : unsigned int {
 	PRESSURE_SENSOR,
 	UW_SENSOR,
 	ALS_SENSOR,
-	AIR_TEMP_SENSOR,
+	AIR_TEMP_SENSOR, // Not used ?
 	SEA_TEMP_SENSOR,
 	PH_SENSOR,
 	AXL_SENSOR,
 	MEMORY_MONITOR,
-	DIVE_MODE
+	DIVE_MODE,
+	THERMISTOR_SENSOR
 };
 
 struct ServiceEvent {

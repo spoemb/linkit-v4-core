@@ -8,6 +8,7 @@
 #include "gps_service.hpp"
 #include "pressure_sensor_service.hpp"
 #include "axl_sensor_service.hpp"
+#include "thermistor_sensor_service.hpp"
 #include "argos_tx_service.hpp"
 #include "argos_rx_service.hpp"
 #include "sys_log.hpp"
@@ -59,6 +60,7 @@
 #include "oem_rtd.hpp"
 #include "ezo_rtd.hpp"
 #include "cdt.hpp"
+#include "thermistor.hpp"
 #if SENSOR_BMX160 == 1
 #include "bmx160.hpp"
 #endif
@@ -339,7 +341,7 @@ int main()
 	}
 #endif
 #if (defined(ARGOS_SMD) && (ARGOS_SMD == 1)) 
-	//SmdSat::shutdown();
+	SmdSat::shutdown();
 	{
 		try {
 			EZO_RTD_Sensor rtd; // Puts the device into standby mode
@@ -531,6 +533,11 @@ int main()
 	FsLog axl_sensor_log(&lfs_file_system, "AXL", 1024*1024);
 	axl_sensor_log.set_log_formatter(&axl_sensor_log_formatter);
 
+	DEBUG_TRACE("THERMISTOR Sensor Log...");
+	ThermistorLogFormatter thermistor_sensor_log_formatter;
+	FsLog thermistor_sensor_log(&lfs_file_system, "THERMISTOR", 1024*1024);
+	thermistor_sensor_log.set_log_formatter(&thermistor_sensor_log_formatter);
+
 	DEBUG_TRACE("RAM access...");
 	NrfMemoryAccess nrf_memory_access;
 	memory_access = &nrf_memory_access;
@@ -694,6 +701,18 @@ int main()
 	}
 	#else
 		DEBUG_TRACE("BMX160: not configured");
+	#endif
+
+	#ifdef THERMISTOR_ADC
+	DEBUG_TRACE("THERMISTOR...");
+	try {
+		static Thermistor thermistor(THERMISTOR_ADC);
+		static ThermistorSensorService thermistor_sensor_service(thermistor, &thermistor_sensor_log);
+	} catch (...) {
+		DEBUG_TRACE("THERMISTOR: not detected");
+	}
+	#else
+		DEBUG_TRACE("THERMISTOR: not configured");
 	#endif
 
 	DEBUG_TRACE("Memory monitor...");

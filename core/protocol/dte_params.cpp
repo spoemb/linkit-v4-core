@@ -2,7 +2,9 @@
 
 const BaseMap param_map[] = {
 	{ "ARGOS_DECID", "IDP12", BaseEncoding::UINT, 0U, 0xFFFFFFFU, {}, true, true },
-	{ "ARGOS_HEXID", "IDT06", BaseEncoding::HEXADECIMAL, 0U, 0xFFFFFFFU, {}, true, true },
+	{ "ARGOS_HEXID", "IDT06", BaseEncoding::HEXADECIMAL, 0U, 0xFFFFFFFFU, {}, true, true },
+	{ "ARGOS_SECKEY", "IDP13", BaseEncoding::TEXT, "", "", {}, true, true },
+	{ "ARGOS_RADIOCONF", "IDP14", BaseEncoding::TEXT, "", "", {}, true, true },
 	{ "DEVICE_MODEL", "IDT02", BaseEncoding::TEXT, "", "", {}, true, true },
 	{ "FW_APP_VERSION", "IDT03", BaseEncoding::TEXT, "", "", {}, true, false },
 	{ "LAST_TX", "ART01", BaseEncoding::DATESTRING, 0, 0, {}, true, false },
@@ -111,6 +113,7 @@ const BaseMap param_map[] = {
 	{ "DEVICE_DECID", "IDT10", BaseEncoding::UINT, 0U, 0U, {}, true, false },
 	{ "GNSS_TRIGGER_ON_SURFACED", "GNP25", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "GNSS_TRIGGER_ON_AXL_WAKEUP", "GNP26", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
+	{ "GNSS_TRIGGER_ON_TEMP_WAKEUP", "GNP29", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "UNDERWATER_DETECT_SOURCE", "UNP10", BaseEncoding::UWDETECTSOURCE, 0, 0, {}, true, true },
 	{ "UNDERWATER_DETECT_THRESH", "UNP11", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, true, true },
 
@@ -140,6 +143,13 @@ const BaseMap param_map[] = {
 	{ "AXL_SENSOR_PERIODIC", "AXP02", BaseEncoding::UINT, 0U, 0U, {}, true, true },
 	{ "AXL_SENSOR_WAKEUP_THRESH", "AXP03", BaseEncoding::FLOAT, (double)0.0, (double)8.0, {}, true, true },
 	{ "AXL_SENSOR_WAKEUP_SAMPLES", "AXP04", BaseEncoding::UINT, 1U, 5U, {}, true, true },
+
+	// Thermistor
+	{ "THERMISTOR_SENSOR_ENABLE", "THP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
+	{ "THERMISTOR_SENSOR_PERIODIC", "THP02", BaseEncoding::UINT, 0U, 0U, {}, true, true },
+	{ "THERMISTOR_SENSOR_VALUE", "THP05", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, true, true },
+	{ "THERMISTOR_SENSOR_WAKEUP_THRESH", "THP03", BaseEncoding::FLOAT, (double)0.0, (double)8.0, {}, true, true },
+	{ "THERMISTOR_SENSOR_WAKEUP_SAMPLES", "THP04", BaseEncoding::UINT, 1U, 5U, {}, true, true },
 
 	// PRESSURE
 	{ "PRESSURE_SENSOR_ENABLE", "PRP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
@@ -193,6 +203,10 @@ const BaseMap param_map[] = {
 	{ "PRESSURE_SENSOR_ENABLE_TX_MODE", "PRP04", BaseEncoding::SENSORENABLETXMODE, 0, 0, {}, true, true },
 	{ "PRESSURE_SENSOR_ENABLE_TX_MAX_SAMPLES", "PRP05", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 	{ "PRESSURE_SENSOR_ENABLE_TX_SAMPLE_PERIOD", "PRP06", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
+	{ "THERMISTOR_SENSOR_ENABLE_TX_MODE", "THP06", BaseEncoding::SENSORENABLETXMODE, 0, 0, {}, true, true },
+	{ "THERMISTOR_SENSOR_ENABLE_TX_MAX_SAMPLES", "THP07", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
+	{ "THERMISTOR_SENSOR_ENABLE_TX_SAMPLE_PERIOD", "THP08", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true }
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);
+

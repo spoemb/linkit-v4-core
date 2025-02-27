@@ -66,7 +66,7 @@ private:
 	void send_command(const uint8_t *tx_data, uint8_t *rx_data, uint16_t size);
 	void get_spi_status(uint8_t *status);
 	void get_kmac_status(uint8_t *status);
-	void set_radio_conf(ArgosModulation modulation);
+	void set_radio_conf(uint8_array_t *radio_conf);
 	void read_radio_conf(ArgosModulation *modulation);
 	bool save_radio_conf();
 	void read_version(uint8_t *version);
@@ -146,5 +146,7 @@ public:
 	void set_frequency(const double freq) override;
 	void set_tcxo_warmup_time(const unsigned int time) override;
 	void set_tx_power(const BaseArgosPower power) override;
+	void set_credentials(const unsigned int dec_id, const unsigned int address, const std::string seckey, const std::string radioconf) override;
+	void read_credentials(unsigned int *dec_id, unsigned int *address, std::string *seckey, std::string *radioconf) override;
 	static void shutdown(void);
 };

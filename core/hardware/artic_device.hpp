@@ -74,6 +74,8 @@ public:
 	virtual void set_frequency(const double freq) = 0;
 	virtual void set_tcxo_warmup_time(const unsigned int time) = 0;
 	virtual void set_tx_power(const BaseArgosPower power) = 0;
+	virtual void set_credentials(const unsigned int dec_id, const unsigned int address, const std::string seckey, const std::string radioconf) = 0;
+	virtual void read_credentials(unsigned int *dec_id, unsigned int *address, std::string *seckey, std::string *radioconf) = 0;
 	void set_device_identifier(unsigned int x) { m_device_identifier = x; }
 	void set_idle_timeout(unsigned int x) { m_idle_timeout_ms = x; }
 };

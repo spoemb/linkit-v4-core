@@ -192,6 +192,7 @@ target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
     ${PROJ_DIR}/core/hardware/oem_rtd
     ${PROJ_DIR}/core/hardware/ezo_rtd
     ${PROJ_DIR}/core/hardware/cdt
+    ${PROJ_DIR}/core/hardware/thermistor
 )
 
 target_sources(${TARGET_NAME} PRIVATE
@@ -278,7 +279,6 @@ target_sources(${TARGET_NAME} PRIVATE
     ${PROJ_DIR}/core/hardware/nrf_pmu.cpp
     ${PROJ_DIR}/core/hardware/nrf_switch.cpp
     ${PROJ_DIR}/core/hardware/nrf_irq.cpp
-    ${PROJ_DIR}/core/hardware/nrf_battery_mon.cpp
     ${PROJ_DIR}/core/hardware/nrf_i2c.cpp
     ${PROJ_DIR}/core/filesystem/flash_is25/is25_flash.cpp
     ${PROJ_DIR}/core/interface/ble_interface.cpp
@@ -292,6 +292,7 @@ target_sources(${TARGET_NAME} PRIVATE
     ${PROJ_DIR}/drivers/nrf_log_redirect/nrf_log_redirect.c
     ${PROJ_DIR}/gcc_startup_nrf52840.S
     ${PROJ_DIR}/main.cpp
+    ${PROJ_DIR}/core/hardware/thermistor/thermistor.cpp
 )
 
 if(${GPS_MODEL} MATCHES M8Q)
@@ -369,6 +370,11 @@ if (HAS_GAUGE_STC3117 EQUAL 1)
             ${PROJ_DIR}/core/hardware/stc3117/stc311x_gasgauge.c
             ${PROJ_DIR}/core/hardware/stc3117/stc3117_gasgauge.cpp
         )
+else ()
+
+    target_sources(${TARGET_NAME} PRIVATE
+        ${PROJ_DIR}/core/hardware/nrf_battery_mon.cpp
+    )
 endif()
 
 target_compile_definitions(${TARGET_NAME} PRIVATE

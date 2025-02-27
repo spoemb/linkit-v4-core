@@ -249,6 +249,13 @@ bool GPSService::service_is_triggered_on_event(ServiceEvent& event, bool& immedi
 		immediate = trigger_on_axl;
 		return trigger_on_axl;
 	}
+	// if (event.event_source == ServiceIdentifier::THERMISTOR_SENSOR &&
+	// 		event.event_type == ServiceEventType::SERVICE_LOG_UPDATED &&
+	// 		std::get<bool>(event.event_data)) {
+	// 	bool trigger_on_temp = service_read_param<bool>(ParamID::GNSS_TRIGGER_ON_TEMP_WAKEUP);
+	// 	immediate = trigger_on_temp;
+	// 	return trigger_on_temp;
+	// }
 
 	return false;
 }

@@ -246,5 +246,7 @@ public:
 	void set_frequency(const double freq) override;
 	void set_tcxo_warmup_time(const unsigned int time) override;
 	void set_tx_power(const BaseArgosPower power) override;
+	void set_credentials(const unsigned int dec_id, const unsigned int address, const std::string seckey, const std::string radioconf) override;
+	void read_credentials(unsigned int *dec_id, unsigned int *address, std::string *seckey, std::string *radioconf) override;
 	static void shutdown(void);
 };

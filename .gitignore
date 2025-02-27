@@ -23,6 +23,7 @@ ports/nrf52840/bsp/rspbtracker_v1.0/LinkIt_rspb_board.hex
 ports/nrf52840/bsp/rspbtracker_v1.0/LinkIt_rspb_board.elf
 ports/nrf52840/bsp/rspbtracker_v1.0/LinkIt_rspb_board.bin
 ports/nrf52840/bsp/rspbtracker_v1.0/LinkIt_rspb_board_dfu.zip
+ports/nrf52840/bsp/rspbtracker_v1.0/LinkIt_rspb_board_merged.hex
 ports/nrf52840/bsp/rspbtracker_v1.0/CMakeCache.txt
 ports/nrf52840/bsp/rspbtracker_v1.0/Makefile
 .vscode/settings.json

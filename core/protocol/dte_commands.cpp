@@ -137,7 +137,7 @@ const DTECommandMap command_map[] = {
 				.key = "",
 				.encoding = BaseEncoding::HEXADECIMAL,
 				.min_value = 0U,
-				.max_value = 7U,
+				.max_value = 8U,
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false
@@ -202,7 +202,7 @@ const DTECommandMap command_map[] = {
 				.key = "",
 				.encoding = BaseEncoding::UINT,
 				.min_value = 1U,
-				.max_value = 9U,
+				.max_value = 10U,
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false
@@ -303,6 +303,53 @@ const DTECommandMap command_map[] = {
 			}
 		}
 	},
+	{
+		.name = "SMDCD",
+		.command = DTECommand::SMDCD_REQ,
+		.prototype =
+		{
+			{
+				.name = "id",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 999999U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "addr",
+				.key = "",
+				.encoding = BaseEncoding::HEXADECIMAL,
+				.min_value = 0U,
+				.max_value = 0xFFFFFFFFU,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "seckey",
+				.key = "",
+				.encoding = BaseEncoding::TEXT,
+				.min_value = "",
+				.max_value = "",
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "radioconf",
+				.key = "",
+				.encoding = BaseEncoding::TEXT,
+				.min_value = "",
+				.max_value = "",
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	}, 
 	{
 		.name = "SCALR",
 		.command = DTECommand::SCALR_REQ,
@@ -518,6 +565,13 @@ const DTECommandMap command_map[] = {
 	{
 		.name = "SATTX",
 		.command = DTECommand::ARGOSTX_RESP,
+		.prototype =
+		{
+		}
+	},
+	{
+		.name = "SMDCD",
+		.command = DTECommand::SMDCD_RESP,
 		.prototype =
 		{
 		}

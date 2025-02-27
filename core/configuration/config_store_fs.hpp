@@ -257,7 +257,15 @@ protected:
 			else
 				DEBUG_TRACE("deserialize_config: recovered ARGOS_HEXID");
 
-			m_requires_serialization = true;
+			// if (!deserialize_config_entry(f, (unsigned int)ParamID::ARGOS_SECKEY))
+			// 	DEBUG_WARN("deserialize_config: failed to recover ARGOS_SECKEY");
+			// else
+			// 	DEBUG_TRACE("deserialize_config: recovered ARGOS_SECKEY");
+			// if (!deserialize_config_entry(f, (unsigned int)ParamID::ARGOS_RADIOCONF))
+			// 	DEBUG_WARN("deserialize_config: failed to recover ARGOS_SECKEY");
+			// else
+			// 	DEBUG_TRACE("deserialize_config: recovered ARGOS_SECKEY");
+			// m_requires_serialization = true;
 			return;
 		}
 

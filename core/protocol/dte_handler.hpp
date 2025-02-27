@@ -52,6 +52,7 @@ private:
 		{5, "CDT"},
 		{6, "AXL"},
 		{7, "PRESSURE"},
+		{8, "THERMISTOR"},
 	};
 	static inline std::map<unsigned int, std::string> m_logger_erase = {
 		{1, "sensor.log"},
@@ -62,6 +63,7 @@ private:
 		{7, "CDT"},
 		{8, "AXL"},
 		{9, "PRESSURE"},
+		{10, "THERMISTOR"},
 	};
 	static inline std::map<unsigned int, std::string> m_scalx = {
 		{0, "AXL"},
@@ -538,6 +540,48 @@ public:
 		return DTEEncoder::encode(DTECommand::ARGOSTX_RESP, error_code);
 	}
 
+	std::string SMDCD_REQ(int error_code, std::vector<BaseType>& arg_list) {
+
+		if (error_code) {
+			return DTEEncoder::encode(DTECommand::SMDCD_RESP, error_code);
+		}
+
+		// Extract the Argos SMD ID
+		unsigned int dec_id = std::get<unsigned int>(arg_list[0]);
+		// Extract the Argos SMD ADDR
+		unsigned int address = std::get<unsigned int>(arg_list[1]);
+	    // Extract the Argos SMD Sec key 	
+		std::string seckey = std::get<std::string>(arg_list[2]);
+		// Extract the Argos SMD radio conf 
+		std::string radioconf = std::get<std::string>(arg_list[3]);
+
+		try {
+			// If not already active then subscribe to events and setup a sufficiently
+			// long idle period before the driver shuts off argos power
+			DEBUG_TRACE("SMDCD_REQ...");
+
+			if (!m_artic_device_active) {
+				artic_device->subscribe(*this);
+				artic_device->set_idle_timeout(30000);
+				m_artic_device_active = true;
+			}
+
+			// Schedule transmission
+			artic_device->set_credentials(dec_id, address, seckey, radioconf);
+
+			artic_device->read_credentials(&dec_id, &address, &seckey, &radioconf);
+			
+			configuration_store->write_param(ParamID::ARGOS_DECID, dec_id);
+			configuration_store->write_param(ParamID::ARGOS_HEXID, address);
+			configuration_store->write_param(ParamID::ARGOS_SECKEY, seckey);
+			configuration_store->write_param(ParamID::ARGOS_RADIOCONF, radioconf);
+			configuration_store->save_params();
+		} catch (...) {
+			error_code = (int)DTEError::INCORRECT_DATA;
+		}
+
+		return DTEEncoder::encode(DTECommand::SMDCD_RESP, error_code);
+	}
 	void react(ArticEventPowerOff const& ) {
 		if (m_artic_device_active) {
 			m_artic_device_active = false;
@@ -643,6 +687,9 @@ public:
 			break;
 		case DTECommand::ARGOSTX_REQ:
 			resp = ARGOSTX_REQ(error_code, arg_list);
+			break;
+		case DTECommand::SMDCD_REQ:
+			resp = SMDCD_REQ(error_code, arg_list);
 			break;
 		default:
 			break;

@@ -93,6 +93,8 @@ protected:
 	static inline const std::array<BaseType,MAX_CONFIG_ITEMS> default_params { {
 		/* ARGOS_DECID */ 0U,
 		/* ARGOS_HEXID */ 0U,
+		/* ARGOS_SECKEY */ ""s,
+		/* ARGOS_RADIOCONF */ ""s,
 		/* DEVICE_MODEL */ DEVICE_MODEL_NAME,
 		/* FW_APP_VERSION */ FW_APP_VERSION_STR,
 		/* LAST_TX */ static_cast<std::time_t>(0U),
@@ -236,6 +238,7 @@ protected:
 		/* DEVICE_DECID */ 0U,
 		/* GNSS_TRIGGER_ON_SURFACED */ (bool)true,
 		/* GNSS_TRIGGER_ON_AXL_WAKEUP */ (bool)false,
+		/* GNSS_TRIGGER_ON_TEMP_WAKEUP */ (bool)false,
 #if MODEL_UW
 		/* UNDERWATER_DETECT_SOURCE */ BaseUnderwaterDetectSource::SWS_GNSS,
 #else
@@ -261,6 +264,11 @@ protected:
 		/* AXL_SENSOR_PERIODIC */ 0U,
 		/* AXL_SENSOR_WAKEUP_THRESHOLD */ (double)0.0,
 		/* AXL_SENSOR_WAKEUP_SAMPLES */ 5U,
+		/* THERMISTOR_SENSOR_ENABLE */ (bool)false,
+		/* THERMISTOR_SENSOR_PERIODIC */ 0U,
+		/* THERMISTOR_SENSOR_VALUE */ (double)0.0,
+		/* THERMISTOR_SENSOR_WAKEUP_THRESHOLD */ (double)0.0,
+		/* THERMISTOR_SENSOR_WAKEUP_SAMPLES */ 5U,
 		/* PRESSURE_SENSOR_ENABLE */ (bool)false,
 		/* PRESSURE_SENSOR_PERIODIC */ 0U,
 		/* DEBUG_OUTPUT_MODE */ BaseDebugMode::UART,
@@ -309,6 +317,9 @@ protected:
 		/* PRESSURE_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
 		/* PRESSURE_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
 		/* PRESSURE_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
+		/* THERMISTOR_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
+		/* THERMISTOR_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
+		/* THERMISTOR_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,
@@ -397,6 +408,10 @@ public:
 				b_is_valid = true;
 			} else if (param_id == ParamID::ARGOS_HEXID) {
 				b_is_valid = true;
+			} else if (param_id == ParamID::ARGOS_SECKEY) {
+				b_is_valid = true;
+			} else if (param_id == ParamID::ARGOS_RADIOCONF) {
+				b_is_valid = true;
 			} else if (param_id == ParamID::DEVICE_MODEL) {
 				m_params.at((unsigned)param_id) = DEVICE_MODEL_NAME;
 				b_is_valid = true;
@@ -461,6 +476,14 @@ public:
 					m_params.at((unsigned)param_id) = s.get_chip_status();
 				} catch (...) {
 					m_params.at((unsigned)param_id) = "NOTFITTED"s;
+				}
+				b_is_valid = true;
+			} else if (param_id == ParamID::THERMISTOR_SENSOR_VALUE) {
+				try {
+					Sensor& s = SensorManager::find_by_name("THERMISTOR");
+					m_params.at((unsigned)param_id) = s.read(0);
+				} catch (...) {
+					m_params.at((unsigned)param_id) = (double)std::nan("");
 				}
 				b_is_valid = true;
 			} else {

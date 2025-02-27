@@ -105,27 +105,12 @@ void SmdSat::get_kmac_status(uint8_t *status) {
 	read_byte(status);
 	return;
 }
-
-void SmdSat::set_radio_conf(ArgosModulation modulation) {
+void SmdSat::set_radio_conf(uint8_array_t *radio_conf) {
 	DEBUG_TRACE("%s",__func__);
-    const char* radio_conf = nullptr;
-	switch (modulation)
-	{
-	case ARGOS_MOD_LDA2:
-		radio_conf = "44cd3a299068292a74d2126f3402610d";
-		break;
-	case ARGOS_MOD_LDA2L:
-		radio_conf = "bd176535b394a665bd86f354c5f424fb";
-		break;
-	case ARGOS_MOD_LDK:
-		radio_conf = "efd2412f8570581457f2d982e76d44d7";
-		break;
-	case ARGOS_MOD_VLDA4:
-		radio_conf = "41bc11b8980df01ba8b4b8f41099620b";
-		break;
-	
-	default:
-		DEBUG_ERROR("%s:: Unknown modulation : %u", __func__, modulation);
+	// - 1 size to remove cmd written
+	if(radio_conf->size != SMDSAT_CMD_WRITECONF_LEN - 1){
+		DEBUG_ERROR("%s::Size allocated to set radio conf %u != from %u",
+			__func__, radio_conf->size, SMDSAT_CMD_WRITECONF_LEN - 1);
 		return;
 	}
 	//spi_write(spiTxBuffer, 1);
@@ -133,10 +118,11 @@ void SmdSat::set_radio_conf(ArgosModulation modulation) {
 	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
 	uint8_t tx[SMDSAT_CMD_WRITECONF_LEN] = {0};
 	tx[0] = SMDSAT_CMD_WRITE_RCONF;
-	memcpy(&(tx[1]), radio_conf, sizeof(tx) - 1);
+	memcpy(&(tx[1]), radio_conf->p_data, radio_conf->size);
 	send_command(tx, NULL, SMDSAT_CMD_WRITECONF_LEN);
 	return;
 }
+
 
 void SmdSat::read_radio_conf(ArgosModulation *modulation){
 	DEBUG_TRACE("%s",__func__);
@@ -233,22 +219,35 @@ void SmdSat::read_address(uint8_array_t *address){
 
 void SmdSat::set_address(uint8_array_t *address){
 	DEBUG_TRACE("%s:: ",__func__);
-	if(address->size != SMDSAT_CMD_READ_ADDR_LEN){
+	// - 1 size to remove cmd written
+	if(address->size != SMDSAT_CMD_WRITE_ADDR_LEN-1){
 		DEBUG_ERROR("%s::Size allocated to store address %u != from %u",
-			__func__, address->size, SMDSAT_CMD_READ_ADDR_LEN);
+			__func__, address->size, SMDSAT_CMD_WRITE_ADDR_LEN-1);
 		return;
 	}
 	send_command(SMDSAT_CMD_WRITE_ADDR_REQ);
 	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
 	uint8_t tx[SMDSAT_CMD_WRITE_ADDR_LEN], rx[SMDSAT_CMD_WRITE_ADDR_LEN] = {0};
 	tx[0] = SMDSAT_CMD_WRITE_ADDR;
-	memcpy(&(tx[1]), &address->p_data, address->size);
+	memcpy(&(tx[1]), address->p_data, address->size);
+
 	send_command(tx, rx, (uint16_t)SMDSAT_CMD_WRITE_ADDR_LEN);
 	
+	// Create a buffer to build the output string.
+    char buffer[128];
+    int offset = 0;
+
+    // Start the message
+    offset += snprintf(buffer + offset, sizeof(buffer) - offset, "SMD Address write:");
+
+	for (size_t i = 0; i < address->size; i++) {
+        offset += snprintf(buffer + offset, sizeof(buffer) - offset, " 0x%02X", address->p_data[i]);
+    } 
+	DEBUG_INFO("%s", buffer);
 	return;
 }
 
-void SmdSat::read_seckey(uint8_array_t *seckey){
+	void SmdSat::read_seckey(uint8_array_t *seckey){
 	DEBUG_TRACE("%s",__func__);
 	if(seckey->size != SMDSAT_CMD_READ_SECKEY_LEN){
 		DEBUG_ERROR("%s::Size allocated to store address %u != from %u",
@@ -278,7 +277,7 @@ void SmdSat::read_seckey(uint8_array_t *seckey){
 
 void SmdSat::set_seckey(uint8_array_t *seckey){
 	DEBUG_TRACE("%s:: ",__func__);
-	if(seckey->size != SMDSAT_CMD_WRITE_SECKEY_LEN){
+	if(seckey->size != SMDSAT_CMD_WRITE_SECKEY_LEN - 1){
 		DEBUG_ERROR("%s::Size allocated to store address %u != from %u",
 			__func__, seckey->size, SMDSAT_CMD_WRITE_SECKEY_LEN);
 		return;
@@ -287,7 +286,7 @@ void SmdSat::set_seckey(uint8_array_t *seckey){
 	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
 	uint8_t tx[SMDSAT_CMD_WRITE_SECKEY_LEN], rx[SMDSAT_CMD_WRITE_SECKEY_LEN] = {0};
 	tx[0] = SMDSAT_CMD_WRITE_SECKEY;
-	memcpy(&(tx[1]), &seckey->p_data, seckey->size);
+	memcpy(&(tx[1]), seckey->p_data, seckey->size);
 	send_command(tx, rx, SMDSAT_CMD_WRITE_SECKEY_LEN);
 	
 	// Create a buffer to build the output string.
@@ -960,4 +959,119 @@ void SmdSat::set_tcxo_warmup_time(const unsigned int time_s) {
 void SmdSat::set_tx_power(const BaseArgosPower power) {
 	m_tx_power = power;
 	return;
+}
+
+void SmdSat::set_credentials(const unsigned int dec_id, const unsigned int address, const std::string seckey, const std::string radioconf) {
+	DEBUG_TRACE("Set SMD module credentials");
+	bool stop_spi = false;
+	if (m_state == SmdSatState::stopped)
+	{
+		GPIOPins::set(SAT_PWR_EN);
+		GPIOPins::set(SAT_RESET);
+	}
+	if (m_nrf_spim == nullptr)
+	{
+		m_nrf_spim = new NrfSPIM(SPI_SATELLITE);
+		stop_spi = true;
+	}
+	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
+    // Set the ID (expects uint32_t value)
+    set_id(dec_id);
+
+	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+    // Convert address to a 4-byte array and pass it as uint8_array_t
+    uint8_t address_data[4] = {
+        static_cast<uint8_t>((address >> 24) & 0xFF),
+        static_cast<uint8_t>((address >> 16) & 0xFF),
+        static_cast<uint8_t>((address >> 8) & 0xFF),
+        static_cast<uint8_t>(address & 0xFF)
+    };
+    uint8_array_t address_val = {SMDSAT_CMD_WRITE_ADDR_LEN-1, address_data};
+    set_address(&address_val);
+
+	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+    // Convert hex string to binary using Binascii::unhexlify() (returns std::string)
+    std::string seckey_val = Binascii::unhexlify(seckey);
+    uint8_array_t seckey_struct = {static_cast<uint16_t>(seckey_val.size()), 
+                                   reinterpret_cast<uint8_t *>(seckey_val.data())};
+    set_seckey(&seckey_struct);
+
+	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+    // Convert radio config hex string to binary
+    std::string radioconf_val = Binascii::unhexlify(radioconf);
+    uint8_array_t radioconf_struct = {static_cast<uint16_t>(radioconf_val.size()), 
+                                      reinterpret_cast<uint8_t *>(radioconf_val.data())};
+    set_radio_conf(&radioconf_struct);	
+	if(stop_spi)
+	{
+		delete m_nrf_spim;
+		m_nrf_spim = nullptr; // Invalidate this pointer so if we call this function again it doesn't call delete on an invalid pointer
+	}
+	if (m_state == SmdSatState::stopped)
+	{
+		shutdown();
+	}
+}
+
+// TODO: implement read of raw radio conf value
+void SmdSat::read_credentials(unsigned int *dec_id, unsigned int *address, std::string *seckey, std::string *radioconf) {
+	DEBUG_TRACE("read SMD module credentials");
+	bool stop_spi = false;
+	if (m_state == SmdSatState::stopped)
+	{
+		GPIOPins::set(SAT_PWR_EN);
+		GPIOPins::set(SAT_RESET);
+	}
+	if (m_nrf_spim == nullptr)
+	{
+		m_nrf_spim = new NrfSPIM(SPI_SATELLITE);
+		stop_spi = true;
+	}
+	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
+
+	// Read the ID
+	 if (dec_id) {
+		uint32_t dec_id_val = 0;
+        read_id(&dec_id_val);
+		*dec_id = static_cast<unsigned int>(dec_id_val);
+
+		nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+    }
+
+    // Read the Address
+    if (address) {
+        uint8_t address_data[SMDSAT_CMD_READ_ADDR_LEN] = {0};
+        uint8_array_t address_value = {SMDSAT_CMD_READ_ADDR_LEN, address_data};
+        read_address(&address_value);
+		nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+		*address  = (address_value.p_data[0] << 24) |
+					(address_value.p_data[1] << 16) |
+					(address_value.p_data[2] << 8)  |
+					(address_value.p_data[3]);
+    }
+
+    // Read the Security Key and Convert to Hex String
+    if (seckey) {
+        uint8_t seckey_data[SMDSAT_CMD_READ_SECKEY_LEN] = {0};
+        uint8_array_t seckey_value = {SMDSAT_CMD_READ_SECKEY_LEN, seckey_data};
+        read_seckey(&seckey_value);
+		nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+
+        // Convert binary seckey data to hex and assign it to *seckey
+        *seckey = Binascii::hexlify(std::string(reinterpret_cast<char *>(seckey_data), SMDSAT_CMD_READ_SECKEY_LEN));
+    }
+
+    // Read the Radio Configuration and Convert to Hex String
+	ArgosModulation modulation_dev;
+	read_radio_conf(&modulation_dev);
+	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+
+	if(stop_spi)
+	{
+		delete m_nrf_spim;
+		m_nrf_spim = nullptr; // Invalidate this pointer so if we call this function again it doesn't call delete on an invalid pointer
+	}
+	if (m_state == SmdSatState::stopped) {
+		shutdown();
+	}
 }

@@ -1352,3 +1352,11 @@ void ArticSat::set_tcxo_warmup_time(const unsigned int time_s) {
 void ArticSat::set_tx_power(const BaseArgosPower power) {
 	m_tx_power = power;
 }
+
+void ArticSat::set_credentials(const unsigned int *dec_id, const unsigned int address, const std::string seckey, const std::string radioconf) {
+	DEBUG_WARN("Set credentials not used with Artic R2, used with SMD module");
+}
+
+void ArticSat::read_credentials(unsigned int *dec_id, unsigned int *address, std::string *seckey, std::string *radioconf){
+	DEBUG_WARN("Read credentials not used with Artic R2, used with SMD module");
+}
