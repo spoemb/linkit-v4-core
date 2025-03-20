@@ -52,6 +52,8 @@
 #include "memory_monitor_service.hpp"
 #include "dive_mode_service.hpp"
 #include "gpio_buzzer.hpp"
+#include "TSYS01.hpp"
+
 
 FileSystem *main_filesystem;
 
@@ -466,6 +468,11 @@ int main()
 	FsLog rtd_sensor_log(&lfs_file_system, "RTD", 1024*1024);
 	rtd_sensor_log.set_log_formatter(&rtd_sensor_log_formatter);
 
+	DEBUG_TRACE("TSYS01 Sensor Log...");
+	SeaTempLogFormatter tsys01_sensor_log_formatter;
+	FsLog tsys01_sensor_log(&lfs_file_system, "TSYS01", 1024*1024);
+	tsys01_sensor_log.set_log_formatter(&tsys01_sensor_log_formatter);
+
 	DEBUG_TRACE("CDT Sensor Log...");
 	CDTLogFormatter cdt_sensor_log_formatter;
 	FsLog cdt_sensor_log(&lfs_file_system, "CDT", 1024*1024);
@@ -603,6 +610,14 @@ int main()
 		static SeaTempSensorService rtd_sensor_service(rtd, &rtd_sensor_log);
 	} catch (ErrorCode e) {
 		DEBUG_TRACE("EZO RTD: not detected [%04X]", e);
+	}
+
+	DEBUG_TRACE("TSYS01...");
+	try {
+		static TSYS01 tsys01;
+		static SeaTempSensorService tsys01_sensor_service(tsys01, &tsys01_sensor_log);
+	} catch (ErrorCode e) {
+		DEBUG_TRACE("TSYS01: not detected [%04X]", e);
 	}
 
 	DEBUG_TRACE("BMX160...");

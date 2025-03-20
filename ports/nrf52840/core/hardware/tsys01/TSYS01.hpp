@@ -28,12 +28,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 -------------------------------*/ 
 
-#ifndef TSYS01_H_BLUEROBOTICS
-#define TSYS01_H_BLUEROBOTICS
+#pragma once
 
-#include "Arduino.h"
+#include "base_types.hpp"
+#include "sensor.hpp"
 
-class TSYS01 {
+class TSYS01 : public Sensor {
 public:
 
 	TSYS01();
@@ -42,7 +42,7 @@ public:
 
 	/** The read from I2C takes up for 40 ms, so use sparingly is possible.
 	 */
-	void read();
+	double read(unsigned int port) override;
 
 	/** This function loads the datasheet test case values to verify that
 	 *  calculations are working correctly. No example checksum is provided
@@ -65,6 +65,6 @@ private:
 	 */
 	void calculate();
 
-};
+	void write_command(uint8_t command);
 
-#endif
+};
