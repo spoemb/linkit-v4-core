@@ -4,6 +4,7 @@ ports/nrf52840/CMakeFiles/*
 build.ninja
 rules.ninja
 tests/_deps/*
+tests/build/*
 tests/CMakeFiles/*
 tests/CLSGenTrackerTests
 CMakeCache.txt

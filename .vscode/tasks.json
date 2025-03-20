@@ -79,5 +79,44 @@
 			],
 			"group": "build",
 		},
+		{
+			"type": "shell",
+			"label": "Unit Tests: compile",
+			"command": "./scripts/build_unit_tests.sh",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build",
+		},
+		{
+			"type": "shell",
+			"label": "Unit Tests: compile (clean)",
+			"command": "rm -rf tests/build && ./scripts/build_unit_tests.sh",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build",
+		},
+		{
+			"type": "shell",
+			"label": "Unit Tests: run",
+			"command": "cd tests/build && ln -sf ../data . && ./CLSGenTrackerTests -ojunit",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build",
+		},
     ],
   }
