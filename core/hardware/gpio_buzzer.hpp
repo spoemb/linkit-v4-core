@@ -6,6 +6,11 @@
 
 extern Timer *system_timer;
 
+#define BUZZER_ON(instance) {if (instance) instance->on();}
+#define BUZZER_OFF(instance) {if (instance) instance->off();}
+#define BUZZER_BEEP_INFINITE(instance,t_on,t_off) {if (instance) instance->beep_infinite(t_on,t_off);}
+#define BUZZER_BEEP_COUNT(instance,t_on,t_off,count) {if (instance) instance->beep_count(t_on,t_off,count);}
+
 class Buzzer : public GPIOPins {
 public :
     Buzzer(int pin) {

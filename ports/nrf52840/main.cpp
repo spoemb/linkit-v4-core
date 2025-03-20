@@ -273,9 +273,13 @@ int main()
     DEBUG_TRACE("Reed switch...");
     NrfSwitch nrf_reed_switch(BSP::GPIO::GPIO_REED_SW, REED_SWITCH_DEBOUNCE_TIME_MS, REED_SWITCH_ACTIVE_STATE);
 
+#ifdef BUZZER_EN_PIN
 	DEBUG_TRACE("Buzzer...");
-	Buzzer buzzer(BUZZER_EN);
+	Buzzer buzzer(BUZZER_EN_PIN);
 	buzzer_ctl = &buzzer;
+#else
+	buzzer_ctl = nullptr;
+#endif
 
 	DEBUG_TRACE("BLE...");
     BleInterface::get_instance().init();
@@ -315,7 +319,7 @@ int main()
 		// Check if switch starting state is active
 		if (nrf_reed_switch.get_state()) {
 			status_led->set(RGBLedColor::WHITE);
-			buzzer_ctl->on();
+			BUZZER_ON(buzzer_ctl);
 			timer_handle = system_timer->add_schedule([&power_on_ready]() {
 				DEBUG_TRACE("Reed switch 3s period elapsed");
 				power_on_ready = true;
@@ -323,7 +327,7 @@ int main()
 		} else {
 		    // Turn status LED off
 		    status_led->off();
-			buzzer_ctl->off();
+			BUZZER_OFF(buzzer_ctl);
 		}
 
 		nrf_reed_switch.start([&timer_handle, &power_on_ready](bool state) {
@@ -331,14 +335,14 @@ int main()
 			if (state) {
 				DEBUG_TRACE("Reed State: %u", state);
 				status_led->set(RGBLedColor::WHITE);
-				buzzer_ctl->on();
+				BUZZER_ON(buzzer_ctl);
 				timer_handle = system_timer->add_schedule([&power_on_ready]() {
 					DEBUG_TRACE("Reed switch 3s period elapsed");
 					power_on_ready = true;
 				}, system_timer->get_counter() + 3000);
 			} else {
 				status_led->off();
-				buzzer_ctl->off();
+				BUZZER_OFF(buzzer_ctl);
 			}
 		});
 
@@ -362,7 +366,7 @@ int main()
 		system_timer->cancel_schedule(wdog_handle);
 		PMU::kick_watchdog();
 		nrf_reed_switch.stop();
-		buzzer_ctl->beep_count(200,200,2);
+		BUZZER_BEEP_COUNT(buzzer_ctl,200,200,2);
 
 		// Re-initialize UART
 		nrfx_uarte_init(&BSP::UART_Inits[BSP::UART_1].uarte, &BSP::UART_Inits[BSP::UART_1].config, nullptr);
