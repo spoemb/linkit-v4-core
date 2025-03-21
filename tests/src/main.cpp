@@ -15,6 +15,7 @@
 #include "rtc.hpp"
 #include "battery.hpp"
 #include "debug.hpp"
+#include "gpio_buzzer.hpp"
 
 #include "CppUTest/CommandLineTestRunner.h"
 #include "CppUTest/TestRegistry.h"
@@ -37,6 +38,7 @@ RTC *rtc;
 BatteryMonitor *battery_monitor;
 BaseDebugMode g_debug_mode;
 ArticDevice *artic_device;
+Buzzer *buzzer_ctl;
 
 MockSupportPlugin mockPlugin;
 
