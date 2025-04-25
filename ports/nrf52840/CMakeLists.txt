@@ -20,7 +20,6 @@ option(BOARD "Board to compile for" NONE)
 if(${MODEL} MATCHES SB OR ${MODEL} MATCHES UW OR ${MODEL} MATCHES CORE OR ${MODEL} MATCHES SMD)
     set (ARGOS_SMD 0)
     set (ARGOS_ARTIC_SAT 0)
-    set (SENSOR_BMX160 1)
     set(MODEL_SB 0)
     set(MODEL_UW 0)
     set(MODEL_CORE 0)
@@ -29,6 +28,7 @@ if(${MODEL} MATCHES SB OR ${MODEL} MATCHES UW OR ${MODEL} MATCHES CORE OR ${MODE
     set(HAS_WCHG 0)
     set(HAS_GAUGE_STC3117 0)
     set(GPS_MODEL M8Q)
+    set(ACC_MODEL BMA400)
     if(${MODEL} MATCHES SB)
         set(MODEL_SB 1)
     elseif(${MODEL} MATCHES UW)
@@ -52,12 +52,12 @@ if(${BOARD} MATCHES HORIZON)
     set(BOARD_DIR     "${PROJ_DIR}/bsp/horizon_v4.0")
     set(DEVICE_MODEL "Horizon CORE")
     set (ARGOS_ARTIC_SAT 0)
-    set (SENSOR_BMX160 0)
     set(HAS_WCHG 0)
     set(MODEL_SB 0)
     set(MODEL_UW 0)
     set(MODEL_CORE 1)
     set(GPS_MODEL M8Q)
+    set(ACC_MODEL BMA400)
     set(HAS_GAUGE_STC3117 0)
     set(HAS_WCHG 0)
     set(BOOTLOADER "bootloader/gentracker_secure_bootloader/horizon_v4.0/armgcc/_build/horizon_bootloader_v4_linkit_merged.hex")
@@ -70,8 +70,7 @@ elseif(${BOARD} MATCHES RSPB)
     set(BOARD_DIR     "${PROJ_DIR}/bsp/rspbtracker_v1.0")
     set(DEVICE_MODEL "RSPB ${MODEL}")
     set(GPS_MODEL M10Q)
-    set (SENSOR_BMX160 0)
-    set (SENSOR_BMA400 1)
+    set(ACC_MODEL BMA400)
     set(HAS_WCHG 0)
     set(BOOTLOADER "bootloader/gentracker_secure_bootloader/rspbtracker_v1.0/armgcc/_build/rspb_bootloader_v1_linkit_merged.hex")
 else()
@@ -185,7 +184,9 @@ target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
     ${PROJ_DIR}/core/interface
     ${PROJ_DIR}/core/memmang
     ${PROJ_DIR}/core/scheduling
+    ${PROJ_DIR}/core/hardware/pressure_sensor
     ${PROJ_DIR}/core/hardware/ms58xx
+    ${PROJ_DIR}/core/hardware/bar100
     ${PROJ_DIR}/core/hardware/ad5933
     ${PROJ_DIR}/core/hardware/ltr_303
     ${PROJ_DIR}/core/hardware/oem_ph
@@ -266,6 +267,7 @@ target_sources(${TARGET_NAME} PRIVATE
     ${CORE_DIR}/configuration/calibration.cpp
     ${BOARD_DIR}/bsp.cpp
     ${PROJ_DIR}/core/hardware/ms58xx/ms58xx.cpp
+    ${PROJ_DIR}/core/hardware/bar100/bar100.cpp
     ${PROJ_DIR}/core/hardware/ad5933/ad5933.cpp
     ${PROJ_DIR}/core/hardware/cdt/cdt.cpp
     ${PROJ_DIR}/core/hardware/ltr_303/ltr_303.cpp
@@ -329,7 +331,7 @@ if (HAS_WCHG EQUAL 1)
         )
 endif()
 
-if (SENSOR_BMX160 EQUAL 1)
+if(${ACC_MODEL} MATCHES BMX160)
         target_sources(${TARGET_NAME} PRIVATE
             ${PROJ_DIR}/core/hardware/bmx160/bmx160.cpp
             ${PROJ_DIR}/core/hardware/bmx160/bmx160.c
@@ -338,8 +340,20 @@ if (SENSOR_BMX160 EQUAL 1)
         target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
             ${PROJ_DIR}/core/hardware/bmx160
         )
+elseif(${ACC_MODEL} MATCHES BMA400)
+        target_sources(${TARGET_NAME} PRIVATE
+            ${PROJ_DIR}/core/hardware/bma400/bma400.cpp
+            ${PROJ_DIR}/core/hardware/bma400/bma400.c
+        )
+
+        target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
+            ${PROJ_DIR}/core/hardware/bma400
+        )
+else()
+    message(STATUS "Info:No ACC defined")
 endif()
 
+#Change it as an optional choice
 if (ARGOS_ARTIC_SAT EQUAL 1)
         target_sources(${TARGET_NAME} PRIVATE
             ${PROJ_DIR}/core/hardware/artic_sat/artic_sat.cpp
@@ -386,9 +400,9 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     MODEL_CORE=${MODEL_CORE}
     MODEL_RSPB=${MODEL_RSPB}
     GPS_${GPS_MODEL}
+    ACC_${ACC_MODEL}
     ARGOS_ARTIC_SAT=${ARGOS_ARTIC_SAT}
     ARGOS_SMD=${ARGOS_SMD}
-    SENSOR_BMX160=${SENSOR_BMX160}
     HAS_GAUGE_STC3117=${HAS_GAUGE_STC3117} 
     BUILD_TYPE=${CMAKE_BUILD_TYPE}
     #SCHEDULER_DEBUG

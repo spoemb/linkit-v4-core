@@ -63,7 +63,7 @@ private:
 		{7, "CDT"},
 		{8, "AXL"},
 		{9, "PRESSURE"},
-		{10, "THERMISTOR"},
+		{10, "THERMISTOR"}
 	};
 	static inline std::map<unsigned int, std::string> m_scalx = {
 		{0, "AXL"},
@@ -73,6 +73,7 @@ private:
 		{4, "RTD"},
 		{5, "CDT"},
 		{6, "MCP47X6"},
+		{7, "THERMISTOR"}
 	};
 	unsigned int m_dumpd_NNN;
 	unsigned int m_dumpd_mmm;
@@ -570,6 +571,7 @@ public:
 			artic_device->set_credentials(dec_id, address, seckey, radioconf);
 
 			artic_device->read_credentials(&dec_id, &address, &seckey, &radioconf);
+			
 			
 			configuration_store->write_param(ParamID::ARGOS_DECID, dec_id);
 			configuration_store->write_param(ParamID::ARGOS_HEXID, address);

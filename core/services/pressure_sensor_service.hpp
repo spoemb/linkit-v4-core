@@ -99,7 +99,7 @@ private:
 	}
 
 	unsigned int sensor_periodic() override {
-		unsigned int schedule =
+		unsigned int schedule = 
 				1000 * service_read_param<unsigned int>(ParamID::PRESSURE_SENSOR_PERIODIC);
 		return schedule == 0 ? Service::SCHEDULE_DISABLED : schedule;
 	}

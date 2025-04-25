@@ -43,6 +43,36 @@ public:
 	ThermistorSensorService(Sensor& sensor, Logger *logger) : SensorService(sensor, ServiceIdentifier::THERMISTOR_SENSOR, "THERMISTOR", logger) {}
 
 private:
+	unsigned int count_threshold_value_crossed = 0;
+
+
+	void notify_peer_event(ServiceEvent& e) override {
+		Service::notify_peer_event(e);
+	}
+
+
+	bool sensor_trigger_event(double value) {
+		unsigned int wakeup_samples = service_read_param<unsigned int>(ParamID::THERMISTOR_SENSOR_WAKEUP_SAMPLES);
+		if ((wakeup_samples!= 0) && (service_read_param<bool>(ParamID::THERMISTOR_SENSOR_ENABLE)))
+		{
+			if (value > service_read_param<double>(ParamID::THERMISTOR_SENSOR_WAKEUP_THRESH)) {
+				count_threshold_value_crossed++;
+				DEBUG_TRACE("ThermistorSensorService: %s: threshold value crossed %d (samples required : %d) ", get_name(), count_threshold_value_crossed,wakeup_samples);
+				if (count_threshold_value_crossed >= wakeup_samples) {
+					count_threshold_value_crossed = 0;
+					// // Notify GNSS service
+					// ServiceEvent event;
+					// event.event_type = ServiceEventType::GNSS_ON;
+					// event.event_source = ServiceIdentifier::THERMISTOR_SENSOR;
+					// event.event_data = true; // Example: true indicates the threshold was crossed
+					// ServiceManager::notify_peer_event(event);
+
+					return true;
+				}
+			}
+		}
+		return false;
+	}
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Warray-bounds"
@@ -50,12 +80,22 @@ private:
 		ThermistorLogEntry *log = (ThermistorLogEntry *)e;
 		log->temp = data.port[0];
 		service_set_log_header_time(log->header, service_current_time());
+		if (sensor_trigger_event(log->temp)) {
+			DEBUG_TRACE("ThermistorSensorService: %s: Thermistor wakeup event handler", get_name());
+
+			ServiceEvent event;
+			event.event_type = ServiceEventType::GNSS_ON;
+			event.event_source = ServiceIdentifier::THERMISTOR_SENSOR;
+			event.event_data = true;
+			ServiceManager::notify_peer_event(event);
+		}
 	}
 #pragma GCC diagnostic pop
 
 	unsigned int sensor_max_samples() override {
 		return service_read_param<unsigned int>(ParamID::THERMISTOR_SENSOR_ENABLE_TX_MAX_SAMPLES);
 	}
+
 
 	unsigned int sensor_num_channels() override { return 1U; }
 

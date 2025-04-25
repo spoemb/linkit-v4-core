@@ -242,22 +242,29 @@ void GPSService::populate_gps_log_with_time(GPSLogEntry &entry, std::time_t time
 }
 
 bool GPSService::service_is_triggered_on_event(ServiceEvent& event, bool& immediate) {
+    if (event.event_source == ServiceIdentifier::AXL_SENSOR && event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+        event.event_data = true;
+    }
+        
 	if (event.event_source == ServiceIdentifier::AXL_SENSOR &&
 			event.event_type == ServiceEventType::SERVICE_LOG_UPDATED &&
 			std::get<bool>(event.event_data)) {
 		bool trigger_on_axl = service_read_param<bool>(ParamID::GNSS_TRIGGER_ON_AXL_WAKEUP);
 		immediate = trigger_on_axl;
+        DEBUG_TRACE("GPSService::service_is_triggered_on_event: trigger_on_axl=%u", trigger_on_axl);
 		return trigger_on_axl;
 	}
-	// if (event.event_source == ServiceIdentifier::THERMISTOR_SENSOR &&
-	// 		event.event_type == ServiceEventType::SERVICE_LOG_UPDATED &&
-	// 		std::get<bool>(event.event_data)) {
-	// 	bool trigger_on_temp = service_read_param<bool>(ParamID::GNSS_TRIGGER_ON_TEMP_WAKEUP);
-	// 	immediate = trigger_on_temp;
-	// 	return trigger_on_temp;
-	// }
-
+	
+    if (event.event_source == ServiceIdentifier::THERMISTOR_SENSOR &&
+			event.event_type == ServiceEventType::GNSS_ON &&
+			std::get<bool>(event.event_data)) {
+		bool trigger_on_thermistor = service_read_param<bool>(ParamID::GNSS_TRIGGER_ON_TEMP_WAKEUP);
+		immediate = trigger_on_thermistor;
+        DEBUG_TRACE("GPSService::service_is_triggered_on_event: trigger_on_thermistor=%u", trigger_on_thermistor);
+		return trigger_on_thermistor;
+	}
 	return false;
+
 }
 
 void GPSService::notify_peer_event(ServiceEvent& e) {

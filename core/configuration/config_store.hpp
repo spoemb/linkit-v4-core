@@ -264,6 +264,11 @@ protected:
 		/* AXL_SENSOR_PERIODIC */ 0U,
 		/* AXL_SENSOR_WAKEUP_THRESHOLD */ (double)0.0,
 		/* AXL_SENSOR_WAKEUP_SAMPLES */ 5U,
+		/* AXL_SENSOR_MEASUREMENT_RANGE */ 4U,
+		/* AXL_SENSOR_POWER_MODE */ 2U,
+		/* AXL_SENSOR_X_CALIBRATION */ (double)0.0,
+		/* AXL_SENSOR_Y_CALIBRATION */ (double)0.0,
+		/* AXL_SENSOR_Z_CALIBRATION */ (double)0.0,
 		/* THERMISTOR_SENSOR_ENABLE */ (bool)false,
 		/* THERMISTOR_SENSOR_PERIODIC */ 0U,
 		/* THERMISTOR_SENSOR_VALUE */ (double)0.0,
@@ -317,6 +322,9 @@ protected:
 		/* PRESSURE_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
 		/* PRESSURE_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
 		/* PRESSURE_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
+		/* AXL_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
+		/* AXL_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
+		/* AXL_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
 		/* THERMISTOR_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
 		/* THERMISTOR_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
 		/* THERMISTOR_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U
@@ -778,6 +786,10 @@ public:
 				(int)(read_param<bool>(ParamID::SEA_TEMP_SENSOR_ENABLE) && read_param<BaseSensorEnableTxMode>(ParamID::SEA_TEMP_SENSOR_ENABLE_TX_MODE) != BaseSensorEnableTxMode::OFF) << (int)ServiceIdentifier::SEA_TEMP_SENSOR;
 			argos_config.sensor_tx_enable |=
 				(int)(read_param<bool>(ParamID::PH_SENSOR_ENABLE) && read_param<BaseSensorEnableTxMode>(ParamID::PH_SENSOR_ENABLE_TX_MODE) != BaseSensorEnableTxMode::OFF) << (int)ServiceIdentifier::PH_SENSOR;
+			argos_config.sensor_tx_enable |=
+				(int)(read_param<bool>(ParamID::AXL_SENSOR_ENABLE) && read_param<BaseSensorEnableTxMode>(ParamID::AXL_SENSOR_ENABLE_TX_MODE) != BaseSensorEnableTxMode::OFF) << (int)ServiceIdentifier::AXL_SENSOR;
+			argos_config.sensor_tx_enable |=
+				(int)(read_param<bool>(ParamID::THERMISTOR_SENSOR_ENABLE) && read_param<BaseSensorEnableTxMode>(ParamID::THERMISTOR_SENSOR_ENABLE_TX_MODE) != BaseSensorEnableTxMode::OFF) << (int)ServiceIdentifier::THERMISTOR_SENSOR;
 		}
 	}
 

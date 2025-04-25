@@ -29,7 +29,7 @@
 #define SMDSAT_CMD_WRITELPM_LEN 2    // 1 LPM mode + 1 cmd
 #define SMDSAT_CMD_WRITEKMAC_LEN 2    // 1 write only ID for the moment + 1 cmd
 #define SMDSAT_CMD_WRITETX_LEN 3    // 1 write only ID for the moment + 2 datasize (u16)
-#define SMDSAT_CMD_WRITECONF_LEN 33    // 1 write only ID for the moment + 2 datasize (u16)
+#define SMDSAT_CMD_WRITECONF_LEN 17    // 1 write only ID for the moment + 2 datasize (u16)
 #define SMDSAT_CMD_READCONF_LEN 13    // 1 write only ID for the moment + 2 datasize (u16)
 #define SMDSAT_CMD_READ_FIRMWARE_LEN 128
 #define SMDSAT_CMD_READ_SERIAL_LEN 16
