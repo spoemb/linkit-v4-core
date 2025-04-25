@@ -31,6 +31,7 @@
 //#define EXT_LED_PIN          BSP::GPIO::GPIO_EXT1_GPIO3
 //#define EXT_I2C_BUS          BSP::I2C::I2C_0
 #define ONBOARD_I2C_BUS      BSP::I2C::I2C_0
+#define BMX160_WAKEUP_PIN  BSP::GPIO::GPIO_INT1_AG
 #define BMA400_WAKEUP_PIN    BSP::GPIO::GPIO_INT1_AG
 #define PRESSURE_WAKEUP_PIN  BSP::GPIO::GPIO_PRESS_INT
 //#define WCHG_INTB_PIN	     BSP::GPIO::GPIO_WCHG_INTB
@@ -64,6 +65,7 @@
 
 // I2C bus addresses
 #define MCP4716_I2C_ADDR          0x60
+#define BAR100_ADDRESS 	          0x40
 #define MS5803_ADDRESS            0x77
 #define MS5837_ADDRESS	          0x76
 #define LIGHT_DEVICE_ADDR         0x29
@@ -72,7 +74,7 @@
 #define OEM_RTD_DEVICE_ADDR       0x68
 #define AD5933_ADDRESS		      0x0D
 #define BMX160_ADDRESS            0x69
-#define BMA400_ADDRESS            0x14
+#define BMA400_ADDRESS            0x14 //0x14 if SDO low
 #define LPS28DFW_ADDRESS          0x5D
 #define STWLC68_ADDRESS		      0x61
 #define STC3117_ADDRESS           0x70

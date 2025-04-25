@@ -253,6 +253,78 @@ core/hardware/ad5933/ad5933.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/ad5933/ad5933.cpp.s
 .PHONY : core/hardware/ad5933/ad5933.cpp.s
 
+core/hardware/bar100/bar100.obj: core/hardware/bar100/bar100.cpp.obj
+.PHONY : core/hardware/bar100/bar100.obj
+
+# target to build an object file
+core/hardware/bar100/bar100.cpp.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/bar100/bar100.cpp.obj
+.PHONY : core/hardware/bar100/bar100.cpp.obj
+
+core/hardware/bar100/bar100.i: core/hardware/bar100/bar100.cpp.i
+.PHONY : core/hardware/bar100/bar100.i
+
+# target to preprocess a source file
+core/hardware/bar100/bar100.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/bar100/bar100.cpp.i
+.PHONY : core/hardware/bar100/bar100.cpp.i
+
+core/hardware/bar100/bar100.s: core/hardware/bar100/bar100.cpp.s
+.PHONY : core/hardware/bar100/bar100.s
+
+# target to generate assembly for a file
+core/hardware/bar100/bar100.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/bar100/bar100.cpp.s
+.PHONY : core/hardware/bar100/bar100.cpp.s
+
+core/hardware/bma400/bma400.obj: core/hardware/bma400/bma400.c.obj
+.PHONY : core/hardware/bma400/bma400.obj
+
+# target to build an object file
+core/hardware/bma400/bma400.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/bma400/bma400.c.obj
+.PHONY : core/hardware/bma400/bma400.c.obj
+
+core/hardware/bma400/bma400.i: core/hardware/bma400/bma400.c.i
+.PHONY : core/hardware/bma400/bma400.i
+
+# target to preprocess a source file
+core/hardware/bma400/bma400.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/bma400/bma400.c.i
+.PHONY : core/hardware/bma400/bma400.c.i
+
+core/hardware/bma400/bma400.s: core/hardware/bma400/bma400.c.s
+.PHONY : core/hardware/bma400/bma400.s
+
+# target to generate assembly for a file
+core/hardware/bma400/bma400.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/bma400/bma400.c.s
+.PHONY : core/hardware/bma400/bma400.c.s
+
+core/hardware/bma400/bma400.obj: core/hardware/bma400/bma400.cpp.obj
+.PHONY : core/hardware/bma400/bma400.obj
+
+# target to build an object file
+core/hardware/bma400/bma400.cpp.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/bma400/bma400.cpp.obj
+.PHONY : core/hardware/bma400/bma400.cpp.obj
+
+core/hardware/bma400/bma400.i: core/hardware/bma400/bma400.cpp.i
+.PHONY : core/hardware/bma400/bma400.i
+
+# target to preprocess a source file
+core/hardware/bma400/bma400.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/bma400/bma400.cpp.i
+.PHONY : core/hardware/bma400/bma400.cpp.i
+
+core/hardware/bma400/bma400.s: core/hardware/bma400/bma400.cpp.s
+.PHONY : core/hardware/bma400/bma400.s
+
+# target to generate assembly for a file
+core/hardware/bma400/bma400.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/bma400/bma400.cpp.s
+.PHONY : core/hardware/bma400/bma400.cpp.s
+
 core/hardware/cdt/cdt.obj: core/hardware/cdt/cdt.cpp.obj
 .PHONY : core/hardware/cdt/cdt.obj
 
@@ -2659,6 +2731,15 @@ help:
 	@echo "... core/hardware/ad5933/ad5933.obj"
 	@echo "... core/hardware/ad5933/ad5933.i"
 	@echo "... core/hardware/ad5933/ad5933.s"
+	@echo "... core/hardware/bar100/bar100.obj"
+	@echo "... core/hardware/bar100/bar100.i"
+	@echo "... core/hardware/bar100/bar100.s"
+	@echo "... core/hardware/bma400/bma400.obj"
+	@echo "... core/hardware/bma400/bma400.i"
+	@echo "... core/hardware/bma400/bma400.s"
+	@echo "... core/hardware/bma400/bma400.obj"
+	@echo "... core/hardware/bma400/bma400.i"
+	@echo "... core/hardware/bma400/bma400.s"
 	@echo "... core/hardware/cdt/cdt.obj"
 	@echo "... core/hardware/cdt/cdt.i"
 	@echo "... core/hardware/cdt/cdt.s"
