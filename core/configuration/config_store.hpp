@@ -424,9 +424,15 @@ public:
 				}
 				b_is_valid = true;
 			} else if (param_id == ParamID::SEA_TEMP_SENSOR_VALUE) {
+				// Sea temp sensor can be either RTD or TSYS01
 				try {
-					Sensor& s = SensorManager::find_by_name("RTD");
-					m_params.at((unsigned)param_id) = s.read();
+					try {
+						Sensor& s = SensorManager::find_by_name("RTD");
+						m_params.at((unsigned)param_id) = s.read();
+					} catch (...) {
+						Sensor& s = SensorManager::find_by_name("TSYS01");
+						m_params.at((unsigned)param_id) = s.read();
+					}
 				} catch (...) {
 					m_params.at((unsigned)param_id) = (double)std::nan("");
 				}
