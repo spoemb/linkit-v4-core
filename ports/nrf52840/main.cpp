@@ -45,6 +45,7 @@
 #include "bar100.hpp"
 #include "fs_log.hpp"
 #include "nrf_i2c.hpp"
+#include "nrf_usb.hpp"
 #include "gpio_led.hpp"
 #include "heap.h"
 #include "stwlc68.hpp"
@@ -73,7 +74,7 @@ BaseDebugMode g_debug_mode = BaseDebugMode::UART;
 ArticDevice *artic_device;
 Buzzer *buzzer_ctl;
 
-// static bool m_is_debug_init = false;
+static bool m_is_debug_init = false;
 
 // FSM initial state -> BootState
 FSM_INITIAL_STATE(GenTracker, BootState)
@@ -214,15 +215,16 @@ void etl_error_handler(const etl::exception& e)
 
 // Redirect std::cout and printf output to debug UART
 // We have to define this as extern "C" as we are overriding a weak C function
-// extern "C" int _write(int file, char *ptr, int len)
-// {
+extern "C" int _write(int file, char *ptr, int len)
+{
 // 	if (g_debug_mode == BaseDebugMode::UART && m_is_debug_init)
 // 		nrfx_uarte_tx(&BSP::UART_Inits[BSP::UART_1].uarte, reinterpret_cast<const uint8_t *>(ptr), len);
 // 	else if (ble_service && !__get_IPSR() && g_debug_mode == BaseDebugMode::BLE_NUS) {
 // 		ble_service->write(std::string(ptr, len));
 // 	}
-// 	return len;
-// }
+	NrfUSB::write(ptr, len);
+	return len;
+}
 
 
 int main()
@@ -240,9 +242,14 @@ int main()
 	nrf_gpio_cfg_default(BSP::GPIO_Inits[GPIO_AG_PWR_PIN].pin_number);
 #endif
 
-// 	nrfx_uarte_init(&BSP::UART_Inits[BSP::UART_1].uarte, &BSP::UART_Inits[BSP::UART_1].config, nullptr);
-// 	m_is_debug_init = true;
-//     setvbuf(stdout, NULL, _IONBF, 0);
+	nrfx_uarte_init(&BSP::UART_Inits[BSP::UART_1].uarte, &BSP::UART_Inits[BSP::UART_1].config, nullptr);
+	m_is_debug_init = true;
+
+	// Init USB for debug log
+	// WARNING / TODO : This is not low power optimized.
+	NrfUSB::init();
+
+    setvbuf(stdout, NULL, _IONBF, 0);
 
 	rtc = &NrfRTC::get_instance();
 	NrfRTC::get_instance().init();
@@ -646,6 +653,7 @@ int main()
 	while (true)
 	{
 		try {
+			NrfUSB::process();
 			system_scheduler->run();
 			PMU::run();
 		} catch (ErrorCode e) {

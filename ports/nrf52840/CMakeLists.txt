@@ -119,6 +119,7 @@ target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
     ${SDK_ROOT}/components/libraries/strerror
     ${SDK_ROOT}/components/libraries/mutex
     ${SDK_ROOT}/external/fprintf
+    ${SDK_ROOT}/external/utf_converter
     ${SDK_ROOT}/components/libraries/memobj
     ${SDK_ROOT}/components/libraries/balloc
     ${SDK_ROOT}/components/libraries/ringbuf
@@ -140,6 +141,10 @@ target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
     ${SDK_ROOT}/modules/nrfx/mdk
     ${SDK_ROOT}/modules/nrfx/drivers/include
     ${SDK_ROOT}/integration/nrfx
+    ${SDK_ROOT}/integration/nrfx/legacy
+    ${SDK_ROOT}/components/libraries/usbd
+    ${SDK_ROOT}/components/libraries/usbd/class/cdc
+    ${SDK_ROOT}/components/libraries/usbd/class/cdc/acm
     ${PROJ_DIR}
     ${PROJ_DIR}/drivers/nrf_log_redirect
     ${BOARD_DIR}
@@ -222,6 +227,13 @@ target_sources(${TARGET_NAME} PRIVATE
 	${SDK_ROOT}/components/libraries/queue/nrf_queue.c
     ${SDK_ROOT}/components/libraries/libuarte/nrf_libuarte_async.c
     ${SDK_ROOT}/components/libraries/libuarte/nrf_libuarte_drv.c
+    ${SDK_ROOT}/components/libraries/usbd/app_usbd.c
+    ${SDK_ROOT}/components/libraries/usbd/app_usbd_core.c
+    ${SDK_ROOT}/components/libraries/usbd/app_usbd_string_desc.c
+    ${SDK_ROOT}/components/libraries/usbd/app_usbd_serial_num.c
+    ${SDK_ROOT}/components/libraries/usbd/class/cdc/acm/app_usbd_cdc_acm.c
+    ${SDK_ROOT}/integration/nrfx/legacy/nrf_drv_clock.c
+    ${SDK_ROOT}/integration/nrfx/legacy/nrf_drv_power.c
     ${SDK_ROOT}/modules/nrfx/mdk/system_nrf52840.c
     ${SDK_ROOT}/modules/nrfx/drivers/src/nrfx_uarte.c
     ${SDK_ROOT}/modules/nrfx/drivers/src/nrfx_qspi.c
@@ -233,6 +245,10 @@ target_sources(${TARGET_NAME} PRIVATE
 	${SDK_ROOT}/modules/nrfx/drivers/src/nrfx_timer.c
     ${SDK_ROOT}/modules/nrfx/drivers/src/nrfx_gpiote.c
     ${SDK_ROOT}/modules/nrfx/drivers/src/nrfx_saadc.c
+    ${SDK_ROOT}/modules/nrfx/drivers/src/nrfx_usbd.c
+    ${SDK_ROOT}/modules/nrfx/drivers/src/nrfx_clock.c
+    ${SDK_ROOT}/modules/nrfx/drivers/src/nrfx_power.c
+    ${SDK_ROOT}/modules/nrfx/soc/nrfx_atomic.c
     ${SDK_ROOT}/modules/nrfx/hal/nrf_nvmc.c
     ${CORE_DIR}/hardware/sensor.cpp
     ${CORE_DIR}/hardware/reed.cpp
@@ -276,6 +292,7 @@ target_sources(${TARGET_NAME} PRIVATE
     ${PROJ_DIR}/core/hardware/nrf_irq.cpp
     ${PROJ_DIR}/core/hardware/nrf_battery_mon.cpp
     ${PROJ_DIR}/core/hardware/nrf_i2c.cpp
+    ${PROJ_DIR}/core/hardware/nrf_usb.cpp
     ${PROJ_DIR}/core/interface/ble_interface.cpp
     ${PROJ_DIR}/core/interface/ble_stm_ota.c
     ${PROJ_DIR}/core/memmang/heap_4.c

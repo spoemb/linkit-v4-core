@@ -49,6 +49,9 @@
 
 #include <app_util.h>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
+
 // The structure with default configuration data.
 static const nrfx_power_config_t m_drv_power_config_default =
 {
@@ -412,6 +415,8 @@ static void nrf_drv_power_sdh_state_evt_handler(nrf_sdh_state_evt_t state, void 
             break;
     }
 }
+
+#pragma GCC diagnostic pop
 
 #endif // SOFTDEVICE_PRESENT
 #endif //POWER_ENABLED

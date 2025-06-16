@@ -43,6 +43,9 @@
 #include "app_usbd_cdc_acm.h"
 #include <inttypes.h>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
+
 /**
  * @defgroup app_usbd_cdc_acm_internal CDC ACM internals
  * @{
@@ -1196,5 +1199,7 @@ ret_code_t app_usbd_cdc_acm_line_state_get(app_usbd_cdc_acm_t const *    p_cdc_a
 
     return ret;
 }
+
+#pragma GCC diagnostic pop
 
 #endif //NRF_MODULE_ENABLED(APP_USBD_CDC_ACM)

@@ -199,13 +199,13 @@ typedef struct {
                                      cdc_protocol,                                               \
                                      ep_list)                                                    \
         .inst = {                                                                                \
-                .user_ev_handler = user_event_handler,                                           \
                 .comm_interface  = comm_ifc,                                                     \
                 .comm_epin       = comm_ifc,                                                     \
                 .data_interface  = data_ifc,                                                     \
-                .data_epin       = data_ein,                                                     \
                 .data_epout      = data_eout,                                                    \
+                .data_epin       = data_ein,                                                     \
                 .protocol        = cdc_protocol,                                                 \
+                .user_ev_handler = user_event_handler,                                           \
                 .p_ep_interval   = ep_list                                                       \
         }
 

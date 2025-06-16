@@ -50,6 +50,10 @@
 #include "app_usbd.h"
 #include "app_usbd_class_base.h"
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
+#pragma GCC diagnostic ignored "-Wswitch-default"
+
 #define NRF_LOG_MODULE_NAME app_usbd_core
 
 #if APP_USBD_CONFIG_LOG_ENABLED
@@ -1244,5 +1248,7 @@ bool app_usbd_core_feature_state_get(app_usbd_setup_stdfeature_t feature)
 {
     return IS_SET(m_device_features_state, feature) ? true : false;
 }
+
+#pragma GCC diagnostic pop
 
 #endif //NRF_MODULE_ENABLED(APP_USBD)

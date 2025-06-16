@@ -49,6 +49,9 @@
 #include "nrf_assert.h"
 #include "app_util.h"
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnull-dereference"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -1099,5 +1102,7 @@ do                                                                              
 #ifdef __cplusplus
 }
 #endif
+
+#pragma GCC diagnostic pop
 
 #endif /* APP_USBD_CLASS_BASE_H__ */

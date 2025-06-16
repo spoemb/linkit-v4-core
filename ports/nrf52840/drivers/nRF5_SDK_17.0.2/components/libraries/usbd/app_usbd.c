@@ -51,6 +51,10 @@
 #include "nrf_atomic.h"
 #endif
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
+#pragma GCC diagnostic ignored "-Wnull-dereference"
+
 #define NRF_LOG_MODULE_NAME app_usbd
 
 #if APP_USBD_CONFIG_LOG_ENABLED
@@ -1915,5 +1919,7 @@ void app_usbd_all_iface_deselect(void)
         p_inst = app_usbd_class_next_get(p_inst);
     }
 }
+
+#pragma GCC diagnostic pop
 
 #endif //NRF_MODULE_ENABLED(APP_USBD)

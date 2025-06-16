@@ -50,6 +50,9 @@
 
 #include <hal/nrf_wdt.h>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
+
 #define NRF_LOG_MODULE_NAME clock
 #if CLOCK_CONFIG_LOG_ENABLED
     #define NRF_LOG_LEVEL       CLOCK_CONFIG_LOG_LEVEL
@@ -614,5 +617,7 @@ NRF_SDH_STATE_OBSERVER(m_sd_state_observer, CLOCK_CONFIG_STATE_OBSERVER_PRIO) =
 #undef NRF_CLOCK_LFCLK_RC
 #undef NRF_CLOCK_LFCLK_Xtal
 #undef NRF_CLOCK_LFCLK_Synth
+
+#pragma GCC diagnostic pop
 
 #endif // NRF_MODULE_ENABLED(NRF_CLOCK)

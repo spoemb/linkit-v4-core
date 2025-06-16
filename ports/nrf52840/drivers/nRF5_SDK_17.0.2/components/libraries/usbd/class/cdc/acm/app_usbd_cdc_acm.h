@@ -55,7 +55,6 @@ extern "C" {
 
 #include "app_usbd_cdc_desc.h"
 #include "app_usbd_cdc_types.h"
-#include "app_usbd_cdc_acm_internal.h"
 
 /**
  * @defgroup app_usbd_cdc_acm USB CDC ACM class
@@ -71,23 +70,6 @@ extern "C" {
  *
  * @{
  */
-
-#ifdef DOXYGEN
-/**
- * @brief CDC ACM class instance type.
- *
- * @ref APP_USBD_CLASS_TYPEDEF
- */
-typedef struct { } app_usbd_cdc_acm_t;
-#else
-/*lint -save -e10 -e26 -e123 -e505 */
-APP_USBD_CLASS_TYPEDEF(app_usbd_cdc_acm,            \
-            APP_USBD_CDC_ACM_CONFIG(0, 0, 0, 0, 0), \
-            APP_USBD_CDC_ACM_INSTANCE_SPECIFIC_DEC, \
-            APP_USBD_CDC_ACM_DATA_SPECIFIC_DEC      \
-);
-/*lint -restore*/
-#endif
 
 
 /*lint -save -e407 */
@@ -111,6 +93,25 @@ typedef enum app_usbd_cdc_acm_user_event_e {
 } app_usbd_cdc_acm_user_event_t;
 
 /*lint -restore*/
+
+#include "app_usbd_cdc_acm_internal.h"
+#ifdef DOXYGEN
+/**
+ * @brief CDC ACM class instance type.
+ *
+ * @ref APP_USBD_CLASS_TYPEDEF
+ */
+typedef struct { } app_usbd_cdc_acm_t;
+#else
+/*lint -save -e10 -e26 -e123 -e505 */
+APP_USBD_CLASS_TYPEDEF(app_usbd_cdc_acm,            \
+            APP_USBD_CDC_ACM_CONFIG(0, 0, 0, 0, 0), \
+            APP_USBD_CDC_ACM_INSTANCE_SPECIFIC_DEC, \
+            APP_USBD_CDC_ACM_DATA_SPECIFIC_DEC      \
+);
+/*lint -restore*/
+#endif
+
 
 /**
  * @brief Default CDC ACM descriptors.
