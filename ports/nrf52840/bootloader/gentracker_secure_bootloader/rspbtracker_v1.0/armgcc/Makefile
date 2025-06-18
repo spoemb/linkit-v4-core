@@ -192,6 +192,7 @@ CFLAGS += -fno-builtin -fshort-enums
 CXXFLAGS += $(OPT)
 # Assembler flags common to all targets
 ASMFLAGS += -g3
+ASMFLAGS += -DBOARD_RSPBTRACKER_V1
 ASMFLAGS += -mcpu=cortex-m4
 ASMFLAGS += -mthumb -mabi=aapcs
 ASMFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16

@@ -125,7 +125,7 @@ public:
 	static inline const unsigned int LONG_PACKET_BITS   		 = 248;
 	static inline const unsigned int LONG_PACKET_PAYLOAD_BITS    = 192;
 	static inline const unsigned int LONG_PACKET_BYTES			 = 24;
-#elif
+#else
 	static inline const unsigned int LONG_PACKET_BITS   		 = 248;
 	static inline const unsigned int LONG_PACKET_PAYLOAD_BITS    = 216;
 	static inline const unsigned int LONG_PACKET_BYTES			 = 31;
@@ -179,7 +179,8 @@ public:
 			ServiceSensorData *als_sensor,
 			ServiceSensorData *ph_sensor,
 			ServiceSensorData *pressure_sensor,
-			ServiceSensorData *sea_temp_sensor,
+			ServiceSensorData *temp_sensor,
+			ServiceSensorData *axl_sensor,
 			bool is_out_of_zone, bool is_low_battery,
 			unsigned int& size_bits
 			);
@@ -240,7 +241,9 @@ public:
 		m_als_depth_pile.clear();
 		m_ph_depth_pile.clear();
 		m_pressure_depth_pile.clear();
-		m_sea_temp_depth_pile.clear();
+		m_temp_depth_pile.clear();
+		m_axl_depth_pile.clear();
+		//m_thermistor_depth_pile.clear();
 	}
 	bool eligible() {
 		return m_gps_depth_pile.eligible();
@@ -270,8 +273,19 @@ public:
 				return m_ph_depth_pile.retrieve(depth_pile, 1).at(0);
 			} else if (service == ServiceIdentifier::PRESSURE_SENSOR) {
 				return m_pressure_depth_pile.retrieve(depth_pile, 1).at(0);
+			//not enough RAM to have SEA_TEMP_SENSOR + THERMISTOR
+			#ifdef BOARD_RSPB
+			} else if (service == ServiceIdentifier::THERMISTOR_SENSOR) {
+				return m_temp_depth_pile.retrieve(depth_pile, 1).at(0);
+			#else
 			} else if (service == ServiceIdentifier::SEA_TEMP_SENSOR) {
-				return m_sea_temp_depth_pile.retrieve(depth_pile, 1).at(0);
+				return m_temp_depth_pile.retrieve(depth_pile, 1).at(0);
+			#endif
+
+			} else if (service == ServiceIdentifier::AXL_SENSOR) {
+				return m_axl_depth_pile.retrieve(depth_pile, 1).at(0);
+			// } else if (service == ServiceIdentifier::THERMISTOR_SENSOR) {
+			// 	return m_thermistor_depth_pile.retrieve(depth_pile, 1).at(0);
 			} else
 				throw ErrorCode::RESOURCE_NOT_AVAILABLE;
 		} catch (const std::out_of_range& e) {
@@ -291,8 +305,12 @@ private:
 	ServiceSensorData m_pressure_cache;
 	ArgosDepthPile<ServiceSensorData> m_ph_depth_pile;
 	ServiceSensorData m_ph_cache;
-	ArgosDepthPile<ServiceSensorData> m_sea_temp_depth_pile;
-	ServiceSensorData m_sea_temp_cache;
+	ArgosDepthPile<ServiceSensorData> m_temp_depth_pile;
+	ServiceSensorData m_temp_cache;
+	ArgosDepthPile<ServiceSensorData> m_axl_depth_pile;
+	ServiceSensorData m_axl_cache;
+	// ArgosDepthPile<ServiceSensorData> m_thermistor_depth_pile;
+	// ServiceSensorData m_thermistor_temp_cache;
 
 	void update_depth_pile();
 };

@@ -53,26 +53,52 @@ GaugeBatteryMonitor::GaugeBatteryMonitor(uint16_t critical_voltage,
 
     int status = check_i2c_device();
     DEBUG_TRACE("I2C device checked");
-    if (status >= 0) 
-    {
-        //Config init
-        GasGauge_DefaultInit(&STC3117_GG_struct);
-
-        //Call STC311x driver START initialization function
-        status = GasGauge_Start(&STC3117_GG_struct);
-
-        if(status!=0 && status!=-2)
-        {
-            DEBUG_ERROR("Error in GasGauge_Start\n");
-            status = -1; //return on error
-            m_is_init = false;
-        } else 
-        {
-            m_is_init = true;
-        }
-    }
+	status = this->init();
+	if (status != STC3117_OK) {
+		DEBUG_ERROR("STC3117: Device check failed with error %d", status);
+		m_is_init = false;
+		return;
+	}
 }
 
+int GaugeBatteryMonitor::init() {
+	DEBUG_TRACE("GaugeBatteryMonitor init called");
+	if (m_is_init) {
+		DEBUG_ERROR("GaugeBatteryMonitor already initialized");
+		return STC3117_OK;
+	}
+	 //Config init
+	GasGauge_DefaultInit(&STC3117_GG_struct);
+
+	//Call STC311x driver START initialization function
+	int status = GasGauge_Start(&STC3117_GG_struct);
+
+	if(status!=0 && status!=-2)
+	{
+		DEBUG_ERROR("Error in GasGauge_Start\n");
+		status = -1; //return on error
+		m_is_init = false;
+	} else 
+	{
+		m_is_init = true;
+	}
+	
+	return STC3117_OK;
+}
+
+
+int GaugeBatteryMonitor::shutdown() {
+	DEBUG_TRACE("GaugeBatteryMonitor shutdown called");
+	// Call the C driver shutdown function
+	int status = GasGauge_Stop();
+	if (status != 0) {
+		DEBUG_ERROR("STC3117: Shutdown failed with error %d", status);
+		return status;
+	}
+	m_is_init = false;
+	DEBUG_TRACE("GaugeBatteryMonitor shutdown completed successfully");
+	return STC3117_OK;
+}
 // Forwarding C++ I2C functions to the C driver
 int GaugeBatteryMonitor::i2c_write(int I2cSlaveAddr, int RegAddress, unsigned char* TxBuffer, int NumberOfBytes) 
 {
@@ -155,6 +181,10 @@ int GaugeBatteryMonitor::check_i2c_device() {
 
 void GaugeBatteryMonitor::internal_update() {
 	// Sample ADC and convert values
+	if (m_is_init == false) {
+		DEBUG_ERROR("GaugeBatteryMonitor not initialized");
+		this->init();
+	}
     //Call task function	
     int Voltage;
 	int Soc;
@@ -177,6 +207,7 @@ void GaugeBatteryMonitor::internal_update() {
             STC3117_GG_struct.Current, 
             STC3117_GG_struct.SOC, 
             STC3117_GG_struct.ChargeValue);
+		this->shutdown(); 
     }
     else if(status == 0) //only previous SOC, OCV and voltage are valid
     {

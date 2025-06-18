@@ -349,11 +349,11 @@ int main()
 	}
 #endif
 #if (defined(ARGOS_SMD) && (ARGOS_SMD == 1)) 
-	//SmdSat::shutdown();
+	SmdSat::shutdown();
 	{
-		try {
-			EZO_RTD_Sensor rtd; // Puts the device into standby mode
-		} catch (...) {}
+		// try {
+		// 	EZO_RTD_Sensor rtd; // Puts the device into standby mode
+		// } catch (...) {}
 	}
 #endif
 	NrfI2C::uninit();
@@ -499,7 +499,7 @@ int main()
     		(uint16_t)(critical_batt_voltage*1000), low_batt_level);
     battery_monitor = &nrf_battery_monitor;
 	#endif 
-	
+
 	DEBUG_TRACE("LFS System Log...");
 	SysLogFormatter sys_log_formatter;
 	FsLog fs_system_log(&lfs_file_system, "system.log", 1024*1024);
@@ -743,6 +743,19 @@ int main()
 
 	DEBUG_TRACE("Entering main SM...");
 
+	unsigned int shtdwown_timer = configuration_store->read_param<unsigned int>(ParamID::SHUTDOWN_TIMER);
+	if (shtdwown_timer > 0) {
+		DEBUG_TRACE("Shutdown timer set to %u s", shtdwown_timer);
+		system_scheduler->post_task_prio([&]() {
+			DEBUG_TRACE("Shutdown timer expired, powering down...");
+			PMU::powerdown();
+		}, "ShutdownTimer", Scheduler::HIGHEST_PRIORITY, shtdwown_timer * 1000);
+	} else {
+		DEBUG_TRACE("Shutdown timer not set");
+	}
+
+
+	//GPIOPins::clear(SENSORS_PWR_PIN);
 	// This will initialise the FSM
 	GenTracker::start();
 

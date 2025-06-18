@@ -9,6 +9,9 @@
 #include "nrf_i2c.hpp"
 #include "bsp.hpp"
 // #include "nrfx_twim.h" //I think this is unused
+
+#include "gpio.hpp"
+#include "nrf_gpio.h"
 #include "pmu.hpp"
 #include "error.hpp"
 #include "nrf_irq.hpp"
@@ -182,7 +185,7 @@ uint8_t BMA400LL::init(std::function<void()> setup_mode = nullptr)
     m_bma400_dev.read_write_len = BMA400_READ_WRITE_LENGTH;
     // m_bma400_dev.chip_id       read from bma in bma400_init()
     // m_bma400_dev.dummy_byte    only used for SPI
-    // m_bma400_dev.resolution  = 12; // not used anywhere
+    //m_bma400_dev.resolution  = 12; // not used anywhere
 
     rslt = bma400_init(&m_bma400_dev);
     bma400_check_rslt(GET_API_NAME(bma400_init), rslt);
@@ -308,6 +311,7 @@ void BMA400LL::read_xyz(double& x, double& y, double& z)
     int8_t rslt = 0;
     uint8_t power_mode = 0;
 
+    struct bma400_int_enable int_en;
     // Turn accelerometer on so AXL is updated
     rslt = bma400_get_power_mode(&power_mode, &m_bma400_dev);
     bma400_check_rslt(GET_API_NAME(bma400_get_power_mode), rslt);
@@ -316,6 +320,23 @@ void BMA400LL::read_xyz(double& x, double& y, double& z)
 
     rslt = bma400_get_sensor_conf(conf, 2, &m_bma400_dev);
 
+    conf[0].param.accel.odr = BMA400_ODR_100HZ;
+    conf[0].param.accel.range = BMA400_RANGE_2G;
+    conf[0].param.accel.data_src = BMA400_DATA_SRC_ACCEL_FILT_1;
+    /* Set the desired configurations to the sensor */
+    rslt = bma400_set_sensor_conf(&conf[0], 1, &m_bma400_dev);
+    bma400_check_rslt("bma400_set_sensor_conf", rslt);
+    rslt = bma400_set_power_mode(BMA400_MODE_NORMAL, &m_bma400_dev);
+    bma400_check_rslt("bma400_set_power_mode", rslt);
+
+    int_en.type = BMA400_DRDY_INT_EN;
+    int_en.conf = BMA400_ENABLE;
+
+    rslt = bma400_enable_interrupt(&int_en, 1, &m_bma400_dev);
+    bma400_check_rslt("bma400_enable_interrupt", rslt);
+
+
+    rslt = bma400_get_sensor_conf(conf, 2, &m_bma400_dev);
     // Wait 50ms for reading (4 averaged samples, @ 100 Hz)
     PMU::delay_ms(50);
 
@@ -332,10 +353,13 @@ void BMA400LL::read_xyz(double& x, double& y, double& z)
     bma400_check_rslt("bma400_get_regs", rslt);
 
     /* Convert to double precision G-force result on each axis */
-    /* x = convert_g_force(m_g_force, data.x); */
-    /* y = convert_g_force(m_g_force, data.y); */
-    /* z = convert_g_force(m_g_force, data.z); */
+    //  x = convert_g_force(m_g_force, data.x); 
+    //  y = convert_g_force(m_g_force, data.y); 
+    //  z = convert_g_force(m_g_force, data.z); 
 
+    // x = (lsb_to_ms2(data.x, m_g_force, 12) );
+    // y = (lsb_to_ms2(data.y, m_g_force, 12) );
+    // z = (lsb_to_ms2(data.z, m_g_force, 12) );
     x = (lsb_to_ms2(data.x, m_g_force, 12) - m_x);
     y = (lsb_to_ms2(data.y, m_g_force, 12) - m_y);
     z = (lsb_to_ms2(data.z, m_g_force, 12) - m_z);
@@ -965,6 +989,7 @@ void BMA400LL::calibrate_offset(const uint8_t g_range, double& offset_x, double&
 
 void BMA400::calibration_read(double &value, unsigned int offset)
 {
+    GPIOPins::set(SENSORS_PWR_PIN);
     double offset_x = 0.0;
     double offset_y = 0.0;
     double offset_z = 0.0;
@@ -993,6 +1018,7 @@ void BMA400::calibration_read(double &value, unsigned int offset)
         DEBUG_ERROR("AXL::calibrate: Invalid offset (%u)", offset);
         value = 0.0;
     }
+    GPIOPins::clear(SENSORS_PWR_PIN);
 }
 
 double BMA400::read(unsigned int offset)

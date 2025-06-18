@@ -1535,6 +1535,9 @@ TEST(ArgosTxService, DepthPileManagerTestSensorValueConversion)
 	converted = man.retrieve_sensor_single(1, ServiceIdentifier::SEA_TEMP_SENSOR);
 	CHECK_FALSE(nullptr == converted);
 	CHECK_EQUAL(113657, (unsigned int)converted->port[0]);
+	converted = man.retrieve_sensor_single(1, ServiceIdentifier::AXL_SENSOR);
+	CHECK_FALSE(nullptr == converted);
+	CHECK_EQUAL(113657, (unsigned int)converted->port[3]);
 }
 
 TEST(ArgosTxService, BuildSensorPacketAll) {

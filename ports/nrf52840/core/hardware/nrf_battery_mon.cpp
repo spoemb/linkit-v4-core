@@ -81,6 +81,11 @@ float NrfBatteryMonitor::sample_adc()
     return ((float) raw) / ((ADC_GAIN / ADC_REFERENCE) * ADC_MAX_VALUE) * 1000.0f;
 }
 
+void NrfBatteryMonitor::shutdown() {
+	// No shutdown needed for the battery monitor
+	DEBUG_TRACE("NrfBatteryMonitor::shutdown: No shutdown needed");
+}
+
 void NrfBatteryMonitor::internal_update() {
 	// Sample ADC and convert values
 	uint16_t mv = convert_voltage(sample_adc());

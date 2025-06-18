@@ -24,6 +24,7 @@ extern Timer *system_timer;
 
 static constexpr const char *const spistatus_string[] =
 {
+    "SPI_UNKNOWN",    
     "SPI_INIT",    
     "SPI_IDLE",   
     "SPI_PROCESS_CMD", 
@@ -248,7 +249,7 @@ void SmdSat::set_address(uint8_array_t *address){
 	return;
 }
 
-	void SmdSat::read_seckey(uint8_array_t *seckey){
+void SmdSat::read_seckey(uint8_array_t *seckey){
 	DEBUG_TRACE("SmdSat::%s",__func__);
 	if(seckey->size != SMDSAT_CMD_READ_SECKEY_LEN){
 		DEBUG_ERROR("SmdSat::%s:Size allocated to store address %u != from %u",
@@ -274,7 +275,6 @@ void SmdSat::set_address(uint8_array_t *address){
 	DEBUG_INFO("%s", buffer);
 	return;
 }
-
 
 void SmdSat::set_seckey(uint8_array_t *seckey){
 	DEBUG_TRACE("%s:: ",__func__);
@@ -303,6 +303,7 @@ void SmdSat::set_seckey(uint8_array_t *seckey){
 	DEBUG_INFO("%s", buffer);
 	return;
 }
+
 void SmdSat::read_id(uint32_t *id){
 	if (id == nullptr) 
 	{
@@ -320,6 +321,7 @@ void SmdSat::read_id(uint32_t *id){
 	DEBUG_INFO("SmdSat::%s:SMD ID: 0x%u", __func__, *id);
 	return;
 }
+
 void SmdSat::set_id(uint32_t id){
 	DEBUG_TRACE("SmdSat::%s: id: %u",__func__, id);
 	send_command(SMDSAT_CMD_WRITE_ID_REQ);
@@ -348,6 +350,7 @@ void SmdSat::read_tcxo_warmup(uint8_t *time_ms){
 	DEBUG_INFO("SmdSat::%s:SMD TCXO wamrup time: %u", __func__, *time_ms);
 	return;
 }
+
 void SmdSat::write_tcxo_warmup(uint32_t time_ms){
 	DEBUG_TRACE("SmdSat::%s: tcxo warmup time: %u",__func__, time_ms);
 	send_command(SMDSAT_CMD_WRITE_TCXO_REQ);
@@ -359,6 +362,7 @@ void SmdSat::write_tcxo_warmup(uint32_t time_ms){
 	
 	return;
 }
+
 void SmdSat::read_serial(uint8_array_t *serial){
 	DEBUG_TRACE("%s",__func__);
 	if(serial->size != SMDSAT_CMD_READ_SERIAL_LEN){
@@ -374,6 +378,7 @@ void SmdSat::read_serial(uint8_array_t *serial){
 	DEBUG_INFO("SmdSat::%s:SMD SN: %.*s", __func__, serial->size, serial->p_data);
 	return;
 }
+
 void SmdSat::set_tcxo_warmup(uint32_t time_s)
 {
 	DEBUG_TRACE("SmdSat::%s: Not managed right now",__func__);
@@ -384,6 +389,7 @@ void SmdSat::set_tcxo_warmup(uint32_t time_s)
 void SmdSat::set_tcxo_control(bool state) {
 	DEBUG_TRACE("SmdSat::%s: Managed by SMD module",__func__);
 }
+
 void SmdSat::print_firmware_version() {
 	send_command(SMDSAT_CMD_READ_FIRMWARE);
 	uint8_t tx[SMDSAT_CMD_READ_FIRMWARE_LEN] = {0};
@@ -408,6 +414,7 @@ bool SmdSat::smd_ping()
 		return false; 
 	}
 }
+
 bool SmdSat::is_tx_finished() {
 	DEBUG_TRACE("SmdSat::%s",__func__);
     uint8_t kmac_status = 0;
@@ -536,145 +543,145 @@ void SmdSat::state_machine(bool use_scheduler) {
 		break;
 	case SmdSat::stopped:
 		SMD_STATE_CALL(stopped);
-	default:
-		break;
-	}
-
-	if (use_scheduler && !SMD_STATE_EQUAL(stopped)) {
-		// Invoke ourselves again if we are not stopped
-		DEBUG_TRACE("SmdSat::%s: reschedule in %u ms", __func__, m_next_delay);
-		system_scheduler->cancel_task(m_task);
-		m_task = system_scheduler->post_task_prio([this]() {
-			state_machine();
-		}, "SmdReceiverStateMachine", Scheduler::DEFAULT_PRIORITY, m_next_delay);
-	}
-	return;
-}
-
-
-void SmdSat::state_starting_enter() {
-	return;
-}
-
-void SmdSat::state_starting_exit() {
-	return;
-}
-void SmdSat::state_starting() 
-{
-    m_is_first_tx = true;
-	is_kmac_profil_loaded = false;
-	m_nrf_spim = new NrfSPIM(SPI_SATELLITE);
-	m_state_counter = 3;
-	m_next_delay = 0;
-	SMD_STATE_CHANGE(starting, powering_on);
-	return;
-}
-
-void SmdSat::state_error_enter() {
-	// Dump device status
-	uint8_t status = 0;
-	get_kmac_status(&status);
-	notify(ArticEventDeviceError({}));
-
-	SMD_STATE_CHANGE(error, stopped);
-	return;
-}
-
-void SmdSat::state_error_exit() {
-	return;
-}
-
-void SmdSat::state_error() {
-	SMD_STATE_CHANGE(error, stopped);
-	return;
-}
-
-
-void SmdSat::state_stopped_enter() {
-	// Cleanup the SPIM instance
-	delete m_nrf_spim;
-    m_nrf_spim = nullptr; // Invalidate this pointer so if we call this function again it doesn't call delete on an invalid pointer
-
-	
-	// FIXME: should this be moved into the NrfSPIM driver?
-	nrf_gpio_cfg_output(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
-	nrf_gpio_pin_clear(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
-    nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.mosi_pin, NRF_GPIO_PIN_PULLDOWN);
-    nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.miso_pin, NRF_GPIO_PIN_PULLDOWN);
-    nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.sck_pin, NRF_GPIO_PIN_PULLDOWN);
-
-    // Power down the device
-	this->shutdown();
-	is_kmac_profil_loaded = false; 
-
-	// Clear down any leftover flags
-	//m_rx_pending = false;
-	m_packet_buffer.clear();
-	m_ack_buffer.clear();
-
-	notify(ArticEventPowerOff({}));
-	return;
-}
-
-void SmdSat::state_stopped_exit() {
-	return;
-}
-
-void SmdSat::state_stopped() {
-	return;
-}
-
-void SmdSat::state_powering_on_enter() {
-	return;
-}
-
-void SmdSat::state_powering_on_exit() {
-	m_next_delay = SMDSAT_DELAY_POWER_ON_MS;
-	return;
-}
-
-void SmdSat::state_powering_on() {
-    GPIOPins::set(SAT_PWR_EN);
-    GPIOPins::set(SAT_RESET);
-    SMD_STATE_CHANGE(powering_on, idle_pending);
-	return;
-}
-
-void SmdSat::state_load_kmac_enter() {
-	return;
-}
-
-void SmdSat::state_load_kmac_exit() {
-	return;
-}
-
-void SmdSat::state_load_kmac() {
-	uint8_t kmac_status = 0;
-	get_kmac_status(&kmac_status);
-	if (kmac_status == MAC_OK) {
-		if (!is_kmac_profil_loaded) {
-			load_kmac_profil(1);
-			m_next_delay = SMDSAT_DELAY_LOAD_KMAC_MS;
-			is_kmac_profil_loaded = true;
-		} else {
-			m_next_delay = SMDSAT_DELAY_CMD_MS;
-			DEBUG_TRACE("SmdSat::%s: KMAC profil already loaded", __func__);
+		default:
+			break;
 		}
-		SMD_STATE_CHANGE(load_kmac, idle_pending);
-	} else {
-		// Check retries
-		if (--m_state_counter == 0) {
-			// Failed to go IDLE
-			DEBUG_ERROR("SmdSat::%s: failed to enter load kmac state",__func__);
-			SMD_STATE_CHANGE(load_kmac, error);
-		} else {
-			m_next_delay = SMDSAT_DELAY_TICK_INTERRUPT_MS;
+
+		if (use_scheduler && !SMD_STATE_EQUAL(stopped)) {
+			// Invoke ourselves again if we are not stopped
+			//DEBUG_TRACE("SmdSat::%s: reschedule in %u ms", __func__, m_next_delay);
+			system_scheduler->cancel_task(m_task);
+			m_task = system_scheduler->post_task_prio([this]() {
+				state_machine();
+			}, "SmdReceiverStateMachine", Scheduler::DEFAULT_PRIORITY, m_next_delay);
 		}
+		return;
 	}
-	return;
-}
-//TODO check if we use LPM or just turn ON/OFF device WAKEUP PIN USED in this case no CMD
-void SmdSat::state_idle_pending_enter() {
+
+
+	void SmdSat::state_starting_enter() {
+		return;
+	}
+
+	void SmdSat::state_starting_exit() {
+		return;
+	}
+	void SmdSat::state_starting() 
+	{
+		m_is_first_tx = true;
+		is_kmac_profil_loaded = false;
+		m_nrf_spim = new NrfSPIM(SPI_SATELLITE);
+		m_state_counter = 3;
+		m_next_delay = 0;
+		SMD_STATE_CHANGE(starting, powering_on);
+		return;
+	}
+
+	void SmdSat::state_error_enter() {
+		// Dump device status
+		uint8_t status = 0;
+		get_kmac_status(&status);
+		notify(ArticEventDeviceError({}));
+
+		SMD_STATE_CHANGE(error, stopped);
+		return;
+	}
+
+	void SmdSat::state_error_exit() {
+		return;
+	}
+
+	void SmdSat::state_error() {
+		SMD_STATE_CHANGE(error, stopped);
+		return;
+	}
+
+
+	void SmdSat::state_stopped_enter() {
+		// Cleanup the SPIM instance
+		delete m_nrf_spim;
+		m_nrf_spim = nullptr; // Invalidate this pointer so if we call this function again it doesn't call delete on an invalid pointer
+
+		
+		// FIXME: should this be moved into the NrfSPIM driver?
+		nrf_gpio_cfg_output(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
+		nrf_gpio_pin_clear(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
+		nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.mosi_pin, NRF_GPIO_PIN_PULLDOWN);
+		nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.miso_pin, NRF_GPIO_PIN_PULLDOWN);
+		nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.sck_pin, NRF_GPIO_PIN_PULLDOWN);
+
+		// Power down the device
+		this->shutdown();
+		is_kmac_profil_loaded = false; 
+
+		// Clear down any leftover flags
+		//m_rx_pending = false;
+		m_packet_buffer.clear();
+		m_ack_buffer.clear();
+
+		notify(ArticEventPowerOff({}));
+		return;
+	}
+
+	void SmdSat::state_stopped_exit() {
+		return;
+	}
+
+	void SmdSat::state_stopped() {
+		return;
+	}
+
+	void SmdSat::state_powering_on_enter() {
+		return;
+	}
+
+	void SmdSat::state_powering_on_exit() {
+		m_next_delay = SMDSAT_DELAY_POWER_ON_MS;
+		return;
+	}
+
+	void SmdSat::state_powering_on() {
+		GPIOPins::set(SAT_PWR_EN);
+		GPIOPins::set(SAT_RESET);
+		SMD_STATE_CHANGE(powering_on, idle_pending);
+		return;
+	}
+
+	void SmdSat::state_load_kmac_enter() {
+		return;
+	}
+
+	void SmdSat::state_load_kmac_exit() {
+		return;
+	}
+
+	void SmdSat::state_load_kmac() {
+		uint8_t kmac_status = 0;
+		get_kmac_status(&kmac_status);
+		if (kmac_status == MAC_OK) {
+			if (!is_kmac_profil_loaded) {
+				load_kmac_profil(1);
+				m_next_delay = SMDSAT_DELAY_LOAD_KMAC_MS;
+				is_kmac_profil_loaded = true;
+			} else {
+				m_next_delay = SMDSAT_DELAY_CMD_MS;
+				DEBUG_TRACE("SmdSat::%s: KMAC profil already loaded", __func__);
+			}
+			SMD_STATE_CHANGE(load_kmac, idle_pending);
+		} else {
+			// Check retries
+			if (--m_state_counter == 0) {
+				// Failed to go IDLE
+				DEBUG_ERROR("SmdSat::%s: failed to enter load kmac state",__func__);
+				SMD_STATE_CHANGE(load_kmac, error);
+			} else {
+				m_next_delay = SMDSAT_DELAY_TICK_INTERRUPT_MS;
+			}
+		}
+		return;
+	}
+	//TODO check if we use LPM or just turn ON/OFF device WAKEUP PIN USED in this case no CMD
+	void SmdSat::state_idle_pending_enter() {
 	m_next_delay = SMDSAT_DELAY_CMD_MS;
 	m_state_counter = 10;
 	return;
@@ -719,7 +726,7 @@ void SmdSat::state_idle_exit() {
 }
 
 void SmdSat::state_idle() {
-	DEBUG_TRACE("SmdSat::%s::enter %u",__func__, m_packet_buffer.length());
+	//DEBUG_TRACE("SmdSat::%s::enter %u",__func__, m_packet_buffer.length());
 	// Check for any new commands
 	if (m_packet_buffer.length()) {
 		m_tx_buffer = m_packet_buffer;
@@ -805,7 +812,7 @@ void SmdSat::state_transmitting() {
         	m_tx_buffer.clear();
         	notify(ArticEventTxComplete({}));
         }
-        SMD_STATE_CHANGE(transmitting, idle);
+        SMD_STATE_CHANGE(transmitting, stopped);
 	} else {
 		if (!m_tx_buffer.size()) {
 			// Abort transmission

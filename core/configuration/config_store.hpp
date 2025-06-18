@@ -99,6 +99,7 @@ protected:
 		/* FW_APP_VERSION */ FW_APP_VERSION_STR,
 		/* LAST_TX */ static_cast<std::time_t>(0U),
 		/* TX_COUNTER */ 0U,
+		/* SHUTDOWN_TIMER */ 0U,
 		/* BATT_SOC */ 0U,
 		/* LAST_FULL_CHARGE_DATE */ static_cast<std::time_t>(0U),
 		/* PROFILE_NAME */ "FACTORY"s,
@@ -426,6 +427,8 @@ public:
 			} else if (param_id == ParamID::BATT_VOLTAGE) {
 				update_battery_level();
 				m_params.at((unsigned)param_id) = (double)m_battery_voltage / 1000.0;
+				b_is_valid = true;
+			} else if (param_id == ParamID::SHUTDOWN_TIMER) {
 				b_is_valid = true;
 			} else if (param_id == ParamID::DEVICE_DECID) {
 				m_params.at((unsigned)param_id) = (unsigned int)PMU::device_identifier();

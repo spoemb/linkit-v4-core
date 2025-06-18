@@ -12,6 +12,7 @@
 #include "debug.hpp"
 #include "crc16.h"
 #include <string>
+#include "battery.hpp"
 
 static uint32_t m_reset_cause = 0;
 
@@ -68,6 +69,18 @@ void PMU::powerdown() {
 	NRF_POWER->GPREGRET = 0x80;
 	sd_nvic_SystemReset();
 #endif
+
+#if defined(EXTERNAL_WAKEUP)
+	DEBUG_TRACE("External wakeup enabled, set MCU_done and wait next timer wakeup");
+	GPIOPins::clear(SENSORS_PWR_PIN); // Clear sensors power pin to save power
+	GPIOPins::clear(GPS_POWER); // Clear sensors power pin to save power
+	GPIOPins::clear(SAT_PWR_EN); // Clear sensors power pin to save power
+	PMU::delay_ms(100); // Allow time for external wakeup to take effect
+	GPIOPins::set(MCU_DONE_PIN);
+	PMU::delay_ms(100); // Allow time for external wakeup to take effect
+	GPIOPins::clear(MCU_DONE_PIN);
+#endif
+
 
 	// This is not a real powerdown but rather an infinite sleep
 	for (;;) PMU::run();

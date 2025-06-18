@@ -4,12 +4,32 @@
 #include "messages.hpp"
 #include "sensor_service.hpp"
 #include "timeutils.hpp"
+#include <cmath>      // for std::sqrt
 
 template <typename E>
 constexpr typename std::underlying_type<E>::type to_underlying(E e) noexcept
 {
     return static_cast<typename std::underlying_type<E>::type>(e);
 };
+
+
+unsigned int g_force = 8; // Default G-force range, can be overridden by configuration
+
+static uint8_t compute_activity(double x_ms2, double y_ms2, double z_ms2) {
+	constexpr double G_PER_MS2 = 9.80665;  // 1g = 9.80665 m/s²
+    // Convert from m/s² to g
+    double x = x_ms2 / G_PER_MS2;
+    double y = y_ms2 / G_PER_MS2;
+    double z = z_ms2 / G_PER_MS2;
+
+    double g_force_read = std::sqrt(x * x + y * y + z * z);
+    if (g_force_read > g_force) g_force_read =  g_force;
+    if (g_force_read < 0.0) g_force_read = 0.0;
+
+    uint8_t activity = static_cast<uint8_t>((g_force_read /  g_force) * 255.0);
+    DEBUG_TRACE("AXL::compute_activity: x=%f, y=%f, z=%f, g_force_read=%f, activity=%u", x, y, z, g_force_read, activity);
+    return activity;
+}
 
 struct __attribute__((packed)) AXLLogEntry {
 	LogHeader header;
@@ -18,6 +38,7 @@ struct __attribute__((packed)) AXLLogEntry {
 			double x;
 			double y;
 			double z;
+			uint8_t activity;
 			double temperature;
 			bool   wakeup_triggered;
 		};
@@ -28,7 +49,7 @@ struct __attribute__((packed)) AXLLogEntry {
 class AXLLogFormatter : public LogFormatter {
 public:
 	const std::string header() override {
-		return "log_datetime,x,y,z,wakeup_triggered,temperature\r\n";
+		return "log_datetime,x,y,z,activity,wakeup_triggered,temperature\r\n";
 	}
 	const std::string log_entry(const LogEntry& e) override {
 		char entry[512], d1[128];
@@ -43,7 +64,7 @@ public:
 		// Convert to CSV
 		snprintf(entry, sizeof(entry), "%s,%f,%f,%f,%u,%f\r\n",
 				d1,
-				log->x, log->y, log->z, log->wakeup_triggered, log->temperature);
+				log->x, log->y, log->z, log->activity, log->wakeup_triggered, log->temperature);
 		return std::string(entry);
 	}
 };
@@ -53,6 +74,7 @@ enum AXLSensorPort : unsigned int {
 	X,
 	Y,
 	Z,
+	ACTIVITY,
 	WAKEUP_TRIGGERED
 };
 
@@ -113,6 +135,7 @@ private:
 		log->x = data.port[(unsigned int)AXLSensorPort::X];
 		log->y = data.port[(unsigned int)AXLSensorPort::Y];
 		log->z = data.port[(unsigned int)AXLSensorPort::Z];
+		log->activity = compute_activity(log->x, log->y, log->z);
 		log->wakeup_triggered = data.port[(unsigned int)AXLSensorPort::WAKEUP_TRIGGERED];
 		log->temperature = data.port[(unsigned int)AXLSensorPort::TEMPERATURE];
 		service_set_log_header_time(log->header, service_current_time());
@@ -123,7 +146,7 @@ private:
 		// Setup 0.1G threshold and 1 sample duration
 		double g_thresh 			= service_read_param<double>(ParamID::AXL_SENSOR_WAKEUP_THRESH);
 		unsigned int duration 		= service_read_param<unsigned int>(ParamID::AXL_SENSOR_WAKEUP_SAMPLES);
-		unsigned int g_force 		= service_read_param<unsigned int>(ParamID::AXL_SENSOR_MEASUREMENT_RANGE);
+		g_force 		= service_read_param<unsigned int>(ParamID::AXL_SENSOR_MEASUREMENT_RANGE);
 		unsigned int power_mode 	= service_read_param<unsigned int>(ParamID::AXL_SENSOR_POWER_MODE);
 		double x_calibration 		= service_read_param<double>(ParamID::AXL_SENSOR_X_CALIBRATION);
 		double y_calibration 		= service_read_param<double>(ParamID::AXL_SENSOR_Y_CALIBRATION);

@@ -4,6 +4,7 @@
 #include "sdk_config.h"
 #include "nrfx_uarte.h"
 #include "nrfx_qspi.h"
+#include "nrf_gpio.h"
 #include "drv_rtc.h"
 #include "nrfx_spim.h"
 #include "nrfx_gpiote.h"
@@ -43,8 +44,8 @@
 #define BAT_ALARM_PIN	     BSP::GPIO::GPIO_ALARM
 #define SENSORS_PWR_PIN	     BSP::GPIO::GPIO_SENSORS_PWR
 #define TEMP_ANALOG_PIN	     BSP::GPIO::GPIO_TEMP_ANALOG
-#define SMD_RX               BSP::GPIO::GPIO_SMD_VRX
-#define SMD_TX               BSP::GPIO::GPIO_SMD_VTX
+// #define SMD_RX               BSP::GPIO::GPIO_SMD_VRX
+// #define SMD_TX               BSP::GPIO::GPIO_SMD_VTX
 
 #define REED_SWITCH_ACTIVE_STATE   true
 
@@ -86,8 +87,8 @@
 #define RP506_ADC_GAIN        4.0f
 
 // Require reed switch engaged to boot up after power on reset
-#define POWER_ON_RESET_REQUIRES_REED_SWITCH
-#define PSEUDO_POWER_OFF
+//#define POWER_ON_RESET_REQUIRES_REED_SWITCH
+//#define PSEUDO_POWER_OFF
 #define EXTERNAL_WAKEUP
 
 // Other options
@@ -103,34 +104,34 @@ namespace BSP
 	{
 	    GPIO_POWER_CONTROL,
 	    GPIO_DEBUG,
-	    GPIO_BAT_CHG,
-	    GPIO_BAT_OK,
+	    // GPIO_BAT_CHG,
+	    // GPIO_BAT_OK,
 	    GPIO_SLOW_SWS_RX,
 	    GPIO_SLOW_SWS_SEND,
-	    GPIO_BAT_ALARM,
+	    // GPIO_BAT_ALARM,
 	    GPIO_SENSORS_PWR,
 	    GPIO_TEMP_ANALOG,
-	    GPIO_GPS_TIMEPULSE,
+	    //GPIO_GPS_TIMEPULSE,
 	    GPIO_SAT_RESET,
 	    GPIO_SAT_EN,
 	    GPIO_GPS_RST,
 	    GPIO_MCU_DONE,
-	    GPIO_VPA_EN,
+	    // GPIO_VPA_EN,
 	    GPIO_GPS_EXT_INT,
 	    GPIO_LED_GREEN,
 	    GPIO_LED_RED,
 	    GPIO_LED_BLUE,
 	    GPIO_GPS_PWR_EN,
-	    GPIO_SMD_BUSY,
-	    GPIO_SMD_RFRESET,
+	    // GPIO_SMD_BUSY,
+	    // GPIO_SMD_RFRESET,
 	    GPIO_REED_SW,
 	    GPIO_INT1_AG,
 	    GPIO_INT2_AG,
 	    GPIO_PRESS_INT,
-	    GPIO_SMD_OPT,
-	    GPIO_SMD_OPT2,
-	    GPIO_SMD_VRX,
-	    GPIO_SMD_VTX,
+	    // GPIO_SMD_OPT,
+	    // GPIO_SMD_OPT2,
+	    // GPIO_SMD_VRX,
+	    // GPIO_SMD_VTX,
 		GPIO_TOTAL_NUMBER
 	};
 

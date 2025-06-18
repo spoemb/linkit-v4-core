@@ -230,7 +230,12 @@ void ArgosTxService::process_sensor_burst() {
 				m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::ALS_SENSOR),
 				m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::PH_SENSOR),
 				m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::PRESSURE_SENSOR),
+				#ifdef BOARD_RSPB
+				m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::THERMISTOR_SENSOR),
+				#else
 				m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::SEA_TEMP_SENSOR),
+				#endif
+				m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::AXL_SENSOR),
 				argos_config.is_lb,
 				argos_config.is_out_of_zone,
 				size_bits);
@@ -467,7 +472,7 @@ ArticPacket ArgosPacketBuilder::build_long_packet(std::vector<GPSLogEntry*> &gps
 
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 		// Do not pacK Speed with Long packet on LDA2
-#elif
+#else
 		unsigned int gspeed = convert_speed(gps_entries[0]->info.gSpeed);
 		PACK_BITS((unsigned int)gspeed, packet, base_pos, 7);
 		DEBUG_TRACE("ArgosPacketBuilder::build_long_packet: speed=%u", (unsigned int)gspeed);
@@ -515,7 +520,7 @@ ArticPacket ArgosPacketBuilder::build_long_packet(std::vector<GPSLogEntry*> &gps
 
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	// Do not used CRC8 and BCH to save place on LDA2 with Kineis
-#elif
+#else
 	// Calculate CRC8
 	unsigned char crc8 = CRC8::checksum(packet.substr(1), LONG_PACKET_PAYLOAD_BITS - 8);
 	unsigned int crc_offset = 0;
@@ -610,7 +615,8 @@ ArticPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 		ServiceSensorData *als_sensor,
 		ServiceSensorData *ph_sensor,
 		ServiceSensorData *pressure_sensor,
-		ServiceSensorData *sea_temp_sensor,
+		ServiceSensorData *temp_sensor,
+		ServiceSensorData *axl_sensor,
 		bool is_out_of_zone, bool is_low_battery,
 		unsigned int& size_bits) {
 
@@ -645,7 +651,7 @@ ArticPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: lon=%u (%lf)", lon, gps_entry->info.lon);
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	// Do not used SPEED
-#elif
+#else
 		unsigned int gspeed = convert_speed((double)gps_entry->info.gSpeed);
 		PACK_BITS((unsigned int)gspeed, packet, base_pos, 7);
 		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: speed=%u (%lf)", (unsigned int)gspeed, (double)gps_entry->info.gSpeed);
@@ -688,14 +694,31 @@ ArticPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 		PACK_BITS((unsigned int)pressure_sensor->port[0], packet, base_pos, 15);
 		PACK_BITS((unsigned int)pressure_sensor->port[1], packet, base_pos, 14);
 	}
-	if (sea_temp_sensor != nullptr) {
-		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: sea_temp=%06X", (unsigned int)sea_temp_sensor->port[0]);
-		PACK_BITS((unsigned int)sea_temp_sensor->port[0], packet, base_pos, 21);
+	if (temp_sensor != nullptr) {
+		#ifdef BOARD_RSPB
+		uint8_t temp_encoded = (uint8_t)((temp_sensor->port[0] / 100) * 255); // encode 0 to 100degree temeprature to 0 255 value
+		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: thermistor=%04X -> encoded = %02X", 
+			(unsigned int)temp_sensor->port[0], temp_encoded);
+		PACK_BITS(temp_encoded, packet, base_pos, 7);
+
+		#else
+		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: sea_temp=%06X", (unsigned int)temp_sensor->port[0]);
+		PACK_BITS((unsigned int)temp_sensor->port[0], packet, base_pos, 21);
+		#endif
+	}
+
+	//Add AXL activity + temperature
+	if (axl_sensor != nullptr) {
+		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: axl_activity=%04X axl_temp =%04X", 
+			(unsigned int)axl_sensor->port[3],
+			(unsigned int)axl_sensor->port[4]); // 3 to retrieve activity
+		PACK_BITS((unsigned int)axl_sensor->port[3], packet, base_pos, 7);
+		PACK_BITS((unsigned int)axl_sensor->port[4], packet, base_pos, 14);
 	}
 
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	// Do not used CRC8 and BCH for sensors packet
-#elif
+#else
 	// Calculate CRC8
 	unsigned char crc8 = CRC8::checksum(packet.substr(1), base_pos - 8);
 	unsigned int crc_offset = 0;
@@ -1014,12 +1037,29 @@ void ArgosDepthPileManager::notify_peer_event(ServiceEvent& e) {
 		m_pressure_cache.port[0] = (unsigned int)(entry.port[0] * 1000U);
 		m_pressure_cache.port[1] = (unsigned int)((entry.port[1] + 40.0) * 100U);
 		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::PRESSURE_SENSOR);
+
+	#if defined(BOARD_RSPB)
+	} else if (e.event_source == ServiceIdentifier::THERMISTOR_SENSOR &&
+			e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+		DEBUG_TRACE("ArgosDepthPileManager::notify_peer_event: THERMISTOR_SENSOR cache set");
+	 	ServiceSensorData& entry = std::get<ServiceSensorData>(e.event_data);
+	 	m_temp_cache.port[0] = (unsigned int)(entry.port[0]);
+	 	m_sensor_tx_current |= (1 << (int)ServiceIdentifier::THERMISTOR_SENSOR);
+	#else
 	} else if (e.event_source == ServiceIdentifier::SEA_TEMP_SENSOR &&
 			e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
 		DEBUG_TRACE("ArgosDepthPileManager::notify_peer_event: SEA_TEMP cache set");
 		ServiceSensorData& entry = std::get<ServiceSensorData>(e.event_data);
-		m_sea_temp_cache.port[0] = (unsigned int)((entry.port[0] + 126.0) * 1000U);
+		m_temp_cache.port[0] = (unsigned int)((entry.port[0] + 126.0) * 1000U);
 		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::SEA_TEMP_SENSOR);
+	#endif
+	} else if (e.event_source == ServiceIdentifier::AXL_SENSOR &&
+			e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+		DEBUG_TRACE("ArgosDepthPileManager::notify_peer_event: AXL_SENSOR cache set");
+		ServiceSensorData& entry = std::get<ServiceSensorData>(e.event_data);
+		m_axl_cache.port[3] = (unsigned int)(entry.port[3]);
+		m_axl_cache.port[4] = (unsigned int)(entry.port[4]);
+		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::AXL_SENSOR);
 	} else if (e.event_source == ServiceIdentifier::GNSS_SENSOR &&
 			e.event_type == ServiceEventType::SERVICE_INACTIVE) {
 
@@ -1041,10 +1081,21 @@ void ArgosDepthPileManager::notify_peer_event(ServiceEvent& e) {
 					m_pressure_cache.port[0] = 0xFFFFFFFF;
 					m_pressure_cache.port[1] = 0xFFFFFFFF;
 					m_sensor_tx_current |= (1 << (int)ServiceIdentifier::PRESSURE_SENSOR);
+				#ifdef BOARD_RSPB
+				} else if (((1 << (int)ServiceIdentifier::THERMISTOR_SENSOR) & m_sensor_tx_enable) &&
+						((1 << (int)ServiceIdentifier::THERMISTOR_SENSOR) & m_sensor_tx_current) == 0) {
+					m_temp_cache.port[0] = 0xFFFFFFFF;
+				 	m_sensor_tx_current |= (1 << (int)ServiceIdentifier::THERMISTOR_SENSOR);
+				#else
 				} else if (((1 << (int)ServiceIdentifier::SEA_TEMP_SENSOR) & m_sensor_tx_enable) &&
 						((1 << (int)ServiceIdentifier::SEA_TEMP_SENSOR) & m_sensor_tx_current) == 0) {
-					m_sea_temp_cache.port[0] = 0xFFFFFFFF;
+					m_temp_cache.port[0] = 0xFFFFFFFF;
 					m_sensor_tx_current |= (1 << (int)ServiceIdentifier::SEA_TEMP_SENSOR);
+				#endif
+				} else if (((1 << (int)ServiceIdentifier::AXL_SENSOR) & m_sensor_tx_enable) &&
+						((1 << (int)ServiceIdentifier::AXL_SENSOR) & m_sensor_tx_current) == 0) {
+					m_axl_cache.port[0] = 0xFFFFFFFF;
+					m_sensor_tx_current |= (1 << (int)ServiceIdentifier::AXL_SENSOR);
 				}
 				update_depth_pile();
 			}, "DepthPileTimeout", Scheduler::DEFAULT_PRIORITY, 2000U);
@@ -1085,9 +1136,21 @@ void ArgosDepthPileManager::update_depth_pile() {
 			// Store the entry into the depth pile
 			m_pressure_depth_pile.store(m_pressure_cache, burst_counter);
 		}
+		//not enough RAM to have SEA_TEMP_SENSOR + THERMISTOR
+		#ifdef BOARD_RSPB
+		if (m_sensor_tx_current & (1 << (int)ServiceIdentifier::THERMISTOR_SENSOR)) {
+			// Store the entry into the depth pile
+			m_temp_depth_pile.store(m_temp_cache, burst_counter);
+		}
+		#else
 		if (m_sensor_tx_current & (1 << (int)ServiceIdentifier::SEA_TEMP_SENSOR)) {
 			// Store the entry into the depth pile
-			m_sea_temp_depth_pile.store(m_sea_temp_cache, burst_counter);
+			m_temp_depth_pile.store(m_temp_cache, burst_counter);
+		}
+		#endif
+		if (m_sensor_tx_current & (1 << (int)ServiceIdentifier::AXL_SENSOR)) {
+			// Store the entry into the depth pile
+			m_axl_depth_pile.store(m_axl_cache, burst_counter);
 		}
 		m_sensor_tx_current = 0;
 	}

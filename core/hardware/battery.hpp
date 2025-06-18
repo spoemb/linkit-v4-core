@@ -30,6 +30,7 @@ private:
 		m_is_critical_voltage_last = m_is_critical_voltage;
 	}
 	virtual void internal_update() {}
+	virtual int shutdown() {}
 
 public:
 	BatteryMonitor(uint8_t low_level, uint16_t critical_voltage) :

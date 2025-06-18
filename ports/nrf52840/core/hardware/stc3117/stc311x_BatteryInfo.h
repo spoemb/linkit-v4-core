@@ -29,8 +29,8 @@
 /*                                                                                  */
 
 /*Battery parameters define  ------------------------------------------------------ */
-#define BATT_CAPACITY		1650	/* battery nominal capacity in mAh					*/
-#define BATT_RINT			200		/* Internal battery impedance in mOhms, 0 if unknown	*/
+#define BATT_CAPACITY		420	/* battery nominal capacity in mAh					*/
+#define BATT_RINT			150		/* Internal battery impedance in mOhms, 0 if unknown	*/
 
 /*Application parameters define  -------------------------------------------------- */
 #define RSENSE				10		/* current sensing resistor (soldered on the board) in mOhms */
@@ -40,10 +40,10 @@
 #define MAX_HRSOC          51200  /* HRSOC (Higher Resolution SOC): 100% in 1/512% units */
 #define MAX_SOC            1000   /* 100% in 0.1% units */
 
-#define CHG_MIN_CURRENT     150   /* min charge current in mA                       */
-#define CHG_END_CURRENT      20   /* end charge current in mA                       */
-#define APP_MIN_CURRENT     (-5)  /* minimum application current consumption in mA ( <0 !) */
-#define APP_EOC_CURRENT      100   		/* end charge current in mA                 */
+#define CHG_MIN_CURRENT     10   /* min charge current in mA                       */
+#define CHG_END_CURRENT      5   /* end charge current in mA                       */
+#define APP_MIN_CURRENT     (-1)  /* minimum application current consumption in mA ( <0 !) */
+#define APP_EOC_CURRENT      10   		/* end charge current in mA                 */
 #define APP_MIN_VOLTAGE	    3000  /* application cut-off voltage                    */
 #define TEMP_MIN_ADJ	    (-5)  /* minimum temperature for gain adjustment */
 
@@ -58,6 +58,7 @@
 //#define CUSTOM_BATTERY_OCV          //OCV curve determined from battery manufacturer data, or battery characterization statistics.
 
 #define MONITORING_MODE   MIXED_MODE  /* 1=Voltage mode, 0=mixed mode */
+//#define MONITORING_MODE   VLTG_MODE  /* 1=Voltage mode, 0=mixed mode */
 
 //TODO adapt max buffer length to STC3117
 #define STC3117_MAX_BUFFER_LEN (257)
