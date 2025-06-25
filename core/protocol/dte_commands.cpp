@@ -247,6 +247,23 @@ const DTECommandMap command_map[] = {
 		}
 	},
 	{
+		.name = "PWRON",
+		.command = DTECommand::PWRON_REQ,
+		.prototype =
+		{
+			{
+				.name = "component",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 4U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	},
+	{
 		.name = "SATTX",
 		.command = DTECommand::ARGOSTX_REQ,
 		.prototype =
@@ -591,6 +608,13 @@ const DTECommandMap command_map[] = {
 				.is_implemented = false,
 				.is_writable = false
 			}
+		}
+	},
+	{
+		.name = "PWRON",
+		.command = DTECommand::PWRON_RESP,
+		.prototype =
+		{
 		}
 	},
 };

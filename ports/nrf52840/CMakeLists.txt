@@ -186,6 +186,7 @@ target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
     ${PROJ_DIR}/core/scheduling
     ${PROJ_DIR}/core/hardware/pressure_sensor
     ${PROJ_DIR}/core/hardware/ms58xx
+    ${PROJ_DIR}/core/hardware/lps28dfw
     ${PROJ_DIR}/core/hardware/bar100
     ${PROJ_DIR}/core/hardware/ad5933
     ${PROJ_DIR}/core/hardware/ltr_303
@@ -267,6 +268,8 @@ target_sources(${TARGET_NAME} PRIVATE
     ${CORE_DIR}/configuration/calibration.cpp
     ${BOARD_DIR}/bsp.cpp
     ${PROJ_DIR}/core/hardware/ms58xx/ms58xx.cpp
+    ${PROJ_DIR}/core/hardware/lps28dfw/lps28dfw_reg.c
+    ${PROJ_DIR}/core/hardware/lps28dfw/lps28dfw.cpp
     ${PROJ_DIR}/core/hardware/bar100/bar100.cpp
     ${PROJ_DIR}/core/hardware/ad5933/ad5933.cpp
     ${PROJ_DIR}/core/hardware/cdt/cdt.cpp

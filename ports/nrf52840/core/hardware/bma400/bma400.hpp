@@ -16,6 +16,10 @@ extern "C" {
 #define GET_VAR_NAME(var) (#var)
 #define GRAVITY_EARTH     (9.80665f)
 
+//#define TIMEOUT_MS 1000
+#define POLL_MAX_ATTEMPTS (100)
+//#define POLL_DELAY_/MS (TIMEOUT_MS / POLL_MAX_ATTEMPTS)  // polling interval
+
 class BMA400LL
 {
 public:
@@ -24,13 +28,12 @@ public:
 	unsigned char m_addr;
 	BMA400LL(unsigned int bus, unsigned char addr, int wakeup_pin);
 	~BMA400LL();
-	double read_temperature();
+	int16_t read_temperature();
 	// void read_xyz(double& x, double& y, double& z);
-	void read_xyz(double& x, double& y, double& z);
-	void read_xyz_128_at_20hz(double& x, double& y, double& z);
+	void read_xyz(double& x, double& y, double& z, int16_t& temperature);
 	void set_wakeup_threshold(double threshold);
 	void set_wakeup_duration(double duration);
-	void set_wakeup_gforce(unsigned int g_force);
+	void set_range(unsigned int g_force);
 	void set_power_mode(unsigned int power_mode);
 
 	void set_x_calibration(double x);
@@ -144,4 +147,6 @@ private:
 	double m_last_x;
 	double m_last_y;
 	double m_last_z;
+	uint8_t m_last_activity;
+	int16_t m_last_temperature;
 };

@@ -22,7 +22,7 @@ int is25_flash_init(void)
 	nrfx_qspi_config_t qspi_config = {
             .xip_offset = 0, // Address offset in the external memory for Execute in Place operation
             {
-				#ifdef BOARD_RSPB
+				#ifdef BOARD_RSPB_TRACKER_V1
                 .sck_pin = NRF_GPIO_PIN_MAP(1, 0),
 				#else 
                 .sck_pin = NRF_GPIO_PIN_MAP(0, 19),
@@ -31,7 +31,7 @@ int is25_flash_init(void)
                 .io0_pin = NRF_GPIO_PIN_MAP(0, 21),
                 .io1_pin = NRF_GPIO_PIN_MAP(0, 23),
                 .io2_pin = NRF_GPIO_PIN_MAP(0, 22),
-				#ifdef BOARD_RSPB
+				#ifdef BOARD_RSPB_TRACKER_V1
                 .io3_pin = NRF_GPIO_PIN_MAP(1,  0),
 				#else
                 .io3_pin = NRF_GPIO_PIN_MAP(0,  19),

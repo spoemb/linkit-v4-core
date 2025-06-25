@@ -2,24 +2,40 @@
 #include "nrfx_twim.h"
 #include "error.hpp"
 #include "debug.hpp"
+#include "gpio.hpp"
 
 void NrfI2C::init(void) {
+	#if defined(SENSOR_PWR_PIN)
+	DEBUG_TRACE("NrfI2C::init: set SENSOR_PWR_PIN");
+	GPIOPins::set(SENSOR_PWR_PIN);
+	nrf_delay_ms(10);
+	#endif
 	for (unsigned int i = 0; i < BSP::I2C_TOTAL_NUMBER; i++)
 	{
-		if (nrfx_twim_init(&BSP::I2C_Inits[i].twim, &BSP::I2C_Inits[i].twim_config, nullptr, nullptr) != NRFX_SUCCESS)
-			throw ErrorCode::RESOURCE_NOT_AVAILABLE;
-		nrfx_twim_enable(&BSP::I2C_Inits[i].twim);
-		m_is_enabled[i] = true;
+		if (!m_is_enabled[i])
+		{
+			if (nrfx_twim_init(&BSP::I2C_Inits[i].twim, &BSP::I2C_Inits[i].twim_config, nullptr, nullptr) != NRFX_SUCCESS)
+				throw ErrorCode::RESOURCE_NOT_AVAILABLE;
+			nrfx_twim_enable(&BSP::I2C_Inits[i].twim);
+			m_is_enabled[i] = true;
+		}
 	}
 }
 
 void NrfI2C::uninit(void) {
 	for (unsigned int i = 0; i < BSP::I2C_TOTAL_NUMBER; i++)
 	{
-		nrfx_twim_disable(&BSP::I2C_Inits[i].twim);
-		nrfx_twim_uninit(&BSP::I2C_Inits[i].twim);
-		m_is_enabled[i] = false;
+		if (m_is_enabled[i]) 
+		{
+			nrfx_twim_disable(&BSP::I2C_Inits[i].twim);
+			nrfx_twim_uninit(&BSP::I2C_Inits[i].twim);
+			m_is_enabled[i] = false;
+		}
 	}
+	#if defined(SENSOR_PWR_PIN)
+	DEBUG_TRACE("NrfI2C::uninit: clear SENSOR_PWR_PIN");
+	GPIOPins::clear(SENSOR_PWR_PIN);
+	#endif
 }
 
 void NrfI2C::disable(uint8_t bus) {

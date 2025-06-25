@@ -55,7 +55,7 @@
 #define MCP4716_DEVICE    ONBOARD_I2C_BUS
 #define MS5803_VARIANT    "MS5803_14BA"
 #define MS5837_VARIANT    "MS5837_30BA"
-#define LPS28DFW     	  ONBOARD_I2C_BUS
+#define LPS28DFW_DEVICE	  ONBOARD_I2C_BUS
 #define LIGHT_DEVICE   	  ONBOARD_I2C_BUS
 #define OEM_PH_DEVICE  	  ONBOARD_I2C_BUS
 #define OEM_RTD_DEVICE 	  ONBOARD_I2C_BUS
@@ -67,6 +67,7 @@
 // I2C bus addresses
 #define MCP4716_I2C_ADDR          0x60
 #define BAR100_ADDRESS 	          0x40
+#define LPS28DFW_ADDRESS          0x5C
 #define MS5803_ADDRESS            0x77
 #define MS5837_ADDRESS	          0x76
 #define LIGHT_DEVICE_ADDR         0x29
@@ -76,7 +77,6 @@
 #define AD5933_ADDRESS		      0x0D
 #define BMX160_ADDRESS            0x69
 #define BMA400_ADDRESS            0x14 //0x14 if SDO low
-#define LPS28DFW_ADDRESS          0x5D
 #define STWLC68_ADDRESS		      0x61
 #define STC3117_ADDRESS           0x70
 #define STC3117_SLAVE_ADDRESS     0x8E

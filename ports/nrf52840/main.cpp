@@ -73,6 +73,7 @@
 
 #include "ms58xx.hpp"
 #include "bar100.hpp"
+#include "lps28dfw.hpp"
 #include "fs_log.hpp"
 #include "nrf_i2c.hpp"
 #include "gpio_led.hpp"
@@ -622,11 +623,17 @@ int main()
 	PressureSensorDevice *pressure_sensor_devices[BSP::I2C_TOTAL_NUMBER];
 #ifndef DUMMY_PRESSURE_SENSOR
 	for (unsigned int i = 0; i < BSP::I2C_TOTAL_NUMBER; i++) {
-		static unsigned int i2caddr[3] = { MS5803_ADDRESS, MS5837_ADDRESS, BAR100_ADDRESS };
-		static std::string variant[3] = { MS5803_VARIANT, MS5837_VARIANT, "BAR100-R3-RP" };
-		for (unsigned int j = 0; j < 3; j++) {
+		static unsigned int i2caddr[4] = { MS5803_ADDRESS, MS5837_ADDRESS, BAR100_ADDRESS, LPS28DFW_ADDRESS };
+		static std::string variant[4] = { MS5803_VARIANT, MS5837_VARIANT, "BAR100-R3-RP", "LPS28DFW" };
+		for (unsigned int j = 0; j < 4; j++) {
 			try {
-				pressure_sensor_devices[i] = (j == 2) ? (PressureSensorDevice *)new Bar100(i, i2caddr[j]) : (PressureSensorDevice *)new MS58xxLL(i, i2caddr[j], variant[j]);
+				if (j == 2) {
+					pressure_sensor_devices[i] = (PressureSensorDevice *)new Bar100(i, i2caddr[j]);
+				} else if (j == 3) {
+					pressure_sensor_devices[i] = (PressureSensorDevice *)new LPS28DFW(i, i2caddr[j]);
+				} else {
+					pressure_sensor_devices[i] = (PressureSensorDevice *)new MS58xxLL(i, i2caddr[j], variant[j]);
+				}
 				DEBUG_TRACE("%s: found on i2cbus=%u i2caddr=0x%02x", variant[j].c_str(), i, i2caddr[j]);
 				break;
 			} catch (...) {
@@ -743,6 +750,9 @@ int main()
 
 	DEBUG_TRACE("Entering main SM...");
 
+	// #ifdef BOARD_RSPB
+	// NrfI2C::uninit();
+	// #endif
 	unsigned int shtdwown_timer = configuration_store->read_param<unsigned int>(ParamID::SHUTDOWN_TIMER);
 	if (shtdwown_timer > 0) {
 		DEBUG_TRACE("Shutdown timer set to %u s", shtdwown_timer);

@@ -10,6 +10,9 @@
 #include "timeutils.hpp"
 #include "calibration.hpp"
 #include "artic_device.hpp"
+#include "gpio.hpp"
+#include "bsp.hpp"
+#include "nrf_delay.h"
 
 using namespace std::literals::string_literals;
 
@@ -43,7 +46,7 @@ extern ArticDevice *artic_device;
 class DTEHandler : public ArticEventListener {
 private:
 	// Tables
-	static inline std::map<unsigned int, std::string> m_logger_dump = {
+	static const inline std::map<unsigned int, std::string> m_logger_dump = {
 		{0, "system.log"},
 		{1, "sensor.log"},
 		{2, "ALS"},
@@ -54,7 +57,7 @@ private:
 		{7, "PRESSURE"},
 		{8, "THERMISTOR"},
 	};
-	static inline std::map<unsigned int, std::string> m_logger_erase = {
+	static const inline std::map<unsigned int, std::string> m_logger_erase = {
 		{1, "sensor.log"},
 		{2, "system.log"},
 		{4, "ALS"},
@@ -65,7 +68,7 @@ private:
 		{9, "PRESSURE"},
 		{10, "THERMISTOR"}
 	};
-	static inline std::map<unsigned int, std::string> m_scalx = {
+	static const inline std::map<unsigned int, std::string> m_scalx = {
 		{0, "AXL"},
 		{1, "PRS"},
 		{2, "ALS"},
@@ -75,6 +78,13 @@ private:
 		{6, "MCP47X6"},
 		{7, "THERMISTOR"}
 	};
+	// static inline std::map<unsigned int, std::string> m_pwron = {
+	// 	{0, "ALL"},
+	// 	{1, "GNSS"},
+	// 	{2, "SENSORS"},
+	// 	{3, "SATELLITE"},
+	// 	{4, "OFF"}
+	// };
 	unsigned int m_dumpd_NNN;
 	unsigned int m_dumpd_mmm;
 	bool m_artic_device_active;
@@ -466,6 +476,71 @@ public:
 
 		return DTEEncoder::encode(DTECommand::SCALW_RESP, error_code);
 	}
+	
+	static std::string PWRON_REQ(int error_code, std::vector<BaseType>& arg_list) {
+
+		if (error_code) {
+			return DTEEncoder::encode(DTECommand::PWRON_RESP, error_code);
+		}
+
+		// Extract the component parameter from arg_list to determine which device to calibrate
+		unsigned int component = std::get<unsigned int>(arg_list[0]);
+
+		try {
+			//const char *name = m_pwggron.at(component).c_str();
+			if (component == 0) {
+				// Power on all components
+				DEBUG_TRACE("Power on M10Q GNSS");
+				GPIOPins::set(GPS_RST); // Clear sensors power pin to save power
+				GPIOPins::set(GPS_POWER); // Clear sensors power pin to save power
+				DEBUG_TRACE("Power on Sensors");
+				GPIOPins::set(SENSORS_PWR_PIN); // Clear sensors power pin to save power
+				DEBUG_TRACE("Power on Satellite");
+				GPIOPins::set(SAT_RESET); // Clear sensors power pin to save power
+				GPIOPins::set(SAT_PWR_EN); // Clear sensors power pin to save power
+				
+			} 
+			else if (component == 1) {
+				// Power on GNSS
+				DEBUG_TRACE("Power on M10Q GNSS");
+				GPIOPins::set(GPS_RST); // Clear sensors power pin to save power
+				GPIOPins::set(GPS_POWER); // Clear sensors power pin to save power
+			} 
+			else if (component == 2) {
+				// Power on Sensors
+				DEBUG_TRACE("Power on Sensors");
+				GPIOPins::set(SENSORS_PWR_PIN); // Clear sensors power pin to save power
+			} 
+			else if (component == 3) {
+				// Power on Satellite
+				DEBUG_TRACE("Power on Satellite");
+				GPIOPins::set(SAT_RESET); // Clear sensors power pin to save power
+				nrf_delay_ms(100); // Wait for the reset to take effect
+				GPIOPins::set(SAT_PWR_EN); // Clear sensors power pin to save power
+			} 
+			else if (component == 4) {
+				// Power off all components
+				DEBUG_TRACE("Power off all components");
+				GPIOPins::clear(GPS_POWER);
+				GPIOPins::set(GPS_RST); // Clear sensors power pin to save power
+				GPIOPins::clear(SENSORS_PWR_PIN);
+				GPIOPins::set(SAT_RESET); // Clear sensors power pin to save power
+				GPIOPins::clear(SAT_PWR_EN);
+
+			} 
+			else {
+				DEBUG_ERROR("Invalid component ID %u", component);
+				error_code = (int)DTEError::INCORRECT_DATA;
+			}
+
+		} catch (...) {
+			DEBUG_TRACE("Device calibration failed");
+			error_code = (int)DTEError::INCORRECT_DATA;
+		}
+
+		return DTEEncoder::encode(DTECommand::PWRON_RESP, error_code);
+	}
+
 
 	static std::string SCALR_REQ(int error_code, std::vector<BaseType>& arg_list) {
 		if (error_code) {
@@ -692,6 +767,9 @@ public:
 			break;
 		case DTECommand::SMDCD_REQ:
 			resp = SMDCD_REQ(error_code, arg_list);
+			break;
+		case DTECommand::PWRON_REQ:
+			resp = PWRON_REQ(error_code, arg_list);
 			break;
 		default:
 			break;

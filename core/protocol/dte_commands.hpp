@@ -21,6 +21,7 @@ enum class DTECommand {
 	STATR_REQ,
 	ERASE_REQ,
 	SCALW_REQ,
+	PWRON_REQ,
 	ARGOSTX_REQ,
 	SMDCD_REQ,
 	SCALR_REQ,
@@ -43,11 +44,12 @@ enum class DTECommand {
 	ARGOSTX_RESP,
 	SMDCD_RESP,
 	SCALR_RESP,
+	PWRON_RESP,
 	__NUM_RESP
 };
 
 struct DTECommandMap {
-	std::string name;
+	const char* name;
 	DTECommand  command;
 	std::vector<BaseMap> prototype;
 };

@@ -847,15 +847,28 @@ public:
 
 class DTEDecoder {
 private:
+	// static const DTECommandMap* lookup_command(const std::string& command_str, bool is_req) {
+	// 	unsigned int start = is_req ? 0 : (unsigned int)DTECommand::__NUM_REQ;
+	// 	unsigned int end = is_req ? (unsigned int)DTECommand::__NUM_REQ : command_map_size;
+	// 	for (unsigned int i = start; i < end; i++) {
+	// 		if (command_map[i].name == command_str) {
+	// 			//std::cout << "command: " << command_str << " match: " << command_map[i].name << "\n";
+	// 			return &command_map[i];
+	// 		}
+	// 	}
+	// 	DEBUG_ERROR("DTE_PROTOCOL_UNKNOWN_COMMAND");
+	// 	throw DTE_PROTOCOL_UNKNOWN_COMMAND;
+	// }
 	static const DTECommandMap* lookup_command(const std::string& command_str, bool is_req) {
-		unsigned int start = is_req ? 0 : (unsigned int)DTECommand::__NUM_REQ;
-		unsigned int end = is_req ? (unsigned int)DTECommand::__NUM_REQ : command_map_size;
+		unsigned int start = is_req ? 0 : static_cast<unsigned int>(DTECommand::__NUM_REQ);
+		unsigned int end = is_req ? static_cast<unsigned int>(DTECommand::__NUM_REQ) : command_map_size;
+
 		for (unsigned int i = start; i < end; i++) {
-			if (command_map[i].name == command_str) {
-				//std::cout << "command: " << command_str << " match: " << command_map[i].name << "\n";
+			if (std::strcmp(command_map[i].name, command_str.c_str()) == 0) {
 				return &command_map[i];
 			}
 		}
+
 		DEBUG_ERROR("DTE_PROTOCOL_UNKNOWN_COMMAND");
 		throw DTE_PROTOCOL_UNKNOWN_COMMAND;
 	}

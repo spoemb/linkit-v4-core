@@ -6,6 +6,7 @@
 #include "sensor.hpp"
 #include "service.hpp"
 #include "logger.hpp"
+#include "nrf_i2c.hpp"
 
 class SensorService : public Service {
 public:

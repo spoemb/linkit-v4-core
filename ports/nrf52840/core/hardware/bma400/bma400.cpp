@@ -1,4 +1,6 @@
 #include <map>
+#include "nrf_delay.h"
+
 
 #include "bma400.h"
 #include "bma400.hpp"
@@ -8,7 +10,6 @@
 #include "nrf_delay.h"
 #include "nrf_i2c.hpp"
 #include "bsp.hpp"
-// #include "nrfx_twim.h" //I think this is unused
 
 #include "gpio.hpp"
 #include "nrf_gpio.h"
@@ -17,6 +18,12 @@
 #include "nrf_irq.hpp"
 
 #include <variant>
+
+#define SENSOR_TICK_TO_S  (0.0000390625f)
+//TODO:
+// Fix all low power/wakeup configuration and mode
+// Fix calibration mix with data.
+
 
 // -- Helper function to convert between enum and string --
 
@@ -98,7 +105,6 @@ static const char *getPowerModeName(int power_mode)
 }
 
 // -- BMA 400 LL MANAGER --
-
 class BMA400LLManager
 {
     private:
@@ -178,23 +184,23 @@ uint8_t BMA400LL::init(std::function<void()> setup_mode = nullptr)
     int8_t rslt = 0;
 
     m_bma400_dev.intf           = BMA400_I2C_INTF;
-    m_bma400_dev.intf_ptr       = &m_unique_id;
+    m_bma400_dev.intf_ptr       = &m_unique_id; // should be twim pointer but used to search device
     m_bma400_dev.read           = (bma400_read_fptr_t)i2c_read;
     m_bma400_dev.write          = (bma400_write_fptr_t)i2c_write;
     m_bma400_dev.delay_us       = (bma400_delay_us_fptr_t)delay_us;
     m_bma400_dev.read_write_len = BMA400_READ_WRITE_LENGTH;
     // m_bma400_dev.chip_id       read from bma in bma400_init()
-    // m_bma400_dev.dummy_byte    only used for SPI
-    //m_bma400_dev.resolution  = 12; // not used anywhere
+    //m_bma400_dev.dummy_byte     = 0;  // only used for SPI
+    m_bma400_dev.resolution  = 12; 
 
     rslt = bma400_init(&m_bma400_dev);
     bma400_check_rslt(GET_API_NAME(bma400_init), rslt);
 
     /* after sensor init introduce 200 msec sleep */
-    PMU::delay_ms(200);
+    // PMU::delay_ms(200);
 
-    rslt = bma400_perform_self_test(&m_bma400_dev);
-    bma400_check_rslt(GET_API_NAME(bma400_perform_self_test), rslt);
+    // rslt = bma400_perform_self_test(&m_bma400_dev);
+    // bma400_check_rslt(GET_API_NAME(bma400_perform_self_test), rslt);
 
     rslt = bma400_soft_reset(&m_bma400_dev);
     bma400_check_rslt(GET_API_NAME(bma400_soft_reset), rslt);
@@ -257,10 +263,7 @@ void BMA400LL::delay_us(uint32_t period, void *intf_ptr)
 
 double BMA400LL::convert_g_force(unsigned int g_scale, int16_t axis_value)
 {
-    double g_force = (double)g_scale * axis_value / 32768;
-
-    return g_force;
-	// return (double)g_scale * axis_value / 32768;
+	return (double)g_scale * axis_value / 32768;
 }
 
 double BMA400LL::lsb_to_ms2(int16_t accel_data, uint8_t g_range, uint8_t bit_width)
@@ -306,28 +309,29 @@ void BMA400LL::bma400_check_rslt(const char api_name[], int8_t rslt)
     }
 }
 
-void BMA400LL::read_xyz(double& x, double& y, double& z)
+void BMA400LL::read_xyz(double& x, double& y, double& z, int16_t& temperature)
 {
+    DEBUG_TRACE("%s::read_xyz -> m_unique_id=%d", __func__, m_unique_id);
     int8_t rslt = 0;
-    uint8_t power_mode = 0;
+    //uint8_t power_mode = 0;
 
     struct bma400_int_enable int_en;
-    // Turn accelerometer on so AXL is updated
-    rslt = bma400_get_power_mode(&power_mode, &m_bma400_dev);
-    bma400_check_rslt(GET_API_NAME(bma400_get_power_mode), rslt);
+    // Set AXL normal mode
+    rslt = bma400_set_power_mode(BMA400_MODE_NORMAL, &m_bma400_dev);
+    bma400_check_rslt(GET_API_NAME(bma400_set_power_mode), rslt);
 
     struct bma400_sensor_conf conf[2];
-
-    rslt = bma400_get_sensor_conf(conf, 2, &m_bma400_dev);
+    conf[0].type = BMA400_ACCEL;
+    rslt = bma400_get_sensor_conf(conf, 1, &m_bma400_dev);
 
     conf[0].param.accel.odr = BMA400_ODR_100HZ;
-    conf[0].param.accel.range = BMA400_RANGE_2G;
-    conf[0].param.accel.data_src = BMA400_DATA_SRC_ACCEL_FILT_1;
+    conf[0].param.accel.range = m_g_force;
+    //conf[0].param.accel.range = BMA400_RANGE_4G; // 4G range
+    conf[0].param.accel.data_src = BMA400_DATA_SRC_ACCEL_FILT_2;
+
     /* Set the desired configurations to the sensor */
     rslt = bma400_set_sensor_conf(&conf[0], 1, &m_bma400_dev);
     bma400_check_rslt("bma400_set_sensor_conf", rslt);
-    rslt = bma400_set_power_mode(BMA400_MODE_NORMAL, &m_bma400_dev);
-    bma400_check_rslt("bma400_set_power_mode", rslt);
 
     int_en.type = BMA400_DRDY_INT_EN;
     int_en.conf = BMA400_ENABLE;
@@ -335,76 +339,46 @@ void BMA400LL::read_xyz(double& x, double& y, double& z)
     rslt = bma400_enable_interrupt(&int_en, 1, &m_bma400_dev);
     bma400_check_rslt("bma400_enable_interrupt", rslt);
 
-
-    rslt = bma400_get_sensor_conf(conf, 2, &m_bma400_dev);
-    // Wait 50ms for reading (4 averaged samples, @ 100 Hz)
-    PMU::delay_ms(50);
-
-    // Read and convert accelerometer values
-    union __attribute__((packed)) {
-        uint8_t buffer[6] = {0};
-        struct {
-        	int16_t x;
-        	int16_t y;
-        	int16_t z;
-        };
-    } data;
-    rslt = bma400_get_regs(BMA400_REG_ACCEL_DATA, data.buffer, sizeof(data.buffer), &m_bma400_dev);
-    bma400_check_rslt("bma400_get_regs", rslt);
-
-    /* Convert to double precision G-force result on each axis */
-    //  x = convert_g_force(m_g_force, data.x); 
-    //  y = convert_g_force(m_g_force, data.y); 
-    //  z = convert_g_force(m_g_force, data.z); 
-
-    // x = (lsb_to_ms2(data.x, m_g_force, 12) );
-    // y = (lsb_to_ms2(data.y, m_g_force, 12) );
-    // z = (lsb_to_ms2(data.z, m_g_force, 12) );
-    x = (lsb_to_ms2(data.x, m_g_force, 12) - m_x);
-    y = (lsb_to_ms2(data.y, m_g_force, 12) - m_y);
-    z = (lsb_to_ms2(data.z, m_g_force, 12) - m_z);
-
-
-    DEBUG_TRACE("BMA400LL::read_xyz: xyz=%f,%f,%f", x, y, z);
-    DEBUG_INFO("   ---   X <%f> X   ---   ", x);
-    DEBUG_INFO("   ---   Y <%f> Y   ---   ", y);
-    DEBUG_INFO("   ---   Z <%f> Z   ---   ", z);
-}
-
-void BMA400LL::read_xyz_128_at_20hz(double& x, double& y, double& z)
-{
-    int8_t rslt = 0;
-    double accumulated_x = 0, accumulated_y = 0, accumulated_z = 0;
-
-    for (uint16_t i = 0; i < 1000; ++i)
+    //float t;
+    uint16_t int_status = 0;
+    struct bma400_sensor_data data;
+    for (int i = 0; i < POLL_MAX_ATTEMPTS; i++)
     {
-        PMU::delay_ms(10);
+        rslt = bma400_get_interrupt_status(&int_status, &m_bma400_dev);
+        //bma400_check_rslt("bma400_get_interrupt_status", rslt);
 
-        union __attribute__((packed)) {
-            uint8_t buffer[6];
-            struct {
-                int16_t x;
-                int16_t y;
-                int16_t z;
-            };
-        } data;
+        if (int_status & BMA400_ASSERTED_DRDY_INT)
+        {
+            //rslt = bma400_get_accel_data(BMA400_DATA_SENSOR_TIME, &data, &m_bma400_dev);
+            rslt = bma400_get_accel_data(BMA400_DATA_ONLY, &data, &m_bma400_dev);
+            //bma400_check_rslt("bma400_get_accel_data", rslt);
 
-        rslt = bma400_get_regs(BMA400_REG_ACCEL_DATA, data.buffer, sizeof(data.buffer), &m_bma400_dev);
-        bma400_check_rslt(GET_API_NAME(BMA400LL::read_xyz_128_at_20hz), rslt);
+            x = lsb_to_ms2(data.x, 2, 12);
+            y = lsb_to_ms2(data.y, 2, 12);
+            z = lsb_to_ms2(data.z, 2, 12);
+            //t = (float)data.sensortime * SENSOR_TICK_TO_S;
 
-        accumulated_x += data.x;
-        accumulated_y += data.y;
-        accumulated_z += data.z;
+            DEBUG_INFO("%s::Acc_Raw_X : %d   Acc_Raw_Y : %d   Acc_Raw_Z : %d", __func__, data.x, data.y, data.z);
+            //DEBUG_INFO("%s::Acc_ms2_X : %.2f,   Acc_ms2_Y : %.2f,  Acc_ms2_Z :  %.2f,   t(s) : %.4f", __func__, x, y, z, (double)t);
+            DEBUG_INFO("%s::Acc_ms2_X : %.2f,   Acc_ms2_Y : %.2f,  Acc_ms2_Z :  %.2f", __func__, x, y, z);
+
+            // Set AXL normal mode
+            rslt = bma400_set_power_mode(BMA400_MODE_SLEEP, &m_bma400_dev);
+            bma400_check_rslt(GET_API_NAME(bma400_set_power_mode), rslt);
+            return;
+        }
+
+        // Optional: sleep between polling to reduce CPU usage
+        //nrf_delay_us(POLL_DELAY_MS * 1000);
     }
 
-    x = accumulated_x / 128;
-    y = accumulated_y / 128;
-    z = accumulated_z / 128;
-
-    DEBUG_TRACE("BMA400LL::read_xyz: avg_xyz=%f,%f,%f", x, y, z);
+    DEBUG_WARN("%s:: Timeout: no DRDY interrupt from BMA400", __func__);
+    rslt = bma400_set_power_mode(BMA400_MODE_SLEEP, &m_bma400_dev);
+    bma400_check_rslt(GET_API_NAME(bma400_set_power_mode), rslt);
+    return;
 }
 
-double BMA400LL::read_temperature()
+int16_t BMA400LL::read_temperature()
 {
     int8_t rslt = 0;
 
@@ -432,7 +406,7 @@ void BMA400LL::set_wakeup_duration(double duration)
 	m_wakeup_duration = duration;
 }
 
-void BMA400LL::set_wakeup_gforce(unsigned int g_force)
+void BMA400LL::set_range(unsigned int g_force)
 {
 	m_g_force = static_cast<uint8_t>(g_force);
 }
@@ -529,11 +503,10 @@ void BMA400LL::setup_sleep_mode(void)
 
     rslt = bma400_get_power_mode(&power_mode, &m_bma400_dev);
     bma400_check_rslt(GET_API_NAME(bma400_get_power_mode), rslt);
-    DEBUG_TRACE("%s::POWER MODE == <%s>", __FUNCTION__, getPowerModeName(static_cast<int>(power_mode)));
+    DEBUG_TRACE("%s::POWER MODE == <%s>", __func__, getPowerModeName(static_cast<int>(power_mode)));
 }
 
 /* Low-power mode */
-
 void BMA400LL::setup_lp_conf(void)
 {
     DEBUG_INFO("Entering into %s", GET_API_NAME(BMA400::setup_lp_conf));
@@ -631,18 +604,13 @@ void BMA400LL::setup_normal_conf(void)
     /* Modify the desired configurations as per macros - available in bma400_defs.h file */
     m_bma400_sensor_conf[static_cast<int>(BMA400POWERMODE::MODE_NORMAL)].type                 = BMA400_ACCEL;
     /* m_bma400_sensor_conf[1].param.accel.odr      = BMA400_ODR_100HZ; */
-    m_bma400_sensor_conf[static_cast<int>(BMA400POWERMODE::MODE_NORMAL)].param.accel.odr      = BMA400_ODR_400HZ;
-    /* Must be generic TODO : get the value on the config file (pylinkit) */
+    m_bma400_sensor_conf[static_cast<int>(BMA400POWERMODE::MODE_NORMAL)].param.accel.odr      = BMA400_ODR_100HZ;
     // m_bma400_sensor_conf[static_cast<int>(BMA400POWERMODE::MODE_NORMAL)].param.accel.range    = std::get<uint8_t>(BMA_ACC::getAccelerometerRange(BMA_ACC::ParameterType::TO_UINT, m_g_force));
-    m_bma400_sensor_conf[static_cast<int>(BMA400POWERMODE::MODE_NORMAL)].param.accel.range    = BMA400_RANGE_4G;
+    m_bma400_sensor_conf[static_cast<int>(BMA400POWERMODE::MODE_NORMAL)].param.accel.range    = get_gforce(); // std::get<uint8_t>(BMA_ACC::getAccelerometerRange(BMA_ACC::ParameterType::TO_UINT, m_g_force))a;
     
     // m_bma400_sensor_conf[1].param.accel.data_src = BMA400_DATA_SRC_ACCEL_FILT_2;
     /* acc_filt1 has data rate between 12.5Hz and 800Hz */
     m_bma400_sensor_conf[static_cast<int>(BMA400POWERMODE::MODE_NORMAL)].param.accel.data_src = BMA400_DATA_SRC_ACCEL_FILT_1;
-
-    // m_bma400_sensor_conf[1].param.accel.osr
-
-    // m_bma400_sensor_conf[1].param.accel.osr_lp
 
     /* Set the desired configurations to the sensor */
     rslt = bma400_set_sensor_conf(m_bma400_sensor_conf, 2, &m_bma400_dev);
@@ -656,21 +624,6 @@ void BMA400LL::setup_normal_conf(void)
     rslt = bma400_set_sensor_conf(conf, 2, &m_bma400_dev);
     bma400_check_rslt("bma400_set_sensor_conf", rslt);
     rslt = bma400_get_sensor_conf(conf, 2, &m_bma400_dev);
-
-    PMU::delay_ms(2000);
-
-    // // note: Sleep mode: Registers readable and writable, no sensortime
-    // rslt = bma400_set_power_mode(BMA400_MODE_SLEEP, &m_bma400_dev); 
-    // bma400_check_rslt("bma400_set_power_mode: sleep", rslt);
-
-    // m_bma400_device_conf.type                    = BMA400_INT_PIN_CONF;
-    // m_bma400_device_conf.type                    = BMA400_AUTOWAKEUP_INT;
-
-    // m_bma400_device_conf.param.int_conf.int_chan = BMA400_INT_CHANNEL_1;
-    // m_bma400_device_conf.param.int_conf.pin_conf = BMA400_INT_PUSH_PULL_ACTIVE_0;
-    // rslt = bma400_set_device_conf(&m_bma400_device_conf, BMA400_INT_PIN_CONF, &m_bma400_dev);
-    // bma400_check_rslt("bma400_set_device_conf", rslt);
-
     return;
 }
 
@@ -920,7 +873,7 @@ void BMA400::calibration_write(const double value, const unsigned int offset)
         }},
         {CalibrationWriteParameter::GFORCE, [this, value, offset]() {
             DEBUG_TRACE("%s: GFORCE_value=%f offset=%u", GET_API_NAME(BMA400::calibration_write), value, offset);
-    		m_bma400.set_wakeup_gforce(value);
+    		m_bma400.set_range(value);
         }},
         {CalibrationWriteParameter::POWER_MODE, [this, value, offset]() {
             DEBUG_TRACE("%s: POWER_MODE_value=%f offset=%u", GET_API_NAME(BMA400::calibration_write), value, offset);
@@ -989,7 +942,7 @@ void BMA400LL::calibrate_offset(const uint8_t g_range, double& offset_x, double&
 
 void BMA400::calibration_read(double &value, unsigned int offset)
 {
-    GPIOPins::set(SENSORS_PWR_PIN);
+    //GPIOPins::set(SENSORS_PWR_PIN);
     double offset_x = 0.0;
     double offset_y = 0.0;
     double offset_z = 0.0;
@@ -1018,7 +971,7 @@ void BMA400::calibration_read(double &value, unsigned int offset)
         DEBUG_ERROR("AXL::calibrate: Invalid offset (%u)", offset);
         value = 0.0;
     }
-    GPIOPins::clear(SENSORS_PWR_PIN);
+    //GPIOPins::clear(SENSORS_PWR_PIN);
 }
 
 double BMA400::read(unsigned int offset)
@@ -1028,13 +981,30 @@ double BMA400::read(unsigned int offset)
         case 0: /* temperature */
             return m_bma400.read_temperature();
         case 1: /* x */
-            m_bma400.read_xyz(m_last_x, m_last_y, m_last_z);
+            m_bma400.read_xyz(m_last_x, m_last_y, m_last_z, m_last_temperature);
             return m_last_x; 
         case 2: /* y */
             return m_last_y;
         case 3: /* z */
             return m_last_z;
-        case 4: /* IRQ pending */
+        case 4: /* Activity compute */
+        {
+            constexpr double G_PER_MS2 = 9.80665;  // 1g = 9.80665 m/s²
+            // Convert from m/s² to g
+            double x_g = m_last_x / G_PER_MS2;
+            double y_g = m_last_y / G_PER_MS2;
+            double z_g = m_last_z / G_PER_MS2;
+
+            double g_force_read = std::sqrt(x_g * x_g + y_g * y_g + z_g * z_g);
+            uint8_t gforce_max = m_bma400.get_gforce();
+            if (g_force_read > gforce_max) g_force_read =  gforce_max;
+            if (g_force_read < 0.0) g_force_read = 0.0;
+
+            m_last_activity = static_cast<uint8_t>((g_force_read /  gforce_max) * 255.0);
+            DEBUG_TRACE("AXL::compute_activity: x=%f, y=%f, z=%f, g_force_read=%f, activity=%u", x_g, y_g, z_g, g_force_read, m_last_activity);
+            return static_cast<double>(m_last_activity);
+        }
+        case 5: /* IRQ pending */
             return static_cast<double>(m_bma400.check_and_clear_wakeup());
         default:
             return 0.0;

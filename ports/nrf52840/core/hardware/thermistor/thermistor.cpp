@@ -41,8 +41,16 @@ void Thermistor::adc_calibration()
     nrfx_saadc_init(&BSP::ADC_Inits.config, nrfx_saadc_event_handler);
     nrfx_saadc_calibrate_offset();
 
-    // Wait for calibration to complete
-    while (nrfx_saadc_is_busy()) {}
+    // Wait for calibration to complete, with timeout (e.g., 100ms)
+    const uint32_t timeout_ms = 200;
+    uint32_t elapsed = 0;
+    while (nrfx_saadc_is_busy()) {
+        nrf_delay_ms(1);
+        if (++elapsed >= timeout_ms) {
+            DEBUG_WARN("THERMISTOR::%s: ADC calibration timeout!", __func__);
+            break;
+        }
+    }
 
     nrfx_saadc_uninit();
     m_is_init = true;

@@ -12,6 +12,7 @@ extern "C" {
 #include "debug.hpp"
 #include "nrf_delay.h"
 #include "error.hpp"
+#include "gpio.hpp"
 
 #include "nrf_i2c.hpp"
 //#include "nrfx_twim.h"
@@ -82,6 +83,7 @@ int GaugeBatteryMonitor::init() {
 	{
 		m_is_init = true;
 	}
+	nrf_delay_ms(100);
 	
 	return STC3117_OK;
 }
@@ -197,7 +199,7 @@ void GaugeBatteryMonitor::internal_update() {
         /* results available */
         Soc = STC3117_GG_struct.SOC;
         Voltage = STC3117_GG_struct.Voltage;
-        //Current = STC3117_GG_struct.Current;
+        //Current = STC3117_GG_stggruct.Current;
 
 		mv = (uint16_t)Voltage;
 		level = (uint8_t)(Soc / 10);
@@ -211,9 +213,10 @@ void GaugeBatteryMonitor::internal_update() {
     }
     else if(status == 0) //only previous SOC, OCV and voltage are valid
     {
-        DEBUG_INFO("Previous_SoC=%i, OCV=%i \r\n", 
+        DEBUG_INFO("Previous_SoC=%i, OCV=%i, Voltage=%i", 
             STC3117_GG_struct.SOC, 
-            STC3117_GG_struct.OCV);
+            STC3117_GG_struct.OCV,
+			STC3117_GG_struct.Voltage);
 		mv = (uint16_t)STC3117_GG_struct.Voltage;
 		level = (uint8_t)(STC3117_GG_struct.SOC / 10);
 		

@@ -373,6 +373,54 @@ core/hardware/ezo_rtd/ezo_rtd.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/ezo_rtd/ezo_rtd.cpp.s
 .PHONY : core/hardware/ezo_rtd/ezo_rtd.cpp.s
 
+core/hardware/lps28dfw/lps28dfw.obj: core/hardware/lps28dfw/lps28dfw.cpp.obj
+.PHONY : core/hardware/lps28dfw/lps28dfw.obj
+
+# target to build an object file
+core/hardware/lps28dfw/lps28dfw.cpp.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/lps28dfw/lps28dfw.cpp.obj
+.PHONY : core/hardware/lps28dfw/lps28dfw.cpp.obj
+
+core/hardware/lps28dfw/lps28dfw.i: core/hardware/lps28dfw/lps28dfw.cpp.i
+.PHONY : core/hardware/lps28dfw/lps28dfw.i
+
+# target to preprocess a source file
+core/hardware/lps28dfw/lps28dfw.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/lps28dfw/lps28dfw.cpp.i
+.PHONY : core/hardware/lps28dfw/lps28dfw.cpp.i
+
+core/hardware/lps28dfw/lps28dfw.s: core/hardware/lps28dfw/lps28dfw.cpp.s
+.PHONY : core/hardware/lps28dfw/lps28dfw.s
+
+# target to generate assembly for a file
+core/hardware/lps28dfw/lps28dfw.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/lps28dfw/lps28dfw.cpp.s
+.PHONY : core/hardware/lps28dfw/lps28dfw.cpp.s
+
+core/hardware/lps28dfw/lps28dfw_reg.obj: core/hardware/lps28dfw/lps28dfw_reg.c.obj
+.PHONY : core/hardware/lps28dfw/lps28dfw_reg.obj
+
+# target to build an object file
+core/hardware/lps28dfw/lps28dfw_reg.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/lps28dfw/lps28dfw_reg.c.obj
+.PHONY : core/hardware/lps28dfw/lps28dfw_reg.c.obj
+
+core/hardware/lps28dfw/lps28dfw_reg.i: core/hardware/lps28dfw/lps28dfw_reg.c.i
+.PHONY : core/hardware/lps28dfw/lps28dfw_reg.i
+
+# target to preprocess a source file
+core/hardware/lps28dfw/lps28dfw_reg.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/lps28dfw/lps28dfw_reg.c.i
+.PHONY : core/hardware/lps28dfw/lps28dfw_reg.c.i
+
+core/hardware/lps28dfw/lps28dfw_reg.s: core/hardware/lps28dfw/lps28dfw_reg.c.s
+.PHONY : core/hardware/lps28dfw/lps28dfw_reg.s
+
+# target to generate assembly for a file
+core/hardware/lps28dfw/lps28dfw_reg.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/core/hardware/lps28dfw/lps28dfw_reg.c.s
+.PHONY : core/hardware/lps28dfw/lps28dfw_reg.c.s
+
 core/hardware/ltr_303/ltr_303.obj: core/hardware/ltr_303/ltr_303.cpp.obj
 .PHONY : core/hardware/ltr_303/ltr_303.obj
 
@@ -2746,6 +2794,12 @@ help:
 	@echo "... core/hardware/ezo_rtd/ezo_rtd.obj"
 	@echo "... core/hardware/ezo_rtd/ezo_rtd.i"
 	@echo "... core/hardware/ezo_rtd/ezo_rtd.s"
+	@echo "... core/hardware/lps28dfw/lps28dfw.obj"
+	@echo "... core/hardware/lps28dfw/lps28dfw.i"
+	@echo "... core/hardware/lps28dfw/lps28dfw.s"
+	@echo "... core/hardware/lps28dfw/lps28dfw_reg.obj"
+	@echo "... core/hardware/lps28dfw/lps28dfw_reg.i"
+	@echo "... core/hardware/lps28dfw/lps28dfw_reg.s"
 	@echo "... core/hardware/ltr_303/ltr_303.obj"
 	@echo "... core/hardware/ltr_303/ltr_303.i"
 	@echo "... core/hardware/ltr_303/ltr_303.s"
