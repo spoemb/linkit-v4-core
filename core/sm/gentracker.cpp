@@ -204,6 +204,7 @@ void PreOperationalState::exit() {
 
 void OperationalState::entry() {
 	DEBUG_INFO("entry: OperationalState");
+	GPIOPins::set(SENSORS_PWR_PIN); // Disable sensors power
 
 	battery_monitor->subscribe(*this);
 	led_handle::dispatch<SetLEDOff>({});
@@ -266,6 +267,7 @@ void OperationalState::exit() {
 		PMU::delay_ms(100);
 	}
 	battery_monitor->unsubscribe(*this);
+	GPIOPins::clear(SENSORS_PWR_PIN); // Disable sensors power
 }
 
 void ConfigurationState::entry() {

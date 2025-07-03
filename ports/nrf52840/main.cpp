@@ -335,6 +335,8 @@ int main()
 	// Check the reed switch is engaged for 3 seconds if this is a power on event
     DEBUG_TRACE("PMU Reset Cause = %s", PMU::reset_cause().c_str());
 
+	GPIOPins::set_sensors_pwr();
+
 #ifdef POWER_ON_RESET_REQUIRES_REED_SWITCH
 #ifdef PSEUDO_POWER_OFF
 
@@ -765,7 +767,7 @@ int main()
 	}
 
 
-	//GPIOPins::clear(SENSORS_PWR_PIN);
+	//GPIOPins::clear_sensors_pwr();
 	// This will initialise the FSM
 	GenTracker::start();
 

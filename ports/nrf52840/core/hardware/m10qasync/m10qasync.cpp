@@ -133,7 +133,7 @@ void M10QAsyncReceiver::enter_shutdown() {
 #if 0 == NO_GPS_POWER_REG
     // Disable the power supply for the GPS
     GPIOPins::clear(BSP::GPIO::GPIO_GPS_PWR_EN);
-    GPIOPins::clear(BSP::GPIO::GPIO_GPS_RST);
+    GPIOPins::set(BSP::GPIO::GPIO_GPS_RST);
 #else
     // Use GPIO_GPS_EXT_INT as a shutdown
     GPIOPins::clear(BSP::GPIO::GPIO_GPS_EXT_INT);

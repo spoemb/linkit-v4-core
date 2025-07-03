@@ -65,6 +65,7 @@ void PMU::powerdown() {
 	GPIOPins::set(GPS_RST); // Clear sensors power pin to save power
 	GPIOPins::clear(SAT_PWR_EN); // Clear sensors power pin to save power
 	GPIOPins::set(SAT_RESET); // Clear sensors power pin to save power
+	
 #endif
 #if defined(POWER_CONTROL_PIN)
 	DEBUG_TRACE("Attempt power off using power pin");
@@ -86,7 +87,7 @@ void PMU::powerdown() {
 	GPIOPins::clear(MCU_DONE_PIN);
 #endif
 
-
+	NRF_POWER->SYSTEMOFF = 1; // Set the system off bit to enter power down mode
 	// This is not a real powerdown but rather an infinite sleep
 	for (;;) PMU::run();
 }

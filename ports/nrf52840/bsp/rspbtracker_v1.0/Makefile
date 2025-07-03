@@ -2101,6 +2101,30 @@ drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_timer.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_timer.c.s
 .PHONY : drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_timer.c.s
 
+drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.obj: drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.c.obj
+.PHONY : drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.obj
+
+# target to build an object file
+drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.c.obj
+.PHONY : drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.c.obj
+
+drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.i: drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.c.i
+.PHONY : drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.i
+
+# target to preprocess a source file
+drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.c.i
+.PHONY : drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.c.i
+
+drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.s: drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.c.s
+.PHONY : drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.s
+
+# target to generate assembly for a file
+drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LinkIt_rspb_board.dir/build.make CMakeFiles/LinkIt_rspb_board.dir/drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.c.s
+.PHONY : drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.c.s
+
 drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twim.obj: drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twim.c.obj
 .PHONY : drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twim.obj
 
@@ -3010,6 +3034,9 @@ help:
 	@echo "... drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_timer.obj"
 	@echo "... drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_timer.i"
 	@echo "... drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_timer.s"
+	@echo "... drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.obj"
+	@echo "... drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.i"
+	@echo "... drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twi_twim.s"
 	@echo "... drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twim.obj"
 	@echo "... drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twim.i"
 	@echo "... drivers/nRF5_SDK_17.0.2/modules/nrfx/drivers/src/nrfx_twim.s"

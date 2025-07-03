@@ -18,7 +18,7 @@ private:
 	int init();
 
 	void internal_update() override;
-
+	bool previous_sensors_pwr_state = false;
 public:
 	GaugeBatteryMonitor(
 			uint16_t critical_voltage = 2800,

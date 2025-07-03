@@ -209,7 +209,6 @@ void GaugeBatteryMonitor::internal_update() {
             STC3117_GG_struct.Current, 
             STC3117_GG_struct.SOC, 
             STC3117_GG_struct.ChargeValue);
-		this->shutdown(); 
     }
     else if(status == 0) //only previous SOC, OCV and voltage are valid
     {
@@ -228,6 +227,7 @@ void GaugeBatteryMonitor::internal_update() {
         //Voltage = STC3117_GG_struct.Voltage;
     }
 
+	this->shutdown(); 
 	// Check CRC of the previously stored filtered values
 	uint16_t crc = crc16_compute((const uint8_t *)m_filtered_values, sizeof(m_filtered_values), nullptr);
 	if (crc == m_crc) {

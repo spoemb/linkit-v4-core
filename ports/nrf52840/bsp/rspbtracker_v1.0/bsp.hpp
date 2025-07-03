@@ -104,8 +104,8 @@ namespace BSP
 	{
 	    GPIO_POWER_CONTROL,
 	    GPIO_DEBUG,
-	    // GPIO_BAT_CHG,
-	    // GPIO_BAT_OK,
+	    //GPIO_BAT_CHG,
+	    //GPIO_BAT_OK,
 	    GPIO_SLOW_SWS_RX,
 	    GPIO_SLOW_SWS_SEND,
 	    // GPIO_BAT_ALARM,

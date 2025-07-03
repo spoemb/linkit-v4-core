@@ -244,6 +244,7 @@ target_sources(${TARGET_NAME} PRIVATE
     ${SDK_ROOT}/modules/nrfx/drivers/src/nrfx_qspi.c
     ${SDK_ROOT}/modules/nrfx/drivers/src/nrfx_spim.c
     ${SDK_ROOT}/modules/nrfx/drivers/src/nrfx_twim.c
+    ${SDK_ROOT}/modules/nrfx/drivers/src/nrfx_twi_twim.c
     ${SDK_ROOT}/modules/nrfx/drivers/src/nrfx_rtc.c
     ${SDK_ROOT}/modules/nrfx/drivers/src/nrfx_wdt.c
 	${SDK_ROOT}/modules/nrfx/drivers/src/nrfx_ppi.c
