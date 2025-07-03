@@ -61,7 +61,7 @@
 #else
 #warning "No GPS module defined, (should be M8Q or M10Q)"
 #endif
-
+#include "kim2.hpp"
 
 FileSystem *main_filesystem;
 
@@ -519,6 +519,7 @@ int main()
 	DEBUG_TRACE("SWS...");
 	SWSService sws;
 
+
 // 	DEBUG_TRACE("Artic R2...");
 // 	try {
 // 		static ArticSat artic;
@@ -535,6 +536,14 @@ int main()
 // 	} catch (...) {
 // 		DEBUG_TRACE("Artic R2 not detected");
 // 	}
+
+
+	DEBUG_TRACE("KIM2...");
+	try {
+		static KIM2Device kim2;
+	} catch (...) {
+		DEBUG_TRACE("KIM2 not detected");
+	}
 
 #if defined(GPS_M8Q)
 	DEBUG_TRACE("GPS M8Q ...");

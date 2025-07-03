@@ -315,7 +315,11 @@ namespace BSP
             NRF_LIBUARTE_PERIPHERAL_NOT_USED, 2,\
             255, 4);
 
-    const UARTAsync_InitTypeDefAndInst_t UARTAsync_Inits[1] =
+    NRF_LIBUARTE_ASYNC_DEFINE(async_uarte_1, 1, 3,\
+            NRF_LIBUARTE_PERIPHERAL_NOT_USED, 4,\
+            255, 4);
+
+    const UARTAsync_InitTypeDefAndInst_t UARTAsync_Inits[2] =
     {
         {
             .uart = &async_uarte_0,
@@ -331,6 +335,22 @@ namespace BSP
                 .baudrate = NRF_UARTE_BAUDRATE_460800,
                 .pullup_rx = false,
                 .int_prio = INTERRUPT_PRIORITY_UART_0,
+            }
+        },
+        {
+            .uart = &async_uarte_1,
+            .config = {
+                .rx_pin = NRF_GPIO_PIN_MAP(0, 14),
+                .tx_pin = NRF_GPIO_PIN_MAP(0, 26),
+                .cts_pin = NRF_UARTE_PSEL_DISCONNECTED,
+                .rts_pin = NRF_UARTE_PSEL_DISCONNECTED,
+                .timeout_us = 1250,
+                .flush_on_timeout = true,
+                .hwfc = NRF_UARTE_HWFC_DISABLED,
+                .parity = NRF_UARTE_PARITY_EXCLUDED,
+                .baudrate = NRF_UARTE_BAUDRATE_9600,
+                .pullup_rx = false,
+                .int_prio = INTERRUPT_PRIORITY_UART_1,
             }
         }
     };

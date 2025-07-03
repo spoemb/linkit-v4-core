@@ -3858,14 +3858,14 @@
  
 
 #ifndef NRFX_TIMER3_ENABLED
-#define NRFX_TIMER3_ENABLED 0
+#define NRFX_TIMER3_ENABLED 1
 #endif
 
 // <q> NRFX_TIMER4_ENABLED  - Enable TIMER4 instance
  
 
 #ifndef NRFX_TIMER4_ENABLED
-#define NRFX_TIMER4_ENABLED 0
+#define NRFX_TIMER4_ENABLED 1
 #endif
 
 // <o> NRFX_TIMER_DEFAULT_CONFIG_FREQUENCY  - Timer frequency if in Timer mode
@@ -4319,7 +4319,7 @@
 // <e> NRFX_UARTE_ENABLED - nrfx_uarte - UARTE peripheral driver
 //==========================================================
 #ifndef NRFX_UARTE_ENABLED
-#define NRFX_UARTE_ENABLED 1
+#define NRFX_UARTE_ENABLED 0
 #endif
 // <o> NRFX_UARTE0_ENABLED - Enable UARTE0 instance 
 #ifndef NRFX_UARTE0_ENABLED
@@ -4328,7 +4328,7 @@
 
 // <o> NRFX_UARTE1_ENABLED - Enable UARTE1 instance 
 #ifndef NRFX_UARTE1_ENABLED
-#define NRFX_UARTE1_ENABLED 1
+#define NRFX_UARTE1_ENABLED 0
 #endif
 
 // <o> NRFX_UARTE_DEFAULT_CONFIG_HWFC  - Hardware Flow Control
@@ -4446,6 +4446,11 @@
 
 #ifndef NRF_LIBUARTE_DRV_UARTE0
 #define NRF_LIBUARTE_DRV_UARTE0 1
+#endif
+
+
+#ifndef NRF_LIBUARTE_DRV_UARTE1
+#define NRF_LIBUARTE_DRV_UARTE1 1
 #endif
 
 // </e>

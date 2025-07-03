@@ -300,5 +300,5 @@ namespace BSP
          const nrf_libuarte_async_config_t config;
      } UARTAsync_InitTypeDefAndInst_t;
 
-     extern const UARTAsync_InitTypeDefAndInst_t UARTAsync_Inits[1];
+     extern const UARTAsync_InitTypeDefAndInst_t UARTAsync_Inits[2];
 }

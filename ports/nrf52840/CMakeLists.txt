@@ -172,6 +172,7 @@ target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
     ${PROJ_DIR}/core/filesystem
     ${PROJ_DIR}/core/scheduling
     ${PROJ_DIR}/core/hardware/artic_sat
+    ${PROJ_DIR}/core/hardware/kim2
     ${PROJ_DIR}/core/hardware/pressure_sensor
     ${PROJ_DIR}/core/hardware/ms58xx
     ${PROJ_DIR}/core/hardware/bar100
@@ -282,6 +283,8 @@ target_sources(${TARGET_NAME} PRIVATE
     ${PROJ_DIR}/core/hardware/tsys01/TSYS01.cpp
     ${PROJ_DIR}/core/hardware/artic_sat/artic_sat.cpp
     ${PROJ_DIR}/core/hardware/artic_sat/pa_driver.cpp
+    ${PROJ_DIR}/core/hardware/kim2/kim2.cpp
+    ${PROJ_DIR}/core/hardware/kim2/kim2_comm.cpp
     ${PROJ_DIR}/core/hardware/nrf_timer.cpp
     ${PROJ_DIR}/core/hardware/nrf_rtc.cpp
     ${PROJ_DIR}/core/hardware/nrf_spim.cpp
