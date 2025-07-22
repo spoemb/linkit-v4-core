@@ -58,7 +58,7 @@ void KIM2Comm::deinit(void)
     m_is_init = false;
 }
 
-bool KIM2Comm::send(ATCmd cmd)
+bool KIM2Comm::send(ATCmd cmd, const std::optional<std::string>& params)
 {
     if(m_is_send_busy)
     {
@@ -66,7 +66,7 @@ bool KIM2Comm::send(ATCmd cmd)
         return false;
     }
     m_is_send_busy = true;
-    return send_at_cmd(cmd, NULL, 0);
+    return send_at_cmd(cmd, params);
 }
 
 struct ATCmd_list {
@@ -78,10 +78,14 @@ struct ATCmd_list {
 const std::list<ATCmd_list> cmd_list = {
     {AT_PING, "AT+PING=?\r\n", false},
     {AT_ID, "AT+ID=?\r\n", false},
-    {AT_ADDR, "AT+ADDR=?\r\n", false}
+    {AT_ADDR, "AT+ADDR=?\r\n", false},
+    {AT_RCONF_SET, "AT+RCONF=", true},
+    {AT_KMAC_BASIC, "AT+KMAC=1\r\n", false}, // TODO : add BLIND mode support
+    {AT_LPM_SET, "AT+LPM=", true},
+    {AT_TX, "AT+TX=", true}
 };
 
-bool KIM2Comm::send_at_cmd(ATCmd cmd, char * params, uint8_t params_size)
+bool KIM2Comm::send_at_cmd(ATCmd cmd, const std::optional<std::string>& params)
 {
     bool at_cmd_valid = false;
     ret_code_t ret;
@@ -94,12 +98,15 @@ bool KIM2Comm::send_at_cmd(ATCmd cmd, char * params, uint8_t params_size)
     if (at_cmd != cmd_list.end())
     {
         at_cmd_valid = true;
-        if (at_cmd->expected_params == false)
+        m_tx_buffer = at_cmd->value;
+
+        if (at_cmd->expected_params && params.has_value())
         {
-            memcpy(m_tx_buffer, at_cmd->value.c_str(), at_cmd->value.length());
+            m_tx_buffer.append(params.value());
+            m_tx_buffer += "\r\n";
         }
-        
-        ret = nrf_libuarte_async_tx(BSP::UARTAsync_Inits[m_uart_instance].uart, m_tx_buffer, 11);
+
+        ret = nrf_libuarte_async_tx(BSP::UARTAsync_Inits[m_uart_instance].uart, reinterpret_cast<uint8_t*>(m_tx_buffer.data()), m_tx_buffer.length());
         
         if(ret != NRF_SUCCESS)
         {
@@ -111,24 +118,24 @@ bool KIM2Comm::send_at_cmd(ATCmd cmd, char * params, uint8_t params_size)
     return at_cmd_valid && (ret == NRF_SUCCESS);
 }
 
-RespType KIM2Comm::parse_rx_message(unsigned char * buffer, uint8_t size, uint8_t * used_length)
+RespType KIM2Comm::parse_rx_message(const std::string& buffer, uint8_t start_index, uint8_t * used_length)
 {
-    RespType rx_type = RX_UNKNOWN;
-    std::string message(buffer, buffer+size);
+    RespType resp_type = RESP_UNKNOWN;
+    std::string message = buffer.substr(start_index, std::string::npos);
     size_t position;
 
     // Find SYNC char '+'
     position = message.find(SYNC_CHAR);
     if (position == std::string::npos) {
-        *used_length = size;
-        return RX_UNKNOWN;
+        *used_length = message.size();
+        return RESP_UNKNOWN;
     }
 
     // SYNC found : get msg type and data
-    // -- +OK
+    // -- +OK\r\n
     if (message.compare(position, OK_RESPONSE.size(), OK_RESPONSE) == 0)
     {
-        rx_type = RX_OK;
+        resp_type = RESP_OK;
     }
     // -- +ID=
     else if ((message.compare(position, ID_RESPONSE.size(), ID_RESPONSE) == 0)
@@ -137,7 +144,7 @@ RespType KIM2Comm::parse_rx_message(unsigned char * buffer, uint8_t size, uint8_
     {
         std::memcpy(m_ascii_id, message.c_str() + ID_RESPONSE.size(), ID_SIZE);
         m_ascii_id[ID_SIZE] = 0; //terminal character
-        rx_type = RX_CONFIG;
+        resp_type = RESP_CONFIG;
     }
     // -- +ADDR=
     else if ((message.compare(position, ADDR_RESPONSE.size(), ADDR_RESPONSE) == 0)
@@ -146,48 +153,67 @@ RespType KIM2Comm::parse_rx_message(unsigned char * buffer, uint8_t size, uint8_
     {
         std::memcpy(m_ascii_addr, message.c_str() + ADDR_RESPONSE.size(), ADDR_SIZE);
         m_ascii_addr[ADDR_SIZE] = 0; //terminal character
-        rx_type = RX_CONFIG;
+        resp_type = RESP_CONFIG;
+    }
+    // -- +ERROR=
+    else if ((message.compare(position, ERR_RESPONSE.size(), ERR_RESPONSE) == 0))
+    {
+        resp_type = RESP_ERROR;
+    }
+    // -- +TX=
+    else if ((message.compare(position, TX_RESPONSE.size(), TX_RESPONSE) == 0)
+            && (message.find(END_CHAR_1)) && (message.find(END_CHAR_2)))
+    {
+        std::string resp = message.substr(position + TX_RESPONSE.size()); // extract response after "+TX="
+        m_tx_status = std::stoi(resp.substr(0, resp.find(','))); // extract first response field (error code) and convert into integer
+        resp_type = RESP_TX_STATUS;
     }
     
     // Find end of message ('\n')
     position = message.find(END_CHAR_2);
     if(position == std::string::npos)
     {
-        *used_length = size;
+        *used_length = message.size();
     }
     else
     {
         *used_length = position + 1;
     }
 
-    return rx_type;
+    return resp_type;
 }
 
 void KIM2Comm::handle_tx_done(void)
 {
     m_is_send_busy = false;
-    notify<KIM2CommEventTxDone>({});
 }
 
 void KIM2Comm::handle_rx_buffer(uint8_t * buffer, uint8_t length)
 {   
-    std::memcpy(m_rx_buffer, buffer, length);
+    m_rx_buffer.assign(reinterpret_cast<const char*>(buffer), length);
     
-    unsigned char * current_buffer = m_rx_buffer;
-    uint8_t remaining_length = length;
+    uint8_t parsing_index = 0;
     uint8_t current_length = 0;
-    RespType msg = RX_UNKNOWN;
+    RespType msg = RESP_UNKNOWN;
 
-    do {
-        current_buffer += current_length;
-        current_length = 0;
-        msg = parse_rx_message(current_buffer, remaining_length, &current_length);
-        if (msg == RX_OK)
+    while(parsing_index < m_rx_buffer.size())
+    {
+        msg = parse_rx_message(m_rx_buffer, parsing_index, &current_length);
+        if (msg == RESP_OK)
         {
             notify<KIM2CommEventOk>({});
         }
-        remaining_length -= current_length;
-    } while(remaining_length);
+        else if (msg == RESP_TX_STATUS)
+        {
+            notify<KIM2CommEventTxDone>({});
+        }
+        else if (msg == RESP_ERROR)
+        {
+            DEBUG_INFO("KIM2Comm::handle_rx_buffer %s", m_rx_buffer.substr(parsing_index, current_length).data());
+            notify<KIM2CommEventError>({});
+        }
+        parsing_index += current_length;
+    }
 
     nrf_libuarte_async_rx_free(BSP::UARTAsync_Inits[1].uart, buffer, length);
 }

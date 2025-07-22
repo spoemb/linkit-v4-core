@@ -541,6 +541,7 @@ int main()
 	DEBUG_TRACE("KIM2...");
 	try {
 		static KIM2Device kim2;
+		static ArgosTxService argos_tx_service(kim2);
 	} catch (...) {
 		DEBUG_TRACE("KIM2 not detected");
 	}

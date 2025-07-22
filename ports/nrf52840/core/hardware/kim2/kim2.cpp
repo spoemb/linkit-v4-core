@@ -2,65 +2,374 @@
 
 #include "kim2.hpp"
 #include "kim2_comm.hpp"
+#include "pmu.hpp"
 #include "debug.hpp"
 #include "error.hpp"
-
-#include "nrf_delay.h"
+#include "bitpack.hpp"
+#include "binascii.hpp"
 
 using namespace KIM2;
 
+#define LDK_MAX_LENGTH_BITS      (16*8)
+#define LDA2_MAX_LENGTH_BITS     (24*8)
+#define VLDA4_MAX_LENGTH_BITS    (3*8)
+
+#define KIM2_STATE_CHANGE(x, y)                     \
+	do {                                             \
+		DEBUG_TRACE("KIM2::KIM2_STATE_CHANGE: " #x " -> " #y ); \
+		m_state = y;                                 \
+		state_ ## x ##_exit();                       \
+		state_ ## y ##_enter();                      \
+		run_state_machine();						 \
+	} while (0)
+
+#define KIM2_STATE_EQUAL(x) \
+	(m_state == x)
+
+#define KIM2_STATE_CALL(x) \
+	do {                    \
+		state_ ## x();      \
+	} while (0)
+
+extern Scheduler *system_scheduler;
+
 KIM2Device::KIM2Device()
 {
-    //INIT variables, clear buffer
-    //GPIOPins::clear(TOBEDEFINED); (SAT_EN, WAKEUP, INT)
-    m_cmd_is_ok = false;
-  
-    m_kim2_comm.init();
-    m_kim2_comm.subscribe(*this);
-    detect_device();
+    m_tx_buffer.clear();
+    m_packet_buffer.clear();
+    m_state = KIM2ManagerState::power_off;
+    KIM2_STATE_CHANGE(power_off, power_on);
 }
 
 KIM2Device::~KIM2Device()
 {
-    m_kim2_comm.deinit();
+    power_off_immediate();
 }
 
-void KIM2Device::detect_device(void)
+void KIM2Device::send(const KineisMode mode, const KineisPacket& user_payload, const unsigned int payload_length)
 {
-    DEBUG_TRACE("KIM2Device::detect_device");
+    KineisPacket packet;
+    uint16_t total_bits;
+    uint16_t modulo;
+    uint16_t stuffing_bits = 0;
 
-    // Ping KIM2
-    m_kim2_comm.send(AT_PING);
-    for(uint16_t time = 0; !m_cmd_is_ok && time <= 1000; time += 10)
+    switch (mode)
     {
-        nrf_delay_ms(10);
-    }
-    if (!m_cmd_is_ok) {
-        throw ErrorCode::RESOURCE_NOT_AVAILABLE;
-    }
-    m_cmd_is_ok = false;
+        case KineisMode::LDK:
+            if (payload_length > LDK_MAX_LENGTH_BITS)
+            {
+                DEBUG_ERROR("KIM2Device::send: LDK payload is too long : %d bits - MAX is %d bits",
+                    payload_length, LDK_MAX_LENGTH_BITS);
+                return;
+            }
+            stuffing_bits = LDK_MAX_LENGTH_BITS - payload_length;
+            break;
 
-    // Get KIM2 ID
-    m_kim2_comm.send(AT_ID);
-    while(m_cmd_is_ok == false)
-    {
-        nrf_delay_ms(10);
-    }
-    DEBUG_TRACE("KIM2Device::detect_device ID:%s", m_kim2_comm.m_ascii_id);
-    m_cmd_is_ok = false;
+        case KineisMode::LDA2:
+            if (payload_length > LDA2_MAX_LENGTH_BITS)
+            {
+                DEBUG_ERROR("KIM2Device::send: LDA2 payload is too long : %d bits - MAX is %d bits",
+                    payload_length, LDA2_MAX_LENGTH_BITS);
+                return;
+            }
+            // LDA2 payload size can be any multiple of 4 bytes
+            modulo = payload_length % 32;
+            stuffing_bits = modulo ? (32 - modulo) : 0;
+            break;
 
-    // Get KIM2 ADDR
-    m_kim2_comm.send(AT_ADDR);
-    while(m_cmd_is_ok == false)
-    {
-        nrf_delay_ms(10);
+        case KineisMode::VLDA4:
+            if (payload_length > VLDA4_MAX_LENGTH_BITS)
+            {
+                DEBUG_ERROR("KIM2Device::send: VLDA4 payload is too long : %d bits - MAX is %d bits",
+                    payload_length,
+                    VLDA4_MAX_LENGTH_BITS);
+                return;
+            }
+            stuffing_bits = VLDA4_MAX_LENGTH_BITS - payload_length;
+            break;
+
+        default:
+            DEBUG_ERROR("KIM2Device::send: Unknown modulation type");
+            return;
     }
-    DEBUG_TRACE("KIM2Device::detect_device ADDR:%s", m_kim2_comm.m_ascii_addr);
-    m_cmd_is_ok = false;
+    DEBUG_TRACE("KIM2Device::send: adding %u stuffing bits for alignment", stuffing_bits);
+
+    total_bits = payload_length + stuffing_bits;
+    packet.assign(total_bits/8, 0);
+    packet.replace(0, user_payload.size(), user_payload);
+
+    // Add any stuffing bits
+    unsigned int payload_bits_remaining = stuffing_bits;
+    unsigned int op_offset = payload_length;
+    while (payload_bits_remaining) {
+        unsigned int bits = std::min(8U, payload_bits_remaining);
+        payload_bits_remaining -= bits;
+        PACK_BITS(0, packet, op_offset, bits);
+    }
+
+    // Setup TX mode
+    DEBUG_TRACE("KIM2Device::send_packet: data[%u]=%s", total_bits, Binascii::hexlify(packet).c_str());
+    m_packet_buffer = Binascii::hexlify(packet).c_str();
+    m_tx_mode = mode; //TODO : use m_tx_mode
+
+    // Request power on (if not already running)
+    start_device();
+}
+
+void KIM2Device::stop_send() {
+    DEBUG_TRACE("KIM2Device::stop_send");
+    m_packet_buffer.clear();
+    m_tx_buffer.clear();
 }
 
 void KIM2Device::react (const KIM2CommEventOk&) {
     m_cmd_is_ok = true;
 }
 
+void KIM2Device::react(const KIM2CommEventTxDone&) {
+    m_tx_done = true;
+}
 
+void KIM2Device::react(const KIM2CommEventError&) {
+    m_is_error = true;
+}
+
+void KIM2Device::start_device()
+{
+    // Device is already powered
+    if (m_state != KIM2ManagerState::power_off) {
+        m_stopping = false;  // Clear any pending stopping flag
+        DEBUG_TRACE("KIM2::start: already running in state=%u", (unsigned int)m_state);
+        run_state_machine(0);
+        return;
+    }
+
+    // Set top-level state variables
+    m_stopping = false;
+    KIM2_STATE_CHANGE(power_off, power_on);
+}
+
+void KIM2Device::power_off_immediate(void)
+{
+    DEBUG_TRACE("KIM2Device::power_off_immediate");
+
+    // We force a power off by cancelling the state machine and
+    // forcing a stopped state
+    if (!KIM2_STATE_EQUAL(power_off)) {
+        system_scheduler->cancel_task(m_task);
+        KIM2_STATE_CHANGE(idle, power_off);
+    }
+}
+
+bool KIM2Device::send_AT(ATCmd cmd, const std::optional<std::string>& params)
+{
+    uint16_t timeout_ms = 1000; // CHANGE!?
+
+    m_cmd_is_ok = false;
+    m_is_error = false;
+
+    m_kim2_comm.send(cmd, params);
+
+    while(!m_cmd_is_ok && timeout_ms != 0)
+    {
+        PMU::delay_ms(1);
+        timeout_ms --;
+    }
+
+    if(timeout_ms == 0)
+        DEBUG_TRACE("KIM2Device::send_AT +OK not received");
+
+    return m_cmd_is_ok;
+}
+
+void KIM2Device::state_machine(void)
+{
+	switch (m_state) {
+	case KIM2ManagerState::power_off:
+		KIM2_STATE_CALL(power_off);
+		break;
+	case KIM2ManagerState::power_on:
+		KIM2_STATE_CALL(power_on);
+		break;
+	case KIM2ManagerState::init:
+		KIM2_STATE_CALL(init);
+		break;
+	case KIM2ManagerState::idle:
+		KIM2_STATE_CALL(idle);
+		break;
+	case KIM2ManagerState::transmit:
+		KIM2_STATE_CALL(transmit);
+		break;
+	case KIM2ManagerState::error:
+		KIM2_STATE_CALL(error);
+		break;
+	default:
+		break;
+	}
+}
+
+void KIM2Device::run_state_machine(uint16_t delay_ms)
+{
+    system_scheduler->cancel_task(m_task);
+    m_task = system_scheduler->post_task_prio([this]() {
+        state_machine();
+    }, "KIM2StateMachine", Scheduler::DEFAULT_PRIORITY, delay_ms);
+}
+
+void KIM2Device::state_power_off_enter()
+{
+    m_kim2_comm.deinit();
+    //GPIOPins::clear(KIM_PWR_ON);
+    //GPIOPins::clear(SAT_NRST);
+    //GPIOPins::clear(SAT_EXTWKUP);
+
+    m_tx_buffer.clear();
+    m_packet_buffer.clear();
+
+    //notify(ArticEventPowerOff({}))
+}
+
+void KIM2Device::state_power_off()
+{
+    ;
+}
+
+void KIM2Device::state_power_off_exit()
+{
+    ;
+}
+
+void KIM2Device::state_power_on_enter()
+{
+    //GPIOPins::set(KIM_PWR_ON);
+    //GPIOPins::set(SAT_NRST);
+    //GPIOPins::set(SAT_EXTWKUP);
+    m_kim2_comm.init();
+    m_kim2_comm.subscribe(*this);
+}
+
+void KIM2Device::state_power_on()
+{
+    if(send_AT(AT_PING))
+    {
+        KIM2_STATE_CHANGE(power_on, init);
+    }
+    else
+    {
+        KIM2_STATE_CHANGE(power_on, error);
+    }
+}
+
+void KIM2Device::state_power_on_exit()
+{
+    ;
+}
+
+void KIM2Device::state_init_enter()
+{
+    ;
+}
+
+void KIM2Device::state_init()
+{
+    if(send_AT(AT_ID))
+    {
+        DEBUG_TRACE("KIM2Device::state_init ID:%s", m_kim2_comm.m_ascii_id);
+        // configuration_store->write_param(ParamID::ARGOS_DECID, std::stoi(m_kim2_comm.m_ascii_id));
+    }
+
+    if(send_AT(AT_ADDR))
+    {
+        DEBUG_TRACE("KIM2Device::state_init ADDR:%s", m_kim2_comm.m_ascii_addr);
+        // configuration_store->write_param(ParamID::ARGOS_HEXID, std::stoi(m_kim2_comm.m_ascii_addr, nullptr, 16));
+    }
+
+    // Read RCONF or similar from configuration_store ?
+    std::string rconf = "3d678af16b5a572078f3dbc95a1104e7"; // ESS3 - LDA2 - 27dBm
+    if(send_AT(AT_RCONF_SET, rconf) && send_AT(AT_KMAC_BASIC))
+    {
+        DEBUG_TRACE("KIM2Device::state_init RCONF and KMAC set");
+    }
+
+    //TODO Set LPM ? Or toggle wakeup pin is enough ?
+    //TODO manage error
+
+    KIM2_STATE_CHANGE(init, idle);
+}
+
+void KIM2Device::state_init_exit()
+{
+    ;
+}
+
+void KIM2Device::state_idle_enter()
+{
+    ;
+}
+
+void KIM2Device::state_idle()
+{
+    // Check for any new commands
+	if (m_packet_buffer.length()) {
+		m_tx_buffer = m_packet_buffer;
+		m_packet_buffer.clear();
+		KIM2_STATE_CHANGE(idle, transmit);
+	}
+}
+
+void KIM2Device::state_idle_exit()
+{
+    ;
+}
+
+void KIM2Device::state_transmit_enter()
+{
+    DEBUG_TRACE("KIM2Device::state_transmit_enter");
+    // Wakeup KIM2 ?
+	// use m_tx_mode ?
+
+    m_tx_done = false;
+    send_AT(AT_TX, m_tx_buffer);
+    notify(KineisEventTxStarted({}));
+}
+
+void KIM2Device::state_transmit()
+{
+    DEBUG_TRACE("KIM2Device::state_transmit");
+    if(m_tx_done)
+    {
+        m_tx_done = false;
+        DEBUG_TRACE("KIM2Device::state_transmit : TX status %d", m_kim2_comm.m_tx_status);
+        if (m_tx_buffer.size()) {
+            m_tx_buffer.clear();
+            notify(KineisEventTxComplete({})); // check tx status ?
+        }
+        //TODO handle other cases
+        KIM2_STATE_CHANGE(transmit, idle);
+    }
+    else
+    {
+        run_state_machine();
+    }
+}
+
+void KIM2Device::state_transmit_exit()
+{
+    ;
+}
+
+void KIM2Device::state_error_enter()
+{
+    ;
+}
+
+void KIM2Device::state_error()
+{
+    DEBUG_TRACE("KIM2Device::state_error");
+    KIM2_STATE_CHANGE(error, power_off);
+}
+
+void KIM2Device::state_error_exit()
+{
+    ;
+}

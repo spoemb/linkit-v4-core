@@ -5,7 +5,7 @@
 #include <deque>
 #include <vector>
 #include <random>
-#include "artic_device.hpp"
+#include "kineis_device.hpp"
 #include "service.hpp"
 #include "config_store.hpp"
 #include "service_scheduler.hpp"
@@ -153,21 +153,21 @@ public:
 	static unsigned int convert_latitude(double x);
 	static unsigned int convert_longitude(double x);
 	static unsigned int convert_battery_voltage(unsigned int battery_voltage);
-	static ArticPacket build_short_packet(GPSLogEntry* v,
+	static KineisPacket build_short_packet(GPSLogEntry* v,
 			bool is_out_of_zone,
 			bool is_low_battery);
-	static ArticPacket build_long_packet(std::vector<GPSLogEntry*> &v,
+	static KineisPacket build_long_packet(std::vector<GPSLogEntry*> &v,
 			bool is_out_of_zone,
 			bool is_low_battery,
 			BaseDeltaTimeLoc delta_time_loc);
-	static ArticPacket build_gnss_packet(std::vector<GPSLogEntry*> &v,
+	static KineisPacket build_gnss_packet(std::vector<GPSLogEntry*> &v,
 			bool is_out_of_zone,
 			bool is_low_battery,
 			BaseDeltaTimeLoc delta_time_loc,
 			unsigned int &size_bits);
-	static ArticPacket build_certification_packet(std::string cert_tx_payload, unsigned int &size_bits);
-	static ArticPacket build_doppler_packet(unsigned int battery, bool is_low_battery, unsigned int &size_bits);
-	static ArticPacket build_sensor_packet(GPSLogEntry* v,
+	static KineisPacket build_certification_packet(std::string cert_tx_payload, unsigned int &size_bits);
+	static KineisPacket build_doppler_packet(unsigned int battery, bool is_low_battery, unsigned int &size_bits);
+	static KineisPacket build_sensor_packet(GPSLogEntry* v,
 			ServiceSensorData *als_sensor,
 			ServiceSensorData *ph_sensor,
 			ServiceSensorData *pressure_sensor,
@@ -210,7 +210,7 @@ public:
 	static bool is_in_duty_cycle(uint64_t time_ms, unsigned int duty_cycle);
 
 	ArgosTxScheduler();
-	unsigned int schedule_prepass(ArgosConfig& config, BasePassPredict& pass_predict, ArticMode& scheduled_mode, std::time_t now);
+	// unsigned int schedule_prepass(ArgosConfig& config, BasePassPredict& pass_predict, ArticMode& scheduled_mode, std::time_t now);
 	unsigned int schedule_duty_cycle(ArgosConfig& config, std::time_t now);
 	unsigned int schedule_legacy(ArgosConfig& config, std::time_t now);
 	void set_earliest_schedule(std::time_t t);
@@ -290,9 +290,9 @@ private:
 };
 
 
-class ArgosTxService : public Service, ArticEventListener {
+class ArgosTxService : public Service, KineisEventListener {
 public:
-	ArgosTxService(ArticDevice& device);
+	ArgosTxService(KineisDevice& device);
 	void notify_peer_event(ServiceEvent& e) override;
 
 protected:
@@ -307,17 +307,17 @@ protected:
 	bool service_is_active_on_initiate() override;
 
 private:
-	ArticDevice& m_artic;
+	KineisDevice& m_kineis;
 	ArgosDepthPileManager m_depth_pile_manager;
 	ArgosTxScheduler m_sched;
 	bool m_is_first_tx;
 	bool m_is_tx_pending;
 	std::function<void()> m_scheduled_task;
-	ArticMode m_scheduled_mode;
+	KineisMode m_scheduled_mode;
 
-	void react(ArticEventTxStarted const &) override;
-	void react(ArticEventTxComplete const &) override;
-	void react(ArticEventDeviceError const &) override;
+	void react(KineisEventTxStarted const &) override;
+	void react(KineisEventTxComplete const &) override;
+	void react(KineisEventDeviceError const &) override;
 
 	void process_certification_burst();
 	void process_time_sync_burst();
