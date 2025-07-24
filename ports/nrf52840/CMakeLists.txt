@@ -61,7 +61,7 @@ endif()
 
 
 execute_process(
-        COMMAND git describe --dirty --long
+        COMMAND git describe --tags --dirty --long
         WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
         OUTPUT_VARIABLE FW_APP_VERSION
         OUTPUT_STRIP_TRAILING_WHITESPACE
