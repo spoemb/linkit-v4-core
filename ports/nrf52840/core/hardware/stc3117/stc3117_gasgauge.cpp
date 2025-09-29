@@ -13,6 +13,7 @@ extern "C" {
 #include "nrf_delay.h"
 #include "error.hpp"
 #include "gpio.hpp"
+#include "nrf_gpio.h"
 
 #include "nrf_i2c.hpp"
 //#include "nrfx_twim.h"
@@ -45,25 +46,35 @@ GaugeBatteryMonitor::GaugeBatteryMonitor(uint16_t critical_voltage,
 		) :
 		BatteryMonitor(low_level, critical_voltage)
 {
+	#ifdef NO_BAT_GAUGE
+    DEBUG_TRACE("Fake gasgauge init...");
+	#else
     DEBUG_TRACE("GasGaugeBatteryMonitor init...");
 
-    // Register the I2C functions with the C driver
     setup_i2c();  // This ensures I2C functions are registered
 
     DEBUG_TRACE("I2C functions attributed");
 
     int status = check_i2c_device();
-    DEBUG_TRACE("I2C device checked");
+    DEBUG_TRACE("I2C device checked"); // This ensures I2C functions are registered
 	status = this->init();
 	if (status != STC3117_OK) {
 		DEBUG_ERROR("STC3117: Device check failed with error %d", status);
 		m_is_init = false;
-		return;
 	}
+	#endif
+	return;
+
 }
 
 int GaugeBatteryMonitor::init() {
 	DEBUG_TRACE("GaugeBatteryMonitor init called");
+    // pwr_pin_state = GPIOPins::get_sensors_pwr_state();
+    // if (!pwr_pin_state) 
+    // {
+    //    GPIOPins::set_sensors_pwr();
+	//    nrf_delay_ms(100);
+    // }
 	if (m_is_init) {
 		DEBUG_ERROR("GaugeBatteryMonitor already initialized");
 		return STC3117_OK;
@@ -83,13 +94,16 @@ int GaugeBatteryMonitor::init() {
 	{
 		m_is_init = true;
 	}
-	nrf_delay_ms(100);
+	nrf_delay_ms(500);
 	
 	return STC3117_OK;
 }
 
 
 int GaugeBatteryMonitor::shutdown() {
+	#ifdef NO_BAT_GAUGE
+    DEBUG_TRACE("Fake gasgauge shutdown...");
+	#else
 	DEBUG_TRACE("GaugeBatteryMonitor shutdown called");
 	// Call the C driver shutdown function
 	int status = GasGauge_Stop();
@@ -99,6 +113,11 @@ int GaugeBatteryMonitor::shutdown() {
 	}
 	m_is_init = false;
 	DEBUG_TRACE("GaugeBatteryMonitor shutdown completed successfully");
+	// if (pwr_pin_state == false) 
+    // {
+    //     GPIOPins::clear_sensors_pwr();
+    // }
+	#endif
 	return STC3117_OK;
 }
 // Forwarding C++ I2C functions to the C driver
@@ -182,6 +201,21 @@ int GaugeBatteryMonitor::check_i2c_device() {
 }
 
 void GaugeBatteryMonitor::internal_update() {
+
+	#ifdef NO_BAT_GAUGE
+    DEBUG_TRACE("Fake gasgauge shutdown...");
+
+	// No previous values so set new values
+	m_filtered_values[0] = 4100;
+	m_filtered_values[1] = 100;
+	// Apply new values
+	m_last_voltage_mv = 4100;
+	m_last_level = 100;
+
+	// Set flags
+	m_is_critical_voltage = m_filtered_values[0] < m_critical_voltage_mv;
+	m_is_low_level = m_filtered_values[1] < m_low_level;
+	#else
 	// Sample ADC and convert values
 	if (m_is_init == false) {
 		DEBUG_ERROR("GaugeBatteryMonitor not initialized");
@@ -263,6 +297,7 @@ void GaugeBatteryMonitor::internal_update() {
 	// Set flags
 	m_is_critical_voltage = m_filtered_values[0] < m_critical_voltage_mv;
 	m_is_low_level = m_filtered_values[1] < m_low_level;
+	#endif
 }
 
 static void GasGauge_DefaultInit(GasGauge_DataTypeDef * GG_struct)

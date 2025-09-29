@@ -11,12 +11,9 @@ void NrfI2C::init(void) {
 	{
 		if (!m_is_enabled[i])
 		{
-			nrfx_twi_twim_bus_recover(BSP::I2C_Inits[i].twim_config.scl, BSP::I2C_Inits[i].twim_config.sda);
 			if (nrfx_twim_init(&BSP::I2C_Inits[i].twim, &BSP::I2C_Inits[i].twim_config, nullptr, nullptr) != NRFX_SUCCESS)
 				throw ErrorCode::RESOURCE_NOT_AVAILABLE;
-			nrfx_twi_twim_bus_recover(BSP::I2C_Inits[i].twim_config.scl, BSP::I2C_Inits[i].twim_config.sda);
 			nrfx_twim_enable(&BSP::I2C_Inits[i].twim);
-			nrfx_twi_twim_bus_recover(BSP::I2C_Inits[i].twim_config.scl, BSP::I2C_Inits[i].twim_config.sda);
 			m_is_enabled[i] = true;
 		}
 	}
@@ -27,7 +24,6 @@ void NrfI2C::uninit(void) {
 	{
 		if (m_is_enabled[i]) 
 		{
-			nrfx_twi_twim_bus_recover(BSP::I2C_Inits[i].twim_config.scl, BSP::I2C_Inits[i].twim_config.sda);
 			nrfx_twim_disable(&BSP::I2C_Inits[i].twim);
 			nrfx_twim_uninit(&BSP::I2C_Inits[i].twim);
 			m_is_enabled[i] = false;

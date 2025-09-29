@@ -59,12 +59,13 @@ void PMU::reset(bool) {
 
 void PMU::powerdown() {
 #if defined(EXTERNAL_WAKEUP)
+	DEBUG_TRACE("Powerdown with external wakeup enabled");
 	NrfI2C::uninit();
 	GPIOPins::clear(SENSORS_PWR_PIN); // Clear sensors power pin to save power
-	GPIOPins::clear(GPS_POWER); // Clear sensors power pin to save power
 	GPIOPins::set(GPS_RST); // Clear sensors power pin to save power
-	GPIOPins::clear(SAT_PWR_EN); // Clear sensors power pin to save power
+	GPIOPins::clear(GPS_POWER); // Clear sensors power pin to save power
 	GPIOPins::set(SAT_RESET); // Clear sensors power pin to save power
+	GPIOPins::clear(SAT_PWR_EN); // Clear sensors power pin to save power
 	
 #endif
 #if defined(POWER_CONTROL_PIN)

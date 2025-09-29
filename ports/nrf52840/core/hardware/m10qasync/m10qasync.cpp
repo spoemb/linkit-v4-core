@@ -147,9 +147,11 @@ void M10QAsyncReceiver::exit_shutdown() {
     m_ubx_comms.set_debug_enable(m_nav_settings.debug_enable);
 
 #if 0 == NO_GPS_POWER_REG
+	DEBUG_INFO("M10QAsyncReceiver::NOGPS_POWER_REG: Enabling GPS power supply");
     // Enable the power supply for the GPS
-    GPIOPins::set(BSP::GPIO::GPIO_GPS_PWR_EN);
     GPIOPins::set(BSP::GPIO::GPIO_GPS_RST);
+    PMU::delay_ms(10); 
+    GPIOPins::set(BSP::GPIO::GPIO_GPS_PWR_EN);
     PMU::delay_ms(1000); // Necessary to allow the device to boot
 #else
     // Use GPIO_GPS_EXT_INT as a wake-up
@@ -491,6 +493,9 @@ void M10QAsyncReceiver::state_poweron_enter() {
 	m_uart_error_count = 0;
 	m_fix_was_found = false;
 	m_unrecoverable_error = false;
+
+    
+	DEBUG_INFO("M10QAsyncReceiver::state_poweron_enter");
 	exit_shutdown();
     notify<GPSEventPowerOn>({});
 }

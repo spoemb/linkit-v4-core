@@ -62,9 +62,9 @@ void GPIOPins::initialise()
 	set(GPS_RST);
 	#endif
 	#ifdef SAT_PWR_EN
-	clear(SAT_PWR_EN);
-	set(SAT_PWR_EN);
 	set(SAT_RESET);
+	clear(SAT_PWR_EN);
+	//set(SAT_PWR_EN);
 	#endif
 	#ifdef SENSORS_PWR_PIN
 	//clear_sensors_pwr();
@@ -83,7 +83,7 @@ void GPIOPins::set_sensors_pwr()
 		DEBUG_TRACE("GPIOPins::set_sensors_pwr: Setting sensors power pin");
 		set(SENSORS_PWR_PIN);
 		nrf_delay_ms(50);
-		NrfI2C::init(); // Ensure I2C is initialised after setting sensors power
+		//NrfI2C::init(); // Ensure I2C is initialised after setting sensors power
 		m_sensors_pwr_state = true;
 	}
 }
@@ -93,9 +93,9 @@ void GPIOPins::clear_sensors_pwr()
 	{
 		DEBUG_TRACE("GPIOPins::clear_sensors_pwr: Clearing sensors power pin");
     
-		NrfI2C::uninit();
-		clear(SENSORS_PWR_PIN);
-		m_sensors_pwr_state = false;
+		//NrfI2C::uninit();
+		//clear(SENSORS_PWR_PIN);
+		//m_sensors_pwr_state = false;
 	}
 }	
 bool GPIOPins::get_sensors_pwr_state()

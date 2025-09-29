@@ -508,6 +508,7 @@ SmdSat::~SmdSat() {
 }
 void SmdSat::shutdown(void) {
 	GPIOPins::clear(SAT_RESET);
+	nrf_delay_ms(SMDSAT_DELAY_RST_MS); // Wait for the reset to take effect
 	GPIOPins::clear(SAT_PWR_EN);
 	return;
 }
@@ -641,8 +642,9 @@ void SmdSat::state_machine(bool use_scheduler) {
 	}
 
 	void SmdSat::state_powering_on() {
-		GPIOPins::set(SAT_PWR_EN);
 		GPIOPins::set(SAT_RESET);
+		nrf_delay_ms(SMDSAT_DELAY_RST_MS);
+		GPIOPins::set(SAT_PWR_EN);
 		SMD_STATE_CHANGE(powering_on, idle_pending);
 		return;
 	}
@@ -974,8 +976,9 @@ void SmdSat::set_credentials(const unsigned int dec_id, const unsigned int addre
 	bool stop_spi = false;
 	if (m_state == SmdSatState::stopped)
 	{
-		GPIOPins::set(SAT_PWR_EN);
 		GPIOPins::set(SAT_RESET);
+		nrf_delay_ms(SMDSAT_DELAY_RST_MS); // Wait for the reset to take effect
+		GPIOPins::set(SAT_PWR_EN);
 	}
 	if (m_nrf_spim == nullptr)
 	{
@@ -1032,8 +1035,9 @@ void SmdSat::read_credentials(unsigned int *dec_id, unsigned int *address, std::
 	bool stop_spi = false;
 	if (m_state == SmdSatState::stopped)
 	{
-		GPIOPins::set(SAT_PWR_EN);
 		GPIOPins::set(SAT_RESET);
+		GPIOPins::set(SAT_PWR_EN);
+		nrf_delay_ms(SMDSAT_DELAY_RST_MS); // Wait for the reset to take effect
 	}
 	if (m_nrf_spim == nullptr)
 	{

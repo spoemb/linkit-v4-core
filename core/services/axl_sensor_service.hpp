@@ -176,10 +176,22 @@ private:
 	bool sensor_is_enabled() override {
 		return service_read_param<bool>(ParamID::AXL_SENSOR_ENABLE);
 	}
+	unsigned int sensor_max_samples() override {
+		return service_read_param<unsigned int>(ParamID::AXL_SENSOR_ENABLE_TX_MAX_SAMPLES);
+	}
+
 	unsigned int sensor_num_channels() override { return 6U; }
 	unsigned int sensor_periodic() override {
 		unsigned int schedule =
 				1000 * service_read_param<unsigned int>(ParamID::AXL_SENSOR_PERIODIC);
 		return schedule == 0 ? Service::SCHEDULE_DISABLED : schedule;
+	}
+	unsigned int sensor_tx_periodic() override {
+		return service_read_param<unsigned int>(ParamID::AXL_SENSOR_ENABLE_TX_SAMPLE_PERIOD);
+	}
+	bool sensor_is_usable_underwater() override { return true; }
+
+	BaseSensorEnableTxMode sensor_enable_tx_mode() override {
+		return service_read_param<BaseSensorEnableTxMode>(ParamID::AXL_SENSOR_ENABLE_TX_MODE);
 	}
 };

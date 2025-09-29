@@ -90,6 +90,7 @@
 //#define POWER_ON_RESET_REQUIRES_REED_SWITCH
 //#define PSEUDO_POWER_OFF
 #define EXTERNAL_WAKEUP
+//#define NO_BAT_GAUGE
 
 // Other options
 #define HW_VERSION_DETECT 2

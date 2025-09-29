@@ -14,6 +14,7 @@ private:
 	bool m_is_init = false;
 	GasGauge_DataTypeDef STC3117_GG_struct;
 
+	bool pwr_pin_state = false;
     int check_i2c_device();
 	int init();
 

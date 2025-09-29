@@ -487,6 +487,7 @@ int main()
 	configuration_store = &store;
 	configuration_store->init();
 
+
 	DEBUG_TRACE("Battery monitor...");
 	double critical_batt_voltage = configuration_store->read_param<double>(ParamID::LB_CRITICAL_THRESH);
 	unsigned int low_batt_level = configuration_store->read_param<unsigned int>(ParamID::LB_TRESHOLD);

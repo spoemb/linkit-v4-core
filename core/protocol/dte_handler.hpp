@@ -13,6 +13,7 @@
 #include "gpio.hpp"
 #include "bsp.hpp"
 #include "nrf_delay.h"
+#include "nrf_gpio.h"
 
 using namespace std::literals::string_literals;
 
@@ -142,6 +143,7 @@ public:
 			return DTEEncoder::encode(DTECommand::PARMR_RESP, error_code);
 		}
 
+		GPIOPins::set_sensors_pwr();
 		// Check special case where params is zero length => retrieve all parameter key types
 		if (params.size() == 0) {
 			// Extract all parameter keys
@@ -162,6 +164,7 @@ public:
 			param_values.push_back(p);
 		}
 
+		GPIOPins::clear_sensors_pwr();
 		return DTEEncoder::encode(DTECommand::PARMR_RESP, param_values);
 	}
 
@@ -491,12 +494,14 @@ public:
 			if (component == 0) {
 				// Power on all components
 				DEBUG_TRACE("Power on M10Q GNSS");
-				GPIOPins::set(GPS_RST); // Clear sensors power pin to save power
+				GPIOPins::set(BSP::GPIO::GPIO_GPS_RST);
+				nrf_delay_ms(10);
 				GPIOPins::set(GPS_POWER); // Clear sensors power pin to save power
 				DEBUG_TRACE("Power on Sensors");
 				GPIOPins::set(SENSORS_PWR_PIN); // Clear sensors power pin to save power
 				DEBUG_TRACE("Power on Satellite");
 				GPIOPins::set(SAT_RESET); // Clear sensors power pin to save power
+				nrf_delay_ms(10);
 				GPIOPins::set(SAT_PWR_EN); // Clear sensors power pin to save power
 				
 			} 
@@ -504,6 +509,7 @@ public:
 				// Power on GNSS
 				DEBUG_TRACE("Power on M10Q GNSS");
 				GPIOPins::set(GPS_RST); // Clear sensors power pin to save power
+				nrf_delay_ms(10); // Wait for the reset to take effect
 				GPIOPins::set(GPS_POWER); // Clear sensors power pin to save power
 			} 
 			else if (component == 2) {
@@ -515,16 +521,18 @@ public:
 				// Power on Satellite
 				DEBUG_TRACE("Power on Satellite");
 				GPIOPins::set(SAT_RESET); // Clear sensors power pin to save power
-				nrf_delay_ms(100); // Wait for the reset to take effect
+				nrf_delay_ms(10); // Wait for the reset to take effect
 				GPIOPins::set(SAT_PWR_EN); // Clear sensors power pin to save power
 			} 
 			else if (component == 4) {
 				// Power off all components
 				DEBUG_TRACE("Power off all components");
-				GPIOPins::clear(GPS_POWER);
 				GPIOPins::set(GPS_RST); // Clear sensors power pin to save power
+				nrf_delay_ms(10); // Wait for the reset to take effect
+				GPIOPins::clear(GPS_POWER);
 				GPIOPins::clear(SENSORS_PWR_PIN);
 				GPIOPins::set(SAT_RESET); // Clear sensors power pin to save power
+				nrf_delay_ms(10); // Wait for the reset to take effect
 				GPIOPins::clear(SAT_PWR_EN);
 
 			} 
