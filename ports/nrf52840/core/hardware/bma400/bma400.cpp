@@ -362,6 +362,11 @@ void BMA400LL::read_xyz(double& x, double& y, double& z, int16_t& temperature)
             //DEBUG_INFO("%s::Acc_ms2_X : %.2f,   Acc_ms2_Y : %.2f,  Acc_ms2_Z :  %.2f,   t(s) : %.4f", __func__, x, y, z, (double)t);
             DEBUG_INFO("%s::Acc_ms2_X : %.2f,   Acc_ms2_Y : %.2f,  Acc_ms2_Z :  %.2f", __func__, x, y, z);
 
+            constexpr double G_PER_MS2 = 9.80665;  // 1g = 9.80665 m/s²
+            x = x / G_PER_MS2;
+            y = y / G_PER_MS2;
+            z = z / G_PER_MS2;
+            DEBUG_INFO("%s::Acc_g_X : %.2f,   Acc_g_Y : %.2f,  Acc_g_Z :  %.2f", __func__, x, y, z);
             // Set AXL normal mode
             rslt = bma400_set_power_mode(BMA400_MODE_SLEEP, &m_bma400_dev);
             bma400_check_rslt(GET_API_NAME(bma400_set_power_mode), rslt);
@@ -979,7 +984,7 @@ double BMA400::read(unsigned int offset)
 	switch(offset)
     {
         case 0: /* temperature */
-            return m_bma400.read_temperature();
+            return static_cast<double>(m_bma400.read_temperature()/10.0);
         case 1: /* x */
             m_bma400.read_xyz(m_last_x, m_last_y, m_last_z, m_last_temperature);
             return m_last_x; 
@@ -989,19 +994,19 @@ double BMA400::read(unsigned int offset)
             return m_last_z;
         case 4: /* Activity compute */
         {
-            constexpr double G_PER_MS2 = 9.80665;  // 1g = 9.80665 m/s²
-            // Convert from m/s² to g
-            double x_g = m_last_x / G_PER_MS2;
-            double y_g = m_last_y / G_PER_MS2;
-            double z_g = m_last_z / G_PER_MS2;
+            // constexpr double G_PER_MS2 = 9.80665;  // 1g = 9.80665 m/s²
+            // // Convert from m/s² to g
+            // double x_g = m_last_x / G_PER_MS2;
+            // double y_g = m_last_y / G_PER_MS2;
+            // double z_g = m_last_z / G_PER_MS2;
 
-            double g_force_read = std::sqrt(x_g * x_g + y_g * y_g + z_g * z_g);
+            double g_force_read = std::sqrt(m_last_x * m_last_x + m_last_y * m_last_y + m_last_z * m_last_z);
             uint8_t gforce_max = m_bma400.get_gforce();
             if (g_force_read > gforce_max) g_force_read =  gforce_max;
             if (g_force_read < 0.0) g_force_read = 0.0;
 
             m_last_activity = static_cast<uint8_t>((g_force_read /  gforce_max) * 255.0);
-            DEBUG_TRACE("AXL::compute_activity: x=%f, y=%f, z=%f, g_force_read=%f, activity=%u", x_g, y_g, z_g, g_force_read, m_last_activity);
+            DEBUG_TRACE("AXL::compute_activity: x=%f, y=%f, z=%f, g_force_read=%f, activity=%u", m_last_x, m_last_y, m_last_z, g_force_read, m_last_activity);
             return static_cast<double>(m_last_activity);
         }
         case 5: /* IRQ pending */

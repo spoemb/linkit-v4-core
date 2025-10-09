@@ -104,6 +104,10 @@ const BaseMap param_map[] = {
 
 	// Battery voltage
 	{ "BATT_VOLTAGE", "POT06", BaseEncoding::FLOAT, 0.0, 12.0, {}, true, false },
+	
+	// BOOT counter and modulo for TPL
+	{ "BOOT_COUNTER", "IDT07", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true},
+	{ "BOOT_COUNTER_MODULO", "IDT08", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true},
 
 	// TCXO warmup period
 	{ "ARGOS_TCXO_WARMUP_TIME", "ARP35", BaseEncoding::UINT, 0U, 30U, {}, true, true },

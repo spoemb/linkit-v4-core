@@ -60,7 +60,7 @@ void PMU::reset(bool) {
 void PMU::powerdown() {
 #if defined(EXTERNAL_WAKEUP)
 	DEBUG_TRACE("Powerdown with external wakeup enabled");
-	NrfI2C::uninit();
+	//NrfI2C::uninit();
 	GPIOPins::clear(SENSORS_PWR_PIN); // Clear sensors power pin to save power
 	GPIOPins::set(GPS_RST); // Clear sensors power pin to save power
 	GPIOPins::clear(GPS_POWER); // Clear sensors power pin to save power
@@ -88,7 +88,7 @@ void PMU::powerdown() {
 	GPIOPins::clear(MCU_DONE_PIN);
 #endif
 
-	NRF_POWER->SYSTEMOFF = 1; // Set the system off bit to enter power down mode
+	//NRF_POWER->SYSTEMOFF = 1; // Set the system off bit to enter power down mode
 	// This is not a real powerdown but rather an infinite sleep
 	for (;;) PMU::run();
 }
@@ -154,7 +154,11 @@ const std::string PMU::hardware_version()
     else
     	return "LinkIt V1";
 #else
-    return "Unknown";
+#ifdef BOARD_RSPB
+    return "RSPB V1";
+#else
+	return "UNKNOWN";
+#endif
 #endif
 }
 

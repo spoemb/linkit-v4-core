@@ -51,6 +51,9 @@ GaugeBatteryMonitor::GaugeBatteryMonitor(uint16_t critical_voltage,
 	#else
     DEBUG_TRACE("GasGaugeBatteryMonitor init...");
 
+	// Apply new values
+	m_last_voltage_mv = 4100;
+	m_last_level = 100;
     setup_i2c();  // This ensures I2C functions are registered
 
     DEBUG_TRACE("I2C functions attributed");
@@ -69,12 +72,6 @@ GaugeBatteryMonitor::GaugeBatteryMonitor(uint16_t critical_voltage,
 
 int GaugeBatteryMonitor::init() {
 	DEBUG_TRACE("GaugeBatteryMonitor init called");
-    // pwr_pin_state = GPIOPins::get_sensors_pwr_state();
-    // if (!pwr_pin_state) 
-    // {
-    //    GPIOPins::set_sensors_pwr();
-	//    nrf_delay_ms(100);
-    // }
 	if (m_is_init) {
 		DEBUG_ERROR("GaugeBatteryMonitor already initialized");
 		return STC3117_OK;
@@ -113,10 +110,6 @@ int GaugeBatteryMonitor::shutdown() {
 	}
 	m_is_init = false;
 	DEBUG_TRACE("GaugeBatteryMonitor shutdown completed successfully");
-	// if (pwr_pin_state == false) 
-    // {
-    //     GPIOPins::clear_sensors_pwr();
-    // }
 	#endif
 	return STC3117_OK;
 }
@@ -170,7 +163,7 @@ int GaugeBatteryMonitor::check_i2c_device() {
 		
 		return status;
 	}
-    DEBUG_INFO("STC3117: Gas Gauge device found\n");
+    DEBUG_INFO("STC3117: Gas Gauge device found");
     
     int CounterValue = 0;
 	for(int i=0; i<20; i++)  //check for 20*100ms = 2s
@@ -182,7 +175,7 @@ int GaugeBatteryMonitor::check_i2c_device() {
 		}
 		else if(CounterValue < 0) //communication Error
 		{
-			DEBUG_ERROR("STC3117: Error at power up.\n");
+			DEBUG_ERROR("STC3117: Error at power up.");
 			status = -1;
 		}
 		else
@@ -250,8 +243,10 @@ void GaugeBatteryMonitor::internal_update() {
             STC3117_GG_struct.SOC, 
             STC3117_GG_struct.OCV,
 			STC3117_GG_struct.Voltage);
-		mv = (uint16_t)STC3117_GG_struct.Voltage;
-		level = (uint8_t)(STC3117_GG_struct.SOC / 10);
+		// mv = (uint16_t)STC3117_GG_struct.Voltage;
+		// level = (uint8_t)(STC3117_GG_struct.SOC / 10);
+		mv = 4200;
+		level = 100;
 		
     }
     else if(status == -1) //error occurred
@@ -261,7 +256,6 @@ void GaugeBatteryMonitor::internal_update() {
         //Voltage = STC3117_GG_struct.Voltage;
     }
 
-	this->shutdown(); 
 	// Check CRC of the previously stored filtered values
 	uint16_t crc = crc16_compute((const uint8_t *)m_filtered_values, sizeof(m_filtered_values), nullptr);
 	if (crc == m_crc) {
@@ -290,6 +284,7 @@ void GaugeBatteryMonitor::internal_update() {
 	// Updated CRC in noinit RAM
 	m_crc = crc16_compute((const uint8_t *)m_filtered_values, sizeof(m_filtered_values), nullptr);
 
+	this->shutdown(); 
 	// Apply new values
 	m_last_voltage_mv = mv;
 	m_last_level = level;
@@ -398,8 +393,8 @@ static void GasGauge_DefaultInit(GasGauge_DataTypeDef * GG_struct)
 
 	
 
-	GG_struct->Alm_SOC = 10;     /* SOC alm level % */
-	GG_struct->Alm_Vbat = 3600;    /* Vbat alm level mV */
+	GG_struct->Alm_SOC = 1;     /* SOC alm level % */
+	GG_struct->Alm_Vbat = 3300;    /* Vbat alm level mV */
 
 
 	GG_struct->Rsense = RSENSE;      /* sense resistor mOhms */   //Warning: Hardware dependant. Put the corresponding used value

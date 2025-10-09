@@ -20,7 +20,7 @@ public:
 		return "log_datetime,temp\r\n";
 	}
 	const std::string log_entry(const LogEntry& e) override {
-		char entry[512], d1[128];
+		char entry[50], d1[25];
 		const ThermistorLogEntry *log = (const ThermistorLogEntry *)&e;
 		std::time_t t;
 		std::tm *tm;
@@ -46,9 +46,9 @@ private:
 	unsigned int count_threshold_value_crossed = 0;
 
 
-	void notify_peer_event(ServiceEvent& e) override {
-		Service::notify_peer_event(e);
-	}
+	// void notify_peer_event(ServiceEvent& e) override {
+	// 	Service::notify_peer_event(e);
+	// }
 
 
 	bool sensor_trigger_event(double value) {

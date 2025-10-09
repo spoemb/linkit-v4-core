@@ -20,6 +20,7 @@ protected:
 			if (m_sensor_background_active) {
 				m_sample_number++;
 				for (unsigned int chan = 0; chan < sensor_num_channels(); chan++) {
+					DEBUG_TRACE("Sensor_handler:sensorsread:chan=%u", chan);
 					m_samples[chan].push_back(m_sensor.read(chan));
 				}
 				if (service_is_scheduled()) {
@@ -30,21 +31,21 @@ protected:
 				}
 
 				if (gnss_shutdown || m_sample_number >= sensor_max_samples()) {
-					DEBUG_TRACE("SensorService: %s: terminal state reached", get_name());
+					DEBUG_TRACE("SensorService: %s: terminal state reached (channel retrieved %d)", get_name(), sensor_num_channels());
 					ServiceSensorData sensor;
 					for (unsigned int chan = 0; chan < sensor_num_channels(); chan++) {
 						switch (sensor_enable_tx_mode()) {
 						case BaseSensorEnableTxMode::ONESHOT:
 							sensor.port[chan] = compute_oneshot_samples(m_samples[chan]);
-							//DEBUG_TRACE("[%s] oneshot[%u]=%f", get_name(), chan, sensor.port[chan]);
+							DEBUG_TRACE("[%s] oneshot[%u]=%f", get_name(), chan, sensor.port[chan]);
 							break;
 						case BaseSensorEnableTxMode::MEAN:
 							sensor.port[chan] = compute_mean_samples(m_samples[chan]);
-							//DEBUG_TRACE("[%s] mean[%u]=%f", get_name(), chan, sensor.port[chan]);
+							DEBUG_TRACE("[%s] mean[%u]=%f", get_name(), chan, sensor.port[chan]);
 							break;
 						case BaseSensorEnableTxMode::MEDIAN:
 							sensor.port[chan] = compute_median_samples(m_samples[chan]);
-							//DEBUG_TRACE("[%s] median[%u]=%f", get_name(), chan, sensor.port[chan]);
+							DEBUG_TRACE("[%s] median[%u]=%f", get_name(), chan, sensor.port[chan]);
 							break;
 						default:
 						case BaseSensorEnableTxMode::OFF:
@@ -77,7 +78,7 @@ protected:
 	}
 
 private:
-	std::vector<double> m_samples[5];
+	std::vector<double> m_samples[6];
 	unsigned int m_sample_number;
 	bool m_sensor_background_active;
 

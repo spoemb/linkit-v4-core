@@ -280,6 +280,7 @@ int main()
 	PMU::initialise();
 	PMU::start_watchdog();
 	PMU::kick_watchdog();
+
 	GPIOPins::initialise();
 
 	etl::error_handler::set_callback<etl_error_handler>();
@@ -486,6 +487,16 @@ int main()
 	LFSConfigurationStore store(lfs_file_system);
 	configuration_store = &store;
 	configuration_store->init();
+
+	// Check modulo
+	unsigned int boot_counter = configuration_store->boot_count_increment();
+	DEBUG_TRACE("Boot count: %u", boot_counter);
+
+	bool shutdown_immediate = configuration_store->boot_count_check_modulo(boot_counter);
+	if (shutdown_immediate) {
+		DEBUG_TRACE("Modulo startup - shutting down");
+		PMU::powerdown();
+	}
 
 
 	DEBUG_TRACE("Battery monitor...");

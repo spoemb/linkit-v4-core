@@ -57,8 +57,8 @@
 //#define DEFAULT_BATTERY_4V35_MAX      //Default OCV curve for a 4.35V max battery
 //#define CUSTOM_BATTERY_OCV          //OCV curve determined from battery manufacturer data, or battery characterization statistics.
 
-#define MONITORING_MODE   MIXED_MODE  /* 1=Voltage mode, 0=mixed mode */
-//#define MONITORING_MODE   VLTG_MODE  /* 1=Voltage mode, 0=mixed mode */
+//#define MONITORING_MODE   MIXED_MODE  /* 1=Voltage mode, 0=mixed mode */
+#define MONITORING_MODE   VLTG_MODE  /* 1=Voltage mode, 0=mixed mode */
 
 //TODO adapt max buffer length to STC3117
 #define STC3117_MAX_BUFFER_LEN (257)

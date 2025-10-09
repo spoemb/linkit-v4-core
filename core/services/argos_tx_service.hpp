@@ -243,7 +243,7 @@ public:
 		m_pressure_depth_pile.clear();
 		m_temp_depth_pile.clear();
 		m_axl_depth_pile.clear();
-		//m_thermistor_depth_pile.clear();
+		m_thermistor_depth_pile.clear();
 	}
 	bool eligible() {
 		return m_gps_depth_pile.eligible();
@@ -276,7 +276,7 @@ public:
 			//not enough RAM to have SEA_TEMP_SENSOR + THERMISTOR
 			#ifdef BOARD_RSPB
 			} else if (service == ServiceIdentifier::THERMISTOR_SENSOR) {
-				return m_temp_depth_pile.retrieve(depth_pile, 1).at(0);
+				return m_thermistor_depth_pile.retrieve(depth_pile, 1).at(0);
 			#else
 			} else if (service == ServiceIdentifier::SEA_TEMP_SENSOR) {
 				return m_temp_depth_pile.retrieve(depth_pile, 1).at(0);
@@ -309,8 +309,8 @@ private:
 	ServiceSensorData m_temp_cache;
 	ArgosDepthPile<ServiceSensorData> m_axl_depth_pile;
 	ServiceSensorData m_axl_cache;
-	// ArgosDepthPile<ServiceSensorData> m_thermistor_depth_pile;
-	// ServiceSensorData m_thermistor_temp_cache;
+	ArgosDepthPile<ServiceSensorData> m_thermistor_depth_pile;
+	ServiceSensorData m_thermistor_temp_cache;
 
 	void update_depth_pile();
 };

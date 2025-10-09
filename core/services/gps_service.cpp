@@ -252,8 +252,11 @@ bool GPSService::service_is_triggered_on_event(ServiceEvent& event, bool& immedi
 		bool trigger_on_axl = service_read_param<bool>(ParamID::GNSS_TRIGGER_ON_AXL_WAKEUP);
 		immediate = trigger_on_axl;
         DEBUG_TRACE("GPSService::service_is_triggered_on_event: trigger_on_axl=%u", trigger_on_axl);
-		return trigger_on_axl;
+		//return trigger_on_axl;
 	}
+    if (event.event_source == ServiceIdentifier::THERMISTOR_SENSOR && event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+        event.event_data = true;
+    }
 	
     if (event.event_source == ServiceIdentifier::THERMISTOR_SENSOR &&
 			event.event_type == ServiceEventType::GNSS_ON &&

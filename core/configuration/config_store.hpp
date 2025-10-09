@@ -235,6 +235,8 @@ protected:
 		/* CERT_TX_REPETITION */ 60U,
 		/* HW_VERSION */ ""s,
 		/* BATT_VOLTAGE */ (double)0,
+		/* BOOT_COUNTER */ 0U,
+		/* BOOT_COUNTER_MODULO */ 2U,
 		/* ARGOS_TCXO_WARMUP_TIME */ 5U,
 		/* DEVICE_DECID */ 0U,
 		/* GNSS_TRIGGER_ON_SURFACED */ (bool)true,
@@ -349,6 +351,7 @@ protected:
 	uint8_t m_battery_level;
 	uint16_t m_battery_voltage;
 	bool     m_is_battery_level_low;
+	unsigned int m_boot_counter;
 	GPSLogEntry m_last_gps_log_entry;
 	ConfigMode  m_last_config_mode;
 	virtual void serialize_config() = 0;
@@ -397,6 +400,52 @@ public:
 	virtual BasePassPredict& read_pass_predict() = 0;
 	virtual void write_pass_predict(BasePassPredict& value) = 0;
 
+	unsigned int boot_count_increment()
+	{
+		unsigned int boot_counter = read_param<unsigned int>(ParamID::BOOT_COUNTER);
+		unsigned int boot_counter_modulo = read_param<unsigned int>(ParamID::BOOT_COUNTER_MODULO);
+		if ((boot_counter < 0) || (boot_counter > (boot_counter_modulo+1))) 
+		{
+			boot_counter = 0;
+		} else {
+			boot_counter++;
+		}
+		
+		write_param(ParamID::BOOT_COUNTER, boot_counter);
+		// Save configuration params
+		save_params();
+		return boot_counter;
+	}
+
+	unsigned int boot_count_clear() 
+	{
+		unsigned int boot_counter = 0;
+		write_param(ParamID::BOOT_COUNTER, boot_counter);
+
+		// Save configuration params
+		save_params();
+		return boot_counter;
+	}
+
+	unsigned int boot_count_read() 
+	{
+		unsigned int boot_counter = read_param<unsigned int>(ParamID::BOOT_COUNTER);
+		return boot_counter;
+	}
+
+	bool boot_count_check_modulo(unsigned int boot_counter)
+	{
+		unsigned int modulo = read_param<unsigned int>(ParamID::BOOT_COUNTER_MODULO);
+
+		// Retourne true uniquement si modulo >= 1 et le reste == 0
+		if (modulo >= 1 && (boot_counter % modulo == 0))
+		{
+			boot_count_clear();
+			return true;
+		}
+
+		return false;
+	}
 	template <typename T>
 	T& read_param(ParamID param_id) {
 		try {
@@ -413,6 +462,9 @@ public:
 			} else if (param_id == ParamID::HW_VERSION) {
 				m_params.at((unsigned)param_id) = PMU::hardware_version();
 				b_is_valid = true;
+			// } else if (param_id == ParamID::BOOT_COUNTER) {
+			// 	m_params.at((unsigned)param_id) = boot_count_read();
+			// 	b_is_valid = true;
 			} else if (param_id == ParamID::ARGOS_DECID) {
 				b_is_valid = true;
 			} else if (param_id == ParamID::ARGOS_HEXID) {
@@ -810,4 +862,6 @@ public:
 		unsigned int rx_time = read_param<unsigned int>(ParamID::ARGOS_RX_TIME) + inc;
 		write_param(ParamID::ARGOS_RX_TIME, rx_time);
 	}
+
+
 };

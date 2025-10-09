@@ -122,21 +122,23 @@ double Thermistor::read(unsigned int offset)
 {
     DEBUG_TRACE("THERMISTOR::%s:Enter...", __func__);
 
-    uint32_t pwr_pin_state = GPIOPins::value(SENSORS_PWR_PIN);
-    if (pwr_pin_state == 0) 
-    {
-       GPIOPins::set(SENSORS_PWR_PIN);
-    }
-    pwr_pin_state = GPIOPins::value(SENSORS_PWR_PIN);
+    // uint32_t pwr_pin_state = GPIOPins::value(SENSORS_PWR_PIN);
+    // if (pwr_pin_state == 0) 
+    // {
+    //    GPIOPins::set(SENSORS_PWR_PIN);
+    //     DEBUG_TRACE("THERMISTOR::%s:set PWR SENORS...", __func__);
+    // }
+    // pwr_pin_state = GPIOPins::value(SENSORS_PWR_PIN);
 
     float adc = sample_adc();  // Now ADC reads as a float
     double temperature = convert_temp(adc);  // Convert to double
     DEBUG_INFO("THERMISTOR::%s: TempC = %.5lf", __func__, temperature);
-
-    if (pwr_pin_state == 0) 
-    {
-        GPIOPins::clear(SENSORS_PWR_PIN);
-    }
+    m_last_temperature = temperature;
+    // if (pwr_pin_state == 0) 
+    // {
+    //     DEBUG_TRACE("THERMISTOR::%s:clear PWR SENORS...", __func__);
+    //     GPIOPins::clear(SENSORS_PWR_PIN);
+    // }
 
     return temperature;
 }

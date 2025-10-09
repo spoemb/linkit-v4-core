@@ -90,7 +90,7 @@
 //#define POWER_ON_RESET_REQUIRES_REED_SWITCH
 //#define PSEUDO_POWER_OFF
 #define EXTERNAL_WAKEUP
-//#define NO_BAT_GAUGE
+#define NO_BAT_GAUGE
 
 // Other options
 #define HW_VERSION_DETECT 2
@@ -123,14 +123,14 @@ namespace BSP
 	    GPIO_LED_RED,
 	    GPIO_LED_BLUE,
 	    GPIO_GPS_PWR_EN,
-	    // GPIO_SMD_BUSY,
-	    // GPIO_SMD_RFRESET,
+	    GPIO_SMD_BUSY,
+	    GPIO_SMD_RFRESET,
 	    GPIO_REED_SW,
 	    GPIO_INT1_AG,
 	    GPIO_INT2_AG,
 	    GPIO_PRESS_INT,
-	    // GPIO_SMD_OPT,
-	    // GPIO_SMD_OPT2,
+	    GPIO_SMD_OPT,
+	    GPIO_SMD_OPT2,
 	    // GPIO_SMD_VRX,
 	    // GPIO_SMD_VTX,
 		GPIO_TOTAL_NUMBER
