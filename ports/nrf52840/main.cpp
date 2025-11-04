@@ -73,7 +73,7 @@ BaseDebugMode g_debug_mode = BaseDebugMode::UART;
 ArticDevice *artic_device;
 Buzzer *buzzer_ctl;
 
-static bool m_is_debug_init = false;
+// static bool m_is_debug_init = false;
 
 // FSM initial state -> BootState
 FSM_INITIAL_STATE(GenTracker, BootState)
@@ -214,15 +214,15 @@ void etl_error_handler(const etl::exception& e)
 
 // Redirect std::cout and printf output to debug UART
 // We have to define this as extern "C" as we are overriding a weak C function
-extern "C" int _write(int file, char *ptr, int len)
-{
-	if (g_debug_mode == BaseDebugMode::UART && m_is_debug_init)
-		nrfx_uarte_tx(&BSP::UART_Inits[BSP::UART_1].uarte, reinterpret_cast<const uint8_t *>(ptr), len);
-	else if (ble_service && !__get_IPSR() && g_debug_mode == BaseDebugMode::BLE_NUS) {
-		ble_service->write(std::string(ptr, len));
-	}
-	return len;
-}
+// extern "C" int _write(int file, char *ptr, int len)
+// {
+// 	if (g_debug_mode == BaseDebugMode::UART && m_is_debug_init)
+// 		nrfx_uarte_tx(&BSP::UART_Inits[BSP::UART_1].uarte, reinterpret_cast<const uint8_t *>(ptr), len);
+// 	else if (ble_service && !__get_IPSR() && g_debug_mode == BaseDebugMode::BLE_NUS) {
+// 		ble_service->write(std::string(ptr, len));
+// 	}
+// 	return len;
+// }
 
 
 int main()
@@ -240,17 +240,17 @@ int main()
 	nrf_gpio_cfg_default(BSP::GPIO_Inits[GPIO_AG_PWR_PIN].pin_number);
 #endif
 
-	nrfx_uarte_init(&BSP::UART_Inits[BSP::UART_1].uarte, &BSP::UART_Inits[BSP::UART_1].config, nullptr);
-	m_is_debug_init = true;
-    setvbuf(stdout, NULL, _IONBF, 0);
+// 	nrfx_uarte_init(&BSP::UART_Inits[BSP::UART_1].uarte, &BSP::UART_Inits[BSP::UART_1].config, nullptr);
+// 	m_is_debug_init = true;
+//     setvbuf(stdout, NULL, _IONBF, 0);
 
 	rtc = &NrfRTC::get_instance();
 	NrfRTC::get_instance().init();
 
-	ConsoleLog console_log;
-	DebugLogger::console_log = &console_log;
+// 	ConsoleLog console_log;
+// 	DebugLogger::console_log = &console_log;
 
-    nrf_log_redirect_init();
+//     nrf_log_redirect_init();
 
     DEBUG_TRACE("Timer...");
 	system_timer = &NrfTimer::get_instance();
@@ -297,8 +297,8 @@ int main()
 #ifdef PSEUDO_POWER_OFF
 
 	NrfI2C::init();
-	bool is_linkit_v3 = PMU::hardware_version() == "LinkIt V3";
-	ArticSat::shutdown();
+	bool is_linkit_v3_v4 = (PMU::hardware_version() == "LinkIt V3") || (PMU::hardware_version() == "LinkIt V4");
+// 	ArticSat::shutdown();
 	{
 		try {
 			EZO_RTD_Sensor rtd; // Puts the device into standby mode
@@ -306,17 +306,17 @@ int main()
 	}
 	NrfI2C::uninit();
 
-	if ((is_linkit_v3 && PMU::reset_cause() == "Pseudo Power On Reset") ||
-		(!is_linkit_v3 && (PMU::reset_cause() == "Power On Reset" ||
+	if ((is_linkit_v3_v4 && PMU::reset_cause() == "Pseudo Power On Reset") ||
+		(!is_linkit_v3_v4 && (PMU::reset_cause() == "Power On Reset" ||
 				PMU::reset_cause() == "Pseudo Power On Reset"))) {
 
 		volatile bool power_on_ready = false;
 		system_timer->start();
 		Timer::TimerHandle timer_handle;
 
-		// De-initialize UART to save power
-		m_is_debug_init = false;
-		nrfx_uarte_uninit(&BSP::UART_Inits[BSP::UART_1].uarte);
+// 		// De-initialize UART to save power
+// 		m_is_debug_init = false;
+// 		nrfx_uarte_uninit(&BSP::UART_Inits[BSP::UART_1].uarte);
 
 		// Check if switch starting state is active
 		if (nrf_reed_switch.get_state()) {
@@ -370,9 +370,9 @@ int main()
 		nrf_reed_switch.stop();
 		BUZZER_BEEP_COUNT(buzzer_ctl,200,200,2);
 
-		// Re-initialize UART
-		nrfx_uarte_init(&BSP::UART_Inits[BSP::UART_1].uarte, &BSP::UART_Inits[BSP::UART_1].config, nullptr);
-		m_is_debug_init = true;
+// 		// Re-initialize UART
+// 		nrfx_uarte_init(&BSP::UART_Inits[BSP::UART_1].uarte, &BSP::UART_Inits[BSP::UART_1].config, nullptr);
+// 		m_is_debug_init = true;
 	}
 #else
 	if (PMU::reset_cause() == "Power On Reset") {
@@ -435,12 +435,12 @@ int main()
 	configuration_store = &store;
 	configuration_store->init();
 
-	DEBUG_TRACE("Battery monitor...");
-	double critical_batt_voltage = configuration_store->read_param<double>(ParamID::LB_CRITICAL_THRESH);
-	unsigned int low_batt_level = configuration_store->read_param<unsigned int>(ParamID::LB_TRESHOLD);
-    NrfBatteryMonitor nrf_battery_monitor(BATTERY_ADC, BATT_CHEM_NCR18650_3100_3400,
-    		(uint16_t)(critical_batt_voltage*1000), low_batt_level);
-    battery_monitor = &nrf_battery_monitor;
+// 	DEBUG_TRACE("Battery monitor...");
+// 	double critical_batt_voltage = configuration_store->read_param<double>(ParamID::LB_CRITICAL_THRESH);
+// 	unsigned int low_batt_level = configuration_store->read_param<unsigned int>(ParamID::LB_TRESHOLD);
+//     NrfBatteryMonitor nrf_battery_monitor(BATTERY_ADC, BATT_CHEM_NCR18650_3100_3400,
+//     		(uint16_t)(critical_batt_voltage*1000), low_batt_level);
+//     battery_monitor = &nrf_battery_monitor;
 
 	DEBUG_TRACE("LFS System Log...");
 	SysLogFormatter sys_log_formatter;
@@ -504,31 +504,31 @@ int main()
 	DEBUG_TRACE("SWS...");
 	SWSService sws;
 
-	DEBUG_TRACE("Artic R2...");
-	try {
-		static ArticSat artic;
-		static ArgosTxService argos_tx_service(artic);
-		static ArgosRxService argos_rx_service(artic);
-		artic_device = &artic;
-#ifdef ARTIC_I2C_BUS_CONFLICT
-		// We need to mark the I2C bus as disabled since the pins now in use
-		NrfI2C::disable(ARTIC_I2C_BUS_CONFLICT);
-#endif
-#ifdef ARTIC_EXT_LED_CONFLICT
-		GPIOPins::disable(ARTIC_EXT_LED_CONFLICT);
-#endif
-	} catch (...) {
-		DEBUG_TRACE("Artic R2 not detected");
-	}
+// 	DEBUG_TRACE("Artic R2...");
+// 	try {
+// 		static ArticSat artic;
+// 		static ArgosTxService argos_tx_service(artic);
+// 		static ArgosRxService argos_rx_service(artic);
+// 		artic_device = &artic;
+// #ifdef ARTIC_I2C_BUS_CONFLICT
+// 		// We need to mark the I2C bus as disabled since the pins now in use
+// 		NrfI2C::disable(ARTIC_I2C_BUS_CONFLICT);
+// #endif
+// #ifdef ARTIC_EXT_LED_CONFLICT
+// 		GPIOPins::disable(ARTIC_EXT_LED_CONFLICT);
+// #endif
+// 	} catch (...) {
+// 		DEBUG_TRACE("Artic R2 not detected");
+// 	}
 
-	DEBUG_TRACE("GPS M8Q ...");
-	try {
-		static M8QAsyncReceiver m8q_gnss;
-		static GPSService gps_service(m8q_gnss, &fs_sensor_log);
-		static GNSSDetectorService gps_detector(m8q_gnss);
-	} catch (...) {
-		DEBUG_TRACE("GPS M8Q not detected");
-	}
+// 	DEBUG_TRACE("GPS M8Q ...");
+// 	try {
+// 		static M8QAsyncReceiver m8q_gnss;
+// 		static GPSService gps_service(m8q_gnss, &fs_sensor_log);
+// 		static GNSSDetectorService gps_detector(m8q_gnss);
+// 	} catch (...) {
+// 		DEBUG_TRACE("GPS M8Q not detected");
+// 	}
 
 	DEBUG_TRACE("Pressure Sensor...");
 	PressureSensorDevice *pressure_sensor_devices[BSP::I2C_TOTAL_NUMBER];

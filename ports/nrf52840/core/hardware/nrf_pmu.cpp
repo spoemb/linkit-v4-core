@@ -132,7 +132,13 @@ const std::string PMU::hardware_version()
     if (error == NRFX_SUCCESS)
     	return "LinkIt V3";
     else
-    	return "LinkIt V1";
+	{
+		error = nrfx_twim_rx(&BSP::I2C_Inits[ADS1115_DEVICE].twim, ADS1115_ADDRESS, &xfer, sizeof(xfer));
+		if (error == NRFX_SUCCESS)
+			return "LinkIt V4";
+		else
+			return "LinkIt V1";
+	}
 #else
     return "Unknown";
 #endif
