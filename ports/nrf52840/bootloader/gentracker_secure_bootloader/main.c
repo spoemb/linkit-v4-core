@@ -157,23 +157,23 @@ typedef struct
     nrfx_uarte_config_t config;
 } UART_InitTypeDefAndInst;
 
-static const UART_InitTypeDefAndInst UART_Inits[] =
-{
-	{
-		.uarte = NRFX_UARTE_INSTANCE(1),
-		.config = {
-			.pseltxd = NRF_GPIO_PIN_MAP(0, 11),
-			.pselrxd = NRF_GPIO_PIN_MAP(0, 14),
-			.pselcts = NRF_UARTE_PSEL_DISCONNECTED,
-			.pselrts = NRF_UARTE_PSEL_DISCONNECTED,
-			.p_context = NULL, // Context passed to interrupt handler
-			.hwfc = NRF_UARTE_HWFC_DISABLED,
-			.parity = NRF_UARTE_PARITY_EXCLUDED,
-			.baudrate = NRF_UARTE_BAUDRATE_460800, // See table above
-			.interrupt_priority = 4,
-		}
-	}
-};
+// static const UART_InitTypeDefAndInst UART_Inits[] =
+// {
+// 	{
+// 		.uarte = NRFX_UARTE_INSTANCE(1),
+// 		.config = {
+// 			.pseltxd = NRF_GPIO_PIN_MAP(0, 11),
+// 			.pselrxd = NRF_GPIO_PIN_MAP(0, 14),
+// 			.pselcts = NRF_UARTE_PSEL_DISCONNECTED,
+// 			.pselrts = NRF_UARTE_PSEL_DISCONNECTED,
+// 			.p_context = NULL, // Context passed to interrupt handler
+// 			.hwfc = NRF_UARTE_HWFC_DISABLED,
+// 			.parity = NRF_UARTE_PARITY_EXCLUDED,
+// 			.baudrate = NRF_UARTE_BAUDRATE_460800, // See table above
+// 			.interrupt_priority = 4,
+// 		}
+// 	}
+// };
 
 #ifdef HAS_WCHG_OTP
 typedef struct
@@ -208,7 +208,7 @@ static void i2c_reset(void) {
 // We have to define this as extern "C" as we are overriding a weak C function
 int _write(int file, char *ptr, int len)
 {
-	nrfx_uarte_tx(&UART_Inits[0].uarte, (const uint8_t *)ptr, len);
+	// nrfx_uarte_tx(&UART_Inits[0].uarte, (const uint8_t *)ptr, len);
 	return len;
 }
 
@@ -240,7 +240,7 @@ int main(void)
     //NRF_LOG_DEFAULT_BACKENDS_INIT();
 
     // Initialise UART and logging
-	nrfx_uarte_init(&UART_Inits[0].uarte, &UART_Inits[0].config, NULL);
+	// nrfx_uarte_init(&UART_Inits[0].uarte, &UART_Inits[0].config, NULL);
     setvbuf(stdout, NULL, _IONBF, 0);
 	nrf_log_redirect_init();
 

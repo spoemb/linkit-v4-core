@@ -84,7 +84,7 @@ extern "C" {
 
 #define BSP_BUTTON_0   BUTTON_1
 
-#define HAS_WCHG_OTP
+// #define HAS_WCHG_OTP
 
 //#define BSP_SELF_PINRESET_PIN NRF_GPIO_PIN_MAP(0,19)
 
