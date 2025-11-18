@@ -236,11 +236,12 @@ int main()
 
 	etl::error_handler::set_callback<etl_error_handler>();
 
-#ifdef GPIO_AG_PWR_PIN
-	// Current backfeeds from 3V3 -> i2c pullups -> BMX160 -> GPIO_AG_PWR
-	// Because of this we need to float our GPIO_AG_PWR pin to avoid sinking that current and thus increasing our sleep current
-	nrf_gpio_cfg_default(BSP::GPIO_Inits[GPIO_AG_PWR_PIN].pin_number);
-#endif
+// NOT NECESSARY : On linkit v4 i2c pullups are on V_ADC, not VSYS
+// #ifdef GPIO_AG_PWR_PIN
+// 	// Current backfeeds from 3V3 -> i2c pullups -> BMX160 -> GPIO_AG_PWR
+// 	// Because of this we need to float our GPIO_AG_PWR pin to avoid sinking that current and thus increasing our sleep current
+// 	nrf_gpio_cfg_default(BSP::GPIO_Inits[GPIO_AG_PWR_PIN].pin_number);
+// #endif
 
 	nrfx_uarte_init(&BSP::UART_Inits[BSP::UART_1].uarte, &BSP::UART_Inits[BSP::UART_1].config, nullptr);
 	m_is_debug_init = true;
@@ -303,6 +304,9 @@ int main()
 #ifdef POWER_ON_RESET_REQUIRES_REED_SWITCH
 #ifdef PSEUDO_POWER_OFF
 
+#ifdef ADC_ENABLE
+	GPIOPins::set(ADC_ENABLE); //i2c pullups on I2C internal bus are on V_ADC
+#endif
 	NrfI2C::init();
 	bool is_linkit_v3_v4 = (PMU::hardware_version() == "LinkIt V3") || (PMU::hardware_version() == "LinkIt V4");
 // 	ArticSat::shutdown();
@@ -312,6 +316,9 @@ int main()
 		} catch (...) {}
 	}
 	NrfI2C::uninit();
+#ifdef ADC_ENABLE
+	GPIOPins::clear(ADC_ENABLE); //i2c pullups on I2C internal bus are on V_ADC
+#endif
 
 	if ((is_linkit_v3_v4 && PMU::reset_cause() == "Pseudo Power On Reset") ||
 		(!is_linkit_v3_v4 && (PMU::reset_cause() == "Power On Reset" ||
@@ -538,6 +545,9 @@ int main()
 // 	}
 
 	DEBUG_TRACE("Pressure Sensor...");
+#ifdef ADC_ENABLE
+	GPIOPins::set(ADC_ENABLE); //i2c pullups on I2C internal bus are on V_ADC
+#endif
 	PressureSensorDevice *pressure_sensor_devices[BSP::I2C_TOTAL_NUMBER];
 #ifndef DUMMY_PRESSURE_SENSOR
 	for (unsigned int i = 0; i < BSP::I2C_TOTAL_NUMBER; i++) {
@@ -594,6 +604,9 @@ int main()
 		if (standalone_pressure && cdt_present)
 			break;
 	}
+#ifdef ADC_ENABLE
+	GPIOPins::clear(ADC_ENABLE); //i2c pullups on I2C internal bus are on V_ADC
+#endif
 
 	DEBUG_TRACE("LTR303...");
 	try {
@@ -628,12 +641,18 @@ int main()
 	}
 
 	DEBUG_TRACE("BMX160...");
+#ifdef ADC_ENABLE
+	GPIOPins::set(ADC_ENABLE); //i2c pullups on I2C internal bus are on V_ADC
+#endif
 	try {
 		static BMX160 bmx160;
 		static AXLSensorService axl_sensor_service(bmx160, &axl_sensor_log);
 	} catch (...) {
 		DEBUG_TRACE("BMX160: not detected");
 	}
+#ifdef ADC_ENABLE
+	GPIOPins::clear(ADC_ENABLE); //i2c pullups on I2C internal bus are on V_ADC
+#endif
 
 	DEBUG_TRACE("Memory monitor...");
 	MemoryMonitorService memory_monitor_service;

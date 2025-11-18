@@ -19,9 +19,9 @@ void GPIOPins::initialise()
 	// Ensure power off state for everything controlling power
 	clear(GPS_POWER);
 	clear(SAT_PWR_EN);
-	set(SAT_RESET);
 	clear(SWS_ENABLE_PIN);
 	clear(AG_ENABLE);
+	clear(ADC_ENABLE);
 }
 
 void GPIOPins::set(uint32_t pin)
