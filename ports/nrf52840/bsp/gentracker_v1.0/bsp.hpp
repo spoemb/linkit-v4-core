@@ -35,6 +35,8 @@
 #define AG_ENABLE		BSP::GPIO::GPIO_ACC_PWR
 #define BUZZER_EN_PIN   BSP::GPIO::GPIO_EXT_GPIO
 #define ADC_ENABLE      BSP::GPIO::GPIO_ADC_EN
+#define VSYS_SEL        BSP::GPIO::GPIO_VSYS_SEL
+#define BAT_READ_ENABLE BSP::GPIO::GPIO_BAT_READ_EN
 
 // I2C device mappings
 #define CDT_MS5803_DEVICE EXT_I2C_BUS
@@ -66,8 +68,9 @@
 #define ADS1115_ADDRESS     0x48
 
 // Battery voltage ADC gain
-#define ADC_GAIN              (1.0f/3.0f)  // 1/3 gain
-#define RP506_ADC_GAIN        4.0f
+#define ADC_GAIN              (1.0f/5.0f)  // 1/5 gain
+#define V_DIV_GAIN            1.443f
+// #define RP506_ADC_GAIN        4.0f
 
 // Require reed switch engaged to boot up after power on reset
 #define POWER_ON_RESET_REQUIRES_REED_SWITCH

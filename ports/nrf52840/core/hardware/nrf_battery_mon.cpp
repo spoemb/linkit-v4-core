@@ -5,6 +5,8 @@
 #include "bsp.hpp"
 #include "error.hpp"
 #include "debug.hpp"
+#include "gpio.hpp"
+#include "pmu.hpp"
 
 #ifndef CPPUTEST
 #include "crc16.h"
@@ -17,7 +19,7 @@
 #define LOW_BATT_THRESHOLD			5
 
 // ADC constants
-#define ADC_MAX_VALUE (16384)      // 2^14
+#define ADC_MAX_VALUE 4096         // 2^12
 #define ADC_REFERENCE (0.6f)       // 0.6v internal reference
 
 // LUT steps from 4.2V down to 3.2V in 0.1V steps
@@ -69,14 +71,17 @@ float NrfBatteryMonitor::sample_adc()
 {
     nrf_saadc_value_t raw = 0;
 
+	GPIOPins::set(BAT_READ_ENABLE);
+	PMU::delay_ms(500);
+
 	// We need to init and uninit the SAADC peripheral here to reduce our sleep current
-	
 	nrfx_saadc_init(&BSP::ADC_Inits.config, nrfx_saadc_event_handler);
 	nrfx_saadc_channel_init(m_adc_channel, &BSP::ADC_Inits.channel_config[m_adc_channel]);
 
     nrfx_saadc_sample_convert(m_adc_channel, &raw);
 	
 	nrfx_saadc_uninit();
+	GPIOPins::clear(BAT_READ_ENABLE);
 
     return ((float) raw) / ((ADC_GAIN / ADC_REFERENCE) * ADC_MAX_VALUE) * 1000.0f;
 }
@@ -150,6 +155,6 @@ uint16_t NrfBatteryMonitor::convert_voltage(float adc)
 #ifdef BATTERY_NOT_FITTED
 	return BATT_LUT_MAX_V;
 #else
-	return (uint16_t)(adc * RP506_ADC_GAIN);
+	return (uint16_t)(adc * V_DIV_GAIN);
 #endif
 }

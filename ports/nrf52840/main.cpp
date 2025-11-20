@@ -449,12 +449,12 @@ int main()
 	configuration_store = &store;
 	configuration_store->init();
 
-// 	DEBUG_TRACE("Battery monitor...");
-// 	double critical_batt_voltage = configuration_store->read_param<double>(ParamID::LB_CRITICAL_THRESH);
-// 	unsigned int low_batt_level = configuration_store->read_param<unsigned int>(ParamID::LB_TRESHOLD);
-//     NrfBatteryMonitor nrf_battery_monitor(BATTERY_ADC, BATT_CHEM_NCR18650_3100_3400,
-//     		(uint16_t)(critical_batt_voltage*1000), low_batt_level);
-//     battery_monitor = &nrf_battery_monitor;
+	DEBUG_TRACE("Battery monitor...");
+	double critical_batt_voltage = configuration_store->read_param<double>(ParamID::LB_CRITICAL_THRESH);
+	unsigned int low_batt_level = configuration_store->read_param<unsigned int>(ParamID::LB_TRESHOLD);
+    NrfBatteryMonitor nrf_battery_monitor(BATTERY_ADC, BATT_CHEM_NCR18650_3100_3400,
+    		(uint16_t)(critical_batt_voltage*1000), low_batt_level);
+    battery_monitor = &nrf_battery_monitor;
 
 	DEBUG_TRACE("LFS System Log...");
 	SysLogFormatter sys_log_formatter;

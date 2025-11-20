@@ -243,7 +243,7 @@ namespace BSP
     const ADC_InitTypeDefAndInst_t ADC_Inits =
     {
         .config = {
-            .resolution = NRF_SAADC_RESOLUTION_14BIT,
+            .resolution = NRF_SAADC_RESOLUTION_12BIT,
             .oversample = NRF_SAADC_OVERSAMPLE_DISABLED,
             .interrupt_priority = INTERRUPT_PRIORITY_ADC,
             .low_power_mode = false
@@ -253,9 +253,9 @@ namespace BSP
                 // ADC_CHANNEL_0
                 .resistor_p = NRF_SAADC_RESISTOR_DISABLED,
                 .resistor_n = NRF_SAADC_RESISTOR_DISABLED,
-                .gain = NRF_SAADC_GAIN1_3,
+                .gain = NRF_SAADC_GAIN1_5,
                 .reference = NRF_SAADC_REFERENCE_INTERNAL,
-                .acq_time = NRF_SAADC_ACQTIME_3US,
+                .acq_time = NRF_SAADC_ACQTIME_40US,
                 .mode = NRF_SAADC_MODE_SINGLE_ENDED,
                 .burst = NRF_SAADC_BURST_DISABLED,
                 .pin_p = NRF_SAADC_INPUT_AIN1,

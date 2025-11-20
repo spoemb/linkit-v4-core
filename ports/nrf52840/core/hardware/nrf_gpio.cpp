@@ -22,6 +22,9 @@ void GPIOPins::initialise()
 	clear(SWS_ENABLE_PIN);
 	clear(AG_ENABLE);
 	clear(ADC_ENABLE);
+
+	// Set V_SYS to 3.3V
+	set(VSYS_SEL);
 }
 
 void GPIOPins::set(uint32_t pin)
