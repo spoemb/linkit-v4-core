@@ -217,12 +217,11 @@ void etl_error_handler(const etl::exception& e)
 // We have to define this as extern "C" as we are overriding a weak C function
 extern "C" int _write(int file, char *ptr, int len)
 {
-// 	if (g_debug_mode == BaseDebugMode::UART && m_is_debug_init)
-// 		nrfx_uarte_tx(&BSP::UART_Inits[BSP::UART_1].uarte, reinterpret_cast<const uint8_t *>(ptr), len);
-// 	else if (ble_service && !__get_IPSR() && g_debug_mode == BaseDebugMode::BLE_NUS) {
-// 		ble_service->write(std::string(ptr, len));
-// 	}
-	NrfUSB::write(ptr, len);
+	if (g_debug_mode == BaseDebugMode::UART && m_is_debug_init)
+		NrfUSB::write(ptr, len);
+	else if (ble_service && !__get_IPSR() && g_debug_mode == BaseDebugMode::BLE_NUS) {
+		ble_service->write(std::string(ptr, len));
+	}
 	return len;
 }
 
@@ -243,26 +242,21 @@ int main()
 // 	nrf_gpio_cfg_default(BSP::GPIO_Inits[GPIO_AG_PWR_PIN].pin_number);
 // #endif
 
-	nrfx_uarte_init(&BSP::UART_Inits[BSP::UART_1].uarte, &BSP::UART_Inits[BSP::UART_1].config, nullptr);
-	m_is_debug_init = true;
-
-	// Init USB for debug log
-	// WARNING / TODO : This is not low power optimized.
-	NrfUSB::init();
-
-    setvbuf(stdout, NULL, _IONBF, 0);
-
 	rtc = &NrfRTC::get_instance();
 	NrfRTC::get_instance().init();
 
-// 	ConsoleLog console_log;
-// 	DebugLogger::console_log = &console_log;
-
-//     nrf_log_redirect_init();
-
-    DEBUG_TRACE("Timer...");
+    DEBUG_TRACE("Timer..."); // Logs over USB not activated yet, needs system timer
 	system_timer = &NrfTimer::get_instance();
 	NrfTimer::get_instance().init();
+
+	// Init USB for debug log
+	// WARNING / TODO : Low power management.
+	m_is_debug_init = true;
+	ConsoleLog console_log;
+	DebugLogger::console_log = &console_log;
+	NrfUSB::init();
+    setvbuf(stdout, NULL, _IONBF, 0);
+    nrf_log_redirect_init();
 
 	DEBUG_TRACE("RGB LED...");
 	NrfRGBLed nrf_status_led("STATUS", BSP::GPIO::GPIO_LED_RED, BSP::GPIO::GPIO_LED_GREEN, BSP::GPIO::GPIO_LED_BLUE, RGBLedColor::WHITE);

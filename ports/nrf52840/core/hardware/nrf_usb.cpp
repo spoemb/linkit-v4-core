@@ -3,6 +3,7 @@
 #include "app_usbd.h"
 #include "app_usbd_cdc_acm.h"
 #include "app_usbd_serial_num.h"
+#include "pmu.hpp"
 
 #define _NRF_USB_QUEUE_PROCESS()  while(app_usbd_event_queue_process()) {}
 
@@ -11,6 +12,8 @@
 #define CDC_ACM_DATA_INTERFACE  1
 #define CDC_ACM_DATA_EPIN       NRF_DRV_USBD_EPIN1
 #define CDC_ACM_DATA_EPOUT      NRF_DRV_USBD_EPOUT1
+
+bool NrfUSB::m_port_open = false;
 
 static void cdc_acm_user_ev_handler(app_usbd_class_inst_t const * p_inst,
                                     app_usbd_cdc_acm_user_event_t event);
@@ -40,14 +43,14 @@ static void cdc_acm_user_ev_handler(app_usbd_class_inst_t const * p_inst,
     switch (event)
     {
         case APP_USBD_CDC_ACM_USER_EVT_PORT_OPEN:
-            NrfUSB::m_port_open = true;
+            NrfUSB::set_port_open(true);
             /*Setup first transfer*/
             // ret_code_t ret = app_usbd_cdc_acm_read(&m_app_cdc_acm,
             //                                        m_rx_buffer,
             //                                        READ_SIZE);
             break;
         case APP_USBD_CDC_ACM_USER_EVT_PORT_CLOSE:
-            NrfUSB::m_port_open = false;
+            NrfUSB::set_port_open(false);
             break;
         case APP_USBD_CDC_ACM_USER_EVT_TX_DONE:
             break;
@@ -94,7 +97,6 @@ static void usbd_user_ev_handler(app_usbd_event_type_t event)
 }
 #pragma GCC diagnostic pop
 
-bool NrfUSB::m_port_open = false;
 
 void NrfUSB::init(void)
 {	
@@ -124,8 +126,14 @@ void NrfUSB::init(void)
 	ret = app_usbd_power_events_enable();
 	APP_ERROR_CHECK(ret);
 
-    while(!NrfUSB::m_port_open)
-        _NRF_USB_QUEUE_PROCESS(); //TODO : remove this blocking loop if no USB plugged !
+    // Poll at init in case USB is already plugged
+    for(int ms = 0; ms < 500; ms++)
+    {
+        _NRF_USB_QUEUE_PROCESS();
+        if(m_port_open)
+            break;
+        PMU::delay_ms(1);
+    }
 }
 
 int NrfUSB::write(char *ptr, int len)
@@ -135,7 +143,12 @@ int NrfUSB::write(char *ptr, int len)
 	return len;
 }
 
-bool NrfUSB::process(void)
+void NrfUSB::process(void)
 {
-    return app_usbd_event_queue_process();
+    _NRF_USB_QUEUE_PROCESS();
+}
+
+void NrfUSB::set_port_open(bool is_open)
+{
+    m_port_open = is_open;
 }

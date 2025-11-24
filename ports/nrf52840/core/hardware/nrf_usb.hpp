@@ -2,14 +2,12 @@
 
 class NrfUSB final {
 public:
-
-    static bool m_port_open;
-
     static void init();
     static void uninit();
     static int write(char *ptr, int len);
-    static bool process();
+    static void process();
+    static void set_port_open(bool is_open);
 
 private:
-
+    static bool m_port_open;
 };
