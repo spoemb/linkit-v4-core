@@ -24,7 +24,7 @@ bool LPS28DFW::init() {
     m_mode.odr = LPS28DFW_ONE_SHOT;
     m_mode.avg = LPS28DFW_32_AVG;
     m_mode.lpf = LPS28DFW_LPF_DISABLE;
-    m_mode.fs  = LPS28DFW_1260hPa;
+    m_mode.fs  = LPS28DFW_4060hPa;
 
     if (lps28dfw_mode_set(&m_ctx, &m_mode) != 0) return false;
 

@@ -326,6 +326,9 @@ void BMA400LL::read_xyz(double& x, double& y, double& z, int16_t& temperature)
 
     conf[0].param.accel.odr = BMA400_ODR_100HZ;
     conf[0].param.accel.range = m_g_force;
+    
+    static const uint8_t RANGE_TABLE[4] = { 2, 4, 8, 16 };
+    uint8_t g_force = RANGE_TABLE[m_g_force];
     //conf[0].param.accel.range = BMA400_RANGE_4G; // 4G range
     conf[0].param.accel.data_src = BMA400_DATA_SRC_ACCEL_FILT_2;
 
@@ -353,9 +356,9 @@ void BMA400LL::read_xyz(double& x, double& y, double& z, int16_t& temperature)
             rslt = bma400_get_accel_data(BMA400_DATA_ONLY, &data, &m_bma400_dev);
             //bma400_check_rslt("bma400_get_accel_data", rslt);
 
-            x = lsb_to_ms2(data.x, 2, 12);
-            y = lsb_to_ms2(data.y, 2, 12);
-            z = lsb_to_ms2(data.z, 2, 12);
+            x = lsb_to_ms2(data.x, g_force, 12);
+            y = lsb_to_ms2(data.y, g_force, 12);
+            z = lsb_to_ms2(data.z, g_force, 12);
             //t = (float)data.sensortime * SENSOR_TICK_TO_S;
 
             DEBUG_INFO("%s::Acc_Raw_X : %d   Acc_Raw_Y : %d   Acc_Raw_Z : %d", __func__, data.x, data.y, data.z);

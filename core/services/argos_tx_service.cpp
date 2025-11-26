@@ -419,6 +419,10 @@ ArticPacket ArgosPacketBuilder::build_short_packet(GPSLogEntry* gps_entry,
 	PACK_BITS(is_low_battery, packet, base_pos, 1);
 	DEBUG_TRACE("ArgosPacketBuilder::build_short_packet: is_lb=%u", is_low_battery);
 
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	// Do not used CRC8 and BCH for sensors packet
+	// already included into SMD packet builder
+#else
 	// Calculate CRC8
 	unsigned char crc8 = CRC8::checksum(packet.substr(1), SHORT_PACKET_PAYLOAD_BITS - 8);
 	unsigned int crc_offset = 0;
@@ -435,6 +439,7 @@ ArticPacket ArgosPacketBuilder::build_short_packet(GPSLogEntry* gps_entry,
 	// Append BCH code
 	PACK_BITS(code_word, packet, base_pos, BCHEncoder::B127_106_3_CODE_LEN);
 
+#endif
 	return packet;
 }
 
@@ -651,13 +656,13 @@ ArticPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 		unsigned int lon = convert_longitude(gps_entry->info.lon);
 		PACK_BITS(lon, packet, base_pos, 22);
 		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: lon=%u (%lf)", lon, gps_entry->info.lon);
-#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
-	// Do not used SPEED
-#else
+// #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+// 	// Do not used SPEED
+// #else
 		unsigned int gspeed = convert_speed((double)gps_entry->info.gSpeed);
 		PACK_BITS((unsigned int)gspeed, packet, base_pos, 7);
 		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: speed=%u (%lf)", (unsigned int)gspeed, (double)gps_entry->info.gSpeed);
-#endif
+// #endif
 
 		// OUTOFZONE_FLAG
 		PACK_BITS(is_out_of_zone, packet, base_pos, 1);
@@ -693,15 +698,14 @@ ArticPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: pbar=%04X ptemp=%04X",
 				(unsigned int)pressure_sensor->port[0],
 				(unsigned int)pressure_sensor->port[1]);
-		PACK_BITS((unsigned int)pressure_sensor->port[0], packet, base_pos, 15);
+		PACK_BITS((unsigned int)pressure_sensor->port[0], packet, base_pos, 12);
 		PACK_BITS((unsigned int)pressure_sensor->port[1], packet, base_pos, 14);
 	}
 	if (temp_sensor != nullptr) {
 	#ifdef BOARD_RSPB
-		uint8_t temp_encoded = (uint8_t)((temp_sensor->port[0] / 100) * 255); // encode 0 to 100degree temeprature to 0 255 value
-		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: thermistor=%04X -> encoded = %02X", 
-			(unsigned int)temp_sensor->port[0], temp_encoded);
-		PACK_BITS(temp_encoded, packet, base_pos, 14);
+		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: thermistor=%04X", 
+			(unsigned int)temp_sensor->port[0]);
+		PACK_BITS((unsigned int)temp_sensor->port[0], packet, base_pos, 14);
 
 	#else
 		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: sea_temp=%06X", (unsigned int)temp_sensor->port[0]);
@@ -719,13 +723,17 @@ ArticPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: axl_activity=%04X axl_temp =%04X", 
 			(unsigned int)axl_sensor->port[4],
 			(unsigned int)axl_sensor->port[0]); // 3 to retrieve activity
-		PACK_BITS((unsigned int)axl_sensor->port[4], packet, base_pos, 7);
-		PACK_BITS((unsigned int)axl_sensor->port[0], packet, base_pos, 14);
+		PACK_BITS((unsigned int)axl_sensor->port[0], packet, base_pos, 14); // Temperature
+		PACK_BITS((unsigned int)axl_sensor->port[1], packet, base_pos, 15); // X
+		PACK_BITS((unsigned int)axl_sensor->port[2], packet, base_pos, 15); // Y
+		PACK_BITS((unsigned int)axl_sensor->port[3], packet, base_pos, 15); // Z
+		PACK_BITS((unsigned int)axl_sensor->port[4], packet, base_pos, 8); // Activity
 	}
 
-// #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
-// 	// Do not used CRC8 and BCH for sensors packet
-// #else
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	// Do not used CRC8 and BCH for sensors packet
+	// already included into SMD packet builder
+#else
 	// Calculate CRC8
 	unsigned char crc8 = CRC8::checksum(packet.substr(1), base_pos - 8);
 	unsigned int crc_offset = 0;
@@ -742,7 +750,7 @@ ArticPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 	// Append BCH code
 	PACK_BITS(code_word, packet, base_pos, BCHEncoder::B255_223_4_CODE_LEN);
 
-// #endif
+#endif
 	size_bits = base_pos;
 
 	packet.resize((size_bits+7)/8);
@@ -1051,7 +1059,7 @@ void ArgosDepthPileManager::notify_peer_event(ServiceEvent& e) {
 			e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
 		DEBUG_TRACE("ArgosDepthPileManager::notify_peer_event: THERMISTOR_SENSOR cache set");
 	 	ServiceSensorData& entry = std::get<ServiceSensorData>(e.event_data);
-	 	m_thermistor_temp_cache.port[0] = (unsigned int)(entry.port[0]);
+		m_thermistor_temp_cache.port[0] = (unsigned int)((entry.port[0] + 40.0) * 100U);
 	 	m_sensor_tx_current |= (1 << (int)ServiceIdentifier::THERMISTOR_SENSOR);
 	#else
 	} else if (e.event_source == ServiceIdentifier::SEA_TEMP_SENSOR &&
@@ -1065,10 +1073,10 @@ void ArgosDepthPileManager::notify_peer_event(ServiceEvent& e) {
 			e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
 		DEBUG_TRACE("ArgosDepthPileManager::notify_peer_event: AXL_SENSOR cache set");
 		ServiceSensorData& entry = std::get<ServiceSensorData>(e.event_data);
-		m_axl_cache.port[0] = (unsigned int)(entry.port[0]*100);
-		m_axl_cache.port[1] = (unsigned int)(entry.port[1]*100);
-		m_axl_cache.port[2] = (unsigned int)(entry.port[2]*100);
-		m_axl_cache.port[3] = (unsigned int)(entry.port[3]*100);
+		m_axl_cache.port[0] = (unsigned int)((entry.port[0] + 40.0) * 100U); // Encode temperature.
+		m_axl_cache.port[1] = (unsigned int)((entry.port[1] + 16) * 1000U);
+		m_axl_cache.port[2] = (unsigned int)((entry.port[2] + 16) * 1000U);
+		m_axl_cache.port[3] = (unsigned int)((entry.port[3] + 16) * 1000U);
 		m_axl_cache.port[4] = (unsigned int)(entry.port[4]);
 		m_axl_cache.port[5] = (unsigned int)(entry.port[5]);
 		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::AXL_SENSOR);
