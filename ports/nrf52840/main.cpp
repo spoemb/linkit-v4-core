@@ -34,7 +34,6 @@
 #include "is25_flash.hpp"
 #include "nrf_rgb_led.hpp"
 #include "nrf_battery_mon.hpp"
-#include "m8qasync.hpp"
 #include "ltr_303.hpp"
 #include "oem_ph.hpp"
 #include "oem_rtd.hpp"
@@ -54,6 +53,14 @@
 #include "dive_mode_service.hpp"
 #include "gpio_buzzer.hpp"
 #include "TSYS01.hpp"
+
+#if defined(GPS_M8Q)
+#include "m8qasync.hpp"
+#elif defined(GPS_M10Q)
+#include "m10qasync.hpp"
+#else
+#warning "No GPS module defined, (should be M8Q or M10Q)"
+#endif
 
 
 FileSystem *main_filesystem;
@@ -529,14 +536,27 @@ int main()
 // 		DEBUG_TRACE("Artic R2 not detected");
 // 	}
 
-// 	DEBUG_TRACE("GPS M8Q ...");
-// 	try {
-// 		static M8QAsyncReceiver m8q_gnss;
-// 		static GPSService gps_service(m8q_gnss, &fs_sensor_log);
-// 		static GNSSDetectorService gps_detector(m8q_gnss);
-// 	} catch (...) {
-// 		DEBUG_TRACE("GPS M8Q not detected");
-// 	}
+#if defined(GPS_M8Q)
+	DEBUG_TRACE("GPS M8Q ...");
+	try {
+		static M8QAsyncReceiver m8q_gnss;
+		static GPSService gps_service(m8q_gnss, &fs_sensor_log);
+		static GNSSDetectorService gps_detector(m8q_gnss);
+	} catch (...) {
+		DEBUG_TRACE("GPS M8Q not detected");
+	}
+#elif defined(GPS_M10Q)
+	DEBUG_TRACE("GPS M10Q ...");
+	try {
+		static M10QAsyncReceiver m10q_gnss;
+		static GPSService gps_service(m10q_gnss, &fs_sensor_log);
+		static GNSSDetectorService gps_detector(m10q_gnss);
+	} catch (...) {
+		DEBUG_TRACE("GPS M10Q not detected");
+	}
+#else
+	raise Exception("No GPS defined in Makefile");
+#endif
 
 	DEBUG_TRACE("Pressure Sensor...");
 #ifdef ADC_ENABLE

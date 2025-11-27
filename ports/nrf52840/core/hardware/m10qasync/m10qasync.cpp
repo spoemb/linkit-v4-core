@@ -1200,8 +1200,6 @@ void M10QAsyncReceiver::setup_power_management() {
 #if 1 == NO_GPS_POWER_REG
     CFG::PM::EXTINTWAKE.set_value(1);              // EXTINT pin controls wake state
     CFG::PM::EXTINTBACKUP.set_value(1);            // EXTINT pin controls backup state
-#else 
-
 #endif
 
     // Collect all parameters for VALSET
@@ -1259,11 +1257,7 @@ void M10QAsyncReceiver::setup_simple_navigation_settings() {
     // Set the navigation parameters for standard precision
     CFG::NAVSPG::FIXMODE.set_value(static_cast<CFG::NAVSPG::FIXMODE_VALUES>(m_nav_settings.fix_mode));  // Set position fix mode dynamically
     CFG::NAVSPG::DYNMODEL.set_value(static_cast<CFG::NAVSPG::DYNMODEL_VALUES>(m_nav_settings.dyn_model));  // Set dynamic platform model dynamically
-    CFG::NAVSPG::INIFIX3D.set_value(1);                                    // Require initial 3D fix
-    CFG::NAVSPG::WKNROLLOVER.set_value(1024);                              // GPS week rollover number
-    CFG::NAVSPG::UTCSTANDARD.set_value(CFG::NAVSPG::UTCSTANDARD_VALUES::UTC_USNO);    // UTC standard (USNO)
-    CFG::NAVSPG::INFIL_MINSVS.set_value(4);                                // Minimum satellites for navigation
-    CFG::NAVSPG::INFIL_MINCNO.set_value(10);                               // Minimum satellite signal level
+    CFG::NAVSPG::UTCSTANDARD.set_value(CFG::NAVSPG::UTCSTANDARD_VALUES::UTC_AUTO);    // UTC standard auto
     CFG::NAVSPG::OUTFIL_PDOP.set_value(250);                               // Position DOP threshold (25.0)
     CFG::NAVSPG::OUTFIL_TDOP.set_value(250);                               // Time DOP threshold (25.0)
     CFG::NAVSPG::OUTFIL_PACC.set_value(100);                               // Position accuracy mask
@@ -1272,17 +1266,12 @@ void M10QAsyncReceiver::setup_simple_navigation_settings() {
     CFG::NAVSPG::CONSTR_ALTVAR.set_value(10000);                           // Fixed altitude variance
     CFG::NAVSPG::INFIL_MINELEV.set_value(5);                               // Minimum elevation angle
     CFG::NAVSPG::CONSTR_DGNSSTO.set_value(60);                             // DGNSS timeout
-    CFG::NAVSPG::SIGATTCOMP.set_value(CFG::NAVSPG::SIGATTCOMP_VALUES::SIGCOMP_AUTO); // Automatic signal attenuation compensation
 
     // Collect all parameters in a vector for VALSET
     std::vector<CFG::UBXParameter> navspg_config = {
         CFG::NAVSPG::FIXMODE,
         CFG::NAVSPG::DYNMODEL,
-        CFG::NAVSPG::INIFIX3D,
-        CFG::NAVSPG::WKNROLLOVER,
         CFG::NAVSPG::UTCSTANDARD,
-        CFG::NAVSPG::INFIL_MINSVS,
-        CFG::NAVSPG::INFIL_MINCNO,
         CFG::NAVSPG::OUTFIL_PDOP,
         CFG::NAVSPG::OUTFIL_TDOP,
         CFG::NAVSPG::OUTFIL_PACC,
@@ -1291,11 +1280,10 @@ void M10QAsyncReceiver::setup_simple_navigation_settings() {
         CFG::NAVSPG::CONSTR_ALTVAR,
         CFG::NAVSPG::INFIL_MINELEV,
         CFG::NAVSPG::CONSTR_DGNSSTO,
-        CFG::NAVSPG::SIGATTCOMP
     };
 
     // Create the VALSET message with the navigation parameters
-    CFG::VALSET::MSG_VALSET nav_valset_msg(0x00, CFG::VALSET::LAYERS::BBR|CFG::VALSET::LAYERS::RAM, navspg_config);
+    CFG::VALSET::MSG_VALSET nav_valset_msg(0x00, CFG::VALSET::LAYERS::BBR, navspg_config);
     //CFG::VALSET::MSG_VALSET nav_valset_msg(0x00, CFG::VALSET::LAYERS::BBR | CFG::VALSET::LAYERS::RAM, navspg_config);
     size_t cfgDataSize = nav_valset_msg.get_cfgData_size(navspg_config);
     initiate_timeout();
@@ -1311,8 +1299,8 @@ void M10QAsyncReceiver::setup_expert_navigation_settings() {
     CFG::NAVSPG::INFIL_MINSVS.set_value(3);                         // Minimum satellites for navigation
     CFG::NAVSPG::INFIL_MAXSVS.set_value(32);                        // Maximum satellites for navigation
     CFG::NAVSPG::INFIL_MINCNO.set_value(6);                         // Minimum satellite signal level for navigation
-    CFG::NAVSPG::INIFIX3D.set_value(1);                             // Require initial 3D fix
-    //CFG::NAVSPG::WKNROLLOVER.set_value(0);                          // Default GPS week rollover min value allowed is 1
+    CFG::NAVSPG::INIFIX3D.set_value(0);                             // Do not require initial 3D fix
+    //CFG::NAVSPG::WKNROLLOVER.set_value(0);                          // Default GPS week rollover min value allowed is 1 - default is 2148, do not update
     CFG::NAVSPG::ACKAIDING.set_value(1);                            // Acknowledge assistance messages
     CFG::NAVSPG::SIGATTCOMP.set_value(static_cast<uint8_t>(CFG::NAVSPG::SIGATTCOMP_VALUES::SIGCOMP_DISABLE)); // Disable signal attenuation compensation
 
@@ -1326,7 +1314,7 @@ void M10QAsyncReceiver::setup_expert_navigation_settings() {
     std::vector<CFG::UBXParameter> navspg_ana_config = {
         CFG::NAVSPG::INFIL_MINSVS,
         CFG::NAVSPG::INFIL_MAXSVS,
-        //CFG::NAVSPG::INFIL_MINCNO, NACK with this 
+        CFG::NAVSPG::INFIL_MINCNO,
         CFG::NAVSPG::INIFIX3D,
         //CFG::NAVSPG::WKNROLLOVER, 
         CFG::NAVSPG::ACKAIDING,
@@ -1336,8 +1324,8 @@ void M10QAsyncReceiver::setup_expert_navigation_settings() {
     };
 
     // Create and send VALSET message
-    CFG::VALSET::MSG_VALSET nav_ana_valset_msg(0x00, CFG::VALSET::LAYERS::BBR|CFG::VALSET::LAYERS::RAM, navspg_ana_config);
-    //CFG::VALSET::MSG_VALSET nav_ana_valset_msg(0x00, CFG::VALSET::LAYERS::RAM, navspg_ana_config);
+    // CFG::VALSET::MSG_VALSET nav_ana_valset_msg(0x00, CFG::VALSET::LAYERS::BBR|CFG::VALSET::LAYERS::RAM, navspg_ana_config);
+    CFG::VALSET::MSG_VALSET nav_ana_valset_msg(0x00, CFG::VALSET::LAYERS::RAM, navspg_ana_config);
     size_t cfgDataSize = nav_ana_valset_msg.get_cfgData_size(navspg_ana_config);
     initiate_timeout();
 
@@ -1405,8 +1393,8 @@ void M10QAsyncReceiver::disable_odometer() {
     };
 
     // Create the VALSET message with the odometer parameters
-    CFG::VALSET::MSG_VALSET odo_valset_msg(0x00, CFG::VALSET::LAYERS::BBR | CFG::VALSET::LAYERS::RAM, odo_config);
-    //CFG::VALSET::MSG_VALSET odo_valset_msg(0x00,CFG::VALSET::LAYERS::RAM, odo_config);
+    // CFG::VALSET::MSG_VALSET odo_valset_msg(0x00, CFG::VALSET::LAYERS::BBR | CFG::VALSET::LAYERS::RAM, odo_config);
+    CFG::VALSET::MSG_VALSET odo_valset_msg(0x00, CFG::VALSET::LAYERS::RAM, odo_config);
     size_t cfgDataSize = odo_valset_msg.get_cfgData_size(odo_config);
     initiate_timeout();
 
@@ -1417,36 +1405,13 @@ void M10QAsyncReceiver::disable_odometer() {
 
 void M10QAsyncReceiver::disable_timepulse_output() {
     DEBUG_TRACE("M10QAsyncReceiver::disable_timepulse_output: Configuring timepulse output with VALSET ->");
-    // Set up the time pulse parameters for disabling
-    // CFG::TP::PULSE_LENGTH_DEF.set_value(1); // Set pulse length to time in [us]
-    // CFG::TP::ANT_CABLEDELAY.set_value(0);                     // Set antenna cable delay to 0 ns
-    // CFG::TP::LEN_LOCK_TP1.set_value(100000);                  // Set locked pulse length to 100,000
-    // CFG::TP::USER_DELAY_TP1.set_value(0);                     // Set user-configurable delay to 0 ns
-    // CFG::TP::SYNC_GNSS_TP1.set_value(0);                      // Do not sync with GNSS time
-    // CFG::TP::USE_LOCKED_TP1.set_value(0);                     // Do not use locked parameters
-    // CFG::TP::ALIGN_TO_TOW_TP1.set_value(0);                   // Do not align to top of second
-    // //CFG::TP::TIMEGRID_TP1.set_value(CFG::TP::TIMEGRID_TP1::LOCAL); // Set time grid to local reference
-                                                              
-
-    // // Collect all parameters in a vector for MSG_VALSET
-    // std::vector<CFG::UBXParameter> tp_config = {
-    //     CFG::TP::PULSE_LENGTH_DEF,
-    //     CFG::TP::ANT_CABLEDELAY,
-    //     CFG::TP::LEN_LOCK_TP1,
-    //     CFG::TP::USER_DELAY_TP1,
-    //     CFG::TP::SYNC_GNSS_TP1,
-    //     CFG::TP::USE_LOCKED_TP1,
-    //     CFG::TP::ALIGN_TO_TOW_TP1,
-    //     CFG::TP::POL_TP1,
-    //     //CFG::TP::TIMEGRID_TP1
-    // };
     // Minimal configuration for disabling time pulse with 1 Hz setting
     CFG::TP::PULSE_DEF.set_value(CFG::TP::PULSE_DEF::PERIOD);            // Set pulse mode to period
     CFG::TP::PERIOD_TP1.set_value(1000000);     // Set period to 1 second (1 Hz) in microseconds
-    CFG::TP::PERIOD_LOCK_TP1.set_value(1000000);              // Set locked period to 1 second in microseconds
+    CFG::TP::PERIOD_LOCK_TP1.set_value(1000000);// Set locked period to 1 second in microseconds
     CFG::TP::LEN_TP1.set_value(0);              // Set pulse length to 0 (no pulse)
     CFG::TP::TP1_ENA.set_value(0);              // Disable the time pulse
-    CFG::TP::POL_TP1.set_value(0);                            // Set time pulse polarity to default (falling edge)
+    CFG::TP::POL_TP1.set_value(0);              // Set time pulse polarity to default (falling edge)
 
     // Collect only necessary parameters in the configuration vector
     std::vector<CFG::UBXParameter> tp_config = {
@@ -1459,8 +1424,8 @@ void M10QAsyncReceiver::disable_timepulse_output() {
     };
 
     // Create the VALSET message with the timepulse parameters
-    CFG::VALSET::MSG_VALSET tp_valset_msg(0x00, CFG::VALSET::LAYERS::BBR | CFG::VALSET::LAYERS::RAM, tp_config);
-    //CFG::VALSET::MSG_VALSET tp_valset_msg(0x00, CFG::VALSET::LAYERS::RAM, tp_config);
+    // CFG::VALSET::MSG_VALSET tp_valset_msg(0x00, CFG::VALSET::LAYERS::BBR | CFG::VALSET::LAYERS::RAM, tp_config);
+    CFG::VALSET::MSG_VALSET tp_valset_msg(0x00, CFG::VALSET::LAYERS::RAM, tp_config);
     size_t cfgDataSize = tp_valset_msg.get_cfgData_size(tp_config);
     initiate_timeout();
 
@@ -1481,8 +1446,8 @@ void M10QAsyncReceiver::enable_nav_pvt_message() {
     };
 
     // Create and send the VALSET message with the NAV PVT configuration
-    //CFG::VALSET::MSG_VALSET nav_pvt_valset_msg(0x00,CFG::VALSET::LAYERS::RAM, nav_pvt_config);
-    CFG::VALSET::MSG_VALSET nav_pvt_valset_msg(0x00, CFG::VALSET::LAYERS::BBR | CFG::VALSET::LAYERS::RAM, nav_pvt_config);
+    CFG::VALSET::MSG_VALSET nav_pvt_valset_msg(0x00, CFG::VALSET::LAYERS::RAM, nav_pvt_config);
+    // CFG::VALSET::MSG_VALSET nav_pvt_valset_msg(0x00, CFG::VALSET::LAYERS::BBR | CFG::VALSET::LAYERS::RAM, nav_pvt_config);
     size_t cfgDataSize = nav_pvt_valset_msg.get_cfgData_size(nav_pvt_config);
     initiate_timeout();
 
@@ -1496,8 +1461,8 @@ void M10QAsyncReceiver::disable_nav_pvt_message() {
     CFG::MSGOUT::NAV_PVT_UART1.set_value(0); // Disable NAV-PVT message on UART1
 
     std::vector<CFG::UBXParameter> nav_pvt_config = {CFG::MSGOUT::NAV_PVT_UART1};
-    //CFG::VALSET::MSG_VALSET nav_pvt_valset_msg(0x00, CFG::VALSET::LAYERS::RAM, nav_pvt_config);
-    CFG::VALSET::MSG_VALSET nav_pvt_valset_msg(0x00,CFG::VALSET::LAYERS::BBR | CFG::VALSET::LAYERS::RAM, nav_pvt_config);
+    CFG::VALSET::MSG_VALSET nav_pvt_valset_msg(0x00, CFG::VALSET::LAYERS::RAM, nav_pvt_config);
+    // CFG::VALSET::MSG_VALSET nav_pvt_valset_msg(0x00,CFG::VALSET::LAYERS::BBR | CFG::VALSET::LAYERS::RAM, nav_pvt_config);
     
     size_t cfgDataSize = nav_pvt_valset_msg.get_cfgData_size(nav_pvt_config);
     initiate_timeout();
@@ -1512,8 +1477,8 @@ void M10QAsyncReceiver::enable_nav_dop_message() {
     CFG::MSGOUT::NAV_DOP_UART1.set_value(1); // Enable NAV-DOP message on UART1
 
     std::vector<CFG::UBXParameter> nav_dop_config = {CFG::MSGOUT::NAV_DOP_UART1};
-    //CFG::VALSET::MSG_VALSET nav_dop_valset_msg(0x00, CFG::VALSET::LAYERS::RAM, nav_dop_config);
-    CFG::VALSET::MSG_VALSET nav_dop_valset_msg(0x00, CFG::VALSET::LAYERS::BBR | CFG::VALSET::LAYERS::RAM, nav_dop_config);
+    CFG::VALSET::MSG_VALSET nav_dop_valset_msg(0x00, CFG::VALSET::LAYERS::RAM, nav_dop_config);
+    // CFG::VALSET::MSG_VALSET nav_dop_valset_msg(0x00, CFG::VALSET::LAYERS::BBR | CFG::VALSET::LAYERS::RAM, nav_dop_config);
     
     size_t cfgDataSize = nav_dop_valset_msg.get_cfgData_size(nav_dop_config);
     initiate_timeout();
@@ -1528,8 +1493,8 @@ void M10QAsyncReceiver::disable_nav_dop_message() {
     CFG::MSGOUT::NAV_DOP_UART1.set_value(0); // Disable NAV-DOP message on UART1
 
     std::vector<CFG::UBXParameter> nav_dop_config = {CFG::MSGOUT::NAV_DOP_UART1};
-    //CFG::VALSET::MSG_VALSET nav_dop_valset_msg(0x00, CFG::VALSET::LAYERS::RAM, nav_dop_config);
-    CFG::VALSET::MSG_VALSET nav_dop_valset_msg(0x00, CFG::VALSET::LAYERS::BBR | CFG::VALSET::LAYERS::RAM, nav_dop_config);
+    CFG::VALSET::MSG_VALSET nav_dop_valset_msg(0x00, CFG::VALSET::LAYERS::RAM, nav_dop_config);
+    // CFG::VALSET::MSG_VALSET nav_dop_valset_msg(0x00, CFG::VALSET::LAYERS::BBR | CFG::VALSET::LAYERS::RAM, nav_dop_config);
 
     size_t cfgDataSize = nav_dop_valset_msg.get_cfgData_size(nav_dop_config);
     initiate_timeout();
@@ -1544,8 +1509,8 @@ void M10QAsyncReceiver::enable_nav_status_message() {
     CFG::MSGOUT::NAV_STATUS_UART1.set_value(1); // Enable NAV-STATUS message on UART1
 
     std::vector<CFG::UBXParameter> nav_status_config = {CFG::MSGOUT::NAV_STATUS_UART1};
-    //CFG::VALSET::MSG_VALSET nav_status_valset_msg(0x00, CFG::VALSET::LAYERS::RAM, nav_status_config);
-    CFG::VALSET::MSG_VALSET nav_status_valset_msg(0x00, CFG::VALSET::LAYERS::BBR | CFG::VALSET::LAYERS::RAM, nav_status_config);
+    CFG::VALSET::MSG_VALSET nav_status_valset_msg(0x00, CFG::VALSET::LAYERS::RAM, nav_status_config);
+    // CFG::VALSET::MSG_VALSET nav_status_valset_msg(0x00, CFG::VALSET::LAYERS::BBR | CFG::VALSET::LAYERS::RAM, nav_status_config);
     
     size_t cfgDataSize = nav_status_valset_msg.get_cfgData_size(nav_status_config);
     initiate_timeout();
@@ -1560,8 +1525,8 @@ void M10QAsyncReceiver::disable_nav_status_message() {
     CFG::MSGOUT::NAV_STATUS_UART1.set_value(0); // Disable NAV-STATUS message on UART1
 
     std::vector<CFG::UBXParameter> nav_status_config = {CFG::MSGOUT::NAV_STATUS_UART1};
-    CFG::VALSET::MSG_VALSET nav_status_valset_msg(0x00, CFG::VALSET::LAYERS::BBR|CFG::VALSET::LAYERS::RAM, nav_status_config);
-    //CFG::VALSET::MSG_VALSET nav_status_valset_msg(0x00, CFG::VALSET::LAYERS::RAM, nav_status_config);
+    // CFG::VALSET::MSG_VALSET nav_status_valset_msg(0x00, CFG::VALSET::LAYERS::BBR|CFG::VALSET::LAYERS::RAM, nav_status_config);
+    CFG::VALSET::MSG_VALSET nav_status_valset_msg(0x00, CFG::VALSET::LAYERS::RAM, nav_status_config);
 
     size_t cfgDataSize = nav_status_valset_msg.get_cfgData_size(nav_status_config);
     initiate_timeout();
@@ -1576,8 +1541,8 @@ void M10QAsyncReceiver::enable_nav_sat_message() {
     CFG::MSGOUT::NAV_SAT_UART1.set_value(1); // Enable NAV-SAT message on UART1
 
     std::vector<CFG::UBXParameter> nav_sat_config = {CFG::MSGOUT::NAV_SAT_UART1};
-    CFG::VALSET::MSG_VALSET nav_sat_valset_msg(0x00, CFG::VALSET::LAYERS::BBR|CFG::VALSET::LAYERS::RAM, nav_sat_config);
-    //CFG::VALSET::MSG_VALSET nav_sat_valset_msg(0x00, CFG::VALSET::LAYERS::RAM, nav_sat_config);
+    // CFG::VALSET::MSG_VALSET nav_sat_valset_msg(0x00, CFG::VALSET::LAYERS::BBR | CFG::VALSET::LAYERS::RAM, nav_sat_config);
+    CFG::VALSET::MSG_VALSET nav_sat_valset_msg(0x00, CFG::VALSET::LAYERS::RAM, nav_sat_config);
 
     size_t cfgDataSize = nav_sat_valset_msg.get_cfgData_size(nav_sat_config);
     initiate_timeout();
@@ -1592,8 +1557,8 @@ void M10QAsyncReceiver::disable_nav_sat_message() {
     CFG::MSGOUT::NAV_SAT_UART1.set_value(0); // Disable NAV-SAT message on UART1
 
     std::vector<CFG::UBXParameter> nav_sat_config = {CFG::MSGOUT::NAV_SAT_UART1};
-    //CFG::VALSET::MSG_VALSET nav_sat_valset_msg(0x00, CFG::VALSET::LAYERS::RAM, nav_sat_config);
-    CFG::VALSET::MSG_VALSET nav_sat_valset_msg(0x00, CFG::VALSET::LAYERS::BBR | CFG::VALSET::LAYERS::RAM, nav_sat_config);
+    CFG::VALSET::MSG_VALSET nav_sat_valset_msg(0x00, CFG::VALSET::LAYERS::RAM, nav_sat_config);
+    // CFG::VALSET::MSG_VALSET nav_sat_valset_msg(0x00, CFG::VALSET::LAYERS::BBR | CFG::VALSET::LAYERS::RAM, nav_sat_config);
 
     size_t cfgDataSize = nav_sat_valset_msg.get_cfgData_size(nav_sat_config);
     initiate_timeout();
@@ -1612,7 +1577,7 @@ void M10QAsyncReceiver::setup_gnss_channel_sharing() {
     CFG::SIGNAL::SBAS_L1CA_ENA.set_value(0);
     CFG::SIGNAL::GAL_ENA.set_value(1);
     CFG::SIGNAL::GAL_E1_ENA.set_value(1);
-    CFG::SIGNAL::BDS_ENA.set_value(0);
+    CFG::SIGNAL::BDS_ENA.set_value(1);
     CFG::SIGNAL::BDS_B1_ENA.set_value(0);
     CFG::SIGNAL::BDS_B1C_ENA.set_value(0);
     CFG::SIGNAL::QZSS_ENA.set_value(1);

@@ -45,10 +45,12 @@ if(${BOARD} MATCHES HORIZON)
     set(MODEL_UW 0)
     set(MODEL_CORE 1)
     set(HAS_WCHG 0)
+    set(GPS_MODEL M8Q)
     set(BOOTLOADER "bootloader/gentracker_secure_bootloader/horizon_v4.0/armgcc/_build/horizon_bootloader_v4_linkit_merged.hex")
 elseif(${BOARD} MATCHES LINKIT)
     if(${HWVERS} MATCHES 4)
         set(HAS_WCHG 0)
+        set(GPS_MODEL M10Q)
     endif()
     set(TARGET_NAME ${PROJECT_NAME}_${MODEL}_board)
     set(BOARD_DIR     "${PROJ_DIR}/bsp/gentracker_v1.0")
@@ -170,7 +172,6 @@ target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
     ${PROJ_DIR}/core/filesystem
     ${PROJ_DIR}/core/scheduling
     ${PROJ_DIR}/core/hardware/artic_sat
-    ${PROJ_DIR}/core/hardware/m8qasync
     ${PROJ_DIR}/core/hardware/pressure_sensor
     ${PROJ_DIR}/core/hardware/ms58xx
     ${PROJ_DIR}/core/hardware/bar100
@@ -281,8 +282,6 @@ target_sources(${TARGET_NAME} PRIVATE
     ${PROJ_DIR}/core/hardware/tsys01/TSYS01.cpp
     ${PROJ_DIR}/core/hardware/artic_sat/artic_sat.cpp
     ${PROJ_DIR}/core/hardware/artic_sat/pa_driver.cpp
-	${PROJ_DIR}/core/hardware/m8qasync/m8qasync.cpp
-    ${PROJ_DIR}/core/hardware/m8qasync/ubx_comms.cpp
     ${PROJ_DIR}/core/hardware/nrf_timer.cpp
     ${PROJ_DIR}/core/hardware/nrf_rtc.cpp
     ${PROJ_DIR}/core/hardware/nrf_spim.cpp
@@ -306,6 +305,28 @@ target_sources(${TARGET_NAME} PRIVATE
     ${PROJ_DIR}/main.cpp
 )
 
+if(${GPS_MODEL} MATCHES M8Q)
+    target_sources(${TARGET_NAME} PRIVATE
+        ${PROJ_DIR}/core/hardware/m8qasync/m8qasync.cpp
+        ${PROJ_DIR}/core/hardware/m8qasync/ubx_comms.cpp
+    )
+
+    target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
+        ${PROJ_DIR}/core/hardware/m8qasync
+    )
+elseif(${GPS_MODEL} MATCHES M10Q)
+    target_sources(${TARGET_NAME} PRIVATE
+        ${PROJ_DIR}/core/hardware/m10qasync/m10qasync.cpp
+        ${PROJ_DIR}/core/hardware/m10qasync/ubx_comms.cpp
+    )
+
+    target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
+        ${PROJ_DIR}/core/hardware/m10qasync
+    )
+else()
+    message(FATAL_ERROR "GPS_MODEL should be defined")
+endif()
+
 if (HAS_WCHG)
         target_sources(${TARGET_NAME} PRIVATE
 		    ${PROJ_DIR}/core/hardware/stwlc68_otp/otphal.c
@@ -321,6 +342,7 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     MODEL_SB=${MODEL_SB}
     MODEL_UW=${MODEL_UW}
     MODEL_CORE=${MODEL_CORE}
+    GPS_${GPS_MODEL}
     BUILD_TYPE=${CMAKE_BUILD_TYPE}
     #SCHEDULER_DEBUG
     DEBUG_ENABLE=1

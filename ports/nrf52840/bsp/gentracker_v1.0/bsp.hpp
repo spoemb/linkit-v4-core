@@ -100,7 +100,7 @@ namespace BSP
 	    GPIO_SAT_INT,
 	    GPIO_KIM_PWR_ON,
 	    GPIO_GPS_PWR_EN,
-	    GPIO_GPS_NRST,
+	    GPIO_GPS_RST,
 	    GPIO_GPS_EXT_INT,
 	    GPOI_GPS_PPS,
 	    GPIO_LED_GREEN,

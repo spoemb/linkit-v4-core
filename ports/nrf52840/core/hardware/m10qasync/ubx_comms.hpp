@@ -82,13 +82,10 @@ public:
 		unsigned int content_size;
 		if constexpr (std::is_same<T, UBX::Empty>::value) {
 			content_size = 0;
-		// } else if constexpr (std::is_same<T, UBX::CFG::VALSET::MSG_VALSET>::value) {
-		// 	content_size = sizeof(content) + dynamic_size;
 		} else {
 			content_size = sizeof(content) + dynamic_size;
 		}
 
-		// DEBUG_TRACE("SEND WITH EXPECT : content_size : %u", content_size);
 		if (m_is_send_busy) {
 			DEBUG_TRACE("UBXComms: send is busy...");
 			while (m_is_send_busy);
@@ -102,17 +99,9 @@ public:
 		msg->msgLength = content_size;
 		std::memcpy(msg->payload, &content, content_size);
 
-		// for (unsigned int i = 0; i < content_size; i++) {
-		// 	DEBUG_TRACE("Content %u: 0x%02X", i, msg->payload[i]);
-		// }
-
 		compute_crc((const uint8_t * const)&msg->msgClass, content_size + sizeof(UBX::Header) - 2, msg->payload[msg->msgLength], msg->payload[msg->msgLength+1]);
-
-		DEBUG_TRACE("UBXComms: send with expect...");
 		send_with_expect(m_tx_buffer, content_size + sizeof(UBX::Header) + 2, resp_cls, resp_msg_id);
 	}
-
-
 
 	void init();
 	void deinit();
