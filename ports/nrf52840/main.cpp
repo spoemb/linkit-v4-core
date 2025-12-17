@@ -78,7 +78,7 @@ DTEHandler *dte_handler;
 RTC *rtc;
 BatteryMonitor *battery_monitor;
 BaseDebugMode g_debug_mode = BaseDebugMode::UART;
-ArticDevice *artic_device;
+// ArticDevice *artic_device;
 Buzzer *buzzer_ctl;
 
 static bool m_is_debug_init = false;

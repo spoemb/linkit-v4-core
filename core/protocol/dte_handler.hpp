@@ -38,7 +38,7 @@ enum class DTEError {
 // The DTEHandler requires access to the following system objects that are extern declared
 extern ConfigurationStore *configuration_store;
 extern MemoryAccess *memory_access;
-extern ArticDevice *artic_device;
+// extern ArticDevice *artic_device;
 
 class DTEHandler : public ArticEventListener {
 private:
@@ -520,18 +520,18 @@ public:
 		try {
 			// If not already active then subscribe to events and setup a sufficiently
 			// long idle period before the driver shuts off argos power
-			if (!m_artic_device_active) {
-				artic_device->subscribe(*this);
-				artic_device->set_idle_timeout(30000);
-				m_artic_device_active = true;
-			}
+			// if (!m_artic_device_active) {
+			// 	artic_device->subscribe(*this);
+			// 	artic_device->set_idle_timeout(30000);
+			// 	m_artic_device_active = true;
+			// }
 
-			// Schedule transmission
-			artic_device->set_tx_power(power);
-			artic_device->set_tcxo_warmup_time(tcxo_time);
-			artic_device->set_frequency(freq);
-			ArticPacket packet(0xFF, num_bytes);
-			artic_device->send(modulation, packet, 8 * num_bytes);
+			// // Schedule transmission
+			// artic_device->set_tx_power(power);
+			// artic_device->set_tcxo_warmup_time(tcxo_time);
+			// artic_device->set_frequency(freq);
+			// ArticPacket packet(0xFF, num_bytes);
+			// artic_device->send(modulation, packet, 8 * num_bytes);
 
 		} catch (...) {
 			error_code = (int)DTEError::INCORRECT_DATA;
@@ -543,8 +543,8 @@ public:
 	void react(ArticEventPowerOff const& ) {
 		if (m_artic_device_active) {
 			m_artic_device_active = false;
-			artic_device->set_idle_timeout(3000);
-			artic_device->unsubscribe(*this);
+			// artic_device->set_idle_timeout(3000);
+			// artic_device->unsubscribe(*this);
 		}
 	}
 
