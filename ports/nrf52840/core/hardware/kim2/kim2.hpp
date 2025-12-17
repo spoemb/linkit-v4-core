@@ -13,7 +13,7 @@ private:
 public:
     KIM2Device();
     ~KIM2Device();
-	void send(const KineisMode mode, const KineisPacket& packet, const unsigned int size_bits) override;
+	void send(const KineisModulation mode, const KineisPacket& packet, const unsigned int size_bits) override;
 	void stop_send() override;
 	
 
@@ -38,7 +38,7 @@ private:
 	// Argos TX state
 	KineisPacket m_tx_buffer;
 	KineisPacket m_packet_buffer;
-	KineisMode   m_tx_mode;
+	KineisModulation m_tx_mode;
 	bool         m_tx_done;
 
 	//State machine

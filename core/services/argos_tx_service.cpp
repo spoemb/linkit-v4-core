@@ -74,11 +74,11 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 			if (!argos_config.gnss_en) {
 				m_scheduled_task = [this]() { process_doppler_burst(); };
 				if (argos_config.mode == BaseArgosMode::DUTY_CYCLE) {
-					m_scheduled_mode = KineisMode::LDA2;
+					m_scheduled_mode = KineisModulation::LDA2;
 					return m_sched.schedule_duty_cycle(argos_config, now);
 				}
 				if (argos_config.mode == BaseArgosMode::LEGACY) {
-					m_scheduled_mode = KineisMode::LDA2;
+					m_scheduled_mode = KineisModulation::LDA2;
 					return m_sched.schedule_legacy(argos_config, now);
 				}
 				return Service::SCHEDULE_DISABLED;
@@ -91,13 +91,13 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 				return Service::SCHEDULE_DISABLED;
 			}
 			if (m_is_first_tx && argos_config.time_sync_burst_en) {
-				m_scheduled_mode = KineisMode::LDA2;
+				m_scheduled_mode = KineisModulation::LDA2;
 				m_scheduled_task = [this]() { process_time_sync_burst(); };
 				m_sched.schedule_at(now);
 				return 0;
 			}
 			if (argos_config.mode == BaseArgosMode::DUTY_CYCLE) {
-				m_scheduled_mode = KineisMode::LDA2;
+				m_scheduled_mode = KineisModulation::LDA2;
 				if (argos_config.sensor_tx_enable) {
 					m_scheduled_task = [this]() { process_sensor_burst(); };
 				} else {
@@ -106,7 +106,7 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 				return m_sched.schedule_duty_cycle(argos_config, now);
 			}
 			if (argos_config.mode == BaseArgosMode::LEGACY) {
-				m_scheduled_mode = KineisMode::LDA2;
+				m_scheduled_mode = KineisModulation::LDA2;
 				if (argos_config.sensor_tx_enable) {
 					m_scheduled_task = [this]() { process_sensor_burst(); };
 				} else {
@@ -280,7 +280,7 @@ void ArgosTxService::process_doppler_burst() {
 	DEBUG_INFO("ArgosTxService::process_doppler_burst: mode=A2 data=%s sz=%u power=%u mW", Binascii::hexlify(packet).c_str(), size_bits,
 			argos_power_to_integer(argos_config.power));
 	// m_artic.set_tx_power(argos_config.power);
-	m_kineis.send(KineisMode::LDA2, packet, size_bits); //ArticMode::A2
+	m_kineis.send(KineisModulation::LDA2, packet, size_bits); //ArticMode::A2
 }
 
 void ArgosTxService::react(KineisEventTxStarted const&) {

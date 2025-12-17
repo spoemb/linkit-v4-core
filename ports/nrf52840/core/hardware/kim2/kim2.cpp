@@ -46,7 +46,7 @@ KIM2Device::~KIM2Device()
     power_off_immediate();
 }
 
-void KIM2Device::send(const KineisMode mode, const KineisPacket& user_payload, const unsigned int payload_length)
+void KIM2Device::send(const KineisModulation mode, const KineisPacket& user_payload, const unsigned int payload_length)
 {
     KineisPacket packet;
     uint16_t total_bits;
@@ -55,7 +55,7 @@ void KIM2Device::send(const KineisMode mode, const KineisPacket& user_payload, c
 
     switch (mode)
     {
-        case KineisMode::LDK:
+        case KineisModulation::LDK:
             if (payload_length > LDK_MAX_LENGTH_BITS)
             {
                 DEBUG_ERROR("KIM2Device::send: LDK payload is too long : %d bits - MAX is %d bits",
@@ -65,7 +65,7 @@ void KIM2Device::send(const KineisMode mode, const KineisPacket& user_payload, c
             stuffing_bits = LDK_MAX_LENGTH_BITS - payload_length;
             break;
 
-        case KineisMode::LDA2:
+        case KineisModulation::LDA2:
             if (payload_length > LDA2_MAX_LENGTH_BITS)
             {
                 DEBUG_ERROR("KIM2Device::send: LDA2 payload is too long : %d bits - MAX is %d bits",
@@ -77,7 +77,7 @@ void KIM2Device::send(const KineisMode mode, const KineisPacket& user_payload, c
             stuffing_bits = modulo ? (32 - modulo) : 0;
             break;
 
-        case KineisMode::VLDA4:
+        case KineisModulation::VLDA4:
             if (payload_length > VLDA4_MAX_LENGTH_BITS)
             {
                 DEBUG_ERROR("KIM2Device::send: VLDA4 payload is too long : %d bits - MAX is %d bits",

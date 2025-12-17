@@ -9,7 +9,7 @@ struct KineisEventTxStarted {};
 struct KineisEventTxComplete {};
 struct KineisEventDeviceError {};
 
-enum KineisMode {
+enum KineisModulation {
 	LDK,
 	LDA2,
 	VLDA4
@@ -47,6 +47,6 @@ public:
 			m->react(e);
 		}
 	}
-	virtual void send(const KineisMode mode, const KineisPacket& packet, const unsigned int size_bits) = 0;
+	virtual void send(const KineisModulation mode, const KineisPacket& packet, const unsigned int size_bits) = 0;
 	virtual void stop_send() = 0;
 };

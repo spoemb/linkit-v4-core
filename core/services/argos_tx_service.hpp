@@ -313,7 +313,7 @@ private:
 	bool m_is_first_tx;
 	bool m_is_tx_pending;
 	std::function<void()> m_scheduled_task;
-	KineisMode m_scheduled_mode;
+	KineisModulation m_scheduled_mode;
 
 	void react(KineisEventTxStarted const &) override;
 	void react(KineisEventTxComplete const &) override;

@@ -967,9 +967,9 @@ private:
 
 	static BaseArgosModulation decode_argos_modulation(const std::string& s) {
 		if (s == "0") {
-			return BaseArgosModulation::A2;
+			return BaseArgosModulation::LDK;
 		} else if (s == "1") {
-			return BaseArgosModulation::A3;
+			return BaseArgosModulation::A2;
 		} else if (s == "2") {
 			return BaseArgosModulation::A4;
 		} else {

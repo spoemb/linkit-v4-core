@@ -400,21 +400,21 @@ enum class BaseSensorEnableTxMode {
 
 
 enum class BaseArgosModulation {
+	LDK,
 	A2,
-	A3,
 	A4
 };
 
 static const char *argos_modulation_to_string(BaseArgosModulation m) {
 	switch (m) {
 	case BaseArgosModulation::A2:
-		return "A2";
+		return "LDA2";
 		break;
-	case BaseArgosModulation::A3:
-		return "A3";
+	case BaseArgosModulation::LDK:
+		return "LDK";
 		break;
 	case BaseArgosModulation::A4:
-		return "A4";
+		return "VLDA4";
 		break;
 	default:
 		return "UNKNOWN";
