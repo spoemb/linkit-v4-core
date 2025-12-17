@@ -115,13 +115,17 @@ public:
 
 class ArgosPacketBuilder {
 public:
-	static inline const unsigned int SHORT_PACKET_BITS   		 = 120;
-	static inline const unsigned int SHORT_PACKET_PAYLOAD_BITS   = 99;
-	static inline const unsigned int SHORT_PACKET_BYTES			 = 15;
+	static inline const unsigned int SHORT_PACKET_HEADER		 = 0b000;
+	static inline const unsigned int SHORT_PACKET_BITS   		 = 96;
+	static inline const unsigned int SHORT_PACKET_PAYLOAD_BITS   = 94;
+	static inline const unsigned int SHORT_PACKET_BYTES			 = 12;
 
 	static inline const unsigned int LONG_PACKET_BITS   		 = 248;
 	static inline const unsigned int LONG_PACKET_PAYLOAD_BITS    = 216;
 	static inline const unsigned int LONG_PACKET_BYTES			 = 31;
+
+	static inline const unsigned int SENSOR_PACKET_HEADER 		 = 0b001;
+	static inline const unsigned int SENSOR_PACKET_BYTES		 = 16;
 
 	static inline const unsigned int DOPPLER_PACKET_BITS   		 = 24;
 	static inline const unsigned int DOPPLER_PACKET_PAYLOAD_BITS = 24;

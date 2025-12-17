@@ -215,7 +215,7 @@ void ArgosTxService::process_time_sync_burst() {
 		DEBUG_INFO("ArgosTxService::process_time_sync_burst: mode=A2 data=%s sz=%u power=%u mW", Binascii::hexlify(packet).c_str(), size_bits,
 				argos_power_to_integer(argos_config.power));
 		// m_artic.set_tx_power(argos_config.power);
-		m_kineis.send(KineisMode::LDA2, packet, size_bits);
+		m_kineis.send(KineisModulation::LDK, packet, size_bits);
 	} else {
 		// No eligible entries for transmission in the depth pile, so send a doppler burst instead
 		DEBUG_WARN("ArgosTxService::process_time_sync_burst: no entries eligible in depth pile");
@@ -238,10 +238,10 @@ void ArgosTxService::process_sensor_burst() {
 				argos_config.is_lb,
 				argos_config.is_out_of_zone,
 				size_bits);
-		DEBUG_INFO("ArgosTxService::process_sensor_burst: mode=%s data=%s sz=%u power=%u mW", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits,
+		DEBUG_INFO("ArgosTxService::process_sensor_burst: mode=%s data=%s sz=%u power=%u mW", argos_modulation_to_string((BaseArgosModulation)KineisModulation::LDK), Binascii::hexlify(packet).c_str(), size_bits,
 				argos_power_to_integer(argos_config.power));
 		// m_artic.set_tx_power(argos_config.power);
-		m_kineis.send(KineisMode::LDA2, packet, size_bits);
+		m_kineis.send(KineisModulation::LDK, packet, size_bits);
 	} else {
 		// No eligible entries for transmission in the depth pile, so send a doppler burst instead
 		DEBUG_WARN("ArgosTxService::process_sensor_burst: no entries eligible in depth pile");
@@ -259,10 +259,10 @@ void ArgosTxService::process_gnss_burst() {
 		KineisPacket packet = ArgosPacketBuilder::build_gnss_packet(v, argos_config.is_out_of_zone, argos_config.is_lb,
 				argos_config.delta_time_loc,
 				size_bits);
-		DEBUG_INFO("ArgosTxService::process_gnss_burst: mode=%s data=%s sz=%u power=%u mW", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits,
+		DEBUG_INFO("ArgosTxService::process_gnss_burst: mode=%s data=%s sz=%u power=%u mW", argos_modulation_to_string((BaseArgosModulation)KineisModulation::LDK), Binascii::hexlify(packet).c_str(), size_bits,
 				argos_power_to_integer(argos_config.power));
 		// m_artic.set_tx_power(argos_config.power);
-		m_kineis.send(KineisMode::LDA2, packet, size_bits);
+		m_kineis.send(KineisModulation::LDK, packet, size_bits);
 	} else {
 		// No eligible entries for transmission in the depth pile, so send a doppler burst instead
 		DEBUG_WARN("ArgosTxService::process_gnss_burst: no entries eligible in depth pile");
@@ -357,7 +357,7 @@ KineisPacket ArgosPacketBuilder::build_short_packet(GPSLogEntry* gps_entry,
 	packet.assign(SHORT_PACKET_BYTES, 0);
 
 	// Payload bytes
-	PACK_BITS(0, packet, base_pos, 8);  // Zero CRC field (computed later) //<- Remove : computed by KIM2
+	PACK_BITS(SHORT_PACKET_HEADER, packet, base_pos, 3);
 
 	// Use scheduled GPS time as day/hour/min
 	uint16_t year;
@@ -415,22 +415,6 @@ KineisPacket ArgosPacketBuilder::build_short_packet(GPSLogEntry* gps_entry,
 	// LOWBATERY_FLAG
 	PACK_BITS(is_low_battery, packet, base_pos, 1);
 	DEBUG_TRACE("ArgosPacketBuilder::build_short_packet: is_lb=%u", is_low_battery);
-
-	// Calculate CRC8
-	unsigned char crc8 = CRC8::checksum(packet.substr(1), SHORT_PACKET_PAYLOAD_BITS - 8);
-	unsigned int crc_offset = 0;
-	PACK_BITS(crc8, packet, crc_offset, 8);
-	DEBUG_TRACE("ArgosPacketBuilder::build_short_packet: crc8=%02x", crc8);
-
-	// BCH code B127_106_3
-	BCHCodeWord code_word = BCHEncoder::encode(
-			BCHEncoder::B127_106_3,
-			sizeof(BCHEncoder::B127_106_3),
-			packet, SHORT_PACKET_PAYLOAD_BITS);
-	DEBUG_TRACE("ArgosPacketBuilder::build_short_packet: bch=%06x", code_word);
-
-	// Append BCH code
-	PACK_BITS(code_word, packet, base_pos, BCHEncoder::B127_106_3_CODE_LEN);
 
 	return packet;
 }
@@ -614,10 +598,10 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 	KineisPacket packet;
 
 	// Reserve required number of bytes
-	packet.assign(LONG_PACKET_BYTES, 0);
+	packet.assign(SENSOR_PACKET_BYTES, 0);
 
 	// Payload bytes
-	PACK_BITS(0, packet, base_pos, 8);  // Zero CRC field (computed later)
+	PACK_BITS(SENSOR_PACKET_HEADER, packet, base_pos, 3);  // Zero CRC field (computed later)
 
 	// Use scheduled GPS time as day/hour/min
 	uint16_t year;
@@ -683,22 +667,6 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: sea_temp=%06X", (unsigned int)sea_temp_sensor->port[0]);
 		PACK_BITS((unsigned int)sea_temp_sensor->port[0], packet, base_pos, 21);
 	}
-
-	// Calculate CRC8
-	unsigned char crc8 = CRC8::checksum(packet.substr(1), base_pos - 8);
-	unsigned int crc_offset = 0;
-	PACK_BITS(crc8, packet, crc_offset, 8);
-	DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: crc8=%02x", crc8);
-
-	// BCH code B255_223_4
-	BCHCodeWord code_word = BCHEncoder::encode(
-			BCHEncoder::B255_223_4,
-			sizeof(BCHEncoder::B255_223_4),
-			packet, base_pos);
-	DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: bch=%08x", code_word);
-
-	// Append BCH code
-	PACK_BITS(code_word, packet, base_pos, BCHEncoder::B255_223_4_CODE_LEN);
 
 	size_bits = base_pos;
 
