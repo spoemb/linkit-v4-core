@@ -126,6 +126,10 @@ uint32_t PMU::device_identifier()
 const std::string PMU::hardware_version()
 {
 #if 1 == HW_VERSION_DETECT
+#ifdef ADC_ENABLE
+	GPIOPins::set(ADC_ENABLE); //i2c pullups on I2C internal bus are on V_ADC
+	nrf_delay_ms(5); // Wake up time for ADC, see if necessary
+#endif
 	// Try to read I2C register of MCP4716 (present on V2 but not V1)
 	uint8_t xfer;
 	nrfx_err_t error = nrfx_twim_rx(&BSP::I2C_Inits[MCP4716_DEVICE].twim, MCP4716_I2C_ADDR, &xfer, sizeof(xfer));
@@ -139,6 +143,9 @@ const std::string PMU::hardware_version()
 		else
 			return "LinkIt V1";
 	}
+#ifdef ADC_ENABLE
+	GPIOPins::clear(ADC_ENABLE); //i2c pullups on I2C internal bus are on V_ADC
+#endif
 #else
     return "Unknown";
 #endif
