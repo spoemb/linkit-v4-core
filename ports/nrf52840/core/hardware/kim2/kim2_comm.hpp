@@ -9,11 +9,11 @@ namespace KIM2 {
     /*Public types*/
     enum ATCmd {
         AT_PING = 0,
-        AT_ID,
-        AT_ADDR,
-        AT_RCONF_SET,
-        AT_KMAC_BASIC,
-        AT_LPM_SET,
+        AT_GET_ID,
+        AT_GET_ADDR,
+        AT_SET_RCONF,
+        AT_SET_KMAC_BASIC,
+        AT_SET_LPM,
         AT_TX,
         AT_UNKNOWN
     };
@@ -52,8 +52,8 @@ class KIM2CommEventListener {
 
 class KIM2Comm : public EventEmitter<KIM2CommEventListener> {
 public:
-    uint8_t m_ascii_id[KIM2::ID_SIZE + 1] = {0};
-    uint8_t m_ascii_addr[KIM2::ADDR_SIZE + 1] = {0};
+    unsigned int m_kineis_id = 0;
+    unsigned int m_hex_addr = 0;
     uint16_t m_tx_status = 0xFFFF;
 
     KIM2Comm(unsigned int libuarte_async_instance = 1);

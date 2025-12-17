@@ -1,18 +1,22 @@
-#include <string.h>
-
 #include "kim2.hpp"
 #include "kim2_comm.hpp"
+#include "bsp.hpp"
+#include "gpio.hpp"
 #include "pmu.hpp"
 #include "debug.hpp"
 #include "error.hpp"
 #include "bitpack.hpp"
 #include "binascii.hpp"
+#include "config_store.hpp"
+#include <stdint.h>
+#include <string>
 
 using namespace KIM2;
 
 #define LDK_MAX_LENGTH_BITS      (16*8)
 #define LDA2_MAX_LENGTH_BITS     (24*8)
 #define VLDA4_MAX_LENGTH_BITS    (3*8)
+#define KIM2_COMM_OK             (0)
 
 #define KIM2_STATE_CHANGE(x, y)                     \
 	do {                                             \
@@ -32,6 +36,7 @@ using namespace KIM2;
 	} while (0)
 
 extern Scheduler *system_scheduler;
+extern ConfigurationStore *configuration_store;
 
 KIM2Device::KIM2Device()
 {
@@ -179,7 +184,7 @@ bool KIM2Device::send_AT(ATCmd cmd, const std::optional<std::string>& params)
     if(timeout_ms == 0)
         DEBUG_TRACE("KIM2Device::send_AT +OK not received");
 
-    return m_cmd_is_ok;
+    return !m_cmd_is_ok; // 0=OK - 1=error
 }
 
 void KIM2Device::state_machine(void)
@@ -219,9 +224,9 @@ void KIM2Device::run_state_machine(uint16_t delay_ms)
 void KIM2Device::state_power_off_enter()
 {
     m_kim2_comm.deinit();
-    //GPIOPins::clear(KIM_PWR_ON);
-    //GPIOPins::clear(SAT_NRST);
-    //GPIOPins::clear(SAT_EXTWKUP);
+    GPIOPins::clear(SAT_PWR_EN);
+    GPIOPins::clear(SAT_RESET);
+    GPIOPins::clear(SAT_EXTWAKEUP);
 
     m_tx_buffer.clear();
     m_packet_buffer.clear();
@@ -241,16 +246,16 @@ void KIM2Device::state_power_off_exit()
 
 void KIM2Device::state_power_on_enter()
 {
-    //GPIOPins::set(KIM_PWR_ON);
-    //GPIOPins::set(SAT_NRST);
-    //GPIOPins::set(SAT_EXTWKUP);
+    GPIOPins::set(SAT_PWR_EN);
+    GPIOPins::set(SAT_RESET);
+    GPIOPins::set(SAT_EXTWAKEUP);
     m_kim2_comm.init();
     m_kim2_comm.subscribe(*this);
 }
 
 void KIM2Device::state_power_on()
 {
-    if(send_AT(AT_PING))
+    if(send_AT(AT_PING) == KIM2_COMM_OK)
     {
         KIM2_STATE_CHANGE(power_on, init);
     }
@@ -272,29 +277,49 @@ void KIM2Device::state_init_enter()
 
 void KIM2Device::state_init()
 {
-    if(send_AT(AT_ID))
+    bool at_error = false;
+
+    at_error = send_AT(AT_GET_ID);
+    if(!at_error)
     {
-        DEBUG_TRACE("KIM2Device::state_init ID:%s", m_kim2_comm.m_ascii_id);
-        // configuration_store->write_param(ParamID::ARGOS_DECID, std::stoi(m_kim2_comm.m_ascii_id));
+        DEBUG_TRACE("KIM2Device::state_init ID:%d", m_kim2_comm.m_kineis_id);
+        configuration_store->write_param(ParamID::ARGOS_DECID, m_kim2_comm.m_kineis_id);
+
+        at_error = send_AT(AT_GET_ADDR);
+        // unsigned int test_hex = 0xff;
+        if (!at_error)
+        {
+            DEBUG_TRACE("KIM2Device::state_init ADDR:%x", m_kim2_comm.m_hex_addr);
+            configuration_store->write_param(ParamID::ARGOS_HEXID, m_kim2_comm.m_hex_addr);
+        }
     }
 
-    if(send_AT(AT_ADDR))
+    if(at_error)
     {
-        DEBUG_TRACE("KIM2Device::state_init ADDR:%s", m_kim2_comm.m_ascii_addr);
-        // configuration_store->write_param(ParamID::ARGOS_HEXID, std::stoi(m_kim2_comm.m_ascii_addr, nullptr, 16));
+        DEBUG_ERROR("KIM2Device::state_init : can not read ID or ADDR");
+        KIM2_STATE_CHANGE(init, error);
+        return;
     }
 
     // Read RCONF or similar from configuration_store ?
-    std::string rconf = "3d678af16b5a572078f3dbc95a1104e7"; // ESS3 - LDA2 - 27dBm
-    if(send_AT(AT_RCONF_SET, rconf) && send_AT(AT_KMAC_BASIC))
+    std::string rconf = "03921fb104b92859209b18abd009de96"; // ESS4 - LDK - 27dBm
+    at_error = send_AT(AT_SET_RCONF, rconf);
+    if(!at_error)
     {
-        DEBUG_TRACE("KIM2Device::state_init RCONF and KMAC set");
+        at_error = send_AT(AT_SET_KMAC_BASIC);
+        if(!at_error)
+        {
+            DEBUG_TRACE("KIM2Device::state_init RCONF and KMAC set");
+            KIM2_STATE_CHANGE(init, idle);
+        }
+        else
+        {
+            DEBUG_ERROR("KIM2Device::state_init : can not set RCONF or KMAC");
+            KIM2_STATE_CHANGE(init, error);
+        }
     }
 
     //TODO Set LPM ? Or toggle wakeup pin is enough ?
-    //TODO manage error
-
-    KIM2_STATE_CHANGE(init, idle);
 }
 
 void KIM2Device::state_init_exit()
@@ -304,7 +329,7 @@ void KIM2Device::state_init_exit()
 
 void KIM2Device::state_idle_enter()
 {
-    ;
+    GPIOPins::clear(SAT_EXTWAKEUP);
 }
 
 void KIM2Device::state_idle()
@@ -325,7 +350,8 @@ void KIM2Device::state_idle_exit()
 void KIM2Device::state_transmit_enter()
 {
     DEBUG_TRACE("KIM2Device::state_transmit_enter");
-    // Wakeup KIM2 ?
+    GPIOPins::set(SAT_EXTWAKEUP);
+    PMU::delay_ms(10); // Check if delay necessary
 	// use m_tx_mode ?
 
     m_tx_done = false;
@@ -365,7 +391,7 @@ void KIM2Device::state_error_enter()
 
 void KIM2Device::state_error()
 {
-    DEBUG_TRACE("KIM2Device::state_error");
+    DEBUG_ERROR("KIM2Device::state_error");
     KIM2_STATE_CHANGE(error, power_off);
 }
 

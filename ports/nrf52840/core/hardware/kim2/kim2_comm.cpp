@@ -77,11 +77,11 @@ struct ATCmd_list {
 
 const std::list<ATCmd_list> cmd_list = {
     {AT_PING, "AT+PING=?\r\n", false},
-    {AT_ID, "AT+ID=?\r\n", false},
-    {AT_ADDR, "AT+ADDR=?\r\n", false},
-    {AT_RCONF_SET, "AT+RCONF=", true},
-    {AT_KMAC_BASIC, "AT+KMAC=1\r\n", false}, // TODO : add BLIND mode support
-    {AT_LPM_SET, "AT+LPM=", true},
+    {AT_GET_ID, "AT+ID=?\r\n", false},
+    {AT_GET_ADDR, "AT+ADDR=?\r\n", false},
+    {AT_SET_RCONF, "AT+RCONF=", true},
+    {AT_SET_KMAC_BASIC, "AT+KMAC=1\r\n", false}, // TODO : add BLIND mode support
+    {AT_SET_LPM, "AT+LPM=", true},
     {AT_TX, "AT+TX=", true}
 };
 
@@ -142,8 +142,15 @@ RespType KIM2Comm::parse_rx_message(const std::string& buffer, uint8_t start_ind
             && (message.find(END_CHAR_1) == position + ID_RESPONSE.size() + ID_SIZE)
             && (message.find(END_CHAR_2) == position + ID_RESPONSE.size() + ID_SIZE + 1))
     {
-        std::memcpy(m_ascii_id, message.c_str() + ID_RESPONSE.size(), ID_SIZE);
-        m_ascii_id[ID_SIZE] = 0; //terminal character
+        // Warn : can the ID be shorter than 6 characters ?
+        char ascii_id[KIM2::ID_SIZE + 1] = {0};
+        std::memcpy(ascii_id, message.c_str() + ID_RESPONSE.size(), ID_SIZE);
+        ascii_id[ID_SIZE] = 0; //terminal character
+        try {
+            m_kineis_id = std::stoi(reinterpret_cast<const char*>(ascii_id));
+        } catch (...) {
+            m_kineis_id = 0;
+        }
         resp_type = RESP_CONFIG;
     }
     // -- +ADDR=
@@ -151,8 +158,14 @@ RespType KIM2Comm::parse_rx_message(const std::string& buffer, uint8_t start_ind
             && (message.find(END_CHAR_1) == position + ADDR_RESPONSE.size() + ADDR_SIZE)
             && (message.find(END_CHAR_2) == position + ADDR_RESPONSE.size() + ADDR_SIZE + 1))
     {
-        std::memcpy(m_ascii_addr, message.c_str() + ADDR_RESPONSE.size(), ADDR_SIZE);
-        m_ascii_addr[ADDR_SIZE] = 0; //terminal character
+        char ascii_addr[KIM2::ADDR_SIZE + 1] = {0};
+        std::memcpy(ascii_addr, message.c_str() + ADDR_RESPONSE.size(), ADDR_SIZE);
+        ascii_addr[ADDR_SIZE] = 0; //terminal character
+        try {
+            m_hex_addr = std::stoul(reinterpret_cast<const char*>(ascii_addr), nullptr, 16);
+        } catch (...) {
+            m_hex_addr = 0;
+        }
         resp_type = RESP_CONFIG;
     }
     // -- +ERROR=
