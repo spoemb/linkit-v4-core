@@ -305,9 +305,6 @@ int main()
 #ifdef POWER_ON_RESET_REQUIRES_REED_SWITCH
 #ifdef PSEUDO_POWER_OFF
 
-#ifdef ADC_ENABLE
-	GPIOPins::set(ADC_ENABLE); //i2c pullups on I2C internal bus are on V_ADC
-#endif
 	NrfI2C::init();
 	bool is_linkit_v3_v4 = (PMU::hardware_version() == "LinkIt V3") || (PMU::hardware_version() == "LinkIt V4");
 // 	ArticSat::shutdown();
@@ -317,9 +314,6 @@ int main()
 		} catch (...) {}
 	}
 	NrfI2C::uninit();
-#ifdef ADC_ENABLE
-	GPIOPins::clear(ADC_ENABLE); //i2c pullups on I2C internal bus are on V_ADC
-#endif
 
 	if ((is_linkit_v3_v4 && PMU::reset_cause() == "Pseudo Power On Reset") ||
 		(!is_linkit_v3_v4 && (PMU::reset_cause() == "Power On Reset" ||

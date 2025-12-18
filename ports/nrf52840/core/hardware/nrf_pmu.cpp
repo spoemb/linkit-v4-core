@@ -139,7 +139,7 @@ const std::string PMU::hardware_version()
 	{
 		error = nrfx_twim_rx(&BSP::I2C_Inits[ADS1115_DEVICE].twim, ADS1115_ADDRESS, &xfer, sizeof(xfer));
 		if (error == NRFX_SUCCESS)
-			return "LinkIt V4";
+			return "LinkIt V3"; //force v4 to v3 for GenTracker app compatibility
 		else
 			return "LinkIt V1";
 	}
