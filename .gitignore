@@ -40,3 +40,4 @@ html/
 .vscode/*
 build/
 ports/nrf52840/bsp/rspbtracker_v1.0/build_and_flash.sh
+.claude/
