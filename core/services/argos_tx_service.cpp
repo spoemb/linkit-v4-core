@@ -360,7 +360,11 @@ ArticPacket ArgosPacketBuilder::build_short_packet(GPSLogEntry* gps_entry,
 	packet.assign(SHORT_PACKET_BYTES, 0);
 
 	// Payload bytes
+
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+#else
 	PACK_BITS(0, packet, base_pos, 8);  // Zero CRC field (computed later)
+#endif
 
 	// Use scheduled GPS time as day/hour/min
 	uint16_t year;
@@ -456,7 +460,10 @@ ArticPacket ArgosPacketBuilder::build_long_packet(std::vector<GPSLogEntry*> &gps
 	packet.assign(LONG_PACKET_BYTES, 0);
 
 	// Payload bytes
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+#else
 	PACK_BITS(0, packet, base_pos, 8);  // Zero CRC field (computed later)
+#endif
 
 	// This will set the log time for the GPS entry based on when it was scheduled
 	uint16_t year;
@@ -593,7 +600,10 @@ ArticPacket ArgosPacketBuilder::build_doppler_packet(unsigned int batt_voltage, 
 	packet.assign(DOPPLER_PACKET_BYTES, 0);
 
 	// Payload bytes
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+#else
 	PACK_BITS(0, packet, base_pos, 8);  // Zero CRC field (computed later)
+#endif
 
 	unsigned int last_known_pos = 0;
 	PACK_BITS(last_known_pos, packet, base_pos, 8);
@@ -635,8 +645,10 @@ ArticPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 	packet.assign(LONG_PACKET_BYTES, 0);
 
 	// Payload bytes
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+#else
 	PACK_BITS(0, packet, base_pos, 8);  // Zero CRC field (computed later)
-
+#endif
 	// Use scheduled GPS time as day/hour/min
 	uint16_t year;
 	uint8_t month, day, hour, min, sec;
