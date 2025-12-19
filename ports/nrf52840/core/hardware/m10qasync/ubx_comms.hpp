@@ -167,7 +167,7 @@ private:
 		uint8_t resp_msg_id;
 	} m_expect;
 	uint8_t m_tx_buffer[256];
-    uint8_t m_rx_buffer[512];
+    uint8_t m_rx_buffer[1024];
     unsigned int m_rx_buffer_offset;
 	bool m_is_init;
 

@@ -328,7 +328,7 @@ namespace BSP
                 .tx_pin = NRF_GPIO_PIN_MAP(1, 9),
                 .cts_pin = NRF_UARTE_PSEL_DISCONNECTED,
                 .rts_pin = NRF_UARTE_PSEL_DISCONNECTED,
-                .timeout_us = 50,
+                .timeout_us = 250,
                 .flush_on_timeout = true,
                 .hwfc = NRF_UARTE_HWFC_DISABLED,
                 .parity = NRF_UARTE_PARITY_EXCLUDED,

@@ -133,7 +133,7 @@ void M10QAsyncReceiver::enter_shutdown() {
 #if 0 == NO_GPS_POWER_REG
     // Disable the power supply for the GPS
     GPIOPins::clear(BSP::GPIO::GPIO_GPS_PWR_EN);
-    GPIOPins::set(BSP::GPIO::GPIO_GPS_RST);
+    GPIOPins::clear(BSP::GPIO::GPIO_GPS_RST);
 #else
     // Use GPIO_GPS_EXT_INT as a shutdown
     GPIOPins::clear(BSP::GPIO::GPIO_GPS_EXT_INT);
@@ -147,7 +147,7 @@ void M10QAsyncReceiver::exit_shutdown() {
     m_ubx_comms.set_debug_enable(m_nav_settings.debug_enable);
 
 #if 0 == NO_GPS_POWER_REG
-	DEBUG_INFO("M10QAsyncReceiver::NOGPS_POWER_REG: Enabling GPS power supply");
+	// DEBUG_INFO("M10QAsyncReceiver::NOGPS_POWER_REG: Enabling GPS power supply");
     // Enable the power supply for the GPS
     GPIOPins::set(BSP::GPIO::GPIO_GPS_RST);
     PMU::delay_ms(10); 
@@ -446,7 +446,7 @@ void M10QAsyncReceiver::react(const UBXCommsEventDebug& e) {
 
 void M10QAsyncReceiver::react(const UBXCommsEventError& e) {
     system_scheduler->post_task_prio([this, e]() {
-        DEBUG_TRACE("UBXCommsEventError: type=%02x count=%u", e.error_type, m_uart_error_count);
+        DEBUG_ERROR("UBXCommsEventError: type=%02x count=%u", e.error_type, m_uart_error_count);
     }, "Debug");
     if (STATE_EQUAL(poweron)) {
         if (++m_uart_error_count >= 10) {
@@ -488,7 +488,7 @@ void M10QAsyncReceiver::cancel_timeout() {
 
 void M10QAsyncReceiver::state_poweron_enter() {
 	m_step = 0;
-	m_retries = 3;
+	m_retries = 6;
 	m_op_state = OpState::IDLE;
 	m_uart_error_count = 0;
 	m_fix_was_found = false;
@@ -507,10 +507,10 @@ void M10QAsyncReceiver::state_poweron() {
 			if (m_step == 0) {
 				sync_baud_rate(9600);
 				break;
-			}
-			else if (m_step == 1) {
-				sync_baud_rate(MAX_BAUDRATE);
-				break;
+			// }
+			// else if (m_step == 1) {
+			// 	sync_baud_rate(MAX_BAUDRATE);
+			// 	break;
 			} else {
 				DEBUG_ERROR("M10QAsyncReceiver: failed to sync comms");
 				m_unrecoverable_error = true;
@@ -531,7 +531,7 @@ void M10QAsyncReceiver::state_poweron() {
 			break;
 		} else {
 			if (--m_retries == 0) {
-				m_retries = 3;
+				// m_retries = 3;
 				m_step++;
 			}
 			m_op_state = OpState::IDLE;
