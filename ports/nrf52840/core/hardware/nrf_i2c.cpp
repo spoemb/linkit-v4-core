@@ -36,7 +36,6 @@ void NrfI2C::event_handler(uint8_t bus, bool error) {
 }
 
 bool NrfI2C::wait_for_transfer(uint8_t bus, uint32_t timeout_ms) {
-	uint32_t start_ms = 0;
 	uint32_t elapsed_ms = 0;
 
 	// Use a simple delay-based timeout (no timer dependency for critical I2C layer)

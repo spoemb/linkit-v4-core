@@ -23,11 +23,12 @@ private:
 	static inline volatile bool m_transfer_error[BSP::I2C_TOTAL_NUMBER] = { false };
 	static inline I2CStats m_stats[BSP::I2C_TOTAL_NUMBER] = {};
 
-	static void event_handler(uint8_t bus, bool error);
 	static bool wait_for_transfer(uint8_t bus, uint32_t timeout_ms);
 	static bool recover_bus(uint8_t bus);
 
 public:
+	// Public so that C-style event handler callbacks can access it
+	static void event_handler(uint8_t bus, bool error);
 	static void init(void);
 	static void uninit(void);
 	static void disable(uint8_t bus);
