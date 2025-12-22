@@ -140,12 +140,10 @@ void KIM2Device::react(const KIM2CommEventRespError&) {
 }
 
 void KIM2Device::react(const KIM2CommEventUartError& err) {
-    m_is_error = true;
     system_scheduler->post_task_prio([this, err]() {
         DEBUG_INFO("KIM2CommEventUartError: type=%02x", err.error_type);
     }, "Debug");
 }
-
 void KIM2Device::initiate_timeout(unsigned int timeout_ms) {
 	cancel_timeout();
 	m_timeout.handle = system_scheduler->post_task_prio([this]() {
@@ -161,7 +159,6 @@ void KIM2Device::on_timeout() {
 void KIM2Device::cancel_timeout() {
 	system_scheduler->cancel_task(m_timeout.handle);
 }
-
 
 void KIM2Device::start_device()
 {
