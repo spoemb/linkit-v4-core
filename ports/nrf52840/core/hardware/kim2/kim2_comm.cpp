@@ -16,16 +16,16 @@ static void kim2_nrf_libuarte_async_evt_handler(void * context, nrf_libuarte_asy
         obj->handle_rx_buffer(p_evt->data.rxtx.p_data, (uint8_t)p_evt->data.rxtx.length);
     } else if (p_evt->type == NRF_LIBUARTE_ASYNC_EVT_ERROR) {
         // Stop the receiver to prevent further errors
-        // obj->handle_error((unsigned int)p_evt->data.errorsrc);
-        DEBUG_INFO("KIM2Device::event_handler ERROR %d", p_evt->data.errorsrc);
+        obj->handle_error((unsigned int)p_evt->data.errorsrc);
+        // DEBUG_INFO("KIM2Device::event_handler ERROR %d", p_evt->data.errorsrc);
     } else if (p_evt->type == NRF_LIBUARTE_ASYNC_EVT_ALLOC_ERROR) {
         // Stop the receiver to prevent further errors
-        // obj->handle_error(0x100);
-        DEBUG_INFO("KIM2Device::event_handler ALLOC ERROR");
+        obj->handle_error(0x100);
+        // DEBUG_INFO("KIM2Device::event_handler ALLOC ERROR");
     } else if (p_evt->type == NRF_LIBUARTE_ASYNC_EVT_OVERRUN_ERROR) {
         // Stop the receiver to prevent further errors
-        // obj->handle_error(0x200);
-        DEBUG_INFO("KIM2Device::event_handler OVERRUN ERROR");
+        obj->handle_error(0x200);
+        // DEBUG_INFO("KIM2Device::event_handler OVERRUN ERROR");
     }
 }
 
@@ -49,6 +49,7 @@ void KIM2Comm::init(void) {
     };
     nrf_libuarte_async_start_rx(BSP::UARTAsync_Inits[m_uart_instance].uart);
     m_is_init = true;
+    m_is_rx_started = true;
 }
 
 void KIM2Comm::deinit(void)
@@ -89,6 +90,12 @@ bool KIM2Comm::send_at_cmd(ATCmd cmd, const std::optional<std::string>& params)
 {
     bool at_cmd_valid = false;
     ret_code_t ret;
+
+    if(!m_is_rx_started)
+    {
+        nrf_libuarte_async_start_rx(BSP::UARTAsync_Inits[m_uart_instance].uart);
+        m_is_rx_started = true;
+    }
 
     auto at_cmd = std::find_if(cmd_list.begin(), cmd_list.end(), [cmd](ATCmd_list element)
     {
@@ -214,7 +221,7 @@ void KIM2Comm::handle_rx_buffer(uint8_t * buffer, uint8_t length)
         msg = parse_rx_message(m_rx_buffer, parsing_index, &current_length);
         if (msg == RESP_OK)
         {
-            notify<KIM2CommEventOk>({});
+            notify<KIM2CommEventRespOk>({});
         }
         else if (msg == RESP_TX_STATUS)
         {
@@ -223,10 +230,16 @@ void KIM2Comm::handle_rx_buffer(uint8_t * buffer, uint8_t length)
         else if (msg == RESP_ERROR)
         {
             DEBUG_INFO("KIM2Comm::handle_rx_buffer %s", m_rx_buffer.substr(parsing_index, current_length).data());
-            notify<KIM2CommEventError>({});
+            notify<KIM2CommEventRespError>({});
         }
         parsing_index += current_length;
     }
 
     nrf_libuarte_async_rx_free(BSP::UARTAsync_Inits[1].uart, buffer, length);
+}
+
+void KIM2Comm::handle_error(unsigned int error_type) {
+	nrf_libuarte_async_stop_rx(BSP::UARTAsync_Inits[m_uart_instance].uart);
+    m_is_rx_started = false;
+	notify(KIM2CommEventUartError(error_type));
 }

@@ -127,7 +127,7 @@ void KIM2Device::stop_send() {
     m_tx_buffer.clear();
 }
 
-void KIM2Device::react (const KIM2CommEventOk&) {
+void KIM2Device::react (const KIM2CommEventRespOk&) {
     m_cmd_is_ok = true;
 }
 
@@ -135,8 +135,14 @@ void KIM2Device::react(const KIM2CommEventTxDone&) {
     m_tx_done = true;
 }
 
-void KIM2Device::react(const KIM2CommEventError&) {
+void KIM2Device::react(const KIM2CommEventRespError&) {
     m_is_error = true;
+}
+
+void KIM2Device::react(const KIM2CommEventUartError& err) {
+    system_scheduler->post_task_prio([this, err]() {
+        DEBUG_INFO("KIM2CommEventUartError: type=%02x", err.error_type);
+    }, "Debug");
 }
 
 void KIM2Device::start_device()

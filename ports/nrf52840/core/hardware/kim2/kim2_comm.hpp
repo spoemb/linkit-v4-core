@@ -39,22 +39,28 @@ namespace KIM2 {
 }
 
 struct KIM2CommEventTxDone {};
-struct KIM2CommEventOk {};
-struct KIM2CommEventError {};
+struct KIM2CommEventRespOk {};
+struct KIM2CommEventRespError {};
+struct KIM2CommEventUartError {
+    unsigned int error_type;
+    KIM2CommEventUartError(unsigned int a) : error_type(a) {}
+};
 
 class KIM2CommEventListener {
     public:
         virtual ~KIM2CommEventListener() {}
         virtual void react(const KIM2CommEventTxDone&) {}
-        virtual void react(const KIM2CommEventOk&) {}
-        virtual void react(const KIM2CommEventError&) {}
-};
+        virtual void react(const KIM2CommEventRespOk&) {}
+        virtual void react(const KIM2CommEventRespError&) {}
+        virtual void react(const KIM2CommEventUartError&) {}
+    };
 
 class KIM2Comm : public EventEmitter<KIM2CommEventListener> {
 public:
     unsigned int m_kineis_id = 0;
     unsigned int m_hex_addr = 0;
     uint16_t m_tx_status = 0xFFFF;
+    bool m_is_rx_started = false;
 
     KIM2Comm(unsigned int libuarte_async_instance = 1);
     
@@ -65,6 +71,7 @@ public:
     //Callbacks for async event handler
     void handle_tx_done(void);
     void handle_rx_buffer(uint8_t * buffer, uint8_t length);
+    void handle_error(unsigned int error_type);
 
 private: 
     unsigned int m_uart_instance;

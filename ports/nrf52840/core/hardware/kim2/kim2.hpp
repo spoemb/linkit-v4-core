@@ -64,9 +64,10 @@ private:
 	void state_error_exit();
 
 	// Events
-	void react(const KIM2CommEventOk&) override;
+	void react(const KIM2CommEventRespOk&) override;
 	void react(const KIM2CommEventTxDone&) override;
-	void react(const KIM2CommEventError&) override;
+	void react(const KIM2CommEventRespError&) override;
+	void react(const KIM2CommEventUartError&) override;
 
 	// Private functions
 	bool send_AT(KIM2::ATCmd cmd, const std::optional<std::string>& params = std::nullopt);
