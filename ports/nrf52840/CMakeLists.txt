@@ -16,6 +16,7 @@ set(CORE_DIR      ../../core)
 set(LIB_DIR       ../../libraries)
 
 option(BOARD "Board to compile for" NONE)
+option(ENABLE_RTT "Enable RTT debug trace output via J-Link" OFF)
 
 if(${MODEL} MATCHES SB OR ${MODEL} MATCHES UW OR ${MODEL} MATCHES CORE OR ${MODEL} MATCHES SMD)
     set (ARGOS_SMD 0)
@@ -92,6 +93,16 @@ execute_process(
 
 add_executable(${TARGET_NAME})
 set(CMAKE_EXECUTABLE_SUFFIX ".elf")
+
+# Include RTT for debug trace output when RTT is enabled
+if(ENABLE_RTT)
+    target_include_directories(${TARGET_NAME} PRIVATE
+        ${SDK_ROOT}/external/segger_rtt
+    )
+    target_sources(${TARGET_NAME} PRIVATE
+        ${SDK_ROOT}/external/segger_rtt/SEGGER_RTT.c
+    )
+endif()
 
 target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
     ${SDK_ROOT}/components/ble/ble_services/ble_ancs_c
@@ -296,6 +307,7 @@ target_sources(${TARGET_NAME} PRIVATE
     ${PROJ_DIR}/core/memmang/memmang.cpp
     ${PROJ_DIR}/core/scheduling/interrupt_lock.cpp
     ${PROJ_DIR}/drivers/nrf_log_redirect/nrf_log_redirect.c
+    
     ${PROJ_DIR}/gcc_startup_nrf52840.S
     ${PROJ_DIR}/main.cpp
     ${PROJ_DIR}/core/hardware/thermistor/thermistor.cpp
@@ -407,7 +419,13 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     ACC_${ACC_MODEL}
     ARGOS_ARTIC_SAT=${ARGOS_ARTIC_SAT}
     ARGOS_SMD=${ARGOS_SMD}
-    HAS_GAUGE_STC3117=${HAS_GAUGE_STC3117} 
+    HAS_GAUGE_STC3117=${HAS_GAUGE_STC3117}
+    $<$<BOOL:${ENABLE_RTT}>:ENABLE_RTT_TRACE>
+    $<$<BOOL:${ENABLE_RTT}>:SEGGER_RTT_CONFIG_DEFAULT_MODE=0>
+    $<$<BOOL:${ENABLE_RTT}>:SEGGER_RTT_CONFIG_BUFFER_SIZE_UP=512>
+    $<$<BOOL:${ENABLE_RTT}>:SEGGER_RTT_CONFIG_BUFFER_SIZE_DOWN=16>
+    $<$<BOOL:${ENABLE_RTT}>:SEGGER_RTT_CONFIG_MAX_NUM_UP_BUFFERS=1>
+    $<$<BOOL:${ENABLE_RTT}>:SEGGER_RTT_CONFIG_MAX_NUM_DOWN_BUFFERS=1>
     BUILD_TYPE=${CMAKE_BUILD_TYPE}
     #SCHEDULER_DEBUG
     DEBUG_ENABLE=1
@@ -423,7 +441,7 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     S140
     SOFTDEVICE_PRESENT
     __HEAP_SIZE=0 # Use configTOTAL_HEAP_SIZE instead
-    __STACK_SIZE=110000
+    $<IF:$<BOOL:${ENABLE_RTT}>,__STACK_SIZE=108000,__STACK_SIZE=110000>
     configTOTAL_HEAP_SIZE=65536
     DEVICE_MODEL_NAME="${DEVICE_MODEL}"s
     #LFS_YES_TRACE
@@ -496,6 +514,8 @@ target_compile_options(${TARGET_NAME} PRIVATE
 set_source_files_properties(${LIB_DIR}/prepass/prepass_package_code-PREPAS_V3.4/previpass.c PROPERTIES COMPILE_FLAGS "-Wno-unused-parameter -Wno-switch-enum -Wno-switch")
 
 set_source_files_properties(${LIB_DIR}/CmBacktrace/cm_backtrace/cm_backtrace.c PROPERTIES COMPILE_FLAGS "-Wno-unused-const-variable -Wno-unused-variable")
+
+set_source_files_properties(${SDK_ROOT}/external/segger_rtt/SEGGER_RTT.c PROPERTIES COMPILE_FLAGS "-Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-parameter -Wno-unused-but-set-variable -Wno-array-bounds")
 
 target_link_options(${TARGET_NAME} PRIVATE
     -L${CMAKE_SOURCE_DIR}/${SDK_ROOT}/modules/nrfx/mdk

@@ -85,6 +85,10 @@
 #include "memory_monitor_service.hpp"
 #include "dive_mode_service.hpp"
 
+#ifdef ENABLE_RTT_TRACE
+#include "SEGGER_RTT.h"
+#endif
+
 
 FileSystem *main_filesystem;
 
@@ -262,21 +266,34 @@ void etl_error_handler(const etl::exception& e)
 	}
 }
 
-// Redirect std::cout and printf output to debug UART
+// Redirect std::cout and printf output to debug UART/BLE/RTT
 // We have to define this as extern "C" as we are overriding a weak C function
 extern "C" int _write(int file, char *ptr, int len)
 {
+#ifdef ENABLE_RTT_TRACE
+	// RTT output via SEGGER RTT (Real-Time Transfer)
+	// When RTT is enabled at compile time, always use RTT for output
+	SEGGER_RTT_Write(0, ptr, len);
+	return len;
+#else
 	if (g_debug_mode == BaseDebugMode::UART && m_is_debug_init)
 		nrfx_uarte_tx(&BSP::UART_Inits[BSP::UART_1].uarte, reinterpret_cast<const uint8_t *>(ptr), len);
 	else if (ble_service && !__get_IPSR() && g_debug_mode == BaseDebugMode::BLE_NUS) {
 		ble_service->write(std::string(ptr, len));
 	}
 	return len;
+#endif
 }
 
 
 int main()
 {
+#ifdef ENABLE_RTT_TRACE
+	// Initialize RTT immediately - before any other initialization
+	SEGGER_RTT_Init();
+	SEGGER_RTT_WriteString(0, "*** RTT EARLY INIT ***\r\n");
+#endif
+
 	PMU::initialise();
 	PMU::start_watchdog();
 	PMU::kick_watchdog();
@@ -291,9 +308,18 @@ int main()
 	nrf_gpio_cfg_default(BSP::GPIO_Inits[GPIO_AG_PWR_PIN].pin_number);
 #endif
 
+#ifndef ENABLE_RTT_TRACE
+	// Only initialize UART1 if RTT is not enabled
 	nrfx_uarte_init(&BSP::UART_Inits[BSP::UART_1].uarte, &BSP::UART_Inits[BSP::UART_1].config, nullptr);
 	m_is_debug_init = true;
+#endif
     setvbuf(stdout, NULL, _IONBF, 0);
+
+#ifdef ENABLE_RTT_TRACE
+	// Test RTT output via printf
+	printf("*** RTT INIT OK ***\r\n");
+	printf("g_debug_mode = %d (0=UART, 1=BLE, 2=RTT)\r\n", (int)g_debug_mode);
+#endif
 
 	rtc = &NrfRTC::get_instance();
 	NrfRTC::get_instance().init();
