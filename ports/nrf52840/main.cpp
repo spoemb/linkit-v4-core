@@ -257,7 +257,6 @@ int main()
 	NrfTimer::get_instance().init();
 
 	// Init USB for debug log
-	// WARNING / TODO : Low power management.
 	m_is_debug_init = true;
 	ConsoleLog console_log;
 	DebugLogger::console_log = &console_log;
@@ -323,10 +322,6 @@ int main()
 		system_timer->start();
 		Timer::TimerHandle timer_handle;
 
-// 		// De-initialize UART to save power
-// 		m_is_debug_init = false;
-// 		nrfx_uarte_uninit(&BSP::UART_Inits[BSP::UART_1].uarte);
-
 		// Check if switch starting state is active
 		if (nrf_reed_switch.get_state()) {
 			status_led->set(RGBLedColor::WHITE);
@@ -345,6 +340,7 @@ int main()
 			system_timer->cancel_schedule(timer_handle);
 			if (state) {
 				DEBUG_TRACE("Reed State: %u", state);
+				GPIOPins::set(VSYS_SEL);
 				status_led->set(RGBLedColor::WHITE);
 				BUZZER_ON(buzzer_ctl);
 				timer_handle = system_timer->add_schedule([&power_on_ready]() {
@@ -353,6 +349,7 @@ int main()
 				}, system_timer->get_counter() + 3000);
 			} else {
 				status_led->off();
+				GPIOPins::clear(VSYS_SEL);
 				BUZZER_OFF(buzzer_ctl);
 			}
 		});
@@ -369,19 +366,17 @@ int main()
 		// Kick the watchdog periodically to avoid a WDT reset
 		kick_watchdog();
 
+		GPIOPins::clear(VSYS_SEL);
 		while (!power_on_ready) {
 			PMU::run();
 		}
 
+		GPIOPins::set(VSYS_SEL);
 		InterruptLock lock;
 		system_timer->cancel_schedule(wdog_handle);
 		PMU::kick_watchdog();
 		nrf_reed_switch.stop();
 		BUZZER_BEEP_COUNT(buzzer_ctl,200,200,2);
-
-// 		// Re-initialize UART
-// 		nrfx_uarte_init(&BSP::UART_Inits[BSP::UART_1].uarte, &BSP::UART_Inits[BSP::UART_1].config, nullptr);
-// 		m_is_debug_init = true;
 	}
 #else
 	if (PMU::reset_cause() == "Power On Reset") {
@@ -563,9 +558,6 @@ int main()
 #endif
 
 	DEBUG_TRACE("Pressure Sensor...");
-#ifdef ADC_ENABLE
-	GPIOPins::set(ADC_ENABLE); //i2c pullups on I2C internal bus are on V_ADC
-#endif
 	PressureSensorDevice *pressure_sensor_devices[BSP::I2C_TOTAL_NUMBER];
 #ifndef DUMMY_PRESSURE_SENSOR
 	for (unsigned int i = 0; i < BSP::I2C_TOTAL_NUMBER; i++) {
@@ -622,9 +614,6 @@ int main()
 		if (standalone_pressure && cdt_present)
 			break;
 	}
-#ifdef ADC_ENABLE
-	GPIOPins::clear(ADC_ENABLE); //i2c pullups on I2C internal bus are on V_ADC
-#endif
 
 	DEBUG_TRACE("LTR303...");
 	try {
@@ -659,18 +648,12 @@ int main()
 	}
 
 	DEBUG_TRACE("BMX160...");
-#ifdef ADC_ENABLE
-	GPIOPins::set(ADC_ENABLE); //i2c pullups on I2C internal bus are on V_ADC
-#endif
 	try {
 		static BMX160 bmx160;
 		static AXLSensorService axl_sensor_service(bmx160, &axl_sensor_log);
 	} catch (...) {
 		DEBUG_TRACE("BMX160: not detected");
 	}
-#ifdef ADC_ENABLE
-	GPIOPins::clear(ADC_ENABLE); //i2c pullups on I2C internal bus are on V_ADC
-#endif
 
 	DEBUG_TRACE("Memory monitor...");
 	MemoryMonitorService memory_monitor_service;

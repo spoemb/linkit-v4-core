@@ -15,13 +15,15 @@ void GPIOPins::initialise()
 	// Tri-state UART pins on GPS as these are controlled from driver level
 	nrf_gpio_cfg_default(BSP::UARTAsync_Inits[0].config.rx_pin);
 	nrf_gpio_cfg_default(BSP::UARTAsync_Inits[0].config.tx_pin);
+	nrf_gpio_cfg_default(BSP::UARTAsync_Inits[1].config.rx_pin);
+	nrf_gpio_cfg_default(BSP::UARTAsync_Inits[1].config.tx_pin);
 
 	// Ensure power off state for everything controlling power
 	clear(GPS_POWER);
 	clear(SAT_PWR_EN);
 	clear(SWS_ENABLE_PIN);
-	clear(AG_ENABLE);
-	clear(ADC_ENABLE);
+	set(GPIO_AG_PWR_PIN);	// BMA400 must be ON to avoid leakage current. BMA 400 sleep current is 200nA
+	set(ADC_ENABLE);		// Enable ADC to avoid leakage current (I2C pull up)
 
 	// Set V_SYS to 3.3V
 	set(VSYS_SEL);
