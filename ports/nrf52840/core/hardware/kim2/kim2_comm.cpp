@@ -54,9 +54,21 @@ void KIM2Comm::init(void) {
 
 void KIM2Comm::deinit(void)
 {
-    nrf_libuarte_async_stop_rx(BSP::UARTAsync_Inits[m_uart_instance].uart);
-    nrf_libuarte_async_uninit(BSP::UARTAsync_Inits[m_uart_instance].uart);
-    m_is_init = false;
+    if(m_is_init) {
+        nrf_libuarte_async_uninit(BSP::UARTAsync_Inits[m_uart_instance].uart);
+        m_is_init = false;
+
+        if(m_uart_instance == 1)
+        {
+            /*Fix bug in Nordic SDK for UARTE1 - TODO : move in lower layers
+             * HF clk and DMA bus not closed on calling uart uninit
+             * => need to force these register values
+             */
+            *(volatile uint32_t *)0x40028FFC = 0;
+            *(volatile uint32_t *)0x40028FFC;
+            *(volatile uint32_t *)0x40028FFC = 1;
+        }
+    }
 }
 
 bool KIM2Comm::send(ATCmd cmd, const std::optional<std::string>& params)
@@ -235,7 +247,7 @@ void KIM2Comm::handle_rx_buffer(uint8_t * buffer, uint8_t length)
         parsing_index += current_length;
     }
 
-    nrf_libuarte_async_rx_free(BSP::UARTAsync_Inits[1].uart, buffer, length);
+    nrf_libuarte_async_rx_free(BSP::UARTAsync_Inits[m_uart_instance].uart, buffer, length);
 }
 
 void KIM2Comm::handle_error(unsigned int error_type) {

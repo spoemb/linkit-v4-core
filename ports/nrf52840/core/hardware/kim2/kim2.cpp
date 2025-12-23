@@ -230,10 +230,8 @@ void KIM2Device::run_state_machine(uint16_t delay_ms)
 void KIM2Device::state_power_off_enter()
 {
     m_kim2_comm.deinit();
-    GPIOPins::clear(SAT_PWR_EN);
-    GPIOPins::clear(SAT_RESET);
     GPIOPins::clear(SAT_EXTWAKEUP);
-
+    GPIOPins::clear(SAT_PWR_EN);
     m_tx_buffer.clear();
     m_packet_buffer.clear();
 
@@ -253,7 +251,6 @@ void KIM2Device::state_power_off_exit()
 void KIM2Device::state_power_on_enter()
 {
     GPIOPins::set(SAT_PWR_EN);
-    GPIOPins::set(SAT_RESET);
     GPIOPins::set(SAT_EXTWAKEUP);
     m_kim2_comm.init();
     m_kim2_comm.subscribe(*this);
@@ -292,7 +289,6 @@ void KIM2Device::state_init()
         configuration_store->write_param(ParamID::ARGOS_DECID, m_kim2_comm.m_kineis_id);
 
         at_error = send_AT(AT_GET_ADDR);
-        // unsigned int test_hex = 0xff;
         if (!at_error)
         {
             DEBUG_TRACE("KIM2Device::state_init ADDR:%x", m_kim2_comm.m_hex_addr);
@@ -309,23 +305,29 @@ void KIM2Device::state_init()
 
     // Read RCONF or similar from configuration_store ?
     std::string rconf = "03921fb104b92859209b18abd009de96"; // ESS4 - LDK - 27dBm
-    at_error = send_AT(AT_SET_RCONF, rconf);
-    if(!at_error)
+    if(!(send_AT(AT_SET_RCONF, rconf) || send_AT(AT_SET_KMAC_BASIC)))
     {
-        at_error = send_AT(AT_SET_KMAC_BASIC);
-        if(!at_error)
-        {
-            DEBUG_TRACE("KIM2Device::state_init RCONF and KMAC set");
-            KIM2_STATE_CHANGE(init, idle);
-        }
-        else
-        {
-            DEBUG_ERROR("KIM2Device::state_init : can not set RCONF or KMAC");
-            KIM2_STATE_CHANGE(init, error);
-        }
+        DEBUG_TRACE("KIM2Device::state_init RCONF and KMAC set");
+        // KIM2_STATE_CHANGE(init, idle);
+    }
+    else
+    {
+        DEBUG_ERROR("KIM2Device::state_init : can not set RCONF or KMAC");
+        KIM2_STATE_CHANGE(init, error);
+        return;
     }
 
-    //TODO Set LPM ? Or toggle wakeup pin is enough ?
+    std::string lpm_standby = "0x0F";
+    if(!(send_AT(AT_SET_LPM, lpm_standby)))
+    {
+        DEBUG_TRACE("KIM2Device::state_init LPM=standby set");
+        KIM2_STATE_CHANGE(init, idle);
+    }
+    else
+    {
+        DEBUG_ERROR("KIM2Device::state_init : can not LPM");
+        KIM2_STATE_CHANGE(init, error);
+    }
 }
 
 void KIM2Device::state_init_exit()
@@ -367,7 +369,6 @@ void KIM2Device::state_transmit_enter()
 
 void KIM2Device::state_transmit()
 {
-    DEBUG_TRACE("KIM2Device::state_transmit");
     if(m_tx_done)
     {
         m_tx_done = false;
