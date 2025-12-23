@@ -5,24 +5,37 @@
 #define DEFAULT_TCXO_WARMUP_TIME_SECONDS 2
 #endif
 
+// ============================================================================
+// SMD SAT SPI Communication Configuration
+// ============================================================================
+// Define SMDSAT_IS_DEBUG_EN to use longer delays for debugging with DEBUG
+// firmware on STM32WL55. Comment out for RELEASE firmware with faster timing.
+// ============================================================================
+
 #define SMDSAT_IS_DEBUG_EN
 
 #ifdef SMDSAT_IS_DEBUG_EN
-#define SMDSAT_DELAY_POWER_ON_MS (1000)
-#define SMDSAT_DELAY_LOAD_KMAC_MS (1000)
-#define SMDSAT_DELAY_TICK_INTERRUPT_MS (10)
-#define SMDSAT_DELAY_CMD_MS (400)
-#define SMDSAT_DELAY_CMD_TX (1000)
-#define SMDSAT_DELAY_RST_MS (100)
+// DEBUG mode timings - use with STM32WL55 DEBUG firmware
+#define SMDSAT_DELAY_POWER_ON_MS        (1000)
+#define SMDSAT_DELAY_LOAD_KMAC_MS       (1000)
+#define SMDSAT_DELAY_TICK_INTERRUPT_MS  (10)
+#define SMDSAT_DELAY_CMD_MS             (400)
+#define SMDSAT_DELAY_CMD_TX             (1000)
+#define SMDSAT_DELAY_RST_MS             (100)
 #else
-#define SMDSAT_DELAY_POWER_ON_MS (200)
-#define SMDSAT_DELAY_LOAD_KMAC_MS (400)
-#define SMDSAT_DELAY_TICK_INTERRUPT_MS (10)
-#define SMDSAT_DELAY_CMD_MS (200)
-#define SMDSAT_DELAY_CMD_TX (1000)
-#define SMDSAT_DELAY_RST_MS (5)
-
+// RELEASE mode timings - use with STM32WL55 RELEASE firmware
+#define SMDSAT_DELAY_POWER_ON_MS        (1000) // Same as DEBUG - STM32WL needs time to boot
+#define SMDSAT_DELAY_LOAD_KMAC_MS       (500)
+#define SMDSAT_DELAY_TICK_INTERRUPT_MS  (10)
+#define SMDSAT_DELAY_CMD_MS             (200)  // Increased - STM32WL needs time to process commands
+#define SMDSAT_DELAY_CMD_TX             (1000)
+#define SMDSAT_DELAY_RST_MS             (100)  // Same as DEBUG
 #endif
+
+// SPI retry configuration for robust communication
+#define SMDSAT_SPI_MAX_RETRIES          (3)
+#define SMDSAT_SPI_READY_TIMEOUT_MS     (100)
+#define SMDSAT_SPI_RETRY_DELAY_MS       (10)
 #define TX_FREQUENCY_ARGOS_2_3_BAND_START		401.62
 
 #define SMDSAT_CMD_WRITERCONF_LEN 33 // 32 conf size + 1 cmd

@@ -107,6 +107,90 @@ void SmdSat::get_kmac_status(uint8_t *status) {
 	read_byte(status);
 	return;
 }
+
+// ============================================================================
+// Robust SPI Communication Helpers
+// ============================================================================
+
+bool SmdSat::is_spi_ready() {
+	uint8_t status = 0;
+	get_spi_status(&status);
+	return (status == SMDSAT_SPICMD_IDLE || status == SMDSAT_SPICMD_INIT);
+}
+
+bool SmdSat::is_spi_error() {
+	uint8_t status = 0;
+	get_spi_status(&status);
+	return (status == SMDSAT_SPICMD_ERROR);
+}
+
+bool SmdSat::wait_for_spi_ready(uint32_t timeout_ms) {
+	uint32_t elapsed = 0;
+	const uint32_t poll_interval = SMDSAT_SPI_RETRY_DELAY_MS;
+
+	while (elapsed < timeout_ms) {
+		uint8_t status = 0;
+		get_spi_status(&status);
+
+		if (status == SMDSAT_SPICMD_IDLE || status == SMDSAT_SPICMD_INIT) {
+			return true;
+		}
+
+		if (status == SMDSAT_SPICMD_ERROR) {
+			DEBUG_WARN("SmdSat::%s: SPI in ERROR state, waiting for recovery", __func__);
+		}
+
+		nrf_delay_ms(poll_interval);
+		elapsed += poll_interval;
+	}
+
+	DEBUG_ERROR("SmdSat::%s: Timeout waiting for SPI ready (waited %u ms)", __func__, timeout_ms);
+	return false;
+}
+
+bool SmdSat::send_command_with_retry(uint8_t command, uint8_t max_retries) {
+	for (uint8_t retry = 0; retry < max_retries; retry++) {
+		// Wait for SPI to be ready before sending
+		if (!wait_for_spi_ready()) {
+			DEBUG_WARN("SmdSat::%s: SPI not ready, retry %u/%u", __func__, retry + 1, max_retries);
+			nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+			continue;
+		}
+
+		try {
+			send_command(command);
+			return true;
+		} catch (...) {
+			DEBUG_WARN("SmdSat::%s: Command 0x%02X failed, retry %u/%u", __func__, command, retry + 1, max_retries);
+			nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+		}
+	}
+
+	DEBUG_ERROR("SmdSat::%s: Command 0x%02X failed after %u retries", __func__, command, max_retries);
+	return false;
+}
+
+bool SmdSat::send_command_with_retry(const uint8_t *tx_data, uint8_t *rx_data, uint16_t size, uint8_t max_retries) {
+	for (uint8_t retry = 0; retry < max_retries; retry++) {
+		// Wait for SPI to be ready before sending
+		if (!wait_for_spi_ready()) {
+			DEBUG_WARN("SmdSat::%s: SPI not ready, retry %u/%u", __func__, retry + 1, max_retries);
+			nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+			continue;
+		}
+
+		try {
+			send_command(tx_data, rx_data, size);
+			return true;
+		} catch (...) {
+			DEBUG_WARN("SmdSat::%s: Command failed, retry %u/%u", __func__, retry + 1, max_retries);
+			nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+		}
+	}
+
+	DEBUG_ERROR("SmdSat::%s: Command failed after %u retries", __func__, max_retries);
+	return false;
+}
 void SmdSat::set_radio_conf(uint8_array_t *radio_conf) {
 	DEBUG_TRACE("SmdSat::%s",__func__);
 	// - 1 size to remove cmd written
@@ -403,16 +487,27 @@ void SmdSat::print_firmware_version() {
 bool SmdSat::smd_ping()
 {
 	DEBUG_TRACE("SmdSat::%s",__func__);
-	send_command(SMDSAT_CMD_PING);
-	uint8_t ping = 0;
-	read_byte(&ping);
-	if (ping == 1) {
-		DEBUG_INFO("SmdSat::%s: ACK from SMD received",__func__);
-		return true;
-	} else {
-		DEBUG_INFO("SmdSat::%s:Ping not received : received : %u",__func__ , ping);
-		return false; 
+
+	// Use retry mechanism for ping - critical for establishing communication
+	for (uint8_t retry = 0; retry < SMDSAT_SPI_MAX_RETRIES; retry++) {
+		try {
+			send_command(SMDSAT_CMD_PING);
+			uint8_t ping = 0;
+			read_byte(&ping);
+			if (ping == 1) {
+				DEBUG_INFO("SmdSat::%s: ACK from SMD received",__func__);
+				return true;
+			} else {
+				DEBUG_TRACE("SmdSat::%s: Ping response: %u (retry %u/%u)", __func__, ping, retry + 1, SMDSAT_SPI_MAX_RETRIES);
+			}
+		} catch (...) {
+			DEBUG_WARN("SmdSat::%s: Ping failed, retry %u/%u", __func__, retry + 1, SMDSAT_SPI_MAX_RETRIES);
+		}
+		nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
 	}
+
+	DEBUG_WARN("SmdSat::%s: Ping not received after %u retries", __func__, SMDSAT_SPI_MAX_RETRIES);
+	return false;
 }
 
 bool SmdSat::is_tx_finished() {
@@ -642,9 +737,24 @@ void SmdSat::state_machine(bool use_scheduler) {
 	}
 
 	void SmdSat::state_powering_on() {
-		GPIOPins::set(SAT_RESET);
-		nrf_delay_ms(SMDSAT_DELAY_RST_MS);
-		GPIOPins::set(SAT_PWR_EN);
+		// Correct power-up sequence:
+		// 1. Hold STM32WL in reset to minimize inrush current
+		// 2. Enable power to SMD module
+		// 3. Wait for power rails to stabilize
+		// 4. Release reset
+		DEBUG_TRACE("SmdSat::%s: Starting power-on sequence", __func__);
+
+		GPIOPins::clear(SAT_RESET);  // Hold reset LOW - keeps STM32WL in reset (low power)
+		nrf_delay_ms(10);            // Small delay before enabling power
+
+		GPIOPins::set(SAT_PWR_EN);   // Enable power to SMD module via TPS22904
+		DEBUG_TRACE("SmdSat::%s: Power enabled, waiting for stabilization", __func__);
+
+		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);  // Wait for power to stabilize (500ms)
+
+		GPIOPins::set(SAT_RESET);    // Release reset (HIGH = run)
+		DEBUG_TRACE("SmdSat::%s: Reset released", __func__);
+
 		SMD_STATE_CHANGE(powering_on, idle_pending);
 		return;
 	}
@@ -851,48 +961,62 @@ void SmdSat::set_frequency(const double freq) {
 }
 void SmdSat::initiate_tx() {
 	DEBUG_TRACE("SmdSat::%s:Size : %u",__func__, m_tx_buffer.size());
-	//TODO check modulation according correct size.
-	//LDA2 used for the moment. 
-	send_command(SMDSAT_CMD_WRITE_TX_REQ);
+
+	// Wait for SPI to be ready before starting TX sequence
+	if (!wait_for_spi_ready()) {
+		DEBUG_ERROR("SmdSat::%s: SPI not ready, aborting TX", __func__);
+		return;
+	}
+
+	// Send TX request command with retry
+	if (!send_command_with_retry(SMDSAT_CMD_WRITE_TX_REQ)) {
+		DEBUG_ERROR("SmdSat::%s: Failed to send TX request", __func__);
+		return;
+	}
 
 	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
-	//uint16_t size = m_tx_buffer.size();
+
 	uint16_t size = m_tx_buffer.size();
 	uint8_t tx_req[SMDSAT_CMD_WRITETX_LEN] = {0};
 	uint8_t rx_req[SMDSAT_CMD_WRITETX_LEN] = {0};
 	tx_req[0] = SMDSAT_CMD_WRITE_TX_SIZE;
-	tx_req[1] =  (size >>8) & 0xFF;
-	tx_req[2] =  (size) & 0xFF;
+	tx_req[1] = (size >> 8) & 0xFF;
+	tx_req[2] = (size) & 0xFF;
 
-	send_command(tx_req, rx_req, SMDSAT_CMD_WRITETX_LEN);
+	// Send TX size with retry
+	if (!send_command_with_retry(tx_req, rx_req, SMDSAT_CMD_WRITETX_LEN)) {
+		DEBUG_ERROR("SmdSat::%s: Failed to send TX size", __func__);
+		return;
+	}
+
 	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
-	
+
 	uint8_t *tx_msg = NULL;
-    uint8_t *rx_msg = NULL;
-    tx_msg = static_cast<uint8_t*>(calloc(size + 1, sizeof(uint8_t)));
-    rx_msg = static_cast<uint8_t*>(calloc(size + 1, sizeof(uint8_t)));
+	uint8_t *rx_msg = NULL;
+	tx_msg = static_cast<uint8_t*>(calloc(size + 1, sizeof(uint8_t)));
+	rx_msg = static_cast<uint8_t*>(calloc(size + 1, sizeof(uint8_t)));
 
-    if (tx_msg == NULL || rx_msg == NULL) {
-        DEBUG_TRACE("SmdSat::%s::Memory allocation failed for TX/RX buffers",__func__);
-        free(tx_msg);
-        free(rx_msg);
-        return;
-    }
+	if (tx_msg == NULL || rx_msg == NULL) {
+		DEBUG_ERROR("SmdSat::%s: Memory allocation failed for TX/RX buffers", __func__);
+		free(tx_msg);
+		free(rx_msg);
+		return;
+	}
 
-    tx_msg[0] = SMDSAT_CMD_WRITE_TX;
+	tx_msg[0] = SMDSAT_CMD_WRITE_TX;
 
-	
-    // Copy the content of m_tx_buffer into tx_msg starting at index 1
-    memcpy(tx_msg + 1, m_tx_buffer.data(), size);
-    //memcpy(tx_msg + 1, TXpayload_LDA2, size);
+	// Copy the content of m_tx_buffer into tx_msg starting at index 1
+	memcpy(tx_msg + 1, m_tx_buffer.data(), size);
 
-    send_command(tx_msg, rx_msg, size + 1);
+	// Send TX payload with retry
+	if (!send_command_with_retry(tx_msg, rx_msg, size + 1)) {
+		DEBUG_ERROR("SmdSat::%s: Failed to send TX payload", __func__);
+	}
 
-    // Free allocated memory
-    free(tx_msg);
-    free(rx_msg);
+	// Free allocated memory
+	free(tx_msg);
+	free(rx_msg);
 	return;
-
 }
 void SmdSat::send(const ArgosMode mode, const ArticPacket& user_payload, const unsigned int payload_length)
 {
@@ -974,56 +1098,198 @@ void SmdSat::set_tx_power(const BaseArgosPower power) {
 void SmdSat::set_credentials(const unsigned int dec_id, const unsigned int address, const std::string seckey, const std::string radioconf) {
 	DEBUG_TRACE("SmdSat::%s",__func__);
 	bool stop_spi = false;
-	if (m_state == SmdSatState::stopped)
+	bool was_stopped = (m_state == SmdSatState::stopped);
+
+	// Helper lambda to wait between commands - use fixed delay to avoid watchdog issues on SMD
+	auto wait_between_commands = [this]() -> bool {
+		nrf_delay_ms(SMDSAT_DELAY_CMD_MS * 2);
+		return true;  // Just wait, don't poll - polling can trigger watchdog on SMD
+	};
+
+	if (was_stopped)
 	{
-		GPIOPins::set(SAT_RESET);
-		nrf_delay_ms(SMDSAT_DELAY_RST_MS); // Wait for the reset to take effect
-		GPIOPins::set(SAT_PWR_EN);
+		// Power-up sequence: enable power, then release reset with proper timing
+		GPIOPins::clear(SAT_RESET);  // Hold reset LOW while powering up
+		GPIOPins::set(SAT_PWR_EN);   // Enable power to SMD module
+		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);  // Wait for power to stabilize
+		GPIOPins::set(SAT_RESET);    // Release reset (HIGH = run)
+		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);  // Wait for STM32WL to boot and init SPI
 	}
 	if (m_nrf_spim == nullptr)
 	{
 		m_nrf_spim = new NrfSPIM(SPI_SATELLITE);
 		stop_spi = true;
 	}
-	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
-    // Set the ID (expects uint32_t value)
-    set_id(dec_id);
+
+	// Wait for SMD to be fully ready using ping with retries
+	// The SPI status can return IDLE while the SMD is still processing internal queues (KNS_Q)
+	// Ping ensures the firmware is actually ready to accept commands
+	{
+		bool smd_ready = false;
+		for (uint8_t attempt = 0; attempt < 10; attempt++) {
+			nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS / 2);  // 500ms between attempts
+			if (smd_ping()) {
+				DEBUG_INFO("SmdSat::%s: SMD ready after %u attempts", __func__, attempt + 1);
+				smd_ready = true;
+				break;
+			}
+			DEBUG_TRACE("SmdSat::%s: Waiting for SMD to be ready (attempt %u/10)", __func__, attempt + 1);
+		}
+		if (!smd_ready) {
+			DEBUG_ERROR("SmdSat::%s: SMD not ready after power-on, aborting", __func__);
+			goto cleanup;
+		}
+	}
+
+	// Set the ID with retry
+	for (uint8_t retry = 0; retry < SMDSAT_SPI_MAX_RETRIES; retry++) {
+		try {
+			set_id(dec_id);
+			break;
+		} catch (...) {
+			if (retry == SMDSAT_SPI_MAX_RETRIES - 1) {
+				DEBUG_ERROR("SmdSat::%s: Failed to set ID after %u retries", __func__, SMDSAT_SPI_MAX_RETRIES);
+				goto cleanup;
+			}
+			DEBUG_WARN("SmdSat::%s: set_id retry %u/%u", __func__, retry + 1, SMDSAT_SPI_MAX_RETRIES);
+			nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+		}
+	}
+
+	if (!wait_between_commands()) {
+		DEBUG_ERROR("SmdSat::%s: SPI not ready after set_id", __func__);
+		goto cleanup;
+	}
+
+	// Set address with retry
+	{
+		uint8_t address_data[4] = {
+			static_cast<uint8_t>((address >> 24) & 0xFF),
+			static_cast<uint8_t>((address >> 16) & 0xFF),
+			static_cast<uint8_t>((address >> 8) & 0xFF),
+			static_cast<uint8_t>(address & 0xFF)
+		};
+		uint8_array_t address_val = {SMDSAT_CMD_WRITE_ADDR_LEN-1, address_data};
+
+		for (uint8_t retry = 0; retry < SMDSAT_SPI_MAX_RETRIES; retry++) {
+			try {
+				set_address(&address_val);
+				break;
+			} catch (...) {
+				if (retry == SMDSAT_SPI_MAX_RETRIES - 1) {
+					DEBUG_ERROR("SmdSat::%s: Failed to set address after %u retries", __func__, SMDSAT_SPI_MAX_RETRIES);
+					goto cleanup;
+				}
+				DEBUG_WARN("SmdSat::%s: set_address retry %u/%u", __func__, retry + 1, SMDSAT_SPI_MAX_RETRIES);
+				nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+			}
+		}
+	}
+
+	if (!wait_between_commands()) {
+		DEBUG_ERROR("SmdSat::%s: SPI not ready after set_address", __func__);
+		goto cleanup;
+	}
+
+	// Set seckey with retry
+	{
+		std::string seckey_val = Binascii::unhexlify(seckey);
+		uint8_array_t seckey_struct = {static_cast<uint16_t>(seckey_val.size()),
+		                               reinterpret_cast<uint8_t *>(seckey_val.data())};
+
+		for (uint8_t retry = 0; retry < SMDSAT_SPI_MAX_RETRIES; retry++) {
+			try {
+				set_seckey(&seckey_struct);
+				break;
+			} catch (...) {
+				if (retry == SMDSAT_SPI_MAX_RETRIES - 1) {
+					DEBUG_ERROR("SmdSat::%s: Failed to set seckey after %u retries", __func__, SMDSAT_SPI_MAX_RETRIES);
+					goto cleanup;
+				}
+				DEBUG_WARN("SmdSat::%s: set_seckey retry %u/%u", __func__, retry + 1, SMDSAT_SPI_MAX_RETRIES);
+				nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+			}
+		}
+	}
+
+	if (!wait_between_commands()) {
+		DEBUG_ERROR("SmdSat::%s: SPI not ready after set_seckey", __func__);
+		goto cleanup;
+	}
+
+	// Set radio config with retry
+	{
+		std::string radioconf_val = Binascii::unhexlify(radioconf);
+		uint8_array_t radioconf_struct = {static_cast<uint16_t>(radioconf_val.size()),
+		                                  reinterpret_cast<uint8_t *>(radioconf_val.data())};
+
+		for (uint8_t retry = 0; retry < SMDSAT_SPI_MAX_RETRIES; retry++) {
+			try {
+				set_radio_conf(&radioconf_struct);
+				break;
+			} catch (...) {
+				if (retry == SMDSAT_SPI_MAX_RETRIES - 1) {
+					DEBUG_ERROR("SmdSat::%s: Failed to set radio conf after %u retries", __func__, SMDSAT_SPI_MAX_RETRIES);
+					goto cleanup;
+				}
+				DEBUG_WARN("SmdSat::%s: set_radio_conf retry %u/%u", __func__, retry + 1, SMDSAT_SPI_MAX_RETRIES);
+				nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+			}
+		}
+	}
+
+	// Wait before save - flash operations take more time
+	wait_between_commands();
+
+	// Save radio config with retry
+	for (uint8_t retry = 0; retry < SMDSAT_SPI_MAX_RETRIES; retry++) {
+		try {
+			if (save_radio_conf()) {
+				break;
+			}
+			// save_radio_conf returned false - retry
+			if (retry == SMDSAT_SPI_MAX_RETRIES - 1) {
+				DEBUG_ERROR("SmdSat::%s: save_radio_conf failed after %u retries", __func__, SMDSAT_SPI_MAX_RETRIES);
+				goto cleanup;
+			}
+		} catch (...) {
+			if (retry == SMDSAT_SPI_MAX_RETRIES - 1) {
+				DEBUG_ERROR("SmdSat::%s: Failed to save radio conf after %u retries", __func__, SMDSAT_SPI_MAX_RETRIES);
+				goto cleanup;
+			}
+		}
+		DEBUG_WARN("SmdSat::%s: save_radio_conf retry %u/%u", __func__, retry + 1, SMDSAT_SPI_MAX_RETRIES);
+		nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+	}
+
+	// Wait after flash save
+	wait_between_commands();
+
+	// Load KMAC profile with retry
+	for (uint8_t retry = 0; retry < SMDSAT_SPI_MAX_RETRIES; retry++) {
+		try {
+			load_kmac_profil(1);
+			break;
+		} catch (...) {
+			if (retry == SMDSAT_SPI_MAX_RETRIES - 1) {
+				DEBUG_ERROR("SmdSat::%s: Failed to load KMAC profile after %u retries", __func__, SMDSAT_SPI_MAX_RETRIES);
+				goto cleanup;
+			}
+			DEBUG_WARN("SmdSat::%s: load_kmac_profil retry %u/%u", __func__, retry + 1, SMDSAT_SPI_MAX_RETRIES);
+			nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+		}
+	}
 
 	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
-    // Convert address to a 4-byte array and pass it as uint8_array_t
-    uint8_t address_data[4] = {
-        static_cast<uint8_t>((address >> 24) & 0xFF),
-        static_cast<uint8_t>((address >> 16) & 0xFF),
-        static_cast<uint8_t>((address >> 8) & 0xFF),
-        static_cast<uint8_t>(address & 0xFF)
-    };
-    uint8_array_t address_val = {SMDSAT_CMD_WRITE_ADDR_LEN-1, address_data};
-    set_address(&address_val);
+	DEBUG_INFO("SmdSat::%s: Credentials set successfully", __func__);
 
-	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
-    // Convert hex string to binary using Binascii::unhexlify() (returns std::string)
-    std::string seckey_val = Binascii::unhexlify(seckey);
-    uint8_array_t seckey_struct = {static_cast<uint16_t>(seckey_val.size()), 
-                                   reinterpret_cast<uint8_t *>(seckey_val.data())};
-    set_seckey(&seckey_struct);
-
-	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
-    // Convert radio config hex string to binary
-    std::string radioconf_val = Binascii::unhexlify(radioconf);
-    uint8_array_t radioconf_struct = {static_cast<uint16_t>(radioconf_val.size()), 
-                                      reinterpret_cast<uint8_t *>(radioconf_val.data())};
-    set_radio_conf(&radioconf_struct);	
-	nrf_delay_ms(SMDSAT_DELAY_CMD_MS*3);
-	save_radio_conf();
-	nrf_delay_ms(SMDSAT_DELAY_CMD_MS*3);
-	load_kmac_profil(1);
-	nrf_delay_ms(SMDSAT_DELAY_CMD_MS*3);
-	if(stop_spi)
+cleanup:
+	if (stop_spi)
 	{
 		delete m_nrf_spim;
-		m_nrf_spim = nullptr; // Invalidate this pointer so if we call this function again it doesn't call delete on an invalid pointer
+		m_nrf_spim = nullptr;
 	}
-	if (m_state == SmdSatState::stopped)
+	if (was_stopped)
 	{
 		shutdown();
 	}
@@ -1035,9 +1301,12 @@ void SmdSat::read_credentials(unsigned int *dec_id, unsigned int *address, std::
 	bool stop_spi = false;
 	if (m_state == SmdSatState::stopped)
 	{
-		GPIOPins::set(SAT_RESET);
-		GPIOPins::set(SAT_PWR_EN);
-		nrf_delay_ms(SMDSAT_DELAY_RST_MS); // Wait for the reset to take effect
+		// Power-up sequence: enable power, then release reset with proper timing
+		GPIOPins::clear(SAT_RESET);  // Hold reset LOW while powering up
+		GPIOPins::set(SAT_PWR_EN);   // Enable power to SMD module
+		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);  // Wait for power to stabilize
+		GPIOPins::set(SAT_RESET);    // Release reset (HIGH = run)
+		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);  // Wait for STM32WL to boot and init SPI
 	}
 	if (m_nrf_spim == nullptr)
 	{

@@ -66,6 +66,13 @@ private:
 	void send_command(const uint8_t *tx_data, uint8_t *rx_data, uint16_t size);
 	void get_spi_status(uint8_t *status);
 	void get_kmac_status(uint8_t *status);
+
+	// Robust SPI communication helpers
+	bool wait_for_spi_ready(uint32_t timeout_ms = SMDSAT_SPI_READY_TIMEOUT_MS);
+	bool send_command_with_retry(uint8_t command, uint8_t max_retries = SMDSAT_SPI_MAX_RETRIES);
+	bool send_command_with_retry(const uint8_t *tx_data, uint8_t *rx_data, uint16_t size, uint8_t max_retries = SMDSAT_SPI_MAX_RETRIES);
+	bool is_spi_ready();
+	bool is_spi_error();
 	void set_radio_conf(uint8_array_t *radio_conf);
 	void read_radio_conf(ArgosModulation *modulation);
 	bool save_radio_conf();

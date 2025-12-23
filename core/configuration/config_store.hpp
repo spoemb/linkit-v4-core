@@ -236,7 +236,7 @@ protected:
 		/* HW_VERSION */ ""s,
 		/* BATT_VOLTAGE */ (double)0,
 		/* BOOT_COUNTER */ 0U,
-		/* BOOT_COUNTER_MODULO */ 2U,
+		/* BOOT_COUNTER_MODULO */ 10U,
 		/* ARGOS_TCXO_WARMUP_TIME */ 5U,
 		/* DEVICE_DECID */ 0U,
 		/* GNSS_TRIGGER_ON_SURFACED */ (bool)true,
@@ -404,7 +404,8 @@ public:
 	{
 		unsigned int boot_counter = read_param<unsigned int>(ParamID::BOOT_COUNTER);
 		unsigned int boot_counter_modulo = read_param<unsigned int>(ParamID::BOOT_COUNTER_MODULO);
-		if ((boot_counter < 0) || (boot_counter > (boot_counter_modulo+1))) 
+		// Protection against corrupted counter value exceeding modulo bounds
+		if (boot_counter > (boot_counter_modulo + 1))
 		{
 			boot_counter = 0;
 		} else {
@@ -437,8 +438,9 @@ public:
 	{
 		unsigned int modulo = read_param<unsigned int>(ParamID::BOOT_COUNTER_MODULO);
 
-		// Retourne true uniquement si modulo >= 1 et le reste == 0
-		if (modulo >= 1 && (boot_counter % modulo == 0))
+		// Protection: modulo must be >= 2 to avoid shutdown every boot (modulo=1)
+		// or division by zero (modulo=0)
+		if (modulo >= 2 && (boot_counter % modulo == 0))
 		{
 			boot_count_clear();
 			return true;
