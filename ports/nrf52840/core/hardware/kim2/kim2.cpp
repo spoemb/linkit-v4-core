@@ -231,6 +231,7 @@ void KIM2Device::state_power_off_enter()
 {
     m_kim2_comm.deinit();
     GPIOPins::clear(SAT_EXTWAKEUP);
+    GPIOPins::clear(SAT_RESET);
     GPIOPins::clear(SAT_PWR_EN);
     m_tx_buffer.clear();
     m_packet_buffer.clear();
@@ -251,9 +252,12 @@ void KIM2Device::state_power_off_exit()
 void KIM2Device::state_power_on_enter()
 {
     GPIOPins::set(SAT_PWR_EN);
+    GPIOPins::set(SAT_RESET);
     GPIOPins::set(SAT_EXTWAKEUP);
     m_kim2_comm.init();
     m_kim2_comm.subscribe(*this);
+    if(m_packet_buffer.length() > 0)
+        PMU::delay_ms(500); // Add delay if KIM2 was just powered ON for transmission
 }
 
 void KIM2Device::state_power_on()
@@ -280,27 +284,28 @@ void KIM2Device::state_init_enter()
 
 void KIM2Device::state_init()
 {
-    bool at_error = false;
-
-    at_error = send_AT(AT_GET_ID);
-    if(!at_error)
+    if(m_kim2_comm.m_kineis_id == 0 && m_kim2_comm.m_hex_addr == 0)
     {
-        DEBUG_TRACE("KIM2Device::state_init ID:%d", m_kim2_comm.m_kineis_id);
-        configuration_store->write_param(ParamID::ARGOS_DECID, m_kim2_comm.m_kineis_id);
-
-        at_error = send_AT(AT_GET_ADDR);
-        if (!at_error)
+        bool at_error = send_AT(AT_GET_ID);
+        if(!at_error)
         {
-            DEBUG_TRACE("KIM2Device::state_init ADDR:%x", m_kim2_comm.m_hex_addr);
-            configuration_store->write_param(ParamID::ARGOS_HEXID, m_kim2_comm.m_hex_addr);
-        }
-    }
+            DEBUG_TRACE("KIM2Device::state_init ID:%d", m_kim2_comm.m_kineis_id);
+            configuration_store->write_param(ParamID::ARGOS_DECID, m_kim2_comm.m_kineis_id);
 
-    if(at_error)
-    {
-        DEBUG_ERROR("KIM2Device::state_init : can not read ID or ADDR");
-        KIM2_STATE_CHANGE(init, error);
-        return;
+            at_error = send_AT(AT_GET_ADDR);
+            if (!at_error)
+            {
+                DEBUG_TRACE("KIM2Device::state_init ADDR:%x", m_kim2_comm.m_hex_addr);
+                configuration_store->write_param(ParamID::ARGOS_HEXID, m_kim2_comm.m_hex_addr);
+            }
+        }
+
+        if(at_error)
+        {
+            DEBUG_ERROR("KIM2Device::state_init : can not read ID or ADDR");
+            KIM2_STATE_CHANGE(init, error);
+            return;
+        }
     }
 
     // Read RCONF or similar from configuration_store ?
@@ -308,26 +313,25 @@ void KIM2Device::state_init()
     if(!(send_AT(AT_SET_RCONF, rconf) || send_AT(AT_SET_KMAC_BASIC)))
     {
         DEBUG_TRACE("KIM2Device::state_init RCONF and KMAC set");
-        // KIM2_STATE_CHANGE(init, idle);
+        KIM2_STATE_CHANGE(init, idle);
     }
     else
     {
         DEBUG_ERROR("KIM2Device::state_init : can not set RCONF or KMAC");
         KIM2_STATE_CHANGE(init, error);
-        return;
     }
 
-    std::string lpm_standby = "0x0F";
-    if(!(send_AT(AT_SET_LPM, lpm_standby)))
-    {
-        DEBUG_TRACE("KIM2Device::state_init LPM=standby set");
-        KIM2_STATE_CHANGE(init, idle);
-    }
-    else
-    {
-        DEBUG_ERROR("KIM2Device::state_init : can not LPM");
-        KIM2_STATE_CHANGE(init, error);
-    }
+    // std::string lpm_standby = "0x01";
+    // if(!(send_AT(AT_SET_LPM, lpm_standby)))
+    // {
+    //     DEBUG_TRACE("KIM2Device::state_init LPM=standby set");
+    //     KIM2_STATE_CHANGE(init, idle);
+    // }
+    // else
+    // {
+    //     DEBUG_ERROR("KIM2Device::state_init : can not LPM");
+    //     KIM2_STATE_CHANGE(init, error);
+    // }
 }
 
 void KIM2Device::state_init_exit()
@@ -337,7 +341,9 @@ void KIM2Device::state_init_exit()
 
 void KIM2Device::state_idle_enter()
 {
-    GPIOPins::clear(SAT_EXTWAKEUP);
+    // GPIOPins::clear(SAT_EXTWAKEUP);
+    // m_kim2_comm.deinit();
+    // GPIOPins::clear(SAT_RESET);
 }
 
 void KIM2Device::state_idle()
@@ -348,6 +354,10 @@ void KIM2Device::state_idle()
 		m_packet_buffer.clear();
 		KIM2_STATE_CHANGE(idle, transmit);
 	}
+    else
+    {
+        KIM2_STATE_CHANGE(idle, power_off);
+    }
 }
 
 void KIM2Device::state_idle_exit()
@@ -358,8 +368,10 @@ void KIM2Device::state_idle_exit()
 void KIM2Device::state_transmit_enter()
 {
     DEBUG_TRACE("KIM2Device::state_transmit_enter");
-    GPIOPins::set(SAT_EXTWAKEUP);
-    PMU::delay_ms(10); // Check if delay necessary
+    // GPIOPins::set(SAT_RESET);
+    // PMU::delay_ms(10); // Check if delay necessary
+    // GPIOPins::set(SAT_EXTWAKEUP);
+    // PMU::delay_ms(10); // Check if delay necessary
 	// use m_tx_mode ?
 
     m_tx_done = false;

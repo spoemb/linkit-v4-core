@@ -224,6 +224,8 @@ void KIM2Comm::handle_rx_buffer(uint8_t * buffer, uint8_t length)
 {   
     m_rx_buffer.assign(reinterpret_cast<const char*>(buffer), length);
     
+    // DEBUG_TRACE("KIM2Comm::handle_rx_buffer %s", buffer);
+
     uint8_t parsing_index = 0;
     uint8_t current_length = 0;
     RespType msg = RESP_UNKNOWN;
