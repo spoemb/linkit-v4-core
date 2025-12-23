@@ -247,7 +247,6 @@ void KIM2Device::state_power_off_enter()
     DEBUG_INFO("KIM2Device::state_power_off_enter");
     m_kim2_comm.deinit();
     GPIOPins::clear(SAT_EXTWAKEUP);
-    GPIOPins::clear(SAT_RESET);
     GPIOPins::clear(SAT_PWR_EN);
     m_tx_buffer.clear();
     m_packet_buffer.clear();
@@ -268,7 +267,6 @@ void KIM2Device::state_power_off_exit()
 void KIM2Device::state_power_on_enter()
 {
     GPIOPins::set(SAT_PWR_EN);
-    GPIOPins::set(SAT_RESET);
     GPIOPins::set(SAT_EXTWAKEUP);
     m_kim2_comm.init();
     m_kim2_comm.subscribe(*this);
@@ -327,31 +325,29 @@ void KIM2Device::state_init()
 
     // Read RCONF or similar from configuration_store ?
     std::string rconf = "03921fb104b92859209b18abd009de96"; // ESS4 - LDK - 27dBm
-    bool rconf_error = send_AT(AT_SET_RCONF, rconf);
-    bool kmac_error = send_AT(AT_SET_KMAC_BASIC);
-
-    if(!rconf_error && !kmac_error)
+    if(!(send_AT(AT_SET_RCONF, rconf) || send_AT(AT_SET_KMAC_BASIC)))
     {
         DEBUG_TRACE("KIM2Device::state_init RCONF and KMAC set");
+        // KIM2_STATE_CHANGE(init, idle);
+    }
+    else
+    {
+        DEBUG_ERROR("KIM2Device::state_init : can not set RCONF or KMAC");
+        KIM2_STATE_CHANGE(init, error);
+        return;
+    }
+
+    std::string lpm_standby = "0x0F";
+    if(!(send_AT(AT_SET_LPM, lpm_standby)))
+    {
+        DEBUG_TRACE("KIM2Device::state_init LPM=standby set");
         KIM2_STATE_CHANGE(init, idle);
     }
     else
     {
-        DEBUG_ERROR("KIM2Device::state_init : can not set RCONF=%d or KMAC=%d", rconf_error, kmac_error);
+        DEBUG_ERROR("KIM2Device::state_init : can not LPM");
         KIM2_STATE_CHANGE(init, error);
     }
-
-    // std::string lpm_standby = "0x01";
-    // if(!(send_AT(AT_SET_LPM, lpm_standby)))
-    // {
-    //     DEBUG_TRACE("KIM2Device::state_init LPM=standby set");
-    //     KIM2_STATE_CHANGE(init, idle);
-    // }
-    // else
-    // {
-    //     DEBUG_ERROR("KIM2Device::state_init : can not LPM");
-    //     KIM2_STATE_CHANGE(init, error);
-    // }
 }
 
 void KIM2Device::state_init_exit()
