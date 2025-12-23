@@ -60,13 +60,30 @@ void PMU::reset(bool) {
 void PMU::powerdown() {
 #if defined(EXTERNAL_WAKEUP)
 	DEBUG_TRACE("Powerdown with external wakeup enabled");
-	//NrfI2C::uninit();
-	GPIOPins::clear(SENSORS_PWR_PIN); // Clear sensors power pin to save power
-	GPIOPins::set(GPS_RST); // Clear sensors power pin to save power
-	GPIOPins::clear(GPS_POWER); // Clear sensors power pin to save power
-	GPIOPins::set(SAT_RESET); // Clear sensors power pin to save power
-	GPIOPins::clear(SAT_PWR_EN); // Clear sensors power pin to save power
-	
+
+	// Disable all power rails to peripherals
+	GPIOPins::clear(SENSORS_PWR_PIN);  // Sensors power OFF
+	GPIOPins::clear(GPS_POWER);        // GPS power OFF
+	GPIOPins::set(GPS_RST);            // GPS held in reset
+	GPIOPins::clear(SAT_PWR_EN);       // SMD module power OFF
+	GPIOPins::set(SAT_RESET);          // SMD held in reset (after power off)
+
+	// Disable SWS (Slow Wire Service) to save power
+	#ifdef SWS_ENABLE_PIN
+	GPIOPins::clear(SWS_ENABLE_PIN);   // SWS OFF
+	#endif
+
+	// Turn off all LEDs
+	#ifdef GPIO_LED_GREEN
+	GPIOPins::clear(BSP::GPIO::GPIO_LED_GREEN);
+	#endif
+	#ifdef GPIO_LED_RED
+	GPIOPins::clear(BSP::GPIO::GPIO_LED_RED);
+	#endif
+	#ifdef GPIO_LED_BLUE
+	GPIOPins::clear(BSP::GPIO::GPIO_LED_BLUE);
+	#endif
+
 #endif
 #if defined(POWER_CONTROL_PIN)
 	DEBUG_TRACE("Attempt power off using power pin");
