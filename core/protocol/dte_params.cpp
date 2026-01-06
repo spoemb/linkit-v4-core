@@ -140,6 +140,11 @@ const BaseMap param_map[] = {
 	{ "AXL_SENSOR_PERIODIC", "AXP02", BaseEncoding::UINT, 0U, 0U, {}, true, true },
 	{ "AXL_SENSOR_WAKEUP_THRESH", "AXP03", BaseEncoding::FLOAT, (double)0.0, (double)8.0, {}, true, true },
 	{ "AXL_SENSOR_WAKEUP_SAMPLES", "AXP04", BaseEncoding::UINT, 1U, 5U, {}, true, true },
+	{ "AXL_SENSOR_MEASUREMENT_RANGE", "AXP08", BaseEncoding::UINT, 0U, 4U, {}, true, true },
+	{ "AXL_SENSOR_POWER_MODE", "AXP09", BaseEncoding::UINT, 0U, 2U, {}, true, true },
+	{ "AXL_SENSOR_X_CALIBRATION", "AXP10", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, true, true },
+	{ "AXL_SENSOR_Y_CALIBRATION", "AXP11", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, true, true },
+	{ "AXL_SENSOR_Z_CALIBRATION", "AXP12", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, true, true },
 
 	// PRESSURE
 	{ "PRESSURE_SENSOR_ENABLE", "PRP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
@@ -193,6 +198,9 @@ const BaseMap param_map[] = {
 	{ "PRESSURE_SENSOR_ENABLE_TX_MODE", "PRP04", BaseEncoding::SENSORENABLETXMODE, 0, 0, {}, true, true },
 	{ "PRESSURE_SENSOR_ENABLE_TX_MAX_SAMPLES", "PRP05", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 	{ "PRESSURE_SENSOR_ENABLE_TX_SAMPLE_PERIOD", "PRP06", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
+	{ "AXL_SENSOR_ENABLE_TX_MODE", "AXP05", BaseEncoding::SENSORENABLETXMODE, 0, 0, {}, true, true },
+	{ "AXL_SENSOR_ENABLE_TX_MAX_SAMPLES", "AXP06", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
+	{ "AXL_SENSOR_ENABLE_TX_SAMPLE_PERIOD", "AXP07", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 
 	// Camera sensor
 	{ "CAM_ENABLE", "CAP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
