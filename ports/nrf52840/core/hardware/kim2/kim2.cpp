@@ -140,10 +140,28 @@ void KIM2Device::react(const KIM2CommEventRespError&) {
 }
 
 void KIM2Device::react(const KIM2CommEventUartError& err) {
+    m_is_error = true;
     system_scheduler->post_task_prio([this, err]() {
         DEBUG_INFO("KIM2CommEventUartError: type=%02x", err.error_type);
     }, "Debug");
 }
+
+void KIM2Device::initiate_timeout(unsigned int timeout_ms) {
+	cancel_timeout();
+	m_timeout.handle = system_scheduler->post_task_prio([this]() {
+		on_timeout();
+	}, "Timeout", Scheduler::DEFAULT_PRIORITY, timeout_ms);
+}
+
+void KIM2Device::on_timeout() {
+    DEBUG_ERROR("KIM2Device::on_timeout");
+    m_is_error = true;
+}
+
+void KIM2Device::cancel_timeout() {
+	system_scheduler->cancel_task(m_timeout.handle);
+}
+
 
 void KIM2Device::start_device()
 {
@@ -229,6 +247,7 @@ void KIM2Device::run_state_machine(uint16_t delay_ms)
 
 void KIM2Device::state_power_off_enter()
 {
+    DEBUG_INFO("KIM2Device::state_power_off_enter");
     m_kim2_comm.deinit();
     GPIOPins::clear(SAT_EXTWAKEUP);
     GPIOPins::clear(SAT_RESET);
@@ -262,6 +281,7 @@ void KIM2Device::state_power_on_enter()
 
 void KIM2Device::state_power_on()
 {
+    DEBUG_INFO("KIM2Device::state_power_on");
     if(send_AT(AT_PING) == KIM2_COMM_OK)
     {
         KIM2_STATE_CHANGE(power_on, init);
@@ -367,7 +387,7 @@ void KIM2Device::state_idle_exit()
 
 void KIM2Device::state_transmit_enter()
 {
-    DEBUG_TRACE("KIM2Device::state_transmit_enter");
+    DEBUG_INFO("KIM2Device::state_transmit_enter");
     // GPIOPins::set(SAT_RESET);
     // PMU::delay_ms(10); // Check if delay necessary
     // GPIOPins::set(SAT_EXTWAKEUP);
@@ -377,6 +397,7 @@ void KIM2Device::state_transmit_enter()
     m_tx_done = false;
     send_AT(AT_TX, m_tx_buffer);
     notify(KineisEventTxStarted({}));
+    initiate_timeout(60000);     // Update this timeout once LPM and/or BLIND mode implemented
 }
 
 void KIM2Device::state_transmit()
@@ -392,6 +413,10 @@ void KIM2Device::state_transmit()
         //TODO handle other cases
         KIM2_STATE_CHANGE(transmit, idle);
     }
+    else if(m_is_error)
+    {
+        KIM2_STATE_CHANGE(transmit, error);
+    }
     else
     {
         run_state_machine();
@@ -400,7 +425,7 @@ void KIM2Device::state_transmit()
 
 void KIM2Device::state_transmit_exit()
 {
-    ;
+    cancel_timeout();
 }
 
 void KIM2Device::state_error_enter()
@@ -411,6 +436,7 @@ void KIM2Device::state_error_enter()
 void KIM2Device::state_error()
 {
     DEBUG_ERROR("KIM2Device::state_error");
+    notify(KineisEventDeviceError({}));
     KIM2_STATE_CHANGE(error, power_off);
 }
 

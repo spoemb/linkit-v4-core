@@ -34,6 +34,11 @@ private:
 	bool                  m_stopping;
 	bool                  m_cmd_is_ok;
 	bool                  m_is_error;
+	struct Timeout {
+		Scheduler::TaskHandle handle;
+		bool     running;
+		uint64_t end;
+	} m_timeout;
 
 	// Argos TX state
 	KineisPacket m_tx_buffer;
@@ -73,4 +78,7 @@ private:
 	bool send_AT(KIM2::ATCmd cmd, const std::optional<std::string>& params = std::nullopt);
 	void start_device();
 	void power_off_immediate(void);
+	void cancel_timeout();
+	void initiate_timeout(unsigned int timeout_ms = 1000);
+	void on_timeout();
 };
