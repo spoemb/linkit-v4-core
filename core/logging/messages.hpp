@@ -8,6 +8,7 @@ static constexpr size_t MAX_LOG_SIZE = 128;
 
 static constexpr const char *log_type_name[16] = {
 	"GPS",
+	"CAM",
 	"STARTUP",
 	"ARTIC",
 	"UNDERWATER",
