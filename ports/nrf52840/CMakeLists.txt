@@ -182,7 +182,7 @@ target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
     ${PROJ_DIR}/core/hardware/oem_rtd
     ${PROJ_DIR}/core/hardware/ezo_rtd
     ${PROJ_DIR}/core/hardware/cdt
-    ${PROJ_DIR}/core/hardware/bmx160
+    ${PROJ_DIR}/core/hardware/bma400
     ${PROJ_DIR}/core/hardware/stwlc68_otp
     ${PROJ_DIR}/core/hardware/tsys01
     ${PROJ_DIR}/core/hardware/run_cam
@@ -275,8 +275,8 @@ target_sources(${TARGET_NAME} PRIVATE
     ${PROJ_DIR}/core/hardware/ms58xx/ms58xx.cpp
     ${PROJ_DIR}/core/hardware/bar100/bar100.cpp
     ${PROJ_DIR}/core/hardware/ad5933/ad5933.cpp
-    ${PROJ_DIR}/core/hardware/bmx160/bmx160.cpp
-    ${PROJ_DIR}/core/hardware/bmx160/bmx160.c
+    ${PROJ_DIR}/core/hardware/bma400/bma400.cpp
+    ${PROJ_DIR}/core/hardware/bma400/bma400.c
     ${PROJ_DIR}/core/hardware/cdt/cdt.cpp
     ${PROJ_DIR}/core/hardware/ltr_303/ltr_303.cpp
     ${PROJ_DIR}/core/hardware/oem_ph/oem_ph.cpp
