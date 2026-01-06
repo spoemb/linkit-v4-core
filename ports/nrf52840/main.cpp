@@ -8,6 +8,7 @@
 #include "gps_service.hpp"
 #include "pressure_sensor_service.hpp"
 #include "axl_sensor_service.hpp"
+#include "cam_service.hpp"
 #include "argos_tx_service.hpp"
 #include "argos_rx_service.hpp"
 #include "sys_log.hpp"
@@ -53,6 +54,7 @@
 #include "dive_mode_service.hpp"
 #include "gpio_buzzer.hpp"
 #include "TSYS01.hpp"
+#include "runcam.hpp"
 
 #if defined(GPS_M8Q)
 #include "m8qasync.hpp"
@@ -77,7 +79,7 @@ ReedSwitch *reed_switch;
 DTEHandler *dte_handler;
 RTC *rtc;
 BatteryMonitor *battery_monitor;
-BaseDebugMode g_debug_mode = BaseDebugMode::UART;
+BaseDebugMode g_debug_mode = BaseDebugMode::USB_CDC;  // Default debug output to USB CDC
 // ArticDevice *artic_device;
 Buzzer *buzzer_ctl;
 
@@ -220,11 +222,11 @@ void etl_error_handler(const etl::exception& e)
 	}
 }
 
-// Redirect std::cout and printf output to debug UART
+// Redirect std::cout and printf output to USB CDC or BLE NUS
 // We have to define this as extern "C" as we are overriding a weak C function
 extern "C" int _write(int file, char *ptr, int len)
 {
-	if (g_debug_mode == BaseDebugMode::UART && m_is_debug_init)
+	if (g_debug_mode == BaseDebugMode::USB_CDC && m_is_debug_init)
 		NrfUSB::write(ptr, len);
 	else if (ble_service && !__get_IPSR() && g_debug_mode == BaseDebugMode::BLE_NUS) {
 		ble_service->write(std::string(ptr, len));
@@ -492,6 +494,11 @@ int main()
 	FsLog axl_sensor_log(&lfs_file_system, "AXL", 1024*1024);
 	axl_sensor_log.set_log_formatter(&axl_sensor_log_formatter);
 
+	DEBUG_TRACE("CAM Sensor Log...");
+	CAMLogFormatter cam_sensor_log_formatter;
+	FsLog cam_sensor_log(&lfs_file_system, "CAM", 1024*1024);
+	cam_sensor_log.set_log_formatter(&cam_sensor_log_formatter);
+
 	DEBUG_TRACE("RAM access...");
 	NrfMemoryAccess nrf_memory_access;
 	memory_access = &nrf_memory_access;
@@ -653,6 +660,14 @@ int main()
 		static AXLSensorService axl_sensor_service(bmx160, &axl_sensor_log);
 	} catch (...) {
 		DEBUG_TRACE("BMX160: not detected");
+	}
+
+	DEBUG_TRACE("RunCam...");
+	try {
+		static RunCam run_cam;
+		static CAMService cam_service(run_cam, &cam_sensor_log);
+	} catch (...) {
+		DEBUG_TRACE("RunCam: not detected");
 	}
 
 	DEBUG_TRACE("Memory monitor...");

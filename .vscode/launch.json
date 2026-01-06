@@ -13,10 +13,18 @@
             "runToEntryPoint": "main",
             "showDevDebugOutput": "raw",
             "servertype": "jlink",
-            "device": "nrf",
+            "device": "nrf52840_xxaa",
             "interface": "swd",
             "armToolchainPath": "${env:GNU_INSTALL_ROOT}",
             "svdFile": "${workspaceFolder}/ports/nrf52840/drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf52840.svd",
+            "preLaunchTask": "",
+            "postLaunchCommands": [
+                "monitor reset",
+                "monitor halt"
+            ],
+            "rttConfig": {
+                "enabled": false
+            }
         },
 
         {
@@ -26,7 +34,7 @@
             "request": "attach",
             "type": "cortex-debug",
             "servertype": "jlink",
-            "device": "nrf52",
+            "device": "nrf52840_xxaa",
             "interface": "swd",
             "armToolchainPath": "${env:GNU_INSTALL_ROOT}",
             "svdFile": "${workspaceFolder}/ports/nrf52840/drivers/nRF5_SDK_17.0.2/modules/nrfx/mdk/nrf52840.svd",

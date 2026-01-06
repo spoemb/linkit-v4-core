@@ -163,6 +163,12 @@ enum class ParamID {
 	PRESSURE_SENSOR_ENABLE_TX_MODE,
 	PRESSURE_SENSOR_ENABLE_TX_MAX_SAMPLES,
 	PRESSURE_SENSOR_ENABLE_TX_SAMPLE_PERIOD,
+	CAM_ENABLE,
+	CAM_TRIGGER_ON_SURFACED,
+	CAM_TRIGGER_ON_AXL_WAKEUP,
+	CAM_PERIOD_ON,
+	CAM_PERIOD_OFF,
+	LB_CAM_EN,
 	__PARAM_SIZE,
 	__NULL_PARAM = 0xFFFF
 };
@@ -212,7 +218,8 @@ enum class BaseLogDType {
 	ALS_SENSOR,
 	PH_SENSOR,
 	RTD_SENSOR,
-	CDT_SENSOR
+	CDT_SENSOR,
+	CAM_SENSOR
 };
 
 enum class BaseEraseType {
@@ -222,7 +229,8 @@ enum class BaseEraseType {
 	ALS_SENSOR,
 	PH_SENSOR,
 	RTD_SENSOR,
-	CDT_SENSOR
+	CDT_SENSOR,
+	CAM_SENSOR
 };
 
 enum class BaseArgosMode {
@@ -387,8 +395,8 @@ enum class BaseZoneType {
 };
 
 enum class BaseDebugMode {
-	UART,
-	BLE_NUS
+	USB_CDC,  // USB CDC debug output (default for Linkit V4, was UART on V3)
+	BLE_NUS   // Bluetooth Low Energy Nordic UART Service
 };
 
 enum class BaseSensorEnableTxMode {

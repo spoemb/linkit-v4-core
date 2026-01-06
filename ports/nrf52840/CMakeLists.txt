@@ -185,6 +185,7 @@ target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
     ${PROJ_DIR}/core/hardware/bmx160
     ${PROJ_DIR}/core/hardware/stwlc68_otp
     ${PROJ_DIR}/core/hardware/tsys01
+    ${PROJ_DIR}/core/hardware/run_cam
 )
 
 target_sources(${TARGET_NAME} PRIVATE
@@ -262,6 +263,7 @@ target_sources(${TARGET_NAME} PRIVATE
     ${CORE_DIR}/services/argos_tx_service.cpp
     ${CORE_DIR}/services/argos_rx_service.cpp
     ${CORE_DIR}/services/uwdetector_service.cpp
+    ${CORE_DIR}/services/cam_service.cpp
     ${CORE_DIR}/logging/logger.cpp
     ${CORE_DIR}/util/haversine.cpp
     ${CORE_DIR}/filesystem/ota_flash_file_updater.cpp
@@ -295,6 +297,7 @@ target_sources(${TARGET_NAME} PRIVATE
     ${PROJ_DIR}/core/hardware/nrf_battery_mon.cpp
     ${PROJ_DIR}/core/hardware/nrf_i2c.cpp
     ${PROJ_DIR}/core/hardware/nrf_usb.cpp
+    ${PROJ_DIR}/core/hardware/run_cam/runcam.cpp
     ${PROJ_DIR}/core/interface/ble_interface.cpp
     ${PROJ_DIR}/core/interface/ble_stm_ota.c
     ${PROJ_DIR}/core/memmang/heap_4.c
@@ -457,6 +460,24 @@ target_link_libraries(${TARGET_NAME}
     c
     nosys
 )
+
+function(create_bin executable)
+    add_custom_command(
+        TARGET ${executable}
+        POST_BUILD
+        COMMENT "Generating ${executable}.bin"
+        COMMAND ${CMAKE_OBJCOPY} -O binary ${CMAKE_CURRENT_BINARY_DIR}/${executable}.elf ${CMAKE_CURRENT_BINARY_DIR}/${executable}.bin
+    )
+endfunction(create_bin)
+
+function(create_hex executable)
+    add_custom_command(
+        TARGET ${executable}
+        POST_BUILD
+        COMMENT "Generating ${executable}.hex"
+        COMMAND ${CMAKE_OBJCOPY} -O ihex ${CMAKE_CURRENT_BINARY_DIR}/${executable}.elf ${CMAKE_CURRENT_BINARY_DIR}/${executable}.hex
+    )
+endfunction(create_hex)
 
 function(create_dfu executable)
     add_custom_command(

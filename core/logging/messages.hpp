@@ -24,6 +24,7 @@ static constexpr const char *log_type_name[16] = {
 
 enum LogType : uint8_t {
 	LOG_GPS,
+	LOG_CAM,
 	LOG_STARTUP,
 	LOG_ARTIC,
 	LOG_UNDERWATER,
@@ -108,6 +109,24 @@ struct __attribute__((packed)) GPSLogEntry {
 	};
 };
 static_assert(sizeof(GPSInfo) <= MAX_LOG_PAYLOAD, "GPSInfo wrong size");
+
+enum class CAMEventType : uint8_t { OFF, ON };
+
+struct __attribute__((packed)) CAMInfo {
+	CAMEventType event_type;
+	uint16_t   batt_voltage;
+	uint16_t   counter;
+	std::time_t schedTime;
+};
+
+struct __attribute__((packed)) CAMLogEntry {
+	LogHeader header;
+	union {
+		CAMInfo info;
+		uint8_t data[MAX_LOG_PAYLOAD];
+	};
+};
+static_assert(sizeof(CAMInfo) <= MAX_LOG_PAYLOAD, "CAMInfo wrong size");
 
 enum class StartupCause : uint8_t { BROWNOUT, WATCHDOG, HARD_RESET, FACTORY_RESET, SOFT_RESET };
 

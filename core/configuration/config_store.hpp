@@ -263,7 +263,7 @@ protected:
 		/* AXL_SENSOR_WAKEUP_SAMPLES */ 5U,
 		/* PRESSURE_SENSOR_ENABLE */ (bool)false,
 		/* PRESSURE_SENSOR_PERIODIC */ 0U,
-		/* DEBUG_OUTPUT_MODE */ BaseDebugMode::UART,
+		/* DEBUG_OUTPUT_MODE */ BaseDebugMode::USB_CDC,  // Default: USB CDC (was UART on Linkit V3)
 		/* GNSS_ASSISTNOW_OFFLINE_EN */ (bool)false,
 		/* WCHG_STATUS */ ""s,
 #if MODEL_UW
@@ -309,6 +309,13 @@ protected:
 		/* PRESSURE_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
 		/* PRESSURE_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
 		/* PRESSURE_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
+
+		/* CAM_ENABLE */ (bool)false,
+		/* CAM_TRIGGER_ON_SURFACED */ (bool)false,
+		/* CAM_TRIGGER_ON_AXL_WAKEUP */ (bool)false,
+		/* CAM_PERIOD_ON */ 1U * 60U,
+		/* CAM_PERIOD_OFF */ 5U * 60U,
+		/* LB_CAM_EN */ (bool)false,
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,

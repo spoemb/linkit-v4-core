@@ -193,6 +193,14 @@ const BaseMap param_map[] = {
 	{ "PRESSURE_SENSOR_ENABLE_TX_MODE", "PRP04", BaseEncoding::SENSORENABLETXMODE, 0, 0, {}, true, true },
 	{ "PRESSURE_SENSOR_ENABLE_TX_MAX_SAMPLES", "PRP05", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 	{ "PRESSURE_SENSOR_ENABLE_TX_SAMPLE_PERIOD", "PRP06", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
+
+	// Camera sensor
+	{ "CAM_ENABLE", "CAP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
+	{ "CAM_TRIGGER_ON_SURFACED", "CAP02", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
+	{ "CAM_TRIGGER_ON_AXL_WAKEUP", "CAP03", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
+	{ "CAM_PERIOD_ON", "CAP04", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true },
+	{ "CAM_PERIOD_OFF", "CAP05", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true },
+	{ "LB_CAM_EN", "LBP13", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

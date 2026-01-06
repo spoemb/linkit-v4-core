@@ -980,9 +980,9 @@ private:
 
 	static BaseDebugMode decode_debug_mode(const std::string& s) {
 		if (s == "0") {
-			return BaseDebugMode::UART;
+			return BaseDebugMode::USB_CDC;  // 0 = USB CDC debug output
 		} else if (s == "1") {
-			return BaseDebugMode::BLE_NUS;
+			return BaseDebugMode::BLE_NUS;  // 1 = Bluetooth UART Service
 		} else {
 			DEBUG_ERROR("DTE_PROTOCOL_VALUE_OUT_OF_RANGE in %s(%s)", __FUNCTION__, s.c_str());
 			throw DTE_PROTOCOL_VALUE_OUT_OF_RANGE;

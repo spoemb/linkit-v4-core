@@ -273,7 +273,7 @@ void OperationalState::exit() {
 	ServiceManager::stopall();
 	BaseDebugMode debug_mode = configuration_store->read_param<BaseDebugMode>(ParamID::DEBUG_OUTPUT_MODE);
 	if (debug_mode == BaseDebugMode::BLE_NUS) {
-		g_debug_mode = BaseDebugMode::UART;
+		g_debug_mode = BaseDebugMode::USB_CDC;  // Reset to USB CDC when exiting BLE debug mode
 		ble_service->stop();
 		DEBUG_TRACE("exit: OperationalState: BLE service stopped");
 		PMU::delay_ms(100);
