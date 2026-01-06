@@ -1,8 +1,34 @@
-# CLS-Argos-Linkit-CORE
+# Linkit V4 Core
 
-Welcome to the CLS-Argos-Linkit-CORE repository! This repository serves as the firmware repository for the Linkit Core device. It is compatible with the GenTracker phone app and works seamlessly with the Pylinkit python tool. Here, you'll find all the necessary firmware files for the Linkit Core device, enabling you to customize and optimize your tracking solutions.
+Welcome to the Linkit V4 Core repository! This repository contains the firmware for the Linkit V4 device, representing the next generation evolution of the [CLS-Argos-Linkit-CORE](https://github.com/arribada/CLS-Argos-Linkit-CORE) platform.
 
-Linkit represents the evolution and consolidation of the Horizon board and the satellite daughter board, which is based on the Artic R2 chipset. It functions as a tracker or beacon utilizing Argos satellite communication. This firmware is also compatible for the Horizon board.
+## Project Evolution
+
+Linkit V4 is an update of the original Linkit platform (previously used with Horizon and Linkit V3 boards with Artic R2 chipset for satellite communication). While the previous generation relied on the Artic R2 chipset, **Linkit V4** introduces significant architectural changes to support new satellite communication modules:
+
+- **KIM module** (CLS) - See [kim-only branch](https://github.com/arribada/linkit-v4-hw/tree/kim-only)
+- **SMD module** (Arribada) - See [smd-only branch](https://github.com/arribada/linkit-v4-hw/tree/smd-only)
+
+Hardware repository: [linkit-v4-hw](https://github.com/arribada/linkit-v4-hw)
+
+## Key Architectural Changes
+
+The main differences between Linkit V3 and Linkit V4:
+
+### Communication Interfaces
+- **GPS Module**: Upgraded from ML8 to **M10Q** (u-blox), now connected via UART
+- **Satellite Module**: Changed from SPI to **UART communication** for both KIM and SMD modules
+- **Debug Interface**: UART debug has been reassigned to **USB** to free up hardware UART resources
+
+### Interface Summary
+| Component | Interface | Notes |
+|-----------|-----------|-------|
+| GPS (M10Q) | UART | Previously ML8 on different interface |
+| Satellite Module (KIM/SMD) | UART | Previously SPI for Artic R2 |
+| Debug | USB | Previously dedicated UART |
+| Bluetooth | Existing | No change |
+
+This firmware is compatible with the GenTracker phone app and works seamlessly with the Pylinkit python tool.
 
 **Wiki Navigation**
 
@@ -15,19 +41,33 @@ For detailed instructions and documentation, please refer to the [wiki](https://
 
 Feel free to ask questions on the [Linkit Forum.](https://forum.arribada.org/c/linkit-core/8)
 
-# Hardware compatibility
+# Hardware Compatibility
 
-* Horizon Board
-* Linkit CORE
+## Linkit V4
+* Linkit V4 with KIM module (CLS)
+* Linkit V4 with SMD module (Arribada)
+
+## Legacy Hardware (use [CLS-Argos-Linkit-CORE](https://github.com/arribada/CLS-Argos-Linkit-CORE))
+* Horizon Board (Artic R2)
+* Linkit V3 CORE (Artic R2)
 * Linkit Underwater
 * Linkit Surfacebox
 
 # Latest Version
 
-* [Linkit Core](https://github.com/arribada/CLS-Argos-Linkit-Hardware): V3.2d
-* [Linkit Core Firmware](https://github.com/arribada/CLS-Argos-Linkit-CORE) : [V3.4.3](https://github.com/arribada/CLS-Argos-Linkit-CORE/releases/tag/v3.4.3)
-* [PyLinkit](https://github.com/arribada/CLS-Argos-Linkit-pylinkit) : [V3.4.0](https://github.com/arribada/CLS-Argos-Linkit-pylinkit/releases/tag/v3.4.0)
-* GenTracker : Last updated on 29/01/2024
+## Linkit V4
+* [Linkit V4 Hardware](https://github.com/arribada/linkit-v4-hw):
+  - [KIM module branch](https://github.com/arribada/linkit-v4-hw/tree/kim-only)
+  - [SMD module branch](https://github.com/arribada/linkit-v4-hw/tree/smd-only)
+* Linkit V4 Core Firmware: In development
+* [PyLinkit](https://github.com/arribada/CLS-Argos-Linkit-pylinkit): Compatible with V4
+* GenTracker: Compatible with V4
+
+## Legacy (Linkit V3)
+* [Linkit V3 Core Hardware](https://github.com/arribada/CLS-Argos-Linkit-Hardware): V3.2d
+* [Linkit V3 Core Firmware](https://github.com/arribada/CLS-Argos-Linkit-CORE): [V3.4.3](https://github.com/arribada/CLS-Argos-Linkit-CORE/releases/tag/v3.4.3)
+* [PyLinkit](https://github.com/arribada/CLS-Argos-Linkit-pylinkit): [V3.4.0](https://github.com/arribada/CLS-Argos-Linkit-pylinkit/releases/tag/v3.4.0)
+* GenTracker: Last updated on 29/01/2024
 
 
 # License
