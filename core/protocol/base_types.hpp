@@ -227,7 +227,10 @@ enum class BaseLogDType {
 	PH_SENSOR,
 	RTD_SENSOR,
 	CDT_SENSOR,
-	CAM_SENSOR
+	CAM_SENSOR,
+	AXL_SENSOR,
+	PRESSURE_SENSOR,
+	TSYS01_SENSOR
 };
 
 enum class BaseEraseType {
@@ -238,7 +241,10 @@ enum class BaseEraseType {
 	PH_SENSOR,
 	RTD_SENSOR,
 	CDT_SENSOR,
-	CAM_SENSOR
+	CAM_SENSOR,
+	AXL_SENSOR,
+	PRESSURE_SENSOR,
+	TSYS01_SENSOR
 };
 
 enum class BaseArgosMode {

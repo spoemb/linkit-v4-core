@@ -9,6 +9,7 @@ static constexpr size_t MAX_LOG_SIZE = 128;
 static constexpr const char *log_type_name[16] = {
 	"GPS",
 	"CAM",
+	"AXL",
 	"STARTUP",
 	"ARTIC",
 	"UNDERWATER",
@@ -26,6 +27,7 @@ static constexpr const char *log_type_name[16] = {
 enum LogType : uint8_t {
 	LOG_GPS,
 	LOG_CAM,
+	LOG_AXL,
 	LOG_STARTUP,
 	LOG_ARTIC,
 	LOG_UNDERWATER,

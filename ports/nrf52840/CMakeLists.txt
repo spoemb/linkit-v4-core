@@ -315,12 +315,21 @@ target_sources(${TARGET_NAME} PRIVATE
     ${PROJ_DIR}/main.cpp
 )
 
-# Configure external GPIO5 device (CAM or BUZZER - mutually exclusive)
-if(NOT ${EXT_GPIO5_DEVICE} MATCHES "^(CAM|BUZZER)$")
-    message(FATAL_ERROR "EXT_GPIO5_DEVICE must be either CAM or BUZZER (current: ${EXT_GPIO5_DEVICE})")
+# Configure CAM and BUZZER sensors (mutually exclusive on GPIO5)
+# Default to both disabled
+if(NOT DEFINED CAM_ENABLE)
+    set(CAM_ENABLE 0)
+endif()
+if(NOT DEFINED BUZZER_ENABLE)
+    set(BUZZER_ENABLE 0)
 endif()
 
-if(${EXT_GPIO5_DEVICE} MATCHES CAM)
+# Check that both CAM and BUZZER are not enabled simultaneously
+if(CAM_ENABLE AND BUZZER_ENABLE)
+    message(FATAL_ERROR "CAM_ENABLE and BUZZER_ENABLE cannot both be set to 1 (they share GPIO5)")
+endif()
+
+if(CAM_ENABLE)
     message(STATUS "Configuring for CAM sensor on GPIO_EXT_GPIO4/5")
     set(ENABLE_CAM_SENSOR 1)
     set(ENABLE_BUZZER 0)
@@ -329,10 +338,15 @@ if(${EXT_GPIO5_DEVICE} MATCHES CAM)
     target_sources(${TARGET_NAME} PRIVATE
         ${PROJ_DIR}/core/hardware/run_cam/runcam.cpp
     )
-elseif(${EXT_GPIO5_DEVICE} MATCHES BUZZER)
+elseif(BUZZER_ENABLE)
     message(STATUS "Configuring for BUZZER on GPIO_EXT_GPIO5")
     set(ENABLE_CAM_SENSOR 0)
     set(ENABLE_BUZZER 1)
+else()
+    # Neither enabled
+    message(STATUS "GPIO_EXT_GPIO4/5 not assigned (neither CAM nor BUZZER)")
+    set(ENABLE_CAM_SENSOR 0)
+    set(ENABLE_BUZZER 0)
 endif()
 
 if(${GPS_MODEL} MATCHES M8Q)

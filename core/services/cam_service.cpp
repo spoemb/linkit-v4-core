@@ -2,6 +2,7 @@
 #include "config_store.hpp"
 #include "scheduler.hpp"
 #include "runcam.hpp"
+#include "axl_sensor_service.hpp"
 
 extern ConfigurationStore *configuration_store;
 
@@ -177,11 +178,14 @@ void CAMService::populate_cam_log_with_time(CAMLogEntry &entry, std::time_t time
 
 bool CAMService::service_is_triggered_on_event(ServiceEvent& event, bool& immediate) {
 	if (event.event_source == ServiceIdentifier::AXL_SENSOR &&
-			event.event_type == ServiceEventType::SERVICE_LOG_UPDATED &&
-			std::get<bool>(event.event_data)) {
-		bool trigger_on_axl = service_read_param<bool>(ParamID::CAM_TRIGGER_ON_AXL_WAKEUP);
-		immediate = trigger_on_axl;
-		return trigger_on_axl;
+			event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+		// Check if AXL wakeup was triggered by reading the ServiceSensorData
+		auto* sensor_data = std::get_if<ServiceSensorData>(&event.event_data);
+		if (sensor_data && sensor_data->port[AXLSensorPort::WAKEUP_TRIGGERED]) {
+			bool trigger_on_axl = service_read_param<bool>(ParamID::CAM_TRIGGER_ON_AXL_WAKEUP);
+			immediate = trigger_on_axl;
+			return trigger_on_axl;
+		}
 	}
 
 	return false;

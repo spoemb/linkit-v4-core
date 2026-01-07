@@ -112,6 +112,7 @@ private:
 #pragma GCC diagnostic ignored "-Warray-bounds"
 	void sensor_populate_log_entry(LogEntry *e, ServiceSensorData& data) override {
 		AXLLogEntry *log = (AXLLogEntry *)e;
+		log->header.log_type = LOG_AXL;
 		log->x = data.port[(unsigned int)AXLSensorPort::X];
 		log->y = data.port[(unsigned int)AXLSensorPort::Y];
 		log->z = data.port[(unsigned int)AXLSensorPort::Z];

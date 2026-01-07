@@ -17,7 +17,7 @@ enum class ServiceEventType {
 };
 
 struct ServiceSensorData {
-	double port[5];
+	double port[6];
 };
 
 using ServiceEventData = std::variant<bool,GPSLogEntry,ServiceSensorData,CAMLogEntry>;

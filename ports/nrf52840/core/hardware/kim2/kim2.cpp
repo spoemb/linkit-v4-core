@@ -330,14 +330,17 @@ void KIM2Device::state_init()
 
     // Read RCONF or similar from configuration_store ?
     std::string rconf = "03921fb104b92859209b18abd009de96"; // ESS4 - LDK - 27dBm
-    if(!(send_AT(AT_SET_RCONF, rconf) || send_AT(AT_SET_KMAC_BASIC)))
+    bool rconf_error = send_AT(AT_SET_RCONF, rconf);
+    bool kmac_error = send_AT(AT_SET_KMAC_BASIC);
+
+    if(!rconf_error && !kmac_error)
     {
         DEBUG_TRACE("KIM2Device::state_init RCONF and KMAC set");
         KIM2_STATE_CHANGE(init, idle);
     }
     else
     {
-        DEBUG_ERROR("KIM2Device::state_init : can not set RCONF or KMAC");
+        DEBUG_ERROR("KIM2Device::state_init : can not set RCONF=%d or KMAC=%d", rconf_error, kmac_error);
         KIM2_STATE_CHANGE(init, error);
     }
 

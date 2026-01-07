@@ -6,9 +6,10 @@ git show-ref --tags -d | grep ^`git rev-parse HEAD` | sed -e "s,.* refs/tags/,,"
 if [ -z "$(cat TAG_NAME)"]; then
     git describe --dirty > TAG_NAME
 fi
-# Default to CAM if not set
-EXT_GPIO5_DEVICE=${EXT_GPIO5_DEVICE:-CAM}
-cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=LINKIT -DCMAKE_BUILD_TYPE=Release -DMODEL=CORE -DHWVERS=4 -DEXT_GPIO5_DEVICE=${EXT_GPIO5_DEVICE} ../..
+# Default to both disabled (0)
+CAM_ENABLE=${CAM_ENABLE:-1}
+BUZZER_ENABLE=${BUZZER_ENABLE:-0}
+cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=LINKIT -DCMAKE_BUILD_TYPE=Release -DMODEL=CORE -DHWVERS=4 -DCAM_ENABLE=${CAM_ENABLE} -DBUZZER_ENABLE=${BUZZER_ENABLE} ../..
 make -j 4
 nrfutil settings generate --family NRF52840 --application LinkIt_CORE_board.hex --application-version 0 --bootloader-version 1 --bl-settings-version 2 --app-boot-validation VALIDATE_ECDSA_P256_SHA256 --sd-boot-validation VALIDATE_ECDSA_P256_SHA256 --softdevice ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/hex/s140_nrf52_7.2.0_softdevice.hex --key-file ../../nrfutil_pkg_key.pem settings.hex
 mergehex -m ../../bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex LinkIt_CORE_board.hex -o m1.hex
