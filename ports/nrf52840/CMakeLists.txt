@@ -17,6 +17,11 @@ set(LIB_DIR       ../../libraries)
 
 option(BOARD "Board to compile for" NONE)
 
+# Configure GPIO5 device (default: CAM)
+if(NOT DEFINED EXT_GPIO5_DEVICE)
+    set(EXT_GPIO5_DEVICE "CAM")
+endif()
+
 if(${MODEL} MATCHES SB OR ${MODEL} MATCHES UW OR ${MODEL} MATCHES CORE)
     set(MODEL_SB 0)
     set(MODEL_UW 0)
@@ -297,7 +302,6 @@ target_sources(${TARGET_NAME} PRIVATE
     ${PROJ_DIR}/core/hardware/nrf_battery_mon.cpp
     ${PROJ_DIR}/core/hardware/nrf_i2c.cpp
     ${PROJ_DIR}/core/hardware/nrf_usb.cpp
-    ${PROJ_DIR}/core/hardware/run_cam/runcam.cpp
     ${PROJ_DIR}/core/interface/ble_interface.cpp
     ${PROJ_DIR}/core/interface/ble_stm_ota.c
     ${PROJ_DIR}/core/memmang/heap_4.c
@@ -310,6 +314,26 @@ target_sources(${TARGET_NAME} PRIVATE
     ${PROJ_DIR}/gcc_startup_nrf52840.S
     ${PROJ_DIR}/main.cpp
 )
+
+# Configure external GPIO5 device (CAM or BUZZER - mutually exclusive)
+if(NOT ${EXT_GPIO5_DEVICE} MATCHES "^(CAM|BUZZER)$")
+    message(FATAL_ERROR "EXT_GPIO5_DEVICE must be either CAM or BUZZER (current: ${EXT_GPIO5_DEVICE})")
+endif()
+
+if(${EXT_GPIO5_DEVICE} MATCHES CAM)
+    message(STATUS "Configuring for CAM sensor on GPIO_EXT_GPIO4/5")
+    set(ENABLE_CAM_SENSOR 1)
+    set(ENABLE_BUZZER 0)
+
+    # Add CAM-specific sources
+    target_sources(${TARGET_NAME} PRIVATE
+        ${PROJ_DIR}/core/hardware/run_cam/runcam.cpp
+    )
+elseif(${EXT_GPIO5_DEVICE} MATCHES BUZZER)
+    message(STATUS "Configuring for BUZZER on GPIO_EXT_GPIO5")
+    set(ENABLE_CAM_SENSOR 0)
+    set(ENABLE_BUZZER 1)
+endif()
 
 if(${GPS_MODEL} MATCHES M8Q)
     target_sources(${TARGET_NAME} PRIVATE
@@ -349,6 +373,8 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     MODEL_UW=${MODEL_UW}
     MODEL_CORE=${MODEL_CORE}
     GPS_${GPS_MODEL}
+    ENABLE_CAM_SENSOR=${ENABLE_CAM_SENSOR}
+    ENABLE_BUZZER=${ENABLE_BUZZER}
     BUILD_TYPE=${CMAKE_BUILD_TYPE}
     #SCHEDULER_DEBUG
     DEBUG_ENABLE=1

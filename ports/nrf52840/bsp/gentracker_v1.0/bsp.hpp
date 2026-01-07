@@ -27,15 +27,24 @@
 #define SAT_PWR_EN     BSP::GPIO::GPIO_SAT_EN
 #define SAT_RESET      BSP::GPIO::GPIO_SAT_RESET
 #define SAT_EXTWAKEUP  BSP::GPIO::GPIO_SAT_WKUP
-#define CAM_PWR_EN     BSP::GPIO::GPIO_EXT_GPIO1
-#define CAM_PWR_BUTT   BSP::GPIO::GPIO_EXT_GPIO2
+// Camera pins (optional, conflicts with buzzer on GPIO5)
+// Note: GPIO1/2/3 (P0.6/7/8) are used by ARTIC SPI - do not use!
+// Configure via CMake option: -DEXT_GPIO5_DEVICE=CAM or -DEXT_GPIO5_DEVICE=BUZZER
+#if ENABLE_CAM_SENSOR
+#define CAM_PWR_EN     BSP::GPIO::GPIO_EXT_GPIO4  // P0.9
+#define CAM_PWR_BUTT   BSP::GPIO::GPIO_EXT_GPIO5  // P0.16
+#endif
 // #define EXT_LED_PIN    BSP::GPIO::GPIO_EXT1_GPIO3
 #define EXT_I2C_BUS     BSP::I2C::I2C_0
 #define ONBOARD_I2C_BUS BSP::I2C::I2C_1
 #define BMA400_WAKEUP_PIN  BSP::GPIO::GPIO_ACC_INT1
 // #define WCHG_INTB_PIN	BSP::GPIO::GPIO_WCHG_INTB
 #define GPS_POWER		BSP::GPIO::GPIO_GPS_PWR_EN
+// Buzzer and CAM are mutually exclusive (both can use GPIO_EXT_GPIO5)
+// Configure via CMake option: -DEXT_GPIO5_DEVICE=BUZZER
+#if ENABLE_BUZZER
 #define BUZZER_EN_PIN   BSP::GPIO::GPIO_EXT_GPIO5
+#endif
 #define ADC_ENABLE      BSP::GPIO::GPIO_ADC_EN
 #define VSYS_SEL        BSP::GPIO::GPIO_VSYS_SEL
 #define BAT_READ_ENABLE BSP::GPIO::GPIO_BAT_READ_EN

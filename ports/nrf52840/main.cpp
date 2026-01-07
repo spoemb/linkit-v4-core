@@ -54,7 +54,9 @@
 #include "dive_mode_service.hpp"
 #include "gpio_buzzer.hpp"
 #include "TSYS01.hpp"
+#ifdef CAM_PWR_EN
 #include "runcam.hpp"
+#endif
 
 #if defined(GPS_M8Q)
 #include "m8qasync.hpp"
@@ -494,10 +496,12 @@ int main()
 	FsLog axl_sensor_log(&lfs_file_system, "AXL", 1024*1024);
 	axl_sensor_log.set_log_formatter(&axl_sensor_log_formatter);
 
+#ifdef CAM_PWR_EN
 	DEBUG_TRACE("CAM Sensor Log...");
 	CAMLogFormatter cam_sensor_log_formatter;
 	FsLog cam_sensor_log(&lfs_file_system, "CAM", 1024*1024);
 	cam_sensor_log.set_log_formatter(&cam_sensor_log_formatter);
+#endif
 
 	DEBUG_TRACE("RAM access...");
 	NrfMemoryAccess nrf_memory_access;
@@ -662,6 +666,7 @@ int main()
 		DEBUG_TRACE("BMA400: not detected");
 	}
 
+#ifdef CAM_PWR_EN
 	DEBUG_TRACE("RunCam...");
 	try {
 		static RunCam run_cam;
@@ -669,6 +674,7 @@ int main()
 	} catch (...) {
 		DEBUG_TRACE("RunCam: not detected");
 	}
+#endif
 
 	DEBUG_TRACE("Memory monitor...");
 	MemoryMonitorService memory_monitor_service;
