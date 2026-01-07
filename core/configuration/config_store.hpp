@@ -263,9 +263,6 @@ protected:
 		/* AXL_SENSOR_WAKEUP_SAMPLES */ 5U,
 		/* AXL_SENSOR_MEASUREMENT_RANGE */ 0U,
 		/* AXL_SENSOR_POWER_MODE */ 0U,
-		/* AXL_SENSOR_X_CALIBRATION */ (double)0.0,
-		/* AXL_SENSOR_Y_CALIBRATION */ (double)0.0,
-		/* AXL_SENSOR_Z_CALIBRATION */ (double)0.0,
 		/* PRESSURE_SENSOR_ENABLE */ (bool)false,
 		/* PRESSURE_SENSOR_PERIODIC */ 0U,
 		/* DEBUG_OUTPUT_MODE */ BaseDebugMode::USB_CDC,  // Default: USB CDC (was UART on Linkit V3)

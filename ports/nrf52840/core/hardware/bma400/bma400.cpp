@@ -12,6 +12,9 @@
 #include "bsp.hpp"
 #include "pmu.hpp"
 #include "error.hpp"
+#include "config_store.hpp"
+
+extern ConfigurationStore *configuration_store;
 
 // ============================================================================
 // BMA400 Device Manager
@@ -48,13 +51,13 @@ BMA400LL::BMA400LL(unsigned int bus, unsigned char addr, int wakeup_pin)
 	, m_irq(NrfIRQ(wakeup_pin))
 	, m_unique_id(BMA400LLManager::register_device(*this))
 	, m_irq_pending(false)
-	, m_g_range(BMA400_RANGE_4G)
+	, m_g_range(BMA400_RANGE_2G)  // Default to 2G (matches config default)
 	, m_power_mode(0)
 	, m_wakeup_threshold(0.1)
 	, m_wakeup_duration(1)
 	, m_cal_x(0)
 	, m_cal_y(0)
-	, m_cal_z(0)
+	, m_cal_z(1.0)
 {
 	try {
 		init();
@@ -143,6 +146,8 @@ void BMA400LL::delay_us(uint32_t period, void *intf_ptr)
 double BMA400LL::lsb_to_ms2(int16_t accel_data, uint8_t g_range, uint8_t bit_width)
 {
 	const double gravity = 9.80665;
+	// BMA400: for range ±Xg, sensitivity is (2*X*g) / 2^bit_width per LSB
+	// For ±2g with 12-bit: 1g = 2048/2 = 1024 LSB
 	int16_t half_scale = 1 << (bit_width - 1);
 	return (gravity * accel_data * g_range) / half_scale;
 }
@@ -194,19 +199,19 @@ void BMA400LL::setup_low_power_mode()
 {
 	int8_t rslt;
 
-	rslt = bma400_set_power_mode(BMA400_MODE_LOW_POWER, &m_bma400_dev);
-	check_result("set_power_mode(LOW_POWER)", rslt);
+	// Use NORMAL mode for consistent readings with calibration
+	rslt = bma400_set_power_mode(BMA400_MODE_NORMAL, &m_bma400_dev);
+	check_result("set_power_mode(NORMAL)", rslt);
 
-	// Configure accelerometer for low power
+	// Configure accelerometer - same settings as calibration for consistency
 	m_sensor_conf[0].type = BMA400_ACCEL;
-	m_sensor_conf[0].param.accel.data_src = BMA400_DATA_SRC_ACCEL_FILT_1;
-	m_sensor_conf[0].param.accel.odr = BMA400_ODR_25HZ;
+	m_sensor_conf[0].param.accel.data_src = BMA400_DATA_SRC_ACCEL_FILT_2;
+	m_sensor_conf[0].param.accel.odr = BMA400_ODR_100HZ;
 	m_sensor_conf[0].param.accel.range = m_g_range;
-	m_sensor_conf[0].param.accel.osr_lp = BMA400_ACCEL_OSR_SETTING_0;
-	m_sensor_conf[0].param.accel.filt1_bw = BMA400_ACCEL_FILT1_BW_1;
+	m_sensor_conf[0].param.accel.osr = BMA400_ACCEL_OSR_SETTING_0;
 
 	rslt = bma400_set_sensor_conf(m_sensor_conf, 1, &m_bma400_dev);
-	check_result("set_sensor_conf(LOW_POWER)", rslt);
+	check_result("set_sensor_conf(NORMAL)", rslt);
 }
 
 void BMA400LL::setup_normal_mode()
@@ -237,22 +242,18 @@ void BMA400LL::setup_normal_mode()
 void BMA400LL::read_xyz(double& x, double& y, double& z, int16_t& temperature)
 {
 	int8_t rslt;
+	struct bma400_sensor_data data;
+	uint8_t g_force = range_to_g(m_g_range);
 
-	// Set normal mode for reading
-	rslt = bma400_set_power_mode(BMA400_MODE_NORMAL, &m_bma400_dev);
-	check_result("set_power_mode(NORMAL)", rslt);
+	DEBUG_TRACE("BMA400::read_xyz: m_g_range=%u, g_force=%u, m_power_mode=%u, cal(%.4f,%.4f,%.4f)",
+	            m_g_range, g_force, m_power_mode, m_cal_x, m_cal_y, m_cal_z);
 
-	// Configure sensor
-	struct bma400_sensor_conf conf;
-	conf.type = BMA400_ACCEL;
-	rslt = bma400_get_sensor_conf(&conf, 1, &m_bma400_dev);
-
-	conf.param.accel.odr = BMA400_ODR_100HZ;
-	conf.param.accel.range = m_g_range;
-	conf.param.accel.data_src = BMA400_DATA_SRC_ACCEL_FILT_2;
-
-	rslt = bma400_set_sensor_conf(&conf, 1, &m_bma400_dev);
-	check_result("set_sensor_conf", rslt);
+	// Use same mode as calibration for consistent readings
+	if (m_power_mode == 0) {
+		setup_low_power_mode();
+	} else {
+		setup_normal_mode();
+	}
 
 	// Enable data ready interrupt
 	struct bma400_int_enable int_en;
@@ -261,41 +262,51 @@ void BMA400LL::read_xyz(double& x, double& y, double& z, int16_t& temperature)
 	rslt = bma400_enable_interrupt(&int_en, 1, &m_bma400_dev);
 	check_result("enable_interrupt(DRDY)", rslt);
 
+	// Wait for sensor to stabilize after mode change
+	PMU::delay_ms(20);
+
 	// Poll for data ready
 	uint16_t int_status = 0;
-	struct bma400_sensor_data data;
-	uint8_t g_force = range_to_g(m_g_range);
-
+	bool data_ready = false;
 	for (int i = 0; i < BMA400_POLL_MAX_ATTEMPTS; i++) {
 		rslt = bma400_get_interrupt_status(&int_status, &m_bma400_dev);
-
 		if (int_status & BMA400_ASSERTED_DRDY_INT) {
 			rslt = bma400_get_accel_data(BMA400_DATA_ONLY, &data, &m_bma400_dev);
-
-			// Convert to m/s²
-			double x_ms2 = lsb_to_ms2(data.x, g_force, 12);
-			double y_ms2 = lsb_to_ms2(data.y, g_force, 12);
-			double z_ms2 = lsb_to_ms2(data.z, g_force, 12);
-
-			// Convert to g-force
-			constexpr double G_PER_MS2 = 9.80665;
-			x = x_ms2 / G_PER_MS2;
-			y = y_ms2 / G_PER_MS2;
-			z = z_ms2 / G_PER_MS2;
-
-			DEBUG_INFO("BMA400::read_xyz: raw(%d,%d,%d) g(%.2f,%.2f,%.2f)",
-			           data.x, data.y, data.z, x, y, z);
-
-			// Return to sleep mode
-			rslt = bma400_set_power_mode(BMA400_MODE_SLEEP, &m_bma400_dev);
-			(void)rslt;
-			return;
+			data_ready = true;
+			break;
 		}
+		PMU::delay_ms(1);
+	}
+	if (!data_ready) {
+		DEBUG_WARN("BMA400::read_xyz: timeout waiting for DRDY");
+		setup_sleep_mode();
+		return;
 	}
 
-	DEBUG_WARN("BMA400::read_xyz: timeout waiting for DRDY");
-	rslt = bma400_set_power_mode(BMA400_MODE_SLEEP, &m_bma400_dev);
-	(void)rslt;
+	// Convert to m/s²
+	double x_ms2 = lsb_to_ms2(data.x, g_force, 12);
+	double y_ms2 = lsb_to_ms2(data.y, g_force, 12);
+	double z_ms2 = lsb_to_ms2(data.z, g_force, 12);
+
+	// Convert to g-force
+	constexpr double G_PER_MS2 = 9.80665;
+	double x_raw = x_ms2 / G_PER_MS2;
+	double y_raw = y_ms2 / G_PER_MS2;
+	double z_raw = z_ms2 / G_PER_MS2;
+
+	// Apply calibration offsets (target: X=0, Y=0, Z=1)
+	// calibrated = raw - measured_at_rest + target
+	// For X,Y: target=0, so calibrated = raw - cal_x/y
+	// For Z: target=1, so calibrated = raw - cal_z + 1 = raw - (cal_z - 1)
+	x = x_raw - m_cal_x;
+	y = y_raw - m_cal_y;
+	z = z_raw - (m_cal_z - 1.0);
+
+	DEBUG_INFO("BMA400::read_xyz: raw(%d,%d,%d) raw_g(%.2f,%.2f,%.2f) cal_g(%.2f,%.2f,%.2f)",
+	           data.x, data.y, data.z, x_raw, y_raw, z_raw, x, y, z);
+
+	// Return to sleep mode
+	setup_sleep_mode();
 }
 
 int16_t BMA400LL::read_temperature()
@@ -346,31 +357,69 @@ void BMA400LL::set_z_calibration(double z) { m_cal_z = z; }
 
 void BMA400LL::calibrate_offset(uint8_t g_range, double& offset_x, double& offset_y, double& offset_z)
 {
+	int8_t rslt;
 	const uint8_t n_samples = 200;
+	const double gravity = 9.80665;
 	double accumulated_x = 0, accumulated_y = 0, accumulated_z = 0;
 	uint8_t g_force = range_to_g(g_range);
 
+	// Set NORMAL mode for calibration (100Hz ODR)
+	rslt = bma400_set_power_mode(BMA400_MODE_NORMAL, &m_bma400_dev);
+	check_result("calibrate_offset: set_power_mode", rslt);
+
+	// Configure sensor for calibration
+	struct bma400_sensor_conf conf;
+	conf.type = BMA400_ACCEL;
+	rslt = bma400_get_sensor_conf(&conf, 1, &m_bma400_dev);
+	conf.param.accel.odr = BMA400_ODR_100HZ;
+	conf.param.accel.range = g_range;
+	conf.param.accel.data_src = BMA400_DATA_SRC_ACCEL_FILT_2;
+	rslt = bma400_set_sensor_conf(&conf, 1, &m_bma400_dev);
+	check_result("calibrate_offset: set_sensor_conf", rslt);
+
+	// Enable data ready interrupt
+	struct bma400_int_enable int_en;
+	int_en.type = BMA400_DRDY_INT_EN;
+	int_en.conf = BMA400_ENABLE;
+	rslt = bma400_enable_interrupt(&int_en, 1, &m_bma400_dev);
+	check_result("calibrate_offset: enable_interrupt", rslt);
+
+	// Wait for sensor to stabilize
+	PMU::delay_ms(100);
+
+	// Collect samples using DRDY interrupt
+	DEBUG_TRACE("BMA400::calibrate_offset: collecting %u samples...", n_samples);
 	for (uint8_t i = 0; i < n_samples; ++i) {
-		PMU::delay_ms(10);
+		// Wait for data ready
+		uint16_t int_status = 0;
+		for (int j = 0; j < 100; j++) {
+			rslt = bma400_get_interrupt_status(&int_status, &m_bma400_dev);
+			if (int_status & BMA400_ASSERTED_DRDY_INT) {
+				break;
+			}
+			PMU::delay_ms(1);
+		}
 
-		union __attribute__((packed)) {
-			uint8_t buffer[6];
-			struct { int16_t x, y, z; };
-		} data;
+		struct bma400_sensor_data data;
+		rslt = bma400_get_accel_data(BMA400_DATA_ONLY, &data, &m_bma400_dev);
 
-		int8_t rslt = bma400_get_regs(BMA400_REG_ACCEL_DATA, data.buffer, sizeof(data.buffer), &m_bma400_dev);
-		check_result("calibrate_offset: get_regs", rslt);
-
-		accumulated_x += lsb_to_ms2(data.x, g_force, 12);
-		accumulated_y += lsb_to_ms2(data.y, g_force, 12);
-		accumulated_z += lsb_to_ms2(data.z, g_force, 12);
+		// Convert to g (divide by gravity to convert from m/s² to g)
+		accumulated_x += lsb_to_ms2(data.x, g_force, 12) / gravity;
+		accumulated_y += lsb_to_ms2(data.y, g_force, 12) / gravity;
+		accumulated_z += lsb_to_ms2(data.z, g_force, 12) / gravity;
 	}
+	DEBUG_TRACE("BMA400::calibrate_offset: samples collected");
 
+	// Return to sleep mode after calibration
+	setup_sleep_mode();
+
+	// Return calibration coefficients (measured averages)
+	// These will be used to correct readings to X=0, Y=0, Z=1g
 	offset_x = accumulated_x / n_samples;
 	offset_y = accumulated_y / n_samples;
 	offset_z = accumulated_z / n_samples;
 
-	DEBUG_TRACE("BMA400::calibrate_offset: x=%.4f, y=%.4f, z=%.4f", offset_x, offset_y, offset_z);
+	DEBUG_TRACE("BMA400::calibrate_offset: x=%.4f g, y=%.4f g, z=%.4f g", offset_x, offset_y, offset_z);
 }
 
 // ============================================================================
@@ -501,13 +550,45 @@ bool BMA400LL::check_and_clear_wakeup()
 BMA400::BMA400()
 	: Sensor("AXL")
 	, m_bma400(BMA400LL(BMA400_DEVICE, BMA400_ADDRESS, BMA400_WAKEUP_PIN))
+	, m_cal(Calibration("AXL"))
 	, m_last_x(0)
 	, m_last_y(0)
 	, m_last_z(0)
 	, m_last_temperature(0)
 	, m_last_activity(0)
 {
+	// Initialize g-range and power mode from configuration (needed for SCALW calibration via pylinkit)
+	// The service may override these values later via calibration_write() if needed
+	if (configuration_store) {
+		unsigned int g_range = configuration_store->read_param<unsigned int>(ParamID::AXL_SENSOR_MEASUREMENT_RANGE);
+		unsigned int power_mode = configuration_store->read_param<unsigned int>(ParamID::AXL_SENSOR_POWER_MODE);
+		m_bma400.set_range(g_range);
+		m_bma400.set_power_mode(power_mode);
+		DEBUG_INFO("BMA400::BMA400: initialized from config g_range=%u, power_mode=%u", g_range, power_mode);
+	}
+
+	// Load calibration from file and apply to sensor
+	load_calibration();
 	DEBUG_TRACE("BMA400::BMA400 initialized");
+}
+
+void BMA400::load_calibration()
+{
+	try {
+		double x = m_cal.read((unsigned int)CalibrationPoint::X);
+		double y = m_cal.read((unsigned int)CalibrationPoint::Y);
+		double z = m_cal.read((unsigned int)CalibrationPoint::Z);
+		m_bma400.set_x_calibration(x);
+		m_bma400.set_y_calibration(y);
+		m_bma400.set_z_calibration(z);
+		DEBUG_INFO("BMA400::load_calibration: loaded X=%.4f g, Y=%.4f g, Z=%.4f g", x, y, z);
+	} catch (...) {
+		// No calibration file or missing values, use defaults
+		m_bma400.set_x_calibration(0.0);
+		m_bma400.set_y_calibration(0.0);
+		m_bma400.set_z_calibration(1.0);
+		DEBUG_INFO("BMA400::load_calibration: using defaults X=0, Y=0, Z=1");
+	}
 }
 
 double BMA400::read(unsigned int offset)
@@ -572,26 +653,66 @@ void BMA400::calibration_write(const double value, const unsigned int offset)
 	DEBUG_TRACE("BMA400::calibration_write: value=%.2f, offset=%u", value, offset);
 
 	switch (offset) {
-		case 0: // Threshold
+		case 0: // X calibration
+			m_bma400.set_x_calibration(value);
+			m_cal.write((unsigned int)CalibrationPoint::X, value);
+			break;
+		case 1: // Y calibration
+			m_bma400.set_y_calibration(value);
+			m_cal.write((unsigned int)CalibrationPoint::Y, value);
+			break;
+		case 2: // Z calibration
+			m_bma400.set_z_calibration(value);
+			m_cal.write((unsigned int)CalibrationPoint::Z, value);
+			break;
+		case 3: // Auto-calibrate all axes (X=0, Y=0, Z=1)
+			{
+				double offset_x, offset_y, offset_z;
+				m_bma400.calibrate_offset(m_bma400.get_range(), offset_x, offset_y, offset_z);
+				// Set calibration values (measured averages in g)
+				// When applied: X_cal = X_raw - offset_x, Y_cal = Y_raw - offset_y
+				// Z_cal = Z_raw - (offset_z - 1) so at rest Z reads 1g
+				m_bma400.set_x_calibration(offset_x);
+				m_bma400.set_y_calibration(offset_y);
+				m_bma400.set_z_calibration(offset_z);
+				// Store in calibration file
+				m_cal.write((unsigned int)CalibrationPoint::X, offset_x);
+				m_cal.write((unsigned int)CalibrationPoint::Y, offset_y);
+				m_cal.write((unsigned int)CalibrationPoint::Z, offset_z);
+				DEBUG_INFO("BMA400::calibration_write: auto-calibrated X=%.4f g, Y=%.4f g, Z=%.4f g",
+				           offset_x, offset_y, offset_z);
+			}
+			break;
+		case 4: // Read and display calibrated X, Y, Z values
+			{
+				m_bma400.read_xyz(m_last_x, m_last_y, m_last_z, m_last_temperature);
+				DEBUG_INFO("BMA400::calibration_write: calibrated values X=%.4f g, Y=%.4f g, Z=%.4f g",
+				           m_last_x, m_last_y, m_last_z);
+			}
+			break;
+		case 5: // Read and display current calibration coefficients
+			{
+				DEBUG_INFO("BMA400::calibration_write: calibration coefficients X=%.4f g, Y=%.4f g, Z=%.4f g",
+				           m_bma400.get_x_calibration(), m_bma400.get_y_calibration(), m_bma400.get_z_calibration());
+			}
+			break;
+		case 6: // Save calibration to file
+			{
+				m_cal.save();
+				DEBUG_INFO("BMA400::calibration_write: calibration saved to file");
+			}
+			break;
+		case 7: // Threshold (used internally by AXL service)
 			m_bma400.set_wakeup_threshold(value);
 			break;
-		case 1: // Duration
+		case 8: // Duration (used internally by AXL service)
 			m_bma400.set_wakeup_duration(value);
 			break;
-		case 2: // G-force range
+		case 9: // G-force range (used internally by AXL service)
 			m_bma400.set_range(static_cast<unsigned int>(value));
 			break;
-		case 3: // Power mode
+		case 10: // Power mode (used internally by AXL service)
 			m_bma400.set_power_mode(static_cast<unsigned int>(value));
-			break;
-		case 4: // X calibration
-			m_bma400.set_x_calibration(value);
-			break;
-		case 5: // Y calibration
-			m_bma400.set_y_calibration(value);
-			break;
-		case 6: // Z calibration
-			m_bma400.set_z_calibration(value);
 			break;
 		default:
 			DEBUG_WARN("BMA400::calibration_write: invalid offset %u", offset);
@@ -603,19 +724,33 @@ void BMA400::calibration_read(double& value, const unsigned int offset)
 {
 	double offset_x = 0.0, offset_y = 0.0, offset_z = 0.0;
 
-	// Perform calibration if reading offsets
+	// Read calibrated sensor values (offset 1-3)
+	if (offset >= 1 && offset <= 3) {
+		m_bma400.read_xyz(m_last_x, m_last_y, m_last_z, m_last_temperature);
+	}
+
+	// Perform calibration measurement if reading raw offsets (offset 4-6)
 	if (offset >= 4 && offset <= 6) {
 		m_bma400.calibrate_offset(m_bma400.get_range(), offset_x, offset_y, offset_z);
 	}
 
 	switch (offset) {
-		case 4: // X calibration
+		case 1: // Read calibrated X value
+			value = m_last_x;
+			break;
+		case 2: // Read calibrated Y value
+			value = m_last_y;
+			break;
+		case 3: // Read calibrated Z value
+			value = m_last_z;
+			break;
+		case 4: // X calibration offset (raw measurement)
 			value = offset_x;
 			break;
-		case 5: // Y calibration
+		case 5: // Y calibration offset (raw measurement)
 			value = offset_y;
 			break;
-		case 6: // Z calibration
+		case 6: // Z calibration offset (raw measurement)
 			value = offset_z;
 			break;
 		default:
@@ -635,4 +770,9 @@ void BMA400::install_event_handler(unsigned int, std::function<void()> handler)
 void BMA400::remove_event_handler(unsigned int)
 {
 	m_bma400.disable_wakeup();
+}
+
+void BMA400::calibration_save(bool force)
+{
+	m_cal.save(force);
 }

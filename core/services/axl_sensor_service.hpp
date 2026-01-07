@@ -78,23 +78,31 @@ constexpr bool has_duplicates_bitmask(const std::array<T, N>& values)
 }
 
 enum class AXLCalibration : unsigned int {
-	WAKEUP_THRESH		= 0,
-	WAKEUP_DURATION		= 1,
-	G_FORCE				= 2,
-	POWER_MODE			= 3,
-	X					= 4,
-	Y					= 5,
-	Z					= 6
+	X					= 0,
+	Y					= 1,
+	Z					= 2,
+	AUTO_CALIBRATE		= 3,
+	READ_VALUES			= 4,
+	READ_COEFFICIENTS	= 5,
+	SAVE_CALIBRATION	= 6,
+	WAKEUP_THRESH		= 7,
+	WAKEUP_DURATION		= 8,
+	G_FORCE				= 9,
+	POWER_MODE			= 10
 };
 
-constexpr std::array<AXLCalibration, 7> axlValues = {
+constexpr std::array<AXLCalibration, 11> axlValues = {
+    AXLCalibration::X,
+    AXLCalibration::Y,
+    AXLCalibration::Z,
+    AXLCalibration::AUTO_CALIBRATE,
+    AXLCalibration::READ_VALUES,
+    AXLCalibration::READ_COEFFICIENTS,
+    AXLCalibration::SAVE_CALIBRATION,
     AXLCalibration::WAKEUP_THRESH,
     AXLCalibration::WAKEUP_DURATION,
     AXLCalibration::G_FORCE,
-    AXLCalibration::POWER_MODE,
-    AXLCalibration::X,
-    AXLCalibration::Y,
-    AXLCalibration::Z
+    AXLCalibration::POWER_MODE
 };
 
 enum AXLEvent : unsigned int {
@@ -124,21 +132,15 @@ private:
 #pragma GCC diagnostic pop
 
 	void sensor_init() override {
-		// Read all calibration parameters from config
+		// Read sensor configuration from config
 		double g_thresh 			= service_read_param<double>(ParamID::AXL_SENSOR_WAKEUP_THRESH);
 		unsigned int duration 		= service_read_param<unsigned int>(ParamID::AXL_SENSOR_WAKEUP_SAMPLES);
 		unsigned int g_force 		= service_read_param<unsigned int>(ParamID::AXL_SENSOR_MEASUREMENT_RANGE);
 		unsigned int power_mode 	= service_read_param<unsigned int>(ParamID::AXL_SENSOR_POWER_MODE);
-		double x_calibration 		= service_read_param<double>(ParamID::AXL_SENSOR_X_CALIBRATION);
-		double y_calibration 		= service_read_param<double>(ParamID::AXL_SENSOR_Y_CALIBRATION);
-		double z_calibration 		= service_read_param<double>(ParamID::AXL_SENSOR_Z_CALIBRATION);
 
-		// Write calibration parameters to sensor using enum offsets
+		// Write sensor configuration (calibration is loaded from dedicated file in sensor constructor)
 		m_sensor.calibration_write(g_force, to_underlying(AXLCalibration::G_FORCE));
 		m_sensor.calibration_write(power_mode, to_underlying(AXLCalibration::POWER_MODE));
-		m_sensor.calibration_write(x_calibration, to_underlying(AXLCalibration::X));
-		m_sensor.calibration_write(y_calibration, to_underlying(AXLCalibration::Y));
-		m_sensor.calibration_write(z_calibration, to_underlying(AXLCalibration::Z));
 
 		// Enable wakeup interrupt if threshold is configured and sensor is enabled
 		if (g_thresh && sensor_is_enabled()) {

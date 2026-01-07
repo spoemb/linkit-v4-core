@@ -4,6 +4,7 @@
 #include <cstdint>
 #include "sensor.hpp"
 #include "nrf_irq.hpp"
+#include "calibration.hpp"
 
 extern "C" {
 #include "bma400_defs.h"
@@ -114,19 +115,15 @@ private:
  *   4: Activity (0-255 computed from magnitude)
  *   5: Wakeup IRQ pending flag
  *
- * Calibration write offsets:
- *   0: Wakeup threshold (g)
- *   1: Wakeup duration (samples)
- *   2: G-force range (0=2G, 1=4G, 2=8G, 3=16G)
- *   3: Power mode (0=low power, 1=normal)
- *   4: X calibration offset
- *   5: Y calibration offset
- *   6: Z calibration offset
- *
- * Calibration read offsets:
- *   4: X calibration offset
- *   5: Y calibration offset
- *   6: Z calibration offset
+ * Calibration write offsets (SCALW):
+ *   0: X calibration coefficient (g)
+ *   1: Y calibration coefficient (g)
+ *   2: Z calibration coefficient (g)
+ *   3: Auto-calibrate (X=0, Y=0, Z=1g)
+ *   4: Read calibrated X, Y, Z values
+ *   5: Read calibration coefficients
+ *   6: Save calibration to file
+ *   7-10: Internal use (threshold, duration, range, power mode)
  */
 class BMA400 : public Sensor
 {
@@ -138,11 +135,13 @@ public:
 	double read(unsigned int offset) override;
 	void calibration_write(const double value, const unsigned int offset) override;
 	void calibration_read(double& value, const unsigned int offset) override;
+	void calibration_save(bool force) override;
 	void install_event_handler(unsigned int, std::function<void()>) override;
 	void remove_event_handler(unsigned int) override;
 
 private:
 	BMA400LL m_bma400;
+	Calibration m_cal;
 
 	// Cached readings
 	double m_last_x;
@@ -150,6 +149,16 @@ private:
 	double m_last_z;
 	int16_t m_last_temperature;
 	uint8_t m_last_activity;
+
+	// Calibration point indices
+	enum class CalibrationPoint : unsigned int {
+		X = 0,
+		Y = 1,
+		Z = 2
+	};
+
+	// Load calibration from file and apply to sensor
+	void load_calibration();
 
 	// Compute activity from last xyz readings
 	double compute_activity();
