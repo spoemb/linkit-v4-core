@@ -8,6 +8,8 @@
 #define RTC_TIMER      BSP::RTC::RTC_1
 #define SWS_ENABLE_PIN BSP::GPIO::GPIO_SLOW_SWS_SEND
 #define SWS_SAMPLE_PIN BSP::GPIO::GPIO_SLOW_SWS_RX
+#define SWS_ADC        BSP::ADC::ADC_CHANNEL_1
+#define BATTERY_ADC    BSP::ADC::ADC_CHANNEL_0
 
 #define ADC_GAIN              (1.0f/3.0f)  // 1/3 gain
 #define RP506_ADC_GAIN        4.0f
@@ -50,7 +52,8 @@ namespace BSP
 
     enum ADC
     {
-        ADC_CHANNEL_0,
+        ADC_CHANNEL_0,  // Battery voltage
+        ADC_CHANNEL_1,  // SWS analog
         ADC_TOTAL_CHANNELS
     };
 

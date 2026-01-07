@@ -251,7 +251,7 @@ namespace BSP
         },
         .channel_config = {
             {
-                // ADC_CHANNEL_0
+                // ADC_CHANNEL_0: Battery voltage on AIN1 (P0.03)
                 .resistor_p = NRF_SAADC_RESISTOR_DISABLED,
                 .resistor_n = NRF_SAADC_RESISTOR_DISABLED,
                 .gain = NRF_SAADC_GAIN1_6,
@@ -260,6 +260,18 @@ namespace BSP
                 .mode = NRF_SAADC_MODE_SINGLE_ENDED,
                 .burst = NRF_SAADC_BURST_DISABLED,
                 .pin_p = NRF_SAADC_INPUT_AIN1,
+                .pin_n = NRF_SAADC_INPUT_DISABLED
+            },
+            {
+                // ADC_CHANNEL_1: SWS analog on AIN0 (P0.02)
+                .resistor_p = NRF_SAADC_RESISTOR_DISABLED,
+                .resistor_n = NRF_SAADC_RESISTOR_DISABLED,
+                .gain = NRF_SAADC_GAIN1_4,
+                .reference = NRF_SAADC_REFERENCE_INTERNAL,
+                .acq_time = NRF_SAADC_ACQTIME_10US,
+                .mode = NRF_SAADC_MODE_SINGLE_ENDED,
+                .burst = NRF_SAADC_BURST_DISABLED,
+                .pin_p = NRF_SAADC_INPUT_AIN0,
                 .pin_n = NRF_SAADC_INPUT_DISABLED
             }
         }

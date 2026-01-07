@@ -162,6 +162,14 @@ const BaseMap param_map[] = {
 	{ "UW_SAMPLE_GAP", "UNP07", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 	{ "UW_PIN_SAMPLE_DELAY", "UNP08", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 
+	// SWS Analog parameters
+	{ "SWS_ANALOG_THRESHOLD_MIN", "UNP20", BaseEncoding::UINT, 50U, 4095U, {}, true, true },
+	{ "SWS_ANALOG_THRESHOLD_MAX", "UNP21", BaseEncoding::UINT, 50U, 4095U, {}, true, true },
+	{ "SWS_ANALOG_HYSTERESIS", "UNP22", BaseEncoding::UINT, 0U, 50U, {}, true, true },
+	{ "SWS_ANALOG_CALIB_INTERVAL", "UNP23", BaseEncoding::UINT, 60U, 0xFFFFFFFFU, {}, true, true },
+	{ "UW_MAX_DIVE_TIME", "UNP24", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true },
+	{ "UW_MIN_SURFACE_TIME", "UNP25", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true },
+
 	// Dive mode
 	{ "UW_DIVE_MODE_ENABLE", "UNP12", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "UW_DIVE_MODE_START_TIME", "UNP13", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true },

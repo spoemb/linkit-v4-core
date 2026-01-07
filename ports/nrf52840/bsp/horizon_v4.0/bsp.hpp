@@ -18,6 +18,7 @@
 #define RTC_TIMER      BSP::RTC::RTC_2
 #define SPI_SATELLITE  BSP::SPI::SPI_2
 #define BATTERY_ADC	   BSP::ADC::ADC_CHANNEL_0
+#define SWS_ADC        BSP::ADC::ADC_CHANNEL_1
 #define SWS_ENABLE_PIN BSP::GPIO::GPIO_SWS_EN
 #define SWS_SAMPLE_PIN BSP::GPIO::GPIO_SWS
 #define UART_GPS	   BSP::UART::UART_0
@@ -236,7 +237,8 @@ namespace BSP
 
     enum ADC
     {
-        ADC_CHANNEL_0,
+        ADC_CHANNEL_0,  // Battery voltage on AIN1
+        ADC_CHANNEL_1,  // SWS analog on AIN0
         ADC_TOTAL_CHANNELS
     };
 
