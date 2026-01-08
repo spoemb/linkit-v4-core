@@ -20,9 +20,15 @@ private:
 
 	int _read(lfs_block_t block, lfs_off_t off, void * buffer, lfs_size_t size);
 	int _prog(lfs_block_t block, lfs_off_t off, const void *buffer, lfs_size_t size);
+	int _prog_fast(lfs_block_t block, lfs_off_t off, const void *buffer, lfs_size_t size);
 	int _erase(lfs_block_t block);
 	int _sync();
 
+public:
+	// Fast prog for OTA - no sync, no verification
+	int prog_fast(lfs_block_t block, lfs_off_t off, const void *buffer, lfs_size_t size);
+
+	// Power management - public for OTA optimization
 	void power_up();
 	void power_down();
 };

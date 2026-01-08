@@ -163,6 +163,23 @@ int Is25Flash::_prog(lfs_block_t block, lfs_off_t off, const void *buffer, lfs_s
 	return LFS_ERR_OK;
 }
 
+// Fast program without sync or verification - for OTA transfers
+int Is25Flash::_prog_fast(lfs_block_t block, lfs_off_t off, const void *buffer, lfs_size_t size)
+{
+	// Check buffer alignment and size multiple
+	if (((intptr_t)buffer & 3) || (size & 3))
+		return LFS_ERR_INVAL;
+
+	nrfx_err_t ret_write = nrfx_qspi_write(buffer, size, block * m_block_size + off);
+	if (ret_write != NRFX_SUCCESS)
+	{
+		DEBUG_ERROR("QSPI IO Error %04x", ret_write);
+		return LFS_ERR_IO;
+	}
+
+	return LFS_ERR_OK;
+}
+
 int Is25Flash::_erase(lfs_block_t block)
 {
 	//DEBUG_TRACE("QSPI Flash erase(%lu)", block);
@@ -249,6 +266,14 @@ int Is25Flash::sync()
 	int ret = _sync();
 	power_down();
 	return ret;
+}
+
+int Is25Flash::prog_fast(lfs_block_t block, lfs_off_t off, const void *buffer, lfs_size_t size)
+{
+	if (!m_is_init)
+		return LFS_ERR_IO;
+	// NO power management here - caller must handle it for performance
+	return _prog_fast(block, off, buffer, size);
 }
 
 void Is25Flash::power_up()
