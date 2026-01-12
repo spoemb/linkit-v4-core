@@ -1,0 +1,71 @@
+#!/bin/bash
+# =============================================================================
+# Build Configuration File - EXAMPLE
+# =============================================================================
+# Copy this file to build_config.sh and update with your local paths.
+#
+# Quick setup: Run ./scripts/setup_environment.sh to auto-detect paths
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# ARM GCC Toolchain Configuration
+# -----------------------------------------------------------------------------
+# Path to your ARM GCC toolchain bin directory containing arm-none-eabi-gcc
+#
+# Common locations:
+#   Linux:   ~/tools/gcc-arm-none-eabi-*/bin
+#            /usr/local/gcc-arm-none-eabi-*/bin
+#            /opt/gcc-arm-none-eabi-*/bin
+#
+#   macOS:   /usr/local/gcc-arm-none-eabi-*/bin
+#            ~/tools/gcc-arm-none-eabi-*/bin
+#
+#   Windows: /mnt/c/Program Files/GNU Arm Embedded Toolchain/*/bin  (WSL)
+#            /c/Program Files/GNU Arm Embedded Toolchain/*/bin  (Git Bash)
+#
+# If already in system PATH, you can leave this empty: ""
+ARM_TOOLCHAIN_PATH="/path/to/gcc-arm-none-eabi/bin"
+
+# -----------------------------------------------------------------------------
+# nrfutil Configuration
+# -----------------------------------------------------------------------------
+# Path to directory containing the nrfutil binary
+#
+# Common locations:
+#   Linux:   ~/.nrfutil/bin
+#            ~/.local/bin
+#            /usr/local/bin
+#
+#   macOS:   ~/.nrfutil/bin
+#            /usr/local/bin
+#
+#   Windows: ~/.nrfutil/bin  (WSL)
+#
+# If already in system PATH, you can leave this empty: ""
+NRFUTIL_PATH="/path/to/nrfutil/bin"
+
+# -----------------------------------------------------------------------------
+# DO NOT EDIT BELOW THIS LINE (unless you know what you're doing)
+# -----------------------------------------------------------------------------
+
+# Construct BUILD_PATH from configured paths
+BUILD_PATH=""
+if [ -n "$ARM_TOOLCHAIN_PATH" ]; then
+    BUILD_PATH="$ARM_TOOLCHAIN_PATH"
+fi
+if [ -n "$NRFUTIL_PATH" ]; then
+    if [ -n "$BUILD_PATH" ]; then
+        BUILD_PATH="$BUILD_PATH:$NRFUTIL_PATH"
+    else
+        BUILD_PATH="$NRFUTIL_PATH"
+    fi
+fi
+
+# Add to PATH if BUILD_PATH is not empty
+if [ -n "$BUILD_PATH" ]; then
+    export PATH="$BUILD_PATH:$PATH"
+fi
+
+# Export for use by other scripts
+export ARM_TOOLCHAIN_PATH
+export NRFUTIL_PATH

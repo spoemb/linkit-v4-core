@@ -1,5 +1,74 @@
 #!/bin/bash
 
+# =============================================================================
+# LinkIt Core Build Script
+# =============================================================================
+# This script builds the LinkIt Core firmware.
+#
+# IMPORTANT: Update build_config.sh with your toolchain paths
+# =============================================================================
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Load build configuration
+if [ -f "$PROJECT_ROOT/build_config.sh" ]; then
+    source "$PROJECT_ROOT/build_config.sh"
+else
+    echo "ERROR: build_config.sh not found!"
+    echo "Please create build_config.sh in the project root."
+    echo "You can copy build_config.sh.example as a template."
+    exit 1
+fi
+
+# Verify required tools are available
+echo "Checking build tools..."
+
+if ! command -v arm-none-eabi-gcc &> /dev/null; then
+    echo "ERROR: arm-none-eabi-gcc not found in PATH!"
+    echo ""
+    echo "Please update build_config.sh with the correct path:"
+    echo "  ARM_TOOLCHAIN_PATH=\"/path/to/your/gcc-arm-none-eabi/bin\""
+    echo ""
+    echo "Current configuration:"
+    echo "  ARM_TOOLCHAIN_PATH=\"$ARM_TOOLCHAIN_PATH\""
+    echo ""
+    exit 1
+fi
+
+if ! command -v nrfutil &> /dev/null; then
+    echo "ERROR: nrfutil not found in PATH!"
+    echo ""
+    echo "Please update build_config.sh with the correct path:"
+    echo "  NRFUTIL_PATH=\"/path/to/your/nrfutil/bin\""
+    echo ""
+    echo "Current configuration:"
+    echo "  NRFUTIL_PATH=\"$NRFUTIL_PATH\""
+    echo ""
+    exit 1
+fi
+
+if ! command -v mergehex &> /dev/null; then
+    echo "WARNING: mergehex not found in PATH!"
+    echo "The build may fail during hex file merging."
+    echo "Install mergehex: pip install intelhex"
+    echo ""
+fi
+
+if ! command -v make &> /dev/null; then
+    echo "ERROR: make not found in PATH!"
+    echo "Please install build-essential: sudo apt-get install build-essential"
+    exit 1
+fi
+
+echo "✓ arm-none-eabi-gcc found: $(which arm-none-eabi-gcc)"
+echo "✓ nrfutil found: $(which nrfutil)"
+if command -v mergehex &> /dev/null; then
+    echo "✓ mergehex found: $(which mergehex)"
+fi
+echo ""
+
 mkdir -p ports/nrf52840/build/CORE
 cd ports/nrf52840/build/CORE
 git show-ref --tags -d | grep ^`git rev-parse HEAD` | sed -e "s,.* refs/tags/,," -e "s/\\^{}//" > TAG_NAME

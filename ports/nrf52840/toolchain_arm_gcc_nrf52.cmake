@@ -15,7 +15,12 @@ execute_process(
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-get_filename_component(ARM_TOOLCHAIN_DIR ${BINUTILS_PATH} DIRECTORY)
+if(BINUTILS_PATH)
+    get_filename_component(ARM_TOOLCHAIN_DIR ${BINUTILS_PATH} DIRECTORY)
+else()
+    message(FATAL_ERROR "ARM GCC toolchain (arm-none-eabi-gcc) not found. Please install it:\n"
+                        "  sudo apt-get install gcc-arm-none-eabi")
+endif()
 # Without that flag CMake is not able to pass test compilation check
 if (${CMAKE_VERSION} VERSION_EQUAL "3.6.0" OR ${CMAKE_VERSION} VERSION_GREATER "3.6")
     set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)

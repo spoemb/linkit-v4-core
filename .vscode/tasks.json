@@ -1,5 +1,20 @@
 {
     "version": "2.0.0",
+    // =========================================================================
+    // Build Tools Configuration
+    // =========================================================================
+    // IMPORTANT: Update the PATH below if your toolchain is installed elsewhere
+    // This setting must match the PATH in scripts/build_core.sh (line 16)
+    //
+    // Required tools:
+    //   - ARM GCC Toolchain (arm-none-eabi-gcc)
+    //   - nrfutil (Nordic utility tool)
+    // =========================================================================
+    "options": {
+        "env": {
+            "PATH": "/home/schade/tools/gcc-arm-none-eabi-10-2020-q4-major/bin:/home/schade/.nrfutil/bin:${env:PATH}"
+        }
+    },
     "tasks": [
 		{
 			"type": "shell",
