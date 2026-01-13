@@ -2,6 +2,7 @@
 
 #include "gpio.hpp"
 #include "bsp.hpp"
+#include "debug.hpp"
 
 void GPIOPins::initialise()
 {
@@ -24,6 +25,22 @@ void GPIOPins::initialise()
 	clear(SWS_ENABLE_PIN);
 	set(GPIO_AG_PWR_PIN);	// BMA400 must be ON to avoid leakage current. BMA 400 sleep current is 200nA
 	set(ADC_ENABLE);		// Enable ADC to avoid leakage current (I2C pull up)
+
+#ifdef CAM_PWR_EN
+	// Initialize CAM power pins to OFF state
+	DEBUG_TRACE("Initializing CAM pins: CAM_PWR_EN=%u (P%u.%u), CAM_PWR_BUTT=%u (P%u.%u)",
+		CAM_PWR_EN, (BSP::GPIO_Inits[CAM_PWR_EN].pin_number >> 5), (BSP::GPIO_Inits[CAM_PWR_EN].pin_number & 0x1F),
+		CAM_PWR_BUTT, (BSP::GPIO_Inits[CAM_PWR_BUTT].pin_number >> 5), (BSP::GPIO_Inits[CAM_PWR_BUTT].pin_number & 0x1F));
+	clear(CAM_PWR_EN);
+	clear(CAM_PWR_BUTT);
+	// Force re-enable GPIO configuration to ensure pins are properly configured
+	enable(CAM_PWR_EN);
+	enable(CAM_PWR_BUTT);
+	// Set to low again to ensure off state
+	clear(CAM_PWR_EN);
+	clear(CAM_PWR_BUTT);
+	DEBUG_TRACE("CAM pins cleared and configured");
+#endif
 
 	// Set V_SYS to 3.3V
 	set(VSYS_SEL);

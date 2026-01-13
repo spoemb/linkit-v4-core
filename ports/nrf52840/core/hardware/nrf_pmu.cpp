@@ -56,6 +56,13 @@ void PMU::reset(bool) {
 }
 
 void PMU::powerdown() {
+	// Ensure all power control pins are turned off before shutdown
+// #ifdef CAM_PWR_EN
+// 	DEBUG_TRACE("Powering off CAM");
+// 	GPIOPins::clear(CAM_PWR_EN);
+// 	GPIOPins::clear(CAM_PWR_BUTT);
+// #endif
+
 #if defined(POWER_CONTROL_PIN)
 	DEBUG_TRACE("Attempt power off using power pin");
 	GPIOPins::clear(POWER_CONTROL_PIN);
@@ -135,7 +142,7 @@ const std::string PMU::hardware_version()
 	{
 		error = nrfx_twim_rx(&BSP::I2C_Inits[ADS1115_DEVICE].twim, ADS1115_ADDRESS, &xfer, sizeof(xfer));
 		if (error == NRFX_SUCCESS)
-			return "LinkIt V3"; //force v4 to v3 for GenTracker app compatibility
+			return "LinkIt V4";
 		else
 			return "LinkIt V1";
 	}
