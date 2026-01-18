@@ -38,7 +38,6 @@
 #define EXT_I2C_BUS     BSP::I2C::I2C_0
 #define ONBOARD_I2C_BUS BSP::I2C::I2C_1
 #define BMA400_WAKEUP_PIN  BSP::GPIO::GPIO_ACC_INT1
-// #define WCHG_INTB_PIN	BSP::GPIO::GPIO_WCHG_INTB
 #define GPS_POWER		BSP::GPIO::GPIO_GPS_PWR_EN
 // Buzzer and CAM are mutually exclusive (both can use GPIO_EXT_GPIO5)
 // Configure via CMake option: -DEXT_GPIO5_DEVICE=BUZZER
@@ -74,7 +73,6 @@
 #define OEM_RTD_DEVICE_ADDR 0x68
 #define AD5933_ADDRESS		0x0D
 #define BMA400_ADDRESS      0x14
-#define STWLC68_ADDRESS		0x61
 #define ADS1115_ADDRESS     0x48
 
 // Battery voltage ADC gain

@@ -47,7 +47,6 @@
 #include "nrf_usb.hpp"
 #include "gpio_led.hpp"
 #include "heap.h"
-#include "stwlc68.hpp"
 #include "etl/error_handler.h"
 #include "memory_monitor_service.hpp"
 #include "dive_mode_service.hpp"
@@ -395,12 +394,6 @@ int main()
 #endif // POWER_CONTROL_PIN
 #endif // POWER_ON_RESET_REQUIRES_REED_SWITCH
 
-#if HAS_WCHG
-	DEBUG_TRACE("STWLC68...");
-    STWLC68::get_instance().init();
-#else
-	DEBUG_TRACE("STWLC68 not included");
-#endif
 
 	DEBUG_TRACE("Scheduler...");
 	Scheduler scheduler(system_timer);

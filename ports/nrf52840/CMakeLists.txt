@@ -184,7 +184,6 @@ target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
     ${PROJ_DIR}/core/hardware/ezo_rtd
     ${PROJ_DIR}/core/hardware/cdt
     ${PROJ_DIR}/core/hardware/bma400
-    ${PROJ_DIR}/core/hardware/stwlc68_otp
     ${PROJ_DIR}/core/hardware/tsys01
     ${PROJ_DIR}/core/hardware/run_cam
 )
@@ -353,13 +352,6 @@ target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
     ${PROJ_DIR}/core/hardware/m10qasync
 )
 
-if (HAS_WCHG)
-        target_sources(${TARGET_NAME} PRIVATE
-		    ${PROJ_DIR}/core/hardware/stwlc68_otp/otphal.c
-		    ${PROJ_DIR}/core/hardware/stwlc68_otp/otp_chip_info.c
-		    ${PROJ_DIR}/core/hardware/stwlc68_otp/stwlc68.cpp
-        )
-endif()
 
 target_compile_definitions(${TARGET_NAME} PRIVATE
     Release=0
