@@ -50,13 +50,10 @@ if(${BOARD} MATCHES HORIZON)
     set(MODEL_UW 0)
     set(MODEL_CORE 1)
     set(HAS_WCHG 0)
-    set(GPS_MODEL M8Q)
+    set(GPS_MODEL M10Q)
     set(BOOTLOADER "bootloader/gentracker_secure_bootloader/horizon_v4.0/armgcc/_build/horizon_bootloader_v4_linkit_merged.hex")
 elseif(${BOARD} MATCHES LINKIT)
-    if(${HWVERS} MATCHES 4)
-        set(HAS_WCHG 0)
-        set(GPS_MODEL M10Q)
-    endif()
+    set(GPS_MODEL M10Q)
     set(TARGET_NAME ${PROJECT_NAME}_${MODEL}_board)
     set(BOARD_DIR     "${PROJ_DIR}/bsp/gentracker_v1.0")
     set(BOOTLOADER "bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex")
@@ -176,7 +173,6 @@ target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
     ${PROJ_DIR}/core/memmang
     ${PROJ_DIR}/core/filesystem
     ${PROJ_DIR}/core/scheduling
-    ${PROJ_DIR}/core/hardware/artic_sat
     ${PROJ_DIR}/core/hardware/kim2
     ${PROJ_DIR}/core/hardware/pressure_sensor
     ${PROJ_DIR}/core/hardware/ms58xx
@@ -288,8 +284,6 @@ target_sources(${TARGET_NAME} PRIVATE
     ${PROJ_DIR}/core/hardware/oem_rtd/oem_rtd.cpp
     ${PROJ_DIR}/core/hardware/ezo_rtd/ezo_rtd.cpp
     ${PROJ_DIR}/core/hardware/tsys01/TSYS01.cpp
-    ${PROJ_DIR}/core/hardware/artic_sat/artic_sat.cpp
-    ${PROJ_DIR}/core/hardware/artic_sat/pa_driver.cpp
     ${PROJ_DIR}/core/hardware/kim2/kim2.cpp
     ${PROJ_DIR}/core/hardware/kim2/kim2_comm.cpp
     ${PROJ_DIR}/core/hardware/nrf_timer.cpp
@@ -349,27 +343,15 @@ else()
     set(ENABLE_BUZZER 0)
 endif()
 
-if(${GPS_MODEL} MATCHES M8Q)
-    target_sources(${TARGET_NAME} PRIVATE
-        ${PROJ_DIR}/core/hardware/m8qasync/m8qasync.cpp
-        ${PROJ_DIR}/core/hardware/m8qasync/ubx_comms.cpp
-    )
+# Always use M10Q GPS module
+target_sources(${TARGET_NAME} PRIVATE
+    ${PROJ_DIR}/core/hardware/m10qasync/m10qasync.cpp
+    ${PROJ_DIR}/core/hardware/m10qasync/ubx_comms.cpp
+)
 
-    target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
-        ${PROJ_DIR}/core/hardware/m8qasync
-    )
-elseif(${GPS_MODEL} MATCHES M10Q)
-    target_sources(${TARGET_NAME} PRIVATE
-        ${PROJ_DIR}/core/hardware/m10qasync/m10qasync.cpp
-        ${PROJ_DIR}/core/hardware/m10qasync/ubx_comms.cpp
-    )
-
-    target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
-        ${PROJ_DIR}/core/hardware/m10qasync
-    )
-else()
-    message(FATAL_ERROR "GPS_MODEL should be defined")
-endif()
+target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
+    ${PROJ_DIR}/core/hardware/m10qasync
+)
 
 if (HAS_WCHG)
         target_sources(${TARGET_NAME} PRIVATE

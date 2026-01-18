@@ -31,7 +31,6 @@
 #include "reed.hpp"
 #include "nrf_rtc.hpp"
 #include "gpio.hpp"
-#include "artic_sat.hpp"
 #include "is25_flash.hpp"
 #include "nrf_rgb_led.hpp"
 #include "nrf_battery_mon.hpp"
@@ -58,13 +57,8 @@
 #include "runcam.hpp"
 #endif
 
-#if defined(GPS_M8Q)
-#include "m8qasync.hpp"
-#elif defined(GPS_M10Q)
+// Always use M10Q GPS module
 #include "m10qasync.hpp"
-#else
-#warning "No GPS module defined, (should be M8Q or M10Q)"
-#endif
 #include "kim2.hpp"
 
 FileSystem *main_filesystem;
@@ -82,7 +76,6 @@ DTEHandler *dte_handler;
 RTC *rtc;
 BatteryMonitor *battery_monitor;
 BaseDebugMode g_debug_mode = BaseDebugMode::USB_CDC;  // Default debug output to USB CDC
-// ArticDevice *artic_device;
 Buzzer *buzzer_ctl;
 
 static bool m_is_debug_init = false;
@@ -310,7 +303,6 @@ int main()
 
 	NrfI2C::init();
 	bool is_linkit_v3_v4 = (PMU::hardware_version() == "LinkIt V3") || (PMU::hardware_version() == "LinkIt V4");
-// 	ArticSat::shutdown();
 	{
 		try {
 			EZO_RTD_Sensor rtd; // Puts the device into standby mode
@@ -530,24 +522,6 @@ int main()
 	SWSService sws;
 
 
-// 	DEBUG_TRACE("Artic R2...");
-// 	try {
-// 		static ArticSat artic;
-// 		static ArgosTxService argos_tx_service(artic);
-// 		static ArgosRxService argos_rx_service(artic);
-// 		artic_device = &artic;
-// #ifdef ARTIC_I2C_BUS_CONFLICT
-// 		// We need to mark the I2C bus as disabled since the pins now in use
-// 		NrfI2C::disable(ARTIC_I2C_BUS_CONFLICT);
-// #endif
-// #ifdef ARTIC_EXT_LED_CONFLICT
-// 		GPIOPins::disable(ARTIC_EXT_LED_CONFLICT);
-// #endif
-// 	} catch (...) {
-// 		DEBUG_TRACE("Artic R2 not detected");
-// 	}
-
-
 	DEBUG_TRACE("KIM2...");
 	try {
 		static KIM2Device kim2;
@@ -556,16 +530,7 @@ int main()
 		DEBUG_TRACE("KIM2 not detected");
 	}
 
-#if defined(GPS_M8Q)
-	DEBUG_TRACE("GPS M8Q ...");
-	try {
-		static M8QAsyncReceiver m8q_gnss;
-		static GPSService gps_service(m8q_gnss, &fs_sensor_log);
-		static GNSSDetectorService gps_detector(m8q_gnss);
-	} catch (...) {
-		DEBUG_TRACE("GPS M8Q not detected");
-	}
-#elif defined(GPS_M10Q)
+	// Always use M10Q GPS module
 	DEBUG_TRACE("GPS M10Q ...");
 	try {
 		static M10QAsyncReceiver m10q_gnss;
@@ -574,9 +539,6 @@ int main()
 	} catch (...) {
 		DEBUG_TRACE("GPS M10Q not detected");
 	}
-#else
-	raise Exception("No GPS defined in Makefile");
-#endif
 
 	DEBUG_TRACE("Pressure Sensor...");
 	PressureSensorDevice *pressure_sensor_devices[BSP::I2C_TOTAL_NUMBER];

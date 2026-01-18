@@ -2,7 +2,7 @@
 #include "CppUTestExt/MockSupport.h"
 
 #include "gnss_detector_service.hpp"
-#include "mock_m8q.hpp"
+#include "mock_m10q.hpp"
 #include "fake_rtc.hpp"
 #include "fake_config_store.hpp"
 #include "fake_logger.hpp"
@@ -27,7 +27,7 @@ TEST_GROUP(GNSSDetector)
 	FakeRTC *fake_rtc;
 	FakeTimer *fake_timer;
 	FakeLog *fake_log;
-	MockM8Q *mock_m8q;
+	MockM10Q *mock_m10q;
     MockStdFunctionVoidComparator m_comparator_std_func;
     MockGPSNavSettingsComparator  m_comparator_nav;
 
@@ -35,7 +35,7 @@ TEST_GROUP(GNSSDetector)
 	    mock().installComparator("std::function<void()>", m_comparator_std_func);
 	    mock().installComparator("const GPSNavSettings&", m_comparator_nav);
 		fake_log = new FakeLog("GPS");
-		mock_m8q = new MockM8Q;
+		mock_m10q = new MockM10Q;
 		fake_config_store = new FakeConfigurationStore;
 		configuration_store = fake_config_store;
 		fake_rtc = new FakeRTC;
@@ -54,7 +54,7 @@ TEST_GROUP(GNSSDetector)
 		delete fake_timer;
 		delete fake_rtc;
 		delete fake_config_store;
-		delete mock_m8q;
+		delete mock_m10q;
 		delete fake_log;
 	}
 
@@ -103,7 +103,7 @@ TEST(GNSSDetector, GNSSDetectorDisabled)
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, en);
 	fake_config_store->write_param(ParamID::UNDERWATER_DETECT_SOURCE, src);
 
-	GNSSDetectorService s(*mock_m8q);
+	GNSSDetectorService s(*mock_m10q);
 	s.start();
 
 	increment_time_s(1);
@@ -129,7 +129,7 @@ TEST(GNSSDetector, GNSSDetectorEnabledAndSurfacedThenSubmerged)
 	fake_config_store->write_param(ParamID::UW_GNSS_DRY_SAMPLING, dry_schedule);
 	fake_config_store->write_param(ParamID::UW_GNSS_WET_SAMPLING, wet_schedule);
 
-	GNSSDetectorService s(*mock_m8q);
+	GNSSDetectorService s(*mock_m10q);
 	s.start([&switch_state, &num_callbacks](ServiceEvent &event) {
 		if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
 			switch_state = std::get<bool>(event.event_data);
@@ -137,22 +137,22 @@ TEST(GNSSDetector, GNSSDetectorEnabledAndSurfacedThenSubmerged)
 		}
 	});
 
-	mock().expectOneCall("power_on").onObject(mock_m8q).ignoreOtherParameters();
+	mock().expectOneCall("power_on").onObject(mock_m10q).ignoreOtherParameters();
 	increment_time_s(1);
-	mock().expectOneCall("power_off").onObject(mock_m8q).ignoreOtherParameters();
-	mock_m8q->notify_sat_report(threshold);
+	mock().expectOneCall("power_off").onObject(mock_m10q).ignoreOtherParameters();
+	mock_m10q->notify_sat_report(threshold);
 	CHECK_EQUAL(1, num_callbacks);
 	CHECK_FALSE(switch_state);
 
 	num_callbacks = 0;
-	mock().expectOneCall("power_on").onObject(mock_m8q).ignoreOtherParameters();
+	mock().expectOneCall("power_on").onObject(mock_m10q).ignoreOtherParameters();
 	increment_time_s(dry_schedule);
 
 	for (unsigned int i = 0; i < max_samples; i++)
-		mock_m8q->notify_sat_report(0);
+		mock_m10q->notify_sat_report(0);
 
-	mock().expectOneCall("power_off").onObject(mock_m8q).ignoreOtherParameters();
-	mock_m8q->notify_max_sat_samples();
+	mock().expectOneCall("power_off").onObject(mock_m10q).ignoreOtherParameters();
+	mock_m10q->notify_max_sat_samples();
 	CHECK_EQUAL(1, num_callbacks);
 	CHECK_TRUE(switch_state);
 }
@@ -178,7 +178,7 @@ TEST(GNSSDetector, GNSSDetectorEnabledWithSWSDetectSurfacingOnly)
 	fake_config_store->write_param(ParamID::UW_GNSS_DRY_SAMPLING, dry_schedule);
 	fake_config_store->write_param(ParamID::UW_GNSS_WET_SAMPLING, wet_schedule);
 
-	GNSSDetectorService s(*mock_m8q);
+	GNSSDetectorService s(*mock_m10q);
 	s.start([&switch_state, &num_callbacks](ServiceEvent &event) {
 		if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
 			switch_state = std::get<bool>(event.event_data);
@@ -187,21 +187,21 @@ TEST(GNSSDetector, GNSSDetectorEnabledWithSWSDetectSurfacingOnly)
 	});
 
 	// Expect surfaced event when no existing state available
-	mock().expectOneCall("power_on").onObject(mock_m8q).ignoreOtherParameters();
+	mock().expectOneCall("power_on").onObject(mock_m10q).ignoreOtherParameters();
 	increment_time_s(1);
-	mock().expectOneCall("power_off").onObject(mock_m8q).ignoreOtherParameters();
-	mock_m8q->notify_sat_report(threshold);
+	mock().expectOneCall("power_off").onObject(mock_m10q).ignoreOtherParameters();
+	mock_m10q->notify_sat_report(threshold);
 	CHECK_EQUAL(1, num_callbacks);
 	CHECK_FALSE(switch_state);
 
 	// Do not expect submerge event from GNSS when SWS is also used
 	num_callbacks = 0;
-	mock().expectOneCall("power_on").onObject(mock_m8q).ignoreOtherParameters();
+	mock().expectOneCall("power_on").onObject(mock_m10q).ignoreOtherParameters();
 	increment_time_s(dry_schedule);
 	for (unsigned int i = 0; i < max_samples; i++)
-		mock_m8q->notify_sat_report(0);
-	mock().expectOneCall("power_off").onObject(mock_m8q).ignoreOtherParameters();
-	mock_m8q->notify_max_sat_samples();
+		mock_m10q->notify_sat_report(0);
+	mock().expectOneCall("power_off").onObject(mock_m10q).ignoreOtherParameters();
+	mock_m10q->notify_max_sat_samples();
 
 	CHECK_EQUAL(0, num_callbacks);
 	CHECK_EQUAL(0, num_callbacks);
@@ -212,10 +212,10 @@ TEST(GNSSDetector, GNSSDetectorEnabledWithSWSDetectSurfacingOnly)
 
 	// Expect surface event from GNSS once more
 	num_callbacks = 0;
-	mock().expectOneCall("power_on").onObject(mock_m8q).ignoreOtherParameters();
+	mock().expectOneCall("power_on").onObject(mock_m10q).ignoreOtherParameters();
 	increment_time_s(dry_schedule);
-	mock().expectOneCall("power_off").onObject(mock_m8q).ignoreOtherParameters();
-	mock_m8q->notify_sat_report(threshold);
+	mock().expectOneCall("power_off").onObject(mock_m10q).ignoreOtherParameters();
+	mock_m10q->notify_sat_report(threshold);
 	CHECK_EQUAL(1, num_callbacks);
 	CHECK_FALSE(switch_state);
 }

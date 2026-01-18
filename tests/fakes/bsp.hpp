@@ -39,6 +39,7 @@ namespace BSP
 		GPIO_SLOW_SWS_SEND,
 		GPIO_SLOW_SWS_RX,
         GPIO_GPS_PWR_EN,
+        GPIO_GPS_RST,
 		GPIO_TOTAL_NUMBER
 	};
 

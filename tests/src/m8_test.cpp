@@ -7,7 +7,7 @@
 #include "scheduler.hpp"
 #include "bsp.hpp"
 #include "nrf_libuarte_async.h"
-#include "m8qasync.hpp"
+#include "m10qasync.hpp"
 #include "ubx.hpp"
 
 namespace BSP {
@@ -207,7 +207,7 @@ TEST_GROUP(M8)
 
 TEST(M8, FailedToSyncCommsError)
 {
-    M8QAsyncReceiver m;
+    M10QAsyncReceiver m;
     TestGNSSListener listener(m);
     GPSNavSettings settings;
     settings.assistnow_autonomous_enable = false;
@@ -233,7 +233,7 @@ TEST(M8, FailedToSyncCommsError)
 
 TEST(M8, FailedToChangeBaudRate)
 {
-    M8QAsyncReceiver m;
+    M10QAsyncReceiver m;
     TestGNSSListener listener(m);
     GPSNavSettings settings;
     settings.assistnow_autonomous_enable = false;
@@ -261,7 +261,7 @@ TEST(M8, FailedToChangeBaudRate)
 
 TEST(M8, FailedToReceivePVT)
 {
-    M8QAsyncReceiver m;
+    M10QAsyncReceiver m;
     TestGNSSListener listener(m);
     GPSNavSettings settings;
     settings.assistnow_autonomous_enable = false;
@@ -327,7 +327,7 @@ TEST(M8, FailedToReceivePVT)
 
 TEST(M8, PVTReportAfterPowerOffDemand)
 {
-    M8QAsyncReceiver m;
+    M10QAsyncReceiver m;
     TestGNSSListener listener(m);
     GPSNavSettings settings;
     settings.assistnow_autonomous_enable = false;
@@ -404,7 +404,7 @@ TEST(M8, PVTReportAfterPowerOffDemand)
 
 TEST(M8, PVTReportSuccessWithoutANO)
 {
-    M8QAsyncReceiver m;
+    M10QAsyncReceiver m;
     TestGNSSListener listener(m);
     GPSNavSettings settings;
     settings.assistnow_autonomous_enable = false;
@@ -483,7 +483,7 @@ TEST(M8, PVTReportSuccessWithoutANO)
 
 TEST(M8, PVTReportSuccessWithANO)
 {
-    M8QAsyncReceiver m;
+    M10QAsyncReceiver m;
     TestGNSSListener listener(m);
     GPSNavSettings settings;
     settings.assistnow_autonomous_enable = true;
@@ -566,7 +566,7 @@ TEST(M8, PVTReportSuccessWithANO)
 
 TEST(M8, PVTReportSuccessWithANOMissingDBDAck)
 {
-    M8QAsyncReceiver m;
+    M10QAsyncReceiver m;
     TestGNSSListener listener(m);
     GPSNavSettings settings;
     settings.assistnow_autonomous_enable = true;
@@ -647,7 +647,7 @@ TEST(M8, PVTReportSuccessWithANOMissingDBDAck)
 
 TEST(M8, PVTReportSuccessWithANOMissingDBDs)
 {
-    M8QAsyncReceiver m;
+    M10QAsyncReceiver m;
     TestGNSSListener listener(m);
     GPSNavSettings settings;
     settings.assistnow_autonomous_enable = true;
@@ -734,7 +734,7 @@ TEST(M8, PVTReportSuccessWithANOMissingDBDs)
 
 TEST(M8, PVTReportSuccessWithANOAndStartNewReceive)
 {
-    M8QAsyncReceiver m;
+    M10QAsyncReceiver m;
     TestGNSSListener listener(m);
     GPSNavSettings settings;
     settings.assistnow_autonomous_enable = true;
@@ -870,7 +870,7 @@ TEST(M8, PVTReportSuccessWithANOAndStartNewReceive)
 
 TEST(M8, FailedToStartReceive)
 {
-    M8QAsyncReceiver m;
+    M10QAsyncReceiver m;
     TestGNSSListener listener(m);
     GPSNavSettings settings;
     settings.assistnow_autonomous_enable = false;
@@ -911,7 +911,7 @@ TEST(M8, FailedToStartReceive)
 
 TEST(M8, UartCommsErrorDuringReceive)
 {
-    M8QAsyncReceiver m;
+    M10QAsyncReceiver m;
     TestGNSSListener listener(m);
     GPSNavSettings settings;
     settings.assistnow_autonomous_enable = false;
@@ -983,7 +983,7 @@ TEST(M8, UartCommsErrorDuringReceive)
 
 TEST(M8, UartCommsErrorDuringConfig)
 {
-    M8QAsyncReceiver m;
+    M10QAsyncReceiver m;
     TestGNSSListener listener(m);
     GPSNavSettings settings;
     settings.assistnow_autonomous_enable = false;
@@ -1022,7 +1022,7 @@ TEST(M8, UartCommsErrorDuringConfig)
 
 TEST(M8, UartCommsErrorDuringConfigAndRecover)
 {
-    M8QAsyncReceiver m;
+    M10QAsyncReceiver m;
     TestGNSSListener listener(m);
     GPSNavSettings settings;
     settings.assistnow_autonomous_enable = false;
@@ -1060,7 +1060,7 @@ TEST(M8, UartCommsErrorDuringConfigAndRecover)
 
 TEST(M8, PVTReportSuccessWithMGAOverflow)
 {
-    M8QAsyncReceiver m;
+    M10QAsyncReceiver m;
     TestGNSSListener listener(m);
     GPSNavSettings settings;
     settings.assistnow_autonomous_enable = true;

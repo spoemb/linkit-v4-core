@@ -5,7 +5,7 @@
 #include "gps.hpp"
 #include "timeutils.hpp"
 
-class MockM8Q : public GPSDevice {
+class MockM10Q : public GPSDevice {
 public:
     void notify_gnss_data(std::time_t time, double lat=0, double lon=0, double hdop = 0, double hacc = 0, bool valid = 1) {
     	GNSSData gnss_data;
@@ -39,12 +39,12 @@ public:
     }
 
     void power_on(const GPSNavSettings& nav_settings) override {
-    	DEBUG_TRACE("MockM8Q::power_on()");
+    	DEBUG_TRACE("MockM10Q::power_on()");
         mock().actualCall("power_on").onObject(this).withParameterOfType("const GPSNavSettings&", "nav_settings", &nav_settings);
     }
 
     void power_off() override {
-    	DEBUG_TRACE("MockM8Q::power_off()");
+    	DEBUG_TRACE("MockM10Q::power_off()");
         mock().actualCall("power_off").onObject(this);
     }
 };
