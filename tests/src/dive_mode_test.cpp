@@ -4,7 +4,6 @@
 #include "dive_mode_service.hpp"
 #include "fake_config_store.hpp"
 #include "fake_timer.hpp"
-#include "fake_irq.hpp"
 #include "fake_switch.hpp"
 #include "scheduler.hpp"
 
@@ -19,7 +18,6 @@ TEST_GROUP(DiveMode)
 	FakeConfigurationStore *fake_config_store;
 	FakeTimer *fake_timer;
 	FakeSwitch fake_switch;
-	FakeIRQ fake_irq;
 
 	void setup() {
 		fake_timer = new FakeTimer;
@@ -54,27 +52,6 @@ TEST_GROUP(DiveMode)
 };
 
 
-TEST(DiveMode, DiveModeEngagedAndDisengagedByWCHG)
-{
-	unsigned int start_period = 10;
-	bool dive_mode_en = true;
-
-	configuration_store->write_param(ParamID::UW_DIVE_MODE_ENABLE, dive_mode_en);
-	configuration_store->write_param(ParamID::UW_DIVE_MODE_START_TIME, start_period);
-
-	DiveModeService s(fake_switch, fake_irq);
-	s.start();
-	notify_underwater_state(true);
-	CHECK_EQUAL(1000 * start_period, s.get_last_schedule());
-	advance_time(s.get_last_schedule());
-	CHECK_TRUE(fake_switch.is_paused());
-	fake_irq.invoke();
-	CHECK_FALSE(fake_switch.is_paused());
-	s.stop();
-	CHECK_FALSE(fake_switch.is_paused());
-}
-
-
 TEST(DiveMode, DiveModeEngagedAndDisengagedBySurfacing)
 {
 	unsigned int start_period = 10;
@@ -83,7 +60,7 @@ TEST(DiveMode, DiveModeEngagedAndDisengagedBySurfacing)
 	configuration_store->write_param(ParamID::UW_DIVE_MODE_ENABLE, dive_mode_en);
 	configuration_store->write_param(ParamID::UW_DIVE_MODE_START_TIME, start_period);
 
-	DiveModeService s(fake_switch, fake_irq);
+	DiveModeService s(fake_switch);
 	s.start();
 	notify_underwater_state(true);
 	CHECK_EQUAL(1000 * start_period, s.get_last_schedule());
@@ -103,12 +80,10 @@ TEST(DiveMode, DiveModeHasNoEffectWhenDisabled)
 	configuration_store->write_param(ParamID::UW_DIVE_MODE_ENABLE, dive_mode_en);
 	configuration_store->write_param(ParamID::UW_DIVE_MODE_START_TIME, start_period);
 
-	DiveModeService s(fake_switch, fake_irq);
+	DiveModeService s(fake_switch);
 	s.start();
 	notify_underwater_state(true);
 	CHECK_EQUAL(Service::SCHEDULE_DISABLED, s.get_last_schedule());
-	CHECK_FALSE(fake_switch.is_paused());
-	fake_irq.invoke();
 	CHECK_FALSE(fake_switch.is_paused());
 	s.stop();
 	CHECK_FALSE(fake_switch.is_paused());
@@ -122,7 +97,7 @@ TEST(DiveMode, DiveModeDisengagedIfServiceStopped)
 	configuration_store->write_param(ParamID::UW_DIVE_MODE_ENABLE, dive_mode_en);
 	configuration_store->write_param(ParamID::UW_DIVE_MODE_START_TIME, start_period);
 
-	DiveModeService s(fake_switch, fake_irq);
+	DiveModeService s(fake_switch);
 	s.start();
 	notify_underwater_state(true);
 	CHECK_EQUAL(1000 * start_period, s.get_last_schedule());
@@ -141,7 +116,7 @@ TEST(DiveMode, DiveModeRunsMultipleTimes)
 	configuration_store->write_param(ParamID::UW_DIVE_MODE_ENABLE, dive_mode_en);
 	configuration_store->write_param(ParamID::UW_DIVE_MODE_START_TIME, start_period);
 
-	DiveModeService s(fake_switch, fake_irq);
+	DiveModeService s(fake_switch);
 	s.start();
 
 	for (unsigned int i = 0; i < 10; i++) {

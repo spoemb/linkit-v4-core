@@ -153,9 +153,6 @@ const BaseMap param_map[] = {
 	// GNSS ANO
 	{ "GNSS_ASSISTNOW_OFFLINE_EN", "GNP27", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 
-	// WCHG_STATUS
-	{ "WCHG_STATUS", "WCT01", BaseEncoding::TEXT, "", "", {}, true, false },
-
 	// Extended UW parameters
 	{ "UW_MAX_SAMPLES", "UNP05", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 	{ "UW_MIN_DRY_SAMPLES", "UNP06", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },

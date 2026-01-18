@@ -98,9 +98,6 @@ SRC_FILES += \
   $(SDK_ROOT)/components/libraries/crypto/backend/oberon/oberon_backend_eddsa.c \
   $(SDK_ROOT)/components/libraries/crypto/backend/oberon/oberon_backend_hash.c \
   $(SDK_ROOT)/components/libraries/crypto/backend/oberon/oberon_backend_hmac.c \
-  $(EXT_DIR)/core/hardware/stwlc68_otp/otphal.c \
-  $(EXT_DIR)/core/hardware/stwlc68_otp/otp_prog.c \
-  $(EXT_DIR)/core/hardware/stwlc68_otp/otp_chip_info.c \
 
 # Include folders common to all targets
 INC_FOLDERS += \
@@ -159,7 +156,6 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/libraries/queue \
   $(SDK_ROOT)/components/libraries/mutex \
   $(SDK_ROOT)/components/libraries/ringbuf \
-  $(EXT_DIR)/core/hardware/stwlc68_otp \
 
 # Libraries common to all targets
 LIB_FILES += \

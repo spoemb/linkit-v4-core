@@ -2,7 +2,6 @@
 
 #include "service.hpp"
 #include "switch.hpp"
-#include "irq.hpp"
 
 
 class DiveModeService : public Service {
@@ -13,8 +12,8 @@ public:
 		Engaged
 	};
 
-	DiveModeService(Switch& reed, IRQ& wchg) : Service(ServiceIdentifier::DIVE_MODE, "DIVE", nullptr),
-		m_reed(reed), m_wchg(wchg), m_dive_state(DiveState::Idle) {}
+	DiveModeService(Switch& reed) : Service(ServiceIdentifier::DIVE_MODE, "DIVE", nullptr),
+		m_reed(reed), m_dive_state(DiveState::Idle) {}
 
 	void notify_peer_event(ServiceEvent& e) {
 
@@ -42,7 +41,6 @@ public:
 
 private:
 	Switch& m_reed;
-	IRQ& m_wchg;
 	DiveState m_dive_state;
 
 protected:
@@ -75,20 +73,10 @@ protected:
 
 	void service_init() override {
 		m_dive_state = DiveState::Idle;
-		if (service_is_enabled()) {
-			m_wchg.enable([this]() {
-				if (m_dive_state == DiveState::Engaged) {
-					DEBUG_INFO("DiveModeService: dive mode disengaged by WCHG");
-					m_dive_state = DiveState::Idle;
-					m_reed.resume();
-				}
-			});
-		}
 	}
 
 	void service_term() override {
 		if (service_is_enabled()) {
-			m_wchg.disable();
 			m_reed.resume();
 		}
 	}

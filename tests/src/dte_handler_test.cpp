@@ -17,7 +17,6 @@
 
 #include "mock_sensor.hpp"
 #include "mock_logger.hpp"
-#include "mock_wchg.hpp"
 #include "previpass.h"
 #include "binascii.hpp"
 
@@ -46,7 +45,6 @@ TEST_GROUP(DTEHandler)
 	FakeBatteryMonitor *fake_battery_monitor;
 	GPSLogFormatter gps_log_formatter;
 	SysLogFormatter sys_log_formatter;
-	MockWirelessCharger *mock_wchg;
 
 	void setup() {
 		ram_flash = new RamFlash(BLOCK_COUNT, BLOCK_SIZE, PAGE_SIZE);
@@ -63,7 +61,6 @@ TEST_GROUP(DTEHandler)
 		mock_system_log->set_log_formatter(&sys_log_formatter);
 		mock_sensor_log = new MockLog("sensor.log");
 		mock_sensor_log->set_log_formatter(&gps_log_formatter);
-		mock_wchg = new MockWirelessCharger;
 		dte_handler = new DTEHandler();
 		fake_battery_monitor = new FakeBatteryMonitor();
 		battery_monitor = fake_battery_monitor;
@@ -71,7 +68,6 @@ TEST_GROUP(DTEHandler)
 	}
 
 	void teardown() {
-		delete mock_wchg;
 		delete dte_handler;
 		delete mock_sensor_log;
 		delete mock_system_log;
@@ -144,15 +140,6 @@ TEST(DTEHandler, PARMR_REQ)
 	STRCMP_EQUAL("$O;PARMR#173;IDT06=0,IDP12=0,IDT02=SURFACEBOX,IDT03=V0.1,ART01=01/01/1970 00:00:00,ART02=0,POT03=0,POT05=01/01/1970 00:00:00,IDP11=FACTORY,ART03=07/10/2021 22:41:14,ARP03=300,ARP04=7,ARP05=60,ARP01=2,ARP19=0,ARP18=0,GNP01=1,ARP11=1,ARP16=10,GNP02=1,GNP03=2,GNP05=120,UNP01=0,UNP02=1,UNP03=60,LBP01=0,LBP02=10,LBP03=7,ARP06=240,LBP04=2,LBP05=0,LBP06=1,ARP12=4,LBP07=2,LBP08=1,LBP09=120\r", resp.c_str());
 }
 
-TEST(DTEHandler, PARMR_WCS_REQ)
-{
-	std::string resp;
-	std::string req = "$PARMR#005;WCT01\r";
-	mock().expectOneCall("get_chip_status").onObject(mock_wchg).andReturnValue("HELLO");
-	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
-	STRCMP_EQUAL("$O;PARMR#00B;WCT01=HELLO\r", resp.c_str());
-}
-
 TEST(DTEHandler, STATR_REQ)
 {
 	std::string resp;
@@ -165,9 +152,8 @@ TEST(DTEHandler, STATR_REQ_CheckEmptyRequest)
 {
 	std::string resp;
 	std::string req = "$STATR#000;\r";
-	mock().expectOneCall("get_chip_status").onObject(mock_wchg).andReturnValue("OK");
 	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
-	STRCMP_EQUAL("$O;STATR#0C2;IDT06=0,IDT02=SURFACEBOX,IDT03=V0.1,ART01=01/01/1970 00:00:00,ART02=0,POT03=0,POT05=01/01/1970 00:00:00,ART03=07/10/2021 22:41:14,ART10=0,ART11=0,IDT04=SIMULATOR,POT06=0,IDT10=305419896,WCT01=OK\r", resp.c_str());
+	STRCMP_EQUAL("$O;STATR#0B6;IDT06=0,IDT02=SURFACEBOX,IDT03=V0.1,ART01=01/01/1970 00:00:00,ART02=0,POT03=0,POT05=01/01/1970 00:00:00,ART03=07/10/2021 22:41:14,ART10=0,ART11=0,IDT04=SIMULATOR,POT06=0,IDT10=305419896\r", resp.c_str());
 }
 
 TEST(DTEHandler, PARMR_REQ_CheckEmptyRequest)
