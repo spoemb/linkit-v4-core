@@ -7,19 +7,19 @@ extern ConfigurationStore *configuration_store;
 
 #define SECONDS_PER_HOUR   3600
 
-ArgosRxService::ArgosRxService(ArticDevice& device) : Service(ServiceIdentifier::ARGOS_RX, "ARGOSRX"), m_artic(device) {
+ArgosRxService::ArgosRxService(KineisDevice& device) : Service(ServiceIdentifier::ARGOS_RX, "ARGOSRX"), m_kineis(device) {
 }
 
 void ArgosRxService::service_init() {
 	ArgosConfig argos_config;
 	configuration_store->get_argos_configuration(argos_config);
-	m_artic.set_frequency(argos_config.frequency);
-	m_artic.set_tcxo_warmup_time(argos_config.argos_tcxo_warmup_time);
-	m_artic.subscribe(*this);
+	m_kineis.set_frequency(argos_config.frequency);
+	m_kineis.set_tcxo_warmup_time(argos_config.argos_tcxo_warmup_time);
+	m_kineis.subscribe(*this);
 }
 
 void ArgosRxService::service_term() {
-	m_artic.unsubscribe(*this);
+	m_kineis.unsubscribe(*this);
 }
 
 bool ArgosRxService::service_is_enabled() {
@@ -38,12 +38,12 @@ unsigned int ArgosRxService::service_next_schedule_in_ms() {
 
 void ArgosRxService::service_initiate() {
 	DEBUG_INFO("ArgosRxService::service_initiate: starting RX");
-	m_artic.start_receive(m_mode);
+	m_kineis.start_receive(m_mode);
 	m_cumulative_rx_time = 0;
 }
 
 bool ArgosRxService::service_cancel() {
-	return m_artic.stop_receive();
+	return m_kineis.stop_receive();
 }
 
 unsigned int ArgosRxService::service_next_timeout() {
@@ -80,8 +80,8 @@ bool ArgosRxService::service_is_triggered_on_surfaced(bool& immediate) {
 	return true;
 }
 
-void ArgosRxService::react(ArticEventRxPacket const& e) {
-	DEBUG_INFO("ArgosRxService::react(ArticEventRxPacket): packet=%s length=%u", Binascii::hexlify(e.packet).c_str(), e.size_bits);
+void ArgosRxService::react(KineisEventRxPacket const& e) {
+	DEBUG_INFO("ArgosRxService::react(KineisEventRxPacket): packet=%s length=%u", Binascii::hexlify(e.packet).c_str(), e.size_bits);
 
 	// Increment RX counter
 	configuration_store->increment_rx_counter();
@@ -97,22 +97,22 @@ void ArgosRxService::react(ArticEventRxPacket const& e) {
 	update_pass_predict(pass_predict);
 }
 
-void ArgosRxService::react(ArticEventDeviceError const&) {
-	DEBUG_TRACE("ArgosRxService::react: ArticEventDeviceError");
+void ArgosRxService::react(KineisEventDeviceError const&) {
+	DEBUG_TRACE("ArgosRxService::react: KineisEventDeviceError");
 	if (service_cancel())
 		service_complete();
 }
 
-void ArgosRxService::react(ArticEventPowerOff const&) {
+void ArgosRxService::react(KineisEventPowerOff const&) {
 	if (m_cumulative_rx_time) {
-		DEBUG_INFO("ArgosRxService::react: ArticEventPowerOff: cumulative_rx=%u ms", m_cumulative_rx_time);
+		DEBUG_INFO("ArgosRxService::react: KineisEventPowerOff: cumulative_rx=%u ms", m_cumulative_rx_time);
 		configuration_store->increment_rx_time((m_cumulative_rx_time + 999) / 1000); // Stored in seconds
 		configuration_store->save_params();
 		m_cumulative_rx_time = 0;
 	}
 }
 
-void ArgosRxService::react(ArticEventRxStopped const& e) {
+void ArgosRxService::react(KineisEventRxStopped const& e) {
 	m_cumulative_rx_time += e.rx_time;
 }
 
@@ -188,7 +188,7 @@ ArgosRxScheduler::ArgosRxScheduler() : m_earliest_schedule(0) {
 	m_location.reset();
 }
 
-unsigned int ArgosRxScheduler::schedule(ArgosConfig& argos_config, BasePassPredict& pass_predict, std::time_t now, unsigned int &timeout, ArticMode& mode) {
+unsigned int ArgosRxScheduler::schedule(ArgosConfig& argos_config, BasePassPredict& pass_predict, std::time_t now, unsigned int &timeout, KineisModulation& mode) {
 	if (!m_location.has_value()) {
 		DEBUG_TRACE("ArgosRxService::schedule: can't schedule as last location/time is not known");
 		return Service::SCHEDULE_DISABLED;
@@ -247,7 +247,7 @@ unsigned int ArgosRxScheduler::schedule(ArgosConfig& argos_config, BasePassPredi
 		// Check we don't schedule off the end of the computed window
 		if ((start + ARGOS_RX_MARGIN_MSECS) < end) {
 			// We're good to go for this schedule, compute relative delay until the epoch arrives
-			mode = ArticMode::A3;
+			mode = KineisModulation::LDA2;
 			DEBUG_INFO("ArgosRxScheduler::schedule_prepass: scheduled for %llu secs from now, timeout %u secs", start - now, end - start);
 			timeout = (end - start) * MSECS_PER_SECOND;
 			return (start - now) * MSECS_PER_SECOND;

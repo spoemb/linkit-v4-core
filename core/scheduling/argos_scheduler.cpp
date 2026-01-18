@@ -533,13 +533,13 @@ unsigned int ArgosScheduler::build_certification_packet(ArgosPacket& packet) {
 	}
 
 	switch (m_argos_config.cert_tx_modulation) {
+	case BaseArgosModulation::LDK:
 	case BaseArgosModulation::A2:
 		m_next_mode = ArgosMode::ARGOS_2;
 		break;
-	case BaseArgosModulation::A3:
-		m_next_mode = ArgosMode::ARGOS_3;
-		break;
 	case BaseArgosModulation::A4:
+		m_next_mode = ArgosMode::ARGOS_4;
+		break;
 	default:
 		DEBUG_WARN("ArgosScheduler::build_certification_packet: modulation mode %u not supported, using A2 instead", m_argos_config.cert_tx_modulation);
 		m_next_mode = ArgosMode::ARGOS_2;

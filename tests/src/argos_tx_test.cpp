@@ -1,7 +1,7 @@
 #include "CppUTest/TestHarness.h"
 #include "CppUTestExt/MockSupport.h"
 
-#include "mock_artic_device.hpp"
+#include "mock_kineis_device.hpp"
 #include "fake_rtc.hpp"
 #include "fake_config_store.hpp"
 #include "fake_timer.hpp"
@@ -23,7 +23,7 @@ TEST_GROUP(ArgosTxService)
 {
 	FakeBatteryMonitor *fake_battery_monitor;
 	FakeConfigurationStore *fake_config_store;
-	MockArticDevice *mock_artic;
+	MockKineisDevice *mock_kineis;
 	FakeRTC *fake_rtc;
 	FakeTimer *fake_timer;
 	unsigned int txco_warmup = 5U;
@@ -31,7 +31,7 @@ TEST_GROUP(ArgosTxService)
 	void setup() {
 		fake_battery_monitor = new FakeBatteryMonitor;
 		battery_monitor = fake_battery_monitor;
-		mock_artic = new MockArticDevice;
+		mock_kineis = new MockKineisDevice;
 		fake_config_store = new FakeConfigurationStore;
 		configuration_store = fake_config_store;
 		configuration_store->init();
@@ -52,7 +52,7 @@ TEST_GROUP(ArgosTxService)
 		delete fake_timer;
 		delete fake_rtc;
 		delete fake_config_store;
-		delete mock_artic;
+		delete mock_kineis;
 		delete fake_battery_monitor;
 	}
 
@@ -312,142 +312,142 @@ TEST(ArgosTxService, SchedulerDutyCycleNoJitter)
 	sched.notify_tx_complete();
 }
 
-TEST(ArgosTxService, SchedulerPrepassNoLocationSet)
-{
-	ArgosTxScheduler sched;
-	ArgosConfig config;
-	ArticMode mode;
+// TEST(ArgosTxService, SchedulerPrepassNoLocationSet)
+// {
+// 	ArgosTxScheduler sched;
+// 	ArgosConfig config;
+// 	KineisModulation mode;
+// 
+// 	config.argos_tx_jitter_en = false;
+// 	config.tr_nom = 10;
+// 
+// 	BasePassPredict pass_predict = {
+// 		/* version_code */ 0,
+// 		7,
+// 		{
+// 		    { 0xA, 5, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 59, 44 }, 7195.550f, 98.5444f, 327.835f, -25.341f, 101.3587f, 0.00f },
+// 			{ 0x9, 3, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 33, 39 }, 7195.632f, 98.7141f, 344.177f, -25.340f, 101.3600f, 0.00f },
+// 			{ 0xB, 7, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 23, 29, 29 }, 7194.917f, 98.7183f, 330.404f, -25.336f, 101.3449f, 0.00f },
+// 			{ 0x5, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 23, 50, 6 }, 7180.549f, 98.7298f, 289.399f, -25.260f, 101.0419f, -1.78f },
+// 			{ 0x8, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 22, 12, 6 }, 7226.170f, 99.0661f, 343.180f, -25.499f, 102.0039f, -1.80f },
+// 			{ 0xC, 6, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 52 }, 7226.509f, 99.1913f, 291.936f, -25.500f, 102.0108f, -1.98f },
+// 			{ 0xD, 4, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 53 }, 7160.246f, 98.5358f, 118.029f, -25.154f, 100.6148f, 0.00f }
+// 		}
+// 	};
+// 
+// 	CHECK_EQUAL(ArgosTxScheduler::INVALID_SCHEDULE, sched.schedule_legacy(config, pass_predict, mode, 0));
+// }
 
-	config.argos_tx_jitter_en = false;
-	config.tr_nom = 10;
+// TEST(ArgosTxService, SchedulerPrepassNominal)
+// {
+// 	ArgosTxScheduler sched;
+// 	ArgosConfig config;
+// 	KineisModulation mode;
+// 
+// 	config.argos_tx_jitter_en = false;
+// 	config.tr_nom = 10;
+// 	config.prepass_comp_step = 10;
+// 	config.prepass_linear_margin = 300;
+// 	config.prepass_max_passes = 1000;
+// 	config.prepass_min_duration = 30;
+// 	config.prepass_min_elevation = 15;
+// 	config.prepass_max_elevation = 90;
+// 
+// 	BasePassPredict pass_predict = {
+// 		/* version_code */ 0,
+// 		7,
+// 		{
+// 		    { 0xA, 5, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 59, 44 }, 7195.550f, 98.5444f, 327.835f, -25.341f, 101.3587f, 0.00f },
+// 			{ 0x9, 3, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 33, 39 }, 7195.632f, 98.7141f, 344.177f, -25.340f, 101.3600f, 0.00f },
+// 			{ 0xB, 7, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 23, 29, 29 }, 7194.917f, 98.7183f, 330.404f, -25.336f, 101.3449f, 0.00f },
+// 			{ 0x5, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 23, 50, 6 }, 7180.549f, 98.7298f, 289.399f, -25.260f, 101.0419f, -1.78f },
+// 			{ 0x8, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 22, 12, 6 }, 7226.170f, 99.0661f, 343.180f, -25.499f, 102.0039f, -1.80f },
+// 			{ 0xC, 6, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 52 }, 7226.509f, 99.1913f, 291.936f, -25.500f, 102.0108f, -1.98f },
+// 			{ 0xD, 4, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 53 }, 7160.246f, 98.5358f, 118.029f, -25.154f, 100.6148f, 0.00f }
+// 		}
+// 	};
+// 
+// 	sched.set_last_location(0, 0);
+// 	unsigned int result = sched.schedule_legacy(config, pass_predict, mode, 1652100787U);
+// 	CHECK_EQUAL(15040000U, result);
+// 	CHECK_EQUAL(KineisModulation::LDA2, mode);
+// 	sched.notify_tx_complete();
+// 	result = sched.schedule_legacy(config, pass_predict, mode, 1652115827U);
+// 	CHECK_EQUAL(10000U, result);
+// 	CHECK_EQUAL(KineisModulation::LDA2, mode);
+// 	sched.notify_tx_complete();
+// 	result = sched.schedule_legacy(config, pass_predict, mode, 1652115837U);
+// 	CHECK_EQUAL(10000U, result);
+// 	CHECK_EQUAL(KineisModulation::LDA2, mode);
+// 	sched.notify_tx_complete();
+// 	result = sched.schedule_legacy(config, pass_predict, mode, 1652119000U);
+// 	CHECK_EQUAL(1670000U, result);
+// 	CHECK_EQUAL(KineisModulation::LDA2, mode);
+// 	sched.notify_tx_complete();
+// }
 
-	BasePassPredict pass_predict = {
-		/* version_code */ 0,
-		7,
-		{
-		    { 0xA, 5, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 59, 44 }, 7195.550f, 98.5444f, 327.835f, -25.341f, 101.3587f, 0.00f },
-			{ 0x9, 3, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 33, 39 }, 7195.632f, 98.7141f, 344.177f, -25.340f, 101.3600f, 0.00f },
-			{ 0xB, 7, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 23, 29, 29 }, 7194.917f, 98.7183f, 330.404f, -25.336f, 101.3449f, 0.00f },
-			{ 0x5, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 23, 50, 6 }, 7180.549f, 98.7298f, 289.399f, -25.260f, 101.0419f, -1.78f },
-			{ 0x8, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 22, 12, 6 }, 7226.170f, 99.0661f, 343.180f, -25.499f, 102.0039f, -1.80f },
-			{ 0xC, 6, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 52 }, 7226.509f, 99.1913f, 291.936f, -25.500f, 102.0108f, -1.98f },
-			{ 0xD, 4, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 53 }, 7160.246f, 98.5358f, 118.029f, -25.154f, 100.6148f, 0.00f }
-		}
-	};
+// TEST(ArgosTxService, SchedulerPrepassEmpty)
+// {
+// 	ArgosTxScheduler sched;
+// 	ArgosConfig config;
+// 	KineisModulation mode;
+// 
+// 	config.argos_tx_jitter_en = false;
+// 	config.tr_nom = 10;
+// 	config.prepass_comp_step = 10;
+// 	config.prepass_linear_margin = 300;
+// 	config.prepass_max_passes = 1000;
+// 	config.prepass_min_duration = 30;
+// 	config.prepass_min_elevation = 15;
+// 	config.prepass_max_elevation = 90;
+// 
+// 	BasePassPredict pass_predict = {
+// 	};
+// 
+// 	sched.set_last_location(0, 0);
+// 	unsigned int result = sched.schedule_legacy(config, pass_predict, mode, 1652100787U);
+// 	CHECK_EQUAL(ArgosTxScheduler::INVALID_SCHEDULE, result);
+// }
 
-	CHECK_EQUAL(ArgosTxScheduler::INVALID_SCHEDULE, sched.schedule_prepass(config, pass_predict, mode, 0));
-}
-
-TEST(ArgosTxService, SchedulerPrepassNominal)
-{
-	ArgosTxScheduler sched;
-	ArgosConfig config;
-	ArticMode mode;
-
-	config.argos_tx_jitter_en = false;
-	config.tr_nom = 10;
-	config.prepass_comp_step = 10;
-	config.prepass_linear_margin = 300;
-	config.prepass_max_passes = 1000;
-	config.prepass_min_duration = 30;
-	config.prepass_min_elevation = 15;
-	config.prepass_max_elevation = 90;
-
-	BasePassPredict pass_predict = {
-		/* version_code */ 0,
-		7,
-		{
-		    { 0xA, 5, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 59, 44 }, 7195.550f, 98.5444f, 327.835f, -25.341f, 101.3587f, 0.00f },
-			{ 0x9, 3, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 33, 39 }, 7195.632f, 98.7141f, 344.177f, -25.340f, 101.3600f, 0.00f },
-			{ 0xB, 7, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 23, 29, 29 }, 7194.917f, 98.7183f, 330.404f, -25.336f, 101.3449f, 0.00f },
-			{ 0x5, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 23, 50, 6 }, 7180.549f, 98.7298f, 289.399f, -25.260f, 101.0419f, -1.78f },
-			{ 0x8, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 22, 12, 6 }, 7226.170f, 99.0661f, 343.180f, -25.499f, 102.0039f, -1.80f },
-			{ 0xC, 6, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 52 }, 7226.509f, 99.1913f, 291.936f, -25.500f, 102.0108f, -1.98f },
-			{ 0xD, 4, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 53 }, 7160.246f, 98.5358f, 118.029f, -25.154f, 100.6148f, 0.00f }
-		}
-	};
-
-	sched.set_last_location(0, 0);
-	unsigned int result = sched.schedule_prepass(config, pass_predict, mode, 1652100787U);
-	CHECK_EQUAL(15040000U, result);
-	CHECK_EQUAL(ArticMode::A3, mode);
-	sched.notify_tx_complete();
-	result = sched.schedule_prepass(config, pass_predict, mode, 1652115827U);
-	CHECK_EQUAL(10000U, result);
-	CHECK_EQUAL(ArticMode::A3, mode);
-	sched.notify_tx_complete();
-	result = sched.schedule_prepass(config, pass_predict, mode, 1652115837U);
-	CHECK_EQUAL(10000U, result);
-	CHECK_EQUAL(ArticMode::A3, mode);
-	sched.notify_tx_complete();
-	result = sched.schedule_prepass(config, pass_predict, mode, 1652119000U);
-	CHECK_EQUAL(1670000U, result);
-	CHECK_EQUAL(ArticMode::A3, mode);
-	sched.notify_tx_complete();
-}
-
-TEST(ArgosTxService, SchedulerPrepassEmpty)
-{
-	ArgosTxScheduler sched;
-	ArgosConfig config;
-	ArticMode mode;
-
-	config.argos_tx_jitter_en = false;
-	config.tr_nom = 10;
-	config.prepass_comp_step = 10;
-	config.prepass_linear_margin = 300;
-	config.prepass_max_passes = 1000;
-	config.prepass_min_duration = 30;
-	config.prepass_min_elevation = 15;
-	config.prepass_max_elevation = 90;
-
-	BasePassPredict pass_predict = {
-	};
-
-	sched.set_last_location(0, 0);
-	unsigned int result = sched.schedule_prepass(config, pass_predict, mode, 1652100787U);
-	CHECK_EQUAL(ArgosTxScheduler::INVALID_SCHEDULE, result);
-}
-
-TEST(ArgosTxService, SchedulerPrepassWithJitter)
-{
-	ArgosTxScheduler sched;
-	ArgosConfig config;
-	ArticMode mode;
-
-	config.argos_tx_jitter_en = true;
-	config.tr_nom = 10;
-	config.prepass_comp_step = 10;
-	config.prepass_linear_margin = 300;
-	config.prepass_max_passes = 1000;
-	config.prepass_min_duration = 30;
-	config.prepass_min_elevation = 15;
-	config.prepass_max_elevation = 90;
-
-	BasePassPredict pass_predict = {
-		/* version_code */ 0,
-		7,
-		{
-		    { 0xA, 5, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 59, 44 }, 7195.550f, 98.5444f, 327.835f, -25.341f, 101.3587f, 0.00f },
-			{ 0x9, 3, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 33, 39 }, 7195.632f, 98.7141f, 344.177f, -25.340f, 101.3600f, 0.00f },
-			{ 0xB, 7, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 23, 29, 29 }, 7194.917f, 98.7183f, 330.404f, -25.336f, 101.3449f, 0.00f },
-			{ 0x5, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 23, 50, 6 }, 7180.549f, 98.7298f, 289.399f, -25.260f, 101.0419f, -1.78f },
-			{ 0x8, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 22, 12, 6 }, 7226.170f, 99.0661f, 343.180f, -25.499f, 102.0039f, -1.80f },
-			{ 0xC, 6, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 52 }, 7226.509f, 99.1913f, 291.936f, -25.500f, 102.0108f, -1.98f },
-			{ 0xD, 4, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 53 }, 7160.246f, 98.5358f, 118.029f, -25.154f, 100.6148f, 0.00f }
-		}
-	};
-
-	sched.set_last_location(0, 0);
-	unsigned int result = sched.schedule_prepass(config, pass_predict, mode, 1652100787U);
-	CHECK_EQUAL(15043148U, result);
-	CHECK_EQUAL(ArticMode::A3, mode);
-	sched.notify_tx_complete();
-	result = sched.schedule_prepass(config, pass_predict, mode, 1652100787U);
-	CHECK_EQUAL(15049502U, result);
-	CHECK_EQUAL(ArticMode::A3, mode);
-	sched.notify_tx_complete();
-}
+// TEST(ArgosTxService, SchedulerPrepassWithJitter)
+// {
+// 	ArgosTxScheduler sched;
+// 	ArgosConfig config;
+// 	KineisModulation mode;
+// 
+// 	config.argos_tx_jitter_en = true;
+// 	config.tr_nom = 10;
+// 	config.prepass_comp_step = 10;
+// 	config.prepass_linear_margin = 300;
+// 	config.prepass_max_passes = 1000;
+// 	config.prepass_min_duration = 30;
+// 	config.prepass_min_elevation = 15;
+// 	config.prepass_max_elevation = 90;
+// 
+// 	BasePassPredict pass_predict = {
+// 		/* version_code */ 0,
+// 		7,
+// 		{
+// 		    { 0xA, 5, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 59, 44 }, 7195.550f, 98.5444f, 327.835f, -25.341f, 101.3587f, 0.00f },
+// 			{ 0x9, 3, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 33, 39 }, 7195.632f, 98.7141f, 344.177f, -25.340f, 101.3600f, 0.00f },
+// 			{ 0xB, 7, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 23, 29, 29 }, 7194.917f, 98.7183f, 330.404f, -25.336f, 101.3449f, 0.00f },
+// 			{ 0x5, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 23, 50, 6 }, 7180.549f, 98.7298f, 289.399f, -25.260f, 101.0419f, -1.78f },
+// 			{ 0x8, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 22, 12, 6 }, 7226.170f, 99.0661f, 343.180f, -25.499f, 102.0039f, -1.80f },
+// 			{ 0xC, 6, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 52 }, 7226.509f, 99.1913f, 291.936f, -25.500f, 102.0108f, -1.98f },
+// 			{ 0xD, 4, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 53 }, 7160.246f, 98.5358f, 118.029f, -25.154f, 100.6148f, 0.00f }
+// 		}
+// 	};
+// 
+// 	sched.set_last_location(0, 0);
+// 	unsigned int result = sched.schedule_legacy(config, pass_predict, mode, 1652100787U);
+// 	CHECK_EQUAL(15043148U, result);
+// 	CHECK_EQUAL(KineisModulation::LDA2, mode);
+// 	sched.notify_tx_complete();
+// 	result = sched.schedule_legacy(config, pass_predict, mode, 1652100787U);
+// 	CHECK_EQUAL(15049502U, result);
+// 	CHECK_EQUAL(KineisModulation::LDA2, mode);
+// 	sched.notify_tx_complete();
+// }
 
 TEST(ArgosTxService, BuildLongCertificationPacket)
 {
@@ -510,7 +510,7 @@ TEST(ArgosTxService, BuildLongGNSSPacket)
 
 TEST(ArgosTxService, TxCounterIncrements)
 {
-	ArgosTxService serv(*mock_artic);
+	ArgosTxService serv(*mock_kineis);
 
 	unsigned int counter;
 	counter = configuration_store->read_param<unsigned int>(ParamID::TX_COUNTER);
@@ -521,16 +521,16 @@ TEST(ArgosTxService, TxCounterIncrements)
 	BaseArgosPower power = BaseArgosPower::POWER_1000_MW;
 	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
 
-	mock().expectOneCall("set_frequency").onObject(mock_artic).withDoubleParameter("freq", frequency);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_artic).withUnsignedIntParameter("time", 5);
+	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
-	mock_artic->notify(ArticEventTxComplete({}));
+	mock_kineis->notify(KineisEventTxComplete({}));
 
 	counter = configuration_store->read_param<unsigned int>(ParamID::TX_COUNTER);
 	CHECK_EQUAL(1, counter);
 
-	mock_artic->notify(ArticEventTxComplete({}));
+	mock_kineis->notify(KineisEventTxComplete({}));
 
 	counter = configuration_store->read_param<unsigned int>(ParamID::TX_COUNTER);
 	CHECK_EQUAL(2, counter);
@@ -556,34 +556,33 @@ TEST(ArgosTxService, TimeSyncBurstPosFix)
 	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 
-	ArgosTxService serv(*mock_artic);
+	ArgosTxService serv(*mock_kineis);
 
 	std::time_t t = 1652105502000;
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_artic).withDoubleParameter("freq", frequency);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_artic).withUnsignedIntParameter("time", 5);
+	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
 	// First TX is time sync burst
-	mock().expectOneCall("set_tx_power").onObject(mock_artic).withUnsignedIntParameter("power", (unsigned int)power);
-	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
 			withUnsignedIntParameter("size_bits", 120);
 
 	inject_gps_location(1, 11.8768, -33.8232, t);
 	system_scheduler->run();
 
-	mock_artic->notify(ArticEventTxComplete({}));
+	mock_kineis->notify(KineisEventTxComplete({}));
 
-	mock().expectOneCall("stop_send").onObject(mock_artic);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	serv.stop();
 
 	// No time sync should be scheduled now
 	bool time_sync_en = false;
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
-	mock().expectOneCall("set_frequency").onObject(mock_artic).withDoubleParameter("freq", frequency);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_artic).withUnsignedIntParameter("time", 5);
+	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 	inject_gps_location(1, 11.8768, -33.8232, t);
 	system_scheduler->run();
@@ -609,34 +608,33 @@ TEST(ArgosTxService, TimeSyncBurstNoPosFix)
 	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 
-	ArgosTxService serv(*mock_artic);
+	ArgosTxService serv(*mock_kineis);
 
 	std::time_t t = 1652105502000;
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_artic).withDoubleParameter("freq", frequency);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_artic).withUnsignedIntParameter("time", 5);
+	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
 	// First TX is time sync burst
-	mock().expectOneCall("set_tx_power").onObject(mock_artic).withUnsignedIntParameter("power", (unsigned int)power);
-	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
 			withUnsignedIntParameter("size_bits", 120);
 
 	inject_gps_location(0, 11.8768, -33.8232, t);
 	system_scheduler->run();
 
-	mock_artic->notify(ArticEventTxComplete({}));
+	mock_kineis->notify(KineisEventTxComplete({}));
 
-	mock().expectOneCall("stop_send").onObject(mock_artic);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	serv.stop();
 
 	// No time sync should be scheduled now
 	bool time_sync_en = false;
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
-	mock().expectOneCall("set_frequency").onObject(mock_artic).withDoubleParameter("freq", frequency);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_artic).withUnsignedIntParameter("time", 5);
+	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 	inject_gps_location(1, 11.8768, -33.8232, t);
 	system_scheduler->run();
@@ -662,12 +660,12 @@ TEST(ArgosTxService, TimeSyncBurstNoPosOrTimeFix)
 	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 
-	ArgosTxService serv(*mock_artic);
+	ArgosTxService serv(*mock_kineis);
 
 	std::time_t t = 0;
 
-	mock().expectOneCall("set_frequency").onObject(mock_artic).withDoubleParameter("freq", frequency);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_artic).withUnsignedIntParameter("time", 5);
+	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
 	inject_gps_location(0, 11.8768, -33.8232, t);
@@ -696,14 +694,14 @@ TEST(ArgosTxService, LegacyTxServiceInv)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
 
-	ArgosTxService serv(*mock_artic);
+	ArgosTxService serv(*mock_kineis);
 
 	std::time_t t = 1665137726000;
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_artic).withDoubleParameter("freq", frequency);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_artic).withUnsignedIntParameter("time", 5);
+	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
 	inject_gps_location(1, -2.117964, 51.376382, t/1000, false, 0, 162, 4424);
@@ -714,8 +712,7 @@ TEST(ArgosTxService, LegacyTxServiceInv)
 
 	// Subsequent TX will be long packets
 	for (unsigned int i = 0; i < 1; i++) {
-		mock().expectOneCall("set_tx_power").onObject(mock_artic).withUnsignedIntParameter("power", (unsigned int)power);
-		mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+		mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
 				withUnsignedIntParameter("size_bits", 120);
 
 		t += serv.get_last_schedule();
@@ -723,7 +720,7 @@ TEST(ArgosTxService, LegacyTxServiceInv)
 		fake_timer->set_counter(t);
 		system_scheduler->run();
 
-		mock_artic->notify(ArticEventTxComplete({}));
+		mock_kineis->notify(KineisEventTxComplete({}));
 	}
 }
 
@@ -750,14 +747,14 @@ TEST(ArgosTxService, LegacyTxLowBattery)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
 
-	ArgosTxService serv(*mock_artic);
+	ArgosTxService serv(*mock_kineis);
 
 	std::time_t t = 1652105502000;
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_artic).withDoubleParameter("freq", frequency);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_artic).withUnsignedIntParameter("time", 5);
+	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
 	// Force LB state
@@ -773,9 +770,7 @@ TEST(ArgosTxService, LegacyTxLowBattery)
 
 	// Subsequent TX will be short packets (depth pile 1 in LB mode)
 	for (unsigned int i = 0; i < 10; i++) {
-		mock().expectOneCall("set_tx_power").onObject(mock_artic).
-				withUnsignedIntParameter("power", (unsigned int)BaseArgosPower::POWER_350_MW);
-		mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+		mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
 				withUnsignedIntParameter("size_bits", 120);
 
 		t += serv.get_last_schedule();
@@ -783,7 +778,7 @@ TEST(ArgosTxService, LegacyTxLowBattery)
 		fake_timer->set_counter(t);
 		system_scheduler->run();
 
-		mock_artic->notify(ArticEventTxComplete({}));
+		mock_kineis->notify(KineisEventTxComplete({}));
 	}
 }
 
@@ -811,14 +806,14 @@ TEST(ArgosTxService, LegacyTxOutOfZone)
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
 	fake_config_store->write_param(ParamID::ZONE_ENABLE_OUT_OF_ZONE_DETECTION_MODE, ooz_en);
 
-	ArgosTxService serv(*mock_artic);
+	ArgosTxService serv(*mock_kineis);
 
 	std::time_t t = 1652105502000;
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_artic).withDoubleParameter("freq", frequency);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_artic).withUnsignedIntParameter("time", 5);
+	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
 	inject_gps_location(1, 11.8768, -33.8232);
@@ -829,9 +824,7 @@ TEST(ArgosTxService, LegacyTxOutOfZone)
 
 	// Subsequent TX will be short packets (depth pile 1 in OOZ mode)
 	for (unsigned int i = 0; i < 10; i++) {
-		mock().expectOneCall("set_tx_power").onObject(mock_artic).
-				withUnsignedIntParameter("power", (unsigned int)BaseArgosPower::POWER_350_MW);
-		mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+		mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
 				withUnsignedIntParameter("size_bits", 120);
 
 		t += serv.get_last_schedule();
@@ -839,7 +832,7 @@ TEST(ArgosTxService, LegacyTxOutOfZone)
 		fake_timer->set_counter(t);
 		system_scheduler->run();
 
-		mock_artic->notify(ArticEventTxComplete({}));
+		mock_kineis->notify(KineisEventTxComplete({}));
 	}
 }
 
@@ -865,14 +858,14 @@ TEST(ArgosTxService, TxServiceCancelledByUnderwaterBeforeTx)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
 
-	ArgosTxService serv(*mock_artic);
+	ArgosTxService serv(*mock_kineis);
 
 	std::time_t t = 1652105502000;
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_artic).withDoubleParameter("freq", frequency);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_artic).withUnsignedIntParameter("time", 5);
+	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
 	inject_gps_location(1, 11.8768, -33.8232, t);
@@ -884,7 +877,7 @@ TEST(ArgosTxService, TxServiceCancelledByUnderwaterBeforeTx)
 	CHECK_FALSE(Service::SCHEDULE_DISABLED == serv.get_last_schedule());
 
 	// Inject UW event
-	mock().expectOneCall("stop_send").onObject(mock_artic);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	notify_underwater_state(true);
 
 	CHECK_TRUE(Service::SCHEDULE_DISABLED == serv.get_last_schedule());
@@ -899,8 +892,7 @@ TEST(ArgosTxService, TxServiceCancelledByUnderwaterBeforeTx)
 	CHECK_EQUAL(dry_time_before_tx*1000, serv.get_last_schedule());
 
 	// Should now transmit
-	mock().expectOneCall("set_tx_power").onObject(mock_artic).withUnsignedIntParameter("power", (unsigned int)power);
-	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
 			withUnsignedIntParameter("size_bits", 248);
 	t += serv.get_last_schedule();
 	fake_rtc->settime(t/1000);
@@ -930,14 +922,14 @@ TEST(ArgosTxService, TxServiceCancelledDuringTx)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
 
-	ArgosTxService serv(*mock_artic);
+	ArgosTxService serv(*mock_kineis);
 
 	std::time_t t = 1652105502000;
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_artic).withDoubleParameter("freq", frequency);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_artic).withUnsignedIntParameter("time", 5);
+	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
 	inject_gps_location(1, 11.8768, -33.8232, t);
@@ -946,8 +938,7 @@ TEST(ArgosTxService, TxServiceCancelledDuringTx)
 	inject_gps_location(1, 11.8768, -33.8232, t);
 	system_scheduler->run();
 
-	mock().expectOneCall("set_tx_power").onObject(mock_artic).withUnsignedIntParameter("power", (unsigned int)power);
-	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
 			withUnsignedIntParameter("size_bits", 248);
 
 	// TX should start
@@ -957,7 +948,7 @@ TEST(ArgosTxService, TxServiceCancelledDuringTx)
 	system_scheduler->run();
 
 	// Inject UW event
-	mock().expectOneCall("stop_send").onObject(mock_artic);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	notify_underwater_state(true);
 
 	// Inject surfaced event
@@ -968,14 +959,13 @@ TEST(ArgosTxService, TxServiceCancelledDuringTx)
 	CHECK_EQUAL(dry_time_before_tx*1000, serv.get_last_schedule());
 
 	// Should now transmit
-	mock().expectOneCall("set_tx_power").onObject(mock_artic).withUnsignedIntParameter("power", (unsigned int)power);
-	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
 			withUnsignedIntParameter("size_bits", 248);
 	t += serv.get_last_schedule();
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 	system_scheduler->run();
-	mock_artic->notify(ArticEventTxComplete({}));
+	mock_kineis->notify(KineisEventTxComplete({}));
 }
 
 
@@ -1001,14 +991,14 @@ TEST(ArgosTxService, LegacyTxServiceDepthPile1)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
 
-	ArgosTxService serv(*mock_artic);
+	ArgosTxService serv(*mock_kineis);
 
 	std::time_t t = 1652105502000;
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_artic).withDoubleParameter("freq", frequency);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_artic).withUnsignedIntParameter("time", 5);
+	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
 	inject_gps_location(1, 11.8768, -33.8232, t);
@@ -1019,8 +1009,7 @@ TEST(ArgosTxService, LegacyTxServiceDepthPile1)
 
 	// Subsequent TX will be short packets
 	for (unsigned int i = 0; i < 10; i++) {
-		mock().expectOneCall("set_tx_power").onObject(mock_artic).withUnsignedIntParameter("power", (unsigned int)power);
-		mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+		mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
 				withUnsignedIntParameter("size_bits", 120);
 
 		t += serv.get_last_schedule();
@@ -1028,7 +1017,7 @@ TEST(ArgosTxService, LegacyTxServiceDepthPile1)
 		fake_timer->set_counter(t);
 		system_scheduler->run();
 
-		mock_artic->notify(ArticEventTxComplete({}));
+		mock_kineis->notify(KineisEventTxComplete({}));
 	}
 }
 
@@ -1054,14 +1043,14 @@ TEST(ArgosTxService, UnderwaterFor24HoursBeforeTx)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
 
-	ArgosTxService serv(*mock_artic);
+	ArgosTxService serv(*mock_kineis);
 
 	std::time_t t = 1652105502000;
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_artic).withDoubleParameter("freq", frequency);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_artic).withUnsignedIntParameter("time", 5);
+	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
 	inject_gps_location(1, 11.8768, -33.8232, t);
@@ -1071,7 +1060,7 @@ TEST(ArgosTxService, UnderwaterFor24HoursBeforeTx)
 	system_scheduler->run();
 
 	// Inject UW event
-	mock().expectOneCall("stop_send").onObject(mock_artic);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	notify_underwater_state(true);
 
 	// Keep UW for 25 hours
@@ -1088,8 +1077,7 @@ TEST(ArgosTxService, UnderwaterFor24HoursBeforeTx)
 	CHECK_EQUAL(dry_time_before_tx*1000, serv.get_last_schedule());
 
 	// Should now transmit
-	mock().expectOneCall("set_tx_power").onObject(mock_artic).withUnsignedIntParameter("power", (unsigned int)power);
-	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
 			withUnsignedIntParameter("size_bits", 248);
 	t += serv.get_last_schedule();
 	fake_rtc->settime(t/1000);
@@ -1136,14 +1124,14 @@ TEST(ArgosTxService, PassPredictTogglingLowBattery)
 
 	fake_config_store->write_pass_predict(pass_predict);
 
-	ArgosTxService serv(*mock_artic);
+	ArgosTxService serv(*mock_kineis);
 
 	std::time_t t = 1652105502000;
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_artic).withDoubleParameter("freq", frequency);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_artic).withUnsignedIntParameter("time", 5);
+	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
 	inject_gps_location(1, 11.8768, -33.8232, t);
@@ -1158,12 +1146,10 @@ TEST(ArgosTxService, PassPredictTogglingLowBattery)
 		if (i & 1) {
 			// Force LB state
 			fake_config_store->set_battery_level(10U);
-			mock().expectOneCall("set_tx_power").onObject(mock_artic).ignoreOtherParameters();
-			mock().expectOneCall("send").onObject(mock_artic).ignoreOtherParameters();
+			mock().expectOneCall("send").onObject(mock_kineis).ignoreOtherParameters();
 		} else {
 			fake_config_store->set_battery_level(100U);
-			mock().expectOneCall("set_tx_power").onObject(mock_artic).ignoreOtherParameters();
-			mock().expectOneCall("send").onObject(mock_artic).ignoreOtherParameters();
+			mock().expectOneCall("send").onObject(mock_kineis).ignoreOtherParameters();
 		}
 
 		inject_gps_location(1, 11.8768, -33.8232, t);
@@ -1173,7 +1159,7 @@ TEST(ArgosTxService, PassPredictTogglingLowBattery)
 		fake_timer->set_counter(t);
 		system_scheduler->run();
 
-		mock_artic->notify(ArticEventTxComplete({}));
+		mock_kineis->notify(KineisEventTxComplete({}));
 
 	}
 }
@@ -1218,14 +1204,14 @@ TEST(ArgosTxService, DepthPileNoEligibleEntries)
 
 	fake_config_store->write_pass_predict(pass_predict);
 
-	ArgosTxService serv(*mock_artic);
+	ArgosTxService serv(*mock_kineis);
 
 	std::time_t t = 1652105502000;
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_artic).withDoubleParameter("freq", frequency);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_artic).withUnsignedIntParameter("time", 5);
+	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
 	inject_gps_location(1, 11.8768, -33.8232, t);
@@ -1238,8 +1224,7 @@ TEST(ArgosTxService, DepthPileNoEligibleEntries)
 	for (unsigned int i = 0; i < 4; i++) {
 
 		if (i < n_try) {
-			mock().expectOneCall("set_tx_power").onObject(mock_artic).ignoreOtherParameters();
-			mock().expectOneCall("send").onObject(mock_artic).ignoreOtherParameters();
+			mock().expectOneCall("send").onObject(mock_kineis).ignoreOtherParameters();
 		}
 
 		t += serv.get_last_schedule();
@@ -1248,7 +1233,7 @@ TEST(ArgosTxService, DepthPileNoEligibleEntries)
 		system_scheduler->run();
 
 		if (i < n_try) {
-			mock_artic->notify(ArticEventTxComplete({}));
+			mock_kineis->notify(KineisEventTxComplete({}));
 		}
 	}
 
@@ -1278,30 +1263,29 @@ TEST(ArgosTxService, LastTxIsUpdated)
 	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 
-	ArgosTxService serv(*mock_artic);
+	ArgosTxService serv(*mock_kineis);
 
 	std::time_t t = 1652105502000;
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_artic).withDoubleParameter("freq", frequency);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_artic).withUnsignedIntParameter("time", 5);
+	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
 	// First TX is time sync burst
-	mock().expectOneCall("set_tx_power").onObject(mock_artic).withUnsignedIntParameter("power", (unsigned int)power);
-	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).
+	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
 			withUnsignedIntParameter("size_bits", 120);
 
 	inject_gps_location(1, 11.8768, -33.8232, t);
 	system_scheduler->run();
 
-	mock_artic->notify(ArticEventTxComplete({}));
+	mock_kineis->notify(KineisEventTxComplete({}));
 
 	std::time_t last_tx = fake_config_store->read_param<std::time_t>(ParamID::LAST_TX);
 	CHECK_EQUAL(1652105502U, (unsigned int)last_tx);
 
-	mock().expectOneCall("stop_send").onObject(mock_artic);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	serv.stop();
 }
 
@@ -1347,30 +1331,29 @@ TEST(ArgosTxService, UnderwaterFor24HoursDryTimeZero)
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
 	fake_config_store->write_param(ParamID::DRY_TIME_BEFORE_TX, dry_time_before_tx);
 
-	ArgosTxService serv(*mock_artic);
+	ArgosTxService serv(*mock_kineis);
 
 	std::time_t t = 1652105502000;
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_artic).withDoubleParameter("freq", frequency);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_artic).withUnsignedIntParameter("time", 5);
+	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
 	inject_gps_location(1, 11.8768, -33.8232, t);
 
 	// Do initial transmit
-	mock().expectOneCall("set_tx_power").onObject(mock_artic).ignoreOtherParameters();
-	mock().expectOneCall("send").onObject(mock_artic).ignoreOtherParameters();
+	mock().expectOneCall("send").onObject(mock_kineis).ignoreOtherParameters();
 	t += serv.get_last_schedule();
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 	system_scheduler->run();
 
-	mock_artic->notify(ArticEventTxComplete({}));
+	mock_kineis->notify(KineisEventTxComplete({}));
 
 	// Inject UW event
-	mock().expectOneCall("stop_send").onObject(mock_artic);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	notify_underwater_state(true);
 
 	// Keep UW for 25 hours
@@ -1384,8 +1367,7 @@ TEST(ArgosTxService, UnderwaterFor24HoursDryTimeZero)
 
 	CHECK_EQUAL(0, serv.get_last_schedule());
 
-	mock().expectOneCall("set_tx_power").onObject(mock_artic).ignoreOtherParameters();
-	mock().expectOneCall("send").onObject(mock_artic).ignoreOtherParameters();
+	mock().expectOneCall("send").onObject(mock_kineis).ignoreOtherParameters();
 	t += serv.get_last_schedule();
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
@@ -1621,14 +1603,14 @@ TEST(ArgosTxService, PassPredictWithSensorDataPayload)
 
 	fake_config_store->write_pass_predict(pass_predict);
 
-	ArgosTxService serv(*mock_artic);
+	ArgosTxService serv(*mock_kineis);
 
 	std::time_t t = 1652105502000;
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_artic).withDoubleParameter("freq", frequency);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_artic).withUnsignedIntParameter("time", 5);
+	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
 	ServiceSensorData sensor_data;
@@ -1658,12 +1640,11 @@ TEST(ArgosTxService, PassPredictWithSensorDataPayload)
 
 	// Run for 10 transmissions
 	for (unsigned int i = 0; i < 10; i++) {
-		mock().expectOneCall("set_tx_power").onObject(mock_artic).ignoreOtherParameters();
-		mock().expectOneCall("send").onObject(mock_artic).ignoreOtherParameters();
+		mock().expectOneCall("send").onObject(mock_kineis).ignoreOtherParameters();
 		t += serv.get_last_schedule();
 		fake_rtc->settime(t/1000);
 		fake_timer->set_counter(t);
 		system_scheduler->run();
-		mock_artic->notify(ArticEventTxComplete({}));
+		mock_kineis->notify(KineisEventTxComplete({}));
 	}
 }

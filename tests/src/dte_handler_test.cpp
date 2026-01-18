@@ -17,7 +17,6 @@
 
 #include "mock_sensor.hpp"
 #include "mock_logger.hpp"
-#include "mock_artic_device.hpp"
 #include "mock_wchg.hpp"
 #include "previpass.h"
 #include "binascii.hpp"
@@ -33,7 +32,6 @@ extern FileSystem *main_filesystem;
 extern ConfigurationStore *configuration_store;
 extern MemoryAccess *memory_access;
 extern BatteryMonitor *battery_monitor;
-extern ArticDevice *artic_device;
 
 
 TEST_GROUP(DTEHandler)
@@ -48,7 +46,6 @@ TEST_GROUP(DTEHandler)
 	FakeBatteryMonitor *fake_battery_monitor;
 	GPSLogFormatter gps_log_formatter;
 	SysLogFormatter sys_log_formatter;
-	MockArticDevice *mock_artic;
 	MockWirelessCharger *mock_wchg;
 
 	void setup() {
@@ -66,8 +63,6 @@ TEST_GROUP(DTEHandler)
 		mock_system_log->set_log_formatter(&sys_log_formatter);
 		mock_sensor_log = new MockLog("sensor.log");
 		mock_sensor_log->set_log_formatter(&gps_log_formatter);
-		mock_artic = new MockArticDevice;
-		artic_device = mock_artic;
 		mock_wchg = new MockWirelessCharger;
 		dte_handler = new DTEHandler();
 		fake_battery_monitor = new FakeBatteryMonitor();
@@ -77,7 +72,6 @@ TEST_GROUP(DTEHandler)
 
 	void teardown() {
 		delete mock_wchg;
-		delete mock_artic;
 		delete dte_handler;
 		delete mock_sensor_log;
 		delete mock_system_log;
@@ -90,7 +84,10 @@ TEST_GROUP(DTEHandler)
 
 	std::string read_file_into_string(std::string path) {
 	    std::ifstream input_file(path);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnull-dereference"
 	    return std::string((std::istreambuf_iterator<char>(input_file)), std::istreambuf_iterator<char>());
+#pragma GCC diagnostic pop
 	}
 
 	std::string read_paspw_file(std::string paspw_file) {
@@ -614,21 +611,3 @@ TEST(DTEHandler, SCALW_REQ)
 	CHECK_TRUE((unsigned int)DTEError::OK == error_code);
 }
 
-TEST(DTEHandler, ARGOSTX_REQ)
-{
-	DTECommand command;
-	std::string req;
-	std::string resp;
-	std::vector<ParamID> params;
-	std::vector<ParamValue> param_values;
-	std::vector<BaseType> arg_list;
-
-	unsigned int error_code;
-	req = DTEEncoder::encode(DTECommand::ARGOSTX_REQ, (unsigned int)ArticMode::A2, 350U, 900.11, 15U, 5U);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_artic).withUnsignedIntParameter("time", 5U);
-	mock().expectOneCall("set_tx_power").onObject(mock_artic).withUnsignedIntParameter("power", (unsigned int)BaseArgosPower::POWER_350_MW);
-	mock().expectOneCall("set_frequency").onObject(mock_artic).withDoubleParameter("freq", 900.11);
-	mock().expectOneCall("send").onObject(mock_artic).withUnsignedIntParameter("mode", (unsigned int)ArticMode::A2).withUnsignedIntParameter("size_bits", 120U);
-	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
-	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
-}

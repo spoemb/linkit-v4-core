@@ -2,7 +2,7 @@
 #include "CppUTestExt/MockSupport.h"
 
 #include "mock_battery_mon.hpp"
-#include "mock_artic.hpp"
+#include "mock_kineis.hpp"
 #include "fake_rtc.hpp"
 #include "fake_config_store.hpp"
 #include "fake_logger.hpp"
@@ -25,7 +25,7 @@ TEST_GROUP(ArgosScheduler)
 {
 	FakeConfigurationStore *fake_config_store;
 	ArgosScheduler *argos_sched;
-	MockArtic *mock_artic;
+	MockKineis *mock_kineis;
 	MockBatteryMonitor *mock_battery;
 	FakeRTC *fake_rtc;
 	LinuxTimer *linux_timer;
@@ -36,8 +36,8 @@ TEST_GROUP(ArgosScheduler)
 	void setup() {
 		mock_battery = new MockBatteryMonitor;
 		battery_monitor = mock_battery;
-		mock_artic = new MockArtic;
-		argos_sched = mock_artic;
+		mock_kineis = new MockKineis;
+		argos_sched = mock_kineis;
 		comms_scheduler = argos_sched;
 		fake_config_store = new FakeConfigurationStore;
 		configuration_store = fake_config_store;
@@ -67,7 +67,7 @@ TEST_GROUP(ArgosScheduler)
 		delete fake_rtc;
 		delete fake_log;
 		delete fake_config_store;
-		delete mock_artic;
+		delete mock_kineis;
 		delete mock_battery;
 	}
 };
@@ -139,7 +139,7 @@ TEST(ArgosScheduler, LegacyModeSchedulingShortPacket)
 	argos_sched->notify_sensor_log_update();
 	while (!system_scheduler->run());
 
-	STRCMP_EQUAL("343BC63EA7FC011BE000000FC2B06C", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+	STRCMP_EQUAL("343BC63EA7FC011BE000000FC2B06C", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 
 	tx_counter = fake_config_store->read_param<unsigned int>(ParamID::TX_COUNTER);
 	CHECK_EQUAL(1, tx_counter);
@@ -159,7 +159,7 @@ TEST(ArgosScheduler, LegacyModeSchedulingShortPacket)
 	argos_sched->notify_sensor_log_update();
 	while (!system_scheduler->run());
 
-	STRCMP_EQUAL("343BC63EA7FC011BE000000FC2B06C", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+	STRCMP_EQUAL("343BC63EA7FC011BE000000FC2B06C", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 
 	tx_counter = fake_config_store->read_param<unsigned int>(ParamID::TX_COUNTER);
 	CHECK_EQUAL(2, tx_counter);
@@ -235,7 +235,7 @@ TEST(ArgosScheduler, DutyCycleModeSchedulingShortPacket)
 	argos_sched->notify_sensor_log_update();
 	system_scheduler->run();
 
-	STRCMP_EQUAL("343BC63EA7FC011BE000000FC2B06C", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+	STRCMP_EQUAL("343BC63EA7FC011BE000000FC2B06C", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 
 	// Hour 1 - no transmission, schedule for 7200
 	fake_timer->set_counter(3600000);
@@ -260,7 +260,7 @@ TEST(ArgosScheduler, DutyCycleModeSchedulingShortPacket)
 	argos_sched->notify_sensor_log_update();
 	while (!system_scheduler->run());
 
-	STRCMP_EQUAL("343BC63EA7FC011BE000000FC2B06C", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+	STRCMP_EQUAL("343BC63EA7FC011BE000000FC2B06C", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 
 }
 
@@ -408,7 +408,7 @@ TEST(ArgosScheduler, SchedulingLongPacket)
 	tx_counter = fake_config_store->read_param<unsigned int>(ParamID::TX_COUNTER);
 	CHECK_EQUAL(1, tx_counter);
 
-	STRCMP_EQUAL("32E441AB48D039E6801FC956918073CC2A52760E7E854A4E01CFF0EDD5BE61", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+	STRCMP_EQUAL("32E441AB48D039E6801FC956918073CC2A52760E7E854A4E01CFF0EDD5BE61", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 }
 
 
@@ -1225,7 +1225,7 @@ TEST(ArgosScheduler, SchedulingShortPacketWithNonZeroAltitude)
 	argos_sched->notify_sensor_log_update();
 	while (!system_scheduler->run());
 
-	STRCMP_EQUAL("B63BC63EA7FC011BE000014FC24C63", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+	STRCMP_EQUAL("B63BC63EA7FC011BE000014FC24C63", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 
 	tx_counter = fake_config_store->read_param<unsigned int>(ParamID::TX_COUNTER);
 	CHECK_EQUAL(2, tx_counter);
@@ -1297,7 +1297,7 @@ TEST(ArgosScheduler, SchedulingShortPacketWithMaxTruncatedAltitude)
 	argos_sched->notify_sensor_log_update();
 	while (!system_scheduler->run());
 
-	STRCMP_EQUAL("F63BC63EA7FC011BE0001FCFD16604", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+	STRCMP_EQUAL("F63BC63EA7FC011BE0001FCFD16604", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 
 	tx_counter = fake_config_store->read_param<unsigned int>(ParamID::TX_COUNTER);
 	CHECK_EQUAL(1, tx_counter);
@@ -1855,7 +1855,7 @@ TEST(ArgosScheduler, SchedulingLongPacketLowBatteryFlag)
 	tx_counter = fake_config_store->read_param<unsigned int>(ParamID::TX_COUNTER);
 	CHECK_EQUAL(1, tx_counter);
 
-	STRCMP_EQUAL("A4E441AB48D039E68003E956918073CC2A52760E7E854A4E01CFF01AB938FC", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+	STRCMP_EQUAL("A4E441AB48D039E68003E956918073CC2A52760E7E854A4E01CFF01AB938FC", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 }
 
 
@@ -1942,7 +1942,7 @@ TEST(ArgosScheduler, SchedulingShortPacketLowBatteryFlag)
 	tx_counter = fake_config_store->read_param<unsigned int>(ParamID::TX_COUNTER);
 	CHECK_EQUAL(1, tx_counter);
 
-	STRCMP_EQUAL("68E381A949C039FE03800003FC48B6", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+	STRCMP_EQUAL("68E381A949C039FE03800003FC48B6", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 
 }
 
@@ -2063,7 +2063,7 @@ TEST(ArgosScheduler, SchedulingShortPacketOutOfZoneFlag)
 	tx_counter = fake_config_store->read_param<unsigned int>(ParamID::TX_COUNTER);
 	CHECK_EQUAL(1, tx_counter);
 
-	STRCMP_EQUAL("79E381A949C039FE03A00003C00552", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+	STRCMP_EQUAL("79E381A949C039FE03A00003C00552", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 
 }
 
@@ -2254,7 +2254,7 @@ TEST(ArgosScheduler, SchedulingLongPacketOutOfZoneFlag)
 	tx_counter = fake_config_store->read_param<unsigned int>(ParamID::TX_COUNTER);
 	CHECK_EQUAL(1, tx_counter);
 
-	STRCMP_EQUAL("38E441AB48D039E68023C956918073CC2A52760E7E854A4E01CFF08683679B", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+	STRCMP_EQUAL("38E441AB48D039E68023C956918073CC2A52760E7E854A4E01CFF08683679B", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 }
 
 TEST(ArgosScheduler, TimeSyncBurstTransmissionIsSent)
@@ -2323,7 +2323,7 @@ TEST(ArgosScheduler, TimeSyncBurstTransmissionIsSent)
 	argos_sched->notify_sensor_log_update();
 	while (!system_scheduler->run());
 
-	STRCMP_EQUAL("343BC63EA7FC011BE000000FC2B06C", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+	STRCMP_EQUAL("343BC63EA7FC011BE000000FC2B06C", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 
 	tx_counter = fake_config_store->read_param<unsigned int>(ParamID::TX_COUNTER);
 	CHECK_EQUAL(1, tx_counter);
@@ -2403,7 +2403,7 @@ TEST(ArgosScheduler, LegacyModeSchedulingShortPacketInfiniteBurst)
 		mock().expectOneCall("get_rx_time_on").onObject(argos_sched).andReturnValue(0);
 		mock().expectOneCall("get_voltage").onObject(battery_monitor).andReturnValue(4500);
 		while (!system_scheduler->run());
-		STRCMP_EQUAL("343BC63EA7FC011BE000000FC2B06C", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+		STRCMP_EQUAL("343BC63EA7FC011BE000000FC2B06C", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 		t += 60;
 		fake_rtc->settime(t);
 		fake_timer->set_counter(t*1000);
@@ -2497,13 +2497,13 @@ TEST(ArgosScheduler, LegacyModeSchedulingShortPacketInfiniteBurstWithTimeSyncro)
 		system_scheduler->run();
 
 		if (i == 0)
-			STRCMP_EQUAL("343BC63EA7FC011BE000000FC2B06C", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+			STRCMP_EQUAL("343BC63EA7FC011BE000000FC2B06C", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 		if (i == 1)
-			STRCMP_EQUAL("693BC63EA7FC011BE00FC27D4FF80237FFFFFFFFFFFFFFFFFFFFFFA6BB7041", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+			STRCMP_EQUAL("693BC63EA7FC011BE00FC27D4FF80237FFFFFFFFFFFFFFFFFFFFFFA6BB7041", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 		if (i == 2)
-			STRCMP_EQUAL("C23BC63EA7FC011BE00FC27D4FF80237CFA9FF0046FFFFFFFFFFFFAF97B7D0", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+			STRCMP_EQUAL("C23BC63EA7FC011BE00FC27D4FF80237CFA9FF0046FFFFFFFFFFFFAF97B7D0", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 		if (i >= 3)
-			STRCMP_EQUAL("393BC63EA7FC011BE00FC27D4FF80237CFA9FF0046F9F53FE008DFFF84080A", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+			STRCMP_EQUAL("393BC63EA7FC011BE00FC27D4FF80237CFA9FF0046F9F53FE008DFFF84080A", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 
 		t += 60;
 	}
@@ -2583,7 +2583,7 @@ TEST(ArgosScheduler, SchedulingNonPrepassTxJitter)
 		mock().expectOneCall("get_rx_time_on").onObject(argos_sched).andReturnValue(0);
 		mock().expectOneCall("get_voltage").onObject(battery_monitor).andReturnValue(4500);
 		while (!system_scheduler->run());
-		STRCMP_EQUAL("343BC63EA7FC011BE000000FC2B06C", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+		STRCMP_EQUAL("343BC63EA7FC011BE000000FC2B06C", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 		t += argos_sched->get_next_schedule();
 		fake_rtc->settime((t + 500)/1000);
 		fake_timer->set_counter(t);
@@ -3114,7 +3114,7 @@ TEST(ArgosScheduler, LegacyModeSchedulingShortPacketInfiniteBurstWithNonZeroSens
 		mock().expectOneCall("get_rx_time_on").onObject(argos_sched).andReturnValue(0);
 		mock().expectOneCall("get_voltage").onObject(battery_monitor).andReturnValue(4500);
 		while (!system_scheduler->run());
-		STRCMP_EQUAL("F43BC624BE44011BE000000FD0D8A6", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+		STRCMP_EQUAL("F43BC624BE44011BE000000FD0D8A6", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 		t += 60;
 		fake_rtc->settime(t);
 		fake_timer->set_counter(t*1000);
@@ -3336,32 +3336,32 @@ TEST(ArgosScheduler, TestDownlinkReceive)
 	while (!system_scheduler->run());
 
 	std::string x = "00000C77007A5C900B7C500800C00D4C4224";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 
 	// Throw a time sync packet into the decoder
 	x = "00000E17082021262105420895D027";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 
 	// Throw a bad packet into the decoder
 	x = "FFFFFFFFFFFF";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 
 	x = "000005F7006601A58900B78C00D48068F6";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000D4400648498489095CCDA39F73865F5B4216060A62B";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE400848498488D122AC553EEDA8B7190084DA9809A";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE400C48498485510E6D7CBECDADB736A075523678D";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE400A4849848890027799D26C6B2FBCF0039356395";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE4009484984856422B159528C6BAFC120042B0A479";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE400B4849848944DE97B1D2AC6AAFBAE0041905A68";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE40054849848C2442523CDCABCA2C02F014173AFE4";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 
 	t += 100;
 	fake_rtc->settime(t);
@@ -3372,7 +3372,7 @@ TEST(ArgosScheduler, TestDownlinkReceive)
 	mock().expectOneCall("get_rx_time_on").onObject(argos_sched).andReturnValue(100000);
 
 	x = "00000BE400D4849848904D8D33269EAF627189023C5658A5";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 
 	// Now check that the records have been updated
 	pass_predict = configuration_store->read_pass_predict();
@@ -3496,30 +3496,30 @@ TEST(ArgosScheduler, TestDownlinkWithAOPUpdatePeriod)
 	system_scheduler->run();
 
 	std::string x = "00000C77007A5C900B7C500800C00D4C4224";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "000005F7006601A58900B78C00D48068F6";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000D4400648498489095CCDA39F73865F5B4216060A62B";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE400848498488D122AC553EEDA8B7190084DA9809A";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE400C48498485510E6D7CBECDADB736A075523678D";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE400A4849848890027799D26C6B2FBCF0039356395";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE4009484984856422B159528C6BAFC120042B0A479";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE400B4849848944DE97B1D2AC6AAFBAE0041905A68";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE40054849848C2442523CDCABCA2C02F014173AFE4";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 
 	// Last required RX packet should trigger power off
 	mock().expectOneCall("power_off").onObject(argos_sched);
 	mock().expectOneCall("get_rx_time_on").onObject(argos_sched).andReturnValue(0);
 
 	x = "00000BE400D4849848904D8D33269EAF627189023C5658A5";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 
 	// Now check that the records have been updated
 	pass_predict = configuration_store->read_pass_predict();
@@ -3587,15 +3587,15 @@ TEST(ArgosScheduler, TestDownlinkWithAOPUpdatePeriod)
 	system_scheduler->run();
 
 	x = "00000C75007A5C900B7C500800C00D4CC8E2";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "000005F5006601A58900B78C00D4806E1C";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000D450064849C88C1C0CC1DE9F73855F56523606D0546";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE50084849C88D151A8A0D3EEDA9371A8084D856774";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE500C4849C88C1C564AE7BECDADB737F0655183984";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 
 	// Should go idle before next TX when RX is already active
 	mock().expectOneCall("power_on").onObject(argos_sched).withUnsignedIntParameter("argos_id", (unsigned int)argos_hexid);
@@ -3614,19 +3614,19 @@ TEST(ArgosScheduler, TestDownlinkWithAOPUpdatePeriod)
 	system_scheduler->run();
 
 	x = "00000BE500A4849C885554E84C0D26C6B2FBB200392927AB";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE50094849C88C48C68D87528C6CAFC6200429904BF";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE500B4849C8888CC2A55D528C6BAFC16004364E166";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE50054849C88CC4E2475C5CCBC92BFE5014179C603";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 
 	mock().expectOneCall("power_off").onObject(argos_sched);
 	mock().expectOneCall("get_rx_time_on").onObject(argos_sched).andReturnValue(0);
 
 	x = "00000BE500D4849C8855D00E8A369EAF62719C023C5EAE6A";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 
 	mock().expectOneCall("power_on").onObject(argos_sched).withUnsignedIntParameter("argos_id", (unsigned int)argos_hexid);
 	mock().expectOneCall("set_frequency").onObject(argos_sched).withDoubleParameter("freq", frequency);
@@ -3708,7 +3708,7 @@ TEST(ArgosScheduler, GNSSOffLegacySchedulingDopplerPacket)
 
 	while (!system_scheduler->run());
 
-	STRCMP_EQUAL("0500B4", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+	STRCMP_EQUAL("0500B4", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 
 	tx_counter = fake_config_store->read_param<unsigned int>(ParamID::TX_COUNTER);
 	CHECK_EQUAL(1, tx_counter);
@@ -3727,7 +3727,7 @@ TEST(ArgosScheduler, GNSSOffLegacySchedulingDopplerPacket)
 
 	while (!system_scheduler->run());
 
-	STRCMP_EQUAL("0500B4", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+	STRCMP_EQUAL("0500B4", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 
 	tx_counter = fake_config_store->read_param<unsigned int>(ParamID::TX_COUNTER);
 	CHECK_EQUAL(2, tx_counter);
@@ -3788,7 +3788,7 @@ TEST(ArgosScheduler, GNSSOffDutyCycleSchedulingDopplerPacket)
 		mock().expectOneCall("get_voltage").onObject(battery_monitor).andReturnValue(4500);
 		mock().expectOneCall("get_voltage").onObject(battery_monitor).andReturnValue(4500);
 		while (!system_scheduler->run());
-		STRCMP_EQUAL("0500B4", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+		STRCMP_EQUAL("0500B4", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 
 		t += 600;
 		fake_rtc->settime(t);
@@ -3810,7 +3810,7 @@ TEST(ArgosScheduler, GNSSOffDutyCycleSchedulingDopplerPacket)
 		mock().expectOneCall("get_voltage").onObject(battery_monitor).andReturnValue(4500);
 		mock().expectOneCall("get_voltage").onObject(battery_monitor).andReturnValue(4500);
 		while (!system_scheduler->run());
-		STRCMP_EQUAL("0500B4", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+		STRCMP_EQUAL("0500B4", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 
 		t += 600;
 		fake_rtc->settime(t);
@@ -3930,29 +3930,29 @@ TEST(ArgosScheduler, TestAOPUpdateWithOutOfServiceSatellite)
 
 	std::string x;
 	x = "00000BE500D484C1888D4DCD616E9EAF627186023C44A609";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE5005484C1888C88A64955CCBC9ABFF8094138C713";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "000005F7006601A07900B78C00D4800FD0";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000C77007A03900B7C500800C00D4CF219";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE700B484C1C85648AB14D528C6C2FC2F004329885B";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE700D484C1C881044E56FE9EAF5A7157023C3D5579";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000E17082021308215302537CB29";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE7009484C1C89201E9971528C6B2FBF90042691CC8";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "000005F4006601A07900B78C00D4800A4F";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000D44006484C1C8848C8DC791FB3825F433336052F78A";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000BE400C484C1C89591A52A3BECDAD3734F0654E17BE3";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 	x = "00000E14082021309060927978E50A";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 
 	t += 100;
 	fake_rtc->settime(t);
@@ -3963,7 +3963,7 @@ TEST(ArgosScheduler, TestAOPUpdateWithOutOfServiceSatellite)
 	mock().expectOneCall("get_rx_time_on").onObject(argos_sched).andReturnValue(100000);
 
 	x = "00000BE4008484C1C8520540573BEEDA837142094D5A0E56";
-	mock_artic->inject_rx_packet(x, x.size() * 8);
+	mock_kineis->inject_rx_packet(x, x.size() * 8);
 
 	// Now check that the records have been updated
 	pass_predict = configuration_store->read_pass_predict();
@@ -4014,7 +4014,7 @@ TEST(ArgosScheduler, CertificationTXShortPacketA2MinimumRepetition)
 
 	system_scheduler->run();
 
-	STRCMP_EQUAL("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+	STRCMP_EQUAL("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 
 	mock().expectOneCall("power_on").onObject(argos_sched).withUnsignedIntParameter("argos_id", (unsigned int)argos_hexid);
 	mock().expectOneCall("set_frequency").onObject(argos_sched).withDoubleParameter("freq", frequency);
@@ -4061,7 +4061,7 @@ TEST(ArgosScheduler, CertificationTXShortPacketA2)
 
 	system_scheduler->run();
 
-	STRCMP_EQUAL("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+	STRCMP_EQUAL("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 
 	mock().expectOneCall("power_on").onObject(argos_sched).withUnsignedIntParameter("argos_id", (unsigned int)argos_hexid);
 	mock().expectOneCall("power_off").onObject(argos_sched);
@@ -4110,7 +4110,7 @@ TEST(ArgosScheduler, CertificationTXShortPacketA3)
 
 	system_scheduler->run();
 
-	STRCMP_EQUAL("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+	STRCMP_EQUAL("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 
 	mock().expectOneCall("power_on").onObject(argos_sched).withUnsignedIntParameter("argos_id", (unsigned int)argos_hexid);
 	mock().expectOneCall("power_off").onObject(argos_sched);
@@ -4160,7 +4160,7 @@ TEST(ArgosScheduler, CertificationTXLongPacketA3)
 
 	system_scheduler->run();
 
-	STRCMP_EQUAL("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+	STRCMP_EQUAL("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 
 	mock().expectOneCall("power_on").onObject(argos_sched).withUnsignedIntParameter("argos_id", (unsigned int)argos_hexid);
 	mock().expectOneCall("power_off").onObject(argos_sched);
@@ -4210,7 +4210,7 @@ TEST(ArgosScheduler, CertificationTXLongPacketA3PayloadResized)
 
 	system_scheduler->run();
 
-	STRCMP_EQUAL("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+	STRCMP_EQUAL("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 
 	mock().expectOneCall("power_on").onObject(argos_sched).withUnsignedIntParameter("argos_id", (unsigned int)argos_hexid);
 	mock().expectOneCall("power_off").onObject(argos_sched);
@@ -4260,7 +4260,7 @@ TEST(ArgosScheduler, CertificationTXShortPacketA4FallsBackToA2)
 
 	system_scheduler->run();
 
-	STRCMP_EQUAL("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", Binascii::hexlify(mock_artic->m_last_packet).c_str());
+	STRCMP_EQUAL("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", Binascii::hexlify(mock_kineis->m_last_packet).c_str());
 
 	mock().expectOneCall("power_on").onObject(argos_sched).withUnsignedIntParameter("argos_id", (unsigned int)argos_hexid);
 	mock().expectOneCall("power_off").onObject(argos_sched);

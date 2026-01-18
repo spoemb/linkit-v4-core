@@ -214,7 +214,6 @@ public:
 	static bool is_in_duty_cycle(uint64_t time_ms, unsigned int duty_cycle);
 
 	ArgosTxScheduler();
-	// unsigned int schedule_prepass(ArgosConfig& config, BasePassPredict& pass_predict, ArticMode& scheduled_mode, std::time_t now);
 	unsigned int schedule_duty_cycle(ArgosConfig& config, std::time_t now);
 	unsigned int schedule_legacy(ArgosConfig& config, std::time_t now);
 	void set_earliest_schedule(std::time_t t);

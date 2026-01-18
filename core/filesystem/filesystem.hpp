@@ -246,6 +246,7 @@ private:
 	int			m_flags;
 
 public:
+	using LFSFile::seek;  // Expose base class seek method
 	LFSCircularFile(FileSystem *fs, const char *path, int flags, lfs_size_t max_size) : LFSFile(fs, path, flags) {
 		int ret;
 		unsigned int attr = 0;

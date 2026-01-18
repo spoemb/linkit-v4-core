@@ -3,7 +3,7 @@
 #include "argos_scheduler.hpp"
 #include "binascii.hpp"
 
-class MockArtic : public ArgosScheduler {
+class MockKineis : public ArgosScheduler {
 private:
 	std::function<void(ArgosAsyncEvent)> m_notification_callback;
 	static inline bool m_is_powered_on = false;
@@ -14,7 +14,7 @@ private:
 public:
 	std::string m_last_packet;
 
-	MockArtic() {
+	MockKineis() {
 		m_is_powered_on = false;
 		m_is_rx_enabled = false;
 	}

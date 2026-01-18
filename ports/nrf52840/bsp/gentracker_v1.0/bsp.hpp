@@ -29,7 +29,6 @@
 #define SAT_RESET      BSP::GPIO::GPIO_SAT_RESET
 #define SAT_EXTWAKEUP  BSP::GPIO::GPIO_SAT_WKUP
 // Camera pins (optional, conflicts with buzzer on GPIO5)
-// Note: GPIO1/2/3 (P0.6/7/8) are used by ARTIC SPI - do not use!
 // Configure via CMake option: -DEXT_GPIO5_DEVICE=CAM or -DEXT_GPIO5_DEVICE=BUZZER
 #if ENABLE_CAM_SENSOR
 #define CAM_PWR_EN     BSP::GPIO::GPIO_EXT_GPIO4  // P0.9

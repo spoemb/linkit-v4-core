@@ -21,7 +21,6 @@ const char *LogFormatter::log_level_str(LogType t) {
 		case LogType::LOG_CAM:
 		case LogType::LOG_AXL:
 		case LogType::LOG_STARTUP:
-		case LogType::LOG_ARTIC:
 		case LogType::LOG_UNDERWATER:
 		case LogType::LOG_BATTERY:
 		case LogType::LOG_STATE:

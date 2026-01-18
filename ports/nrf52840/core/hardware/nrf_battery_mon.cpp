@@ -14,6 +14,11 @@
 #define crc16_compute(x, y, z)  0xFFFF
 #endif
 
+// Default voltage divider gain if not defined in BSP
+#ifndef V_DIV_GAIN
+#define V_DIV_GAIN 1.0f
+#endif
+
 // Thresholds for low/critical battery filtering
 #define CRITICIAL_V_THRESHOLD_MV	250
 #define LOW_BATT_THRESHOLD			5
@@ -71,17 +76,21 @@ float NrfBatteryMonitor::sample_adc()
 {
     nrf_saadc_value_t raw = 0;
 
+#ifdef BAT_READ_ENABLE
 	GPIOPins::set(BAT_READ_ENABLE);
 	PMU::delay_ms(500);
+#endif
 
 	// We need to init and uninit the SAADC peripheral here to reduce our sleep current
 	nrfx_saadc_init(&BSP::ADC_Inits.config, nrfx_saadc_event_handler);
 	nrfx_saadc_channel_init(m_adc_channel, &BSP::ADC_Inits.channel_config[m_adc_channel]);
 
     nrfx_saadc_sample_convert(m_adc_channel, &raw);
-	
+
 	nrfx_saadc_uninit();
+#ifdef BAT_READ_ENABLE
 	GPIOPins::clear(BAT_READ_ENABLE);
+#endif
 
     return ((float) raw) / ((ADC_GAIN / ADC_REFERENCE) * ADC_MAX_VALUE) * 1000.0f;
 }

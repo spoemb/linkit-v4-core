@@ -29,15 +29,6 @@ private:
 		const char *name = log_type_name[entry->header.log_type];
 		printf("[%s]\tstartup_cause: %d", name, static_cast<int>(entry->cause));
 	}
-	void artic_formatter(const ArticTransceiverLogEntry *entry) {
-		const char *name = log_type_name[entry->header.log_type];
-		printf("[%s]\tartic_event: %d", name, static_cast<int>(entry->event));
-		if (entry->event == ArticTransceiverEvent::TX)
-			printf(" mode: %d msg_index: %lu tx_counter: %lu burst_counter: %lu tx_power: %d paylooad_type: %d",
-					static_cast<int>(entry->mode), entry->msg_index, entry->tx_counter,
-					entry->burst_counter, static_cast<int>(entry->tx_power), static_cast<int>(entry->payload_type));
-		printf("\r\n");
-	}
 	void underwater_formatter(const UnderwaterLogEntry *entry) {
 		const char *name = log_type_name[entry->header.log_type];
 		printf("[%s]\tunderwater_state: %d\r\n", name, static_cast<int>(entry->event));
@@ -87,9 +78,6 @@ public:
 		case LOG_BATTERY:
 			battery_formatter((const BatteryLogEntry *)entry);
 			break;
-		case LOG_ARTIC:
-			artic_formatter((const ArticTransceiverLogEntry *)entry);
-			break;
 		case LOG_STARTUP:
 			startup_formatter((const SystemStartupLogEntry *)entry);
 			break;
@@ -105,6 +93,8 @@ public:
 		case LOG_OTA_UPDATE:
 			ota_update_formatter((const OTAFWUpdateLogEntry *)entry);
 			break;
+		case LOG_CAM:
+		case LOG_AXL:
 		default:
 			// Not yet supported
 			break;

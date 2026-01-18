@@ -23,8 +23,6 @@ ArgosTxService::ArgosTxService(KineisDevice& device) : Service(ServiceIdentifier
 void ArgosTxService::service_init() {
 	ArgosConfig argos_config;
 	configuration_store->get_argos_configuration(argos_config);
-	// m_artic.set_frequency(argos_config.frequency);
-	// m_artic.set_tcxo_warmup_time(argos_config.argos_tcxo_warmup_time);
 	
 	//@TODO => Get ID & ADDR ? m_artic.set_device_identifier(argos_config.argos_id);
 
@@ -62,7 +60,6 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 	DEBUG_TRACE("ArgosTxService::service_next_schedule_in_ms");
 
 	// if (argos_config.cert_tx_enable) {
-	// 	m_scheduled_mode = (ArticMode)argos_config.cert_tx_modulation;
 	// 	m_scheduled_task = [this]() { process_certification_burst(); };
 	// 	unsigned int delta = m_is_first_tx ? 0 : argos_config.cert_tx_repetition * 1000;
 	// 	m_sched.schedule_at(now + delta);
@@ -198,8 +195,6 @@ void ArgosTxService::process_certification_burst() {
 	KineisPacket packet = ArgosPacketBuilder::build_certification_packet(argos_config.cert_tx_payload, size_bits);
 	DEBUG_INFO("ArgosTxService::process_certification_burst: mode=%s data=%s sz=%u power=%u mW", argos_modulation_to_string(argos_config.cert_tx_modulation), Binascii::hexlify(packet).c_str(), size_bits,
 			argos_power_to_integer(argos_config.power));
-	// m_artic.set_tx_power(argos_config.power);
-	// m_artic.send((ArticMode)argos_config.cert_tx_modulation, packet, size_bits);
 }
 
 void ArgosTxService::process_time_sync_burst() {
@@ -214,7 +209,6 @@ void ArgosTxService::process_time_sync_burst() {
 				size_bits);
 		DEBUG_INFO("ArgosTxService::process_time_sync_burst: mode=A2 data=%s sz=%u power=%u mW", Binascii::hexlify(packet).c_str(), size_bits,
 				argos_power_to_integer(argos_config.power));
-		// m_artic.set_tx_power(argos_config.power);
 		m_kineis.send(KineisModulation::LDK, packet, size_bits);
 	} else {
 		// No eligible entries for transmission in the depth pile, so send a doppler burst instead
@@ -240,7 +234,6 @@ void ArgosTxService::process_sensor_burst() {
 				size_bits);
 		DEBUG_INFO("ArgosTxService::process_sensor_burst: mode=%s data=%s sz=%u power=%u mW", argos_modulation_to_string((BaseArgosModulation)KineisModulation::LDK), Binascii::hexlify(packet).c_str(), size_bits,
 				argos_power_to_integer(argos_config.power));
-		// m_artic.set_tx_power(argos_config.power);
 		m_kineis.send(KineisModulation::LDK, packet, size_bits);
 	} else {
 		// No eligible entries for transmission in the depth pile, so send a doppler burst instead
@@ -261,7 +254,6 @@ void ArgosTxService::process_gnss_burst() {
 				size_bits);
 		DEBUG_INFO("ArgosTxService::process_gnss_burst: mode=%s data=%s sz=%u power=%u mW", argos_modulation_to_string((BaseArgosModulation)KineisModulation::LDK), Binascii::hexlify(packet).c_str(), size_bits,
 				argos_power_to_integer(argos_config.power));
-		// m_artic.set_tx_power(argos_config.power);
 		m_kineis.send(KineisModulation::LDK, packet, size_bits);
 	} else {
 		// No eligible entries for transmission in the depth pile, so send a doppler burst instead
@@ -279,8 +271,7 @@ void ArgosTxService::process_doppler_burst() {
 	configuration_store->get_argos_configuration(argos_config);
 	DEBUG_INFO("ArgosTxService::process_doppler_burst: mode=A2 data=%s sz=%u power=%u mW", Binascii::hexlify(packet).c_str(), size_bits,
 			argos_power_to_integer(argos_config.power));
-	// m_artic.set_tx_power(argos_config.power);
-	m_kineis.send(KineisModulation::LDA2, packet, size_bits); //ArticMode::A2
+	m_kineis.send(KineisModulation::LDA2, packet, size_bits); 
 }
 
 void ArgosTxService::react(KineisEventTxStarted const&) {
@@ -792,7 +783,6 @@ void ArgosTxScheduler::schedule_periodic(unsigned int period_ms, bool jitter_en,
 	throw ErrorCode::RESOURCE_NOT_AVAILABLE;
 }
 
-// unsigned int ArgosTxScheduler::schedule_prepass(ArgosConfig& config, BasePassPredict& pass_predict, ArticMode& scheduled_mode, std::time_t now) {
 
 // 	DEBUG_TRACE("ArgosTxScheduler::schedule_prepass");
 
@@ -882,7 +872,7 @@ void ArgosTxScheduler::schedule_periodic(unsigned int period_ms, bool jitter_en,
 // 			// and set the required Argos transmission mode
 // 			DEBUG_INFO("ArgosTxScheduler::schedule_prepass: scheduled for %.3f seconds from now", (double)(schedule - (now * MSECS_PER_SECOND)) / MSECS_PER_SECOND);
 // 			m_curr_schedule_abs = schedule;
-// 			scheduled_mode = next_pass.uplinkStatus >= SAT_UPLK_ON_WITH_A3 ? ArticMode::A3 : ArticMode::A2;
+// 			scheduled_mode = next_pass.uplinkStatus >= SAT_UPLK_ON_WITH_A3 ? KineisModulation::LDA2 : KineisModulation::LDA2;
 // 			return m_curr_schedule_abs.value() - now_ms;
 // 		} else {
 // 			DEBUG_TRACE("ArgosTxScheduler::schedule_prepass: computed schedule is too late for this window", next_pass.epoch, next_pass.duration);

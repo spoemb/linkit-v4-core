@@ -1,6 +1,6 @@
 #pragma once
 
-#include "artic_device.hpp"
+#include "kineis_device.hpp"
 #include "service.hpp"
 
 
@@ -29,15 +29,15 @@ public:
 	static inline const unsigned int INVALID_SCHEDULE   = (unsigned int)-1;
 
 	ArgosRxScheduler();
-	unsigned int schedule(ArgosConfig& config, BasePassPredict& pass_predict, std::time_t now, unsigned int &timeout, ArticMode& scheduled_mode);
+	unsigned int schedule(ArgosConfig& config, BasePassPredict& pass_predict, std::time_t now, unsigned int &timeout, KineisModulation& scheduled_mode);
 	void set_earliest_schedule(std::time_t t);
 	void set_location(double lon, double lat);
 };
 
 
-class ArgosRxService : public Service, ArticEventListener {
+class ArgosRxService : public Service, KineisEventListener {
 public:
-	ArgosRxService(ArticDevice& device);
+	ArgosRxService(KineisDevice& device);
 	void notify_peer_event(ServiceEvent& e);
 
 protected:
@@ -52,18 +52,18 @@ protected:
 	bool service_is_triggered_on_surfaced(bool&) override;
 
 private:
-	ArticDevice& m_artic;
+	KineisDevice& m_kineis;
 	ArgosRxScheduler m_sched;
 	unsigned int m_timeout;
-	ArticMode    m_mode;
+	KineisModulation m_mode;
 	std::map<uint8_t, AopSatelliteEntry_t> m_orbit_params_map;
 	std::map<uint8_t, AopSatelliteEntry_t> m_constellation_status_map;
 	unsigned int m_cumulative_rx_time;
 
-	void react(ArticEventRxPacket const&) override;
-	void react(ArticEventDeviceError const&) override;
-	void react(ArticEventPowerOff const&) override;
-	void react(ArticEventRxStopped const&) override;
+	void react(KineisEventRxPacket const&) override;
+	void react(KineisEventDeviceError const&) override;
+	void react(KineisEventPowerOff const&) override;
+	void react(KineisEventRxStopped const&) override;
 
 	void update_pass_predict(BasePassPredict& new_pass_predict);
 };

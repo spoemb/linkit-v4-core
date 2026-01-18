@@ -9,7 +9,6 @@
 #include "memory_access.hpp"
 #include "timeutils.hpp"
 #include "calibration.hpp"
-#include "artic_device.hpp"
 
 using namespace std::literals::string_literals;
 
@@ -38,9 +37,8 @@ enum class DTEError {
 // The DTEHandler requires access to the following system objects that are extern declared
 extern ConfigurationStore *configuration_store;
 extern MemoryAccess *memory_access;
-// extern ArticDevice *artic_device;
 
-class DTEHandler : public ArticEventListener {
+class DTEHandler {
 private:
 	// Tables
 	static inline std::map<unsigned int, std::string> m_logger_dump = {
@@ -78,13 +76,11 @@ private:
 	};
 	unsigned int m_dumpd_NNN;
 	unsigned int m_dumpd_mmm;
-	bool m_artic_device_active;
 
 public:
 	DTEHandler() {
 		m_dumpd_NNN = 0;
 		m_dumpd_mmm = 0;
-		m_artic_device_active = false;
 	}
 	virtual ~DTEHandler() {}
 
@@ -498,57 +494,6 @@ public:
 		return DTEEncoder::encode(DTECommand::SCALR_RESP, error_code, value);
 	}
 
-	std::string ARGOSTX_REQ(int error_code, std::vector<BaseType>& arg_list) {
-
-		if (error_code) {
-			return DTEEncoder::encode(DTECommand::ARGOSTX_RESP, error_code);
-		}
-
-		// Extract the argos modulation (0=>A2, 1=>A3, 2=>A4)
-		ArticMode modulation = (ArticMode)std::get<unsigned int>(arg_list[0]);
-
-		// Extract the argos power level in mW
-		BaseArgosPower power = argos_integer_to_power(std::get<unsigned int>(arg_list[1]));
-
-		// Extract the argos frequency (double)
-		double freq = std::get<double>(arg_list[2]);
-
-		// Extract the payload size in bytes
-		unsigned int num_bytes = std::get<unsigned int>(arg_list[3]);
-
-		// Extract the TCXO warmup time in seconds
-		unsigned int tcxo_time = std::get<unsigned int>(arg_list[4]);
-
-		try {
-			// If not already active then subscribe to events and setup a sufficiently
-			// long idle period before the driver shuts off argos power
-			// if (!m_artic_device_active) {
-			// 	artic_device->subscribe(*this);
-			// 	artic_device->set_idle_timeout(30000);
-			// 	m_artic_device_active = true;
-			// }
-
-			// // Schedule transmission
-			// artic_device->set_tx_power(power);
-			// artic_device->set_tcxo_warmup_time(tcxo_time);
-			// artic_device->set_frequency(freq);
-			// ArticPacket packet(0xFF, num_bytes);
-			// artic_device->send(modulation, packet, 8 * num_bytes);
-
-		} catch (...) {
-			error_code = (int)DTEError::INCORRECT_DATA;
-		}
-
-		return DTEEncoder::encode(DTECommand::ARGOSTX_RESP, error_code);
-	}
-
-	void react(ArticEventPowerOff const& ) {
-		if (m_artic_device_active) {
-			m_artic_device_active = false;
-			// artic_device->set_idle_timeout(3000);
-			// artic_device->unsubscribe(*this);
-		}
-	}
 
 public:
 	void reset_state() {
@@ -644,9 +589,6 @@ public:
 			break;
 		case DTECommand::SCALR_REQ:
 			resp = SCALR_REQ(error_code, arg_list);
-			break;
-		case DTECommand::ARGOSTX_REQ:
-			resp = ARGOSTX_REQ(error_code, arg_list);
 			break;
 		default:
 			break;

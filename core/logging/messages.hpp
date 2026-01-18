@@ -11,7 +11,6 @@ static constexpr const char *log_type_name[16] = {
 	"CAM",
 	"AXL",
 	"STARTUP",
-	"ARTIC",
 	"UNDERWATER",
 	"BATTERY",
 	"STATE",
@@ -29,7 +28,6 @@ enum LogType : uint8_t {
 	LOG_CAM,
 	LOG_AXL,
 	LOG_STARTUP,
-	LOG_ARTIC,
 	LOG_UNDERWATER,
 	LOG_BATTERY,
 	LOG_STATE,
@@ -143,26 +141,6 @@ struct __attribute__((packed)) SystemStartupLogEntry {
 	};
 };
 
-
-enum class ArticTransceiverEvent : uint8_t { OFF, ON, TX };
-enum class ArticPayloadType : uint8_t { SHORT, LONG };
-
-
-struct __attribute__((packed)) ArticTransceiverLogEntry {
-	LogHeader header;
-	union {
-		struct {
-			ArticTransceiverEvent event;
-			ArticPayloadType      payload_type;
-			uint32_t			  msg_index;
-			uint32_t			  tx_counter;
-			BaseArgosPower		  tx_power;
-			uint32_t			  burst_counter;
-			BaseArgosMode		  mode;
-		};
-		uint8_t data[MAX_LOG_PAYLOAD];
-	};
-};
 
 enum class UnderwaterEvent : uint8_t { DRY, WET };
 

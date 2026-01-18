@@ -251,7 +251,7 @@ void KIM2Device::state_power_off_enter()
     m_tx_buffer.clear();
     m_packet_buffer.clear();
 
-    //notify(ArticEventPowerOff({}))
+    
 }
 
 void KIM2Device::state_power_off()

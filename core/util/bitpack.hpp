@@ -1,6 +1,10 @@
 #ifndef __BIT_PACK_HPP_
 #define __BIT_PACK_HPP_
 
+#include <cstdint>
+#include <string>
+#include <algorithm>
+
 #define EXTRACT_BITS(dest, source, start, num_bits)  do { dest = extract_bits(source, start, num_bits); start += num_bits; } while (0)
 #define EXTRACT_BITS_CAST(type, dest, source, start, num_bits)  do { dest = (type)extract_bits(source, start, num_bits); start += num_bits; } while (0)
 
