@@ -11044,11 +11044,11 @@
 #define NRF_SDH_BLE_TOTAL_LINK_COUNT 1
 #endif
 
-// <o> NRF_SDH_BLE_GAP_EVENT_LENGTH - GAP event length. 
+// <o> NRF_SDH_BLE_GAP_EVENT_LENGTH - GAP event length.
 // <i> The time set aside for this connection on every connection interval in 1.25 ms units.
 
 #ifndef NRF_SDH_BLE_GAP_EVENT_LENGTH
-#define NRF_SDH_BLE_GAP_EVENT_LENGTH 6
+#define NRF_SDH_BLE_GAP_EVENT_LENGTH 400
 #endif
 
 // <o> NRF_SDH_BLE_GATT_MAX_MTU_SIZE - Static maximum MTU size. 
