@@ -427,6 +427,15 @@ int main()
 
 	// If we can't mount the filesystem then try to format it first and retry
 	DEBUG_TRACE("Mount LFS filesystem...");
+
+#ifdef FORCE_FORMAT_FILESYSTEM
+	DEBUG_WARN("FORCE_FORMAT_FILESYSTEM enabled - formatting filesystem!");
+	if (main_filesystem->format() < 0 || main_filesystem->mount() < 0)
+	{
+		DEBUG_ERROR("Failed to format LFS filesystem");
+		PMU::powerdown();
+	}
+#else
 	if (main_filesystem->mount() < 0)
 	{
 		DEBUG_TRACE("Format LFS filesystem...");
@@ -437,6 +446,7 @@ int main()
 			PMU::powerdown();
 		}
 	}
+#endif
 
 	DEBUG_TRACE("Configuration store...");
 	LFSConfigurationStore store(lfs_file_system);

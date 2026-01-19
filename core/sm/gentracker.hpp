@@ -70,7 +70,7 @@ public:
 class ConfigurationState : public GenTracker
 {
 private:
-	static inline const unsigned int BLE_INACTIVITY_TIMEOUT_MS = 6 * 60 * 1000;
+	static inline const unsigned int BLE_INACTIVITY_TIMEOUT_MS = 20 * 60 * 1000;  // Increased to 20 minutes for OTA transfers
 	Scheduler::TaskHandle m_ble_inactivity_timeout_task;
 	int on_ble_event(BLEServiceEvent&);
 	void on_ble_inactivity_timeout();
