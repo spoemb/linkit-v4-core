@@ -202,8 +202,9 @@ bool KIM2Device::send_AT(ATCmd cmd, const std::optional<std::string>& params)
         timeout_ms --;
     }
 
-    if(timeout_ms == 0)
+    if(timeout_ms == 0) {
         DEBUG_TRACE("KIM2Device::send_AT +OK not received");
+    }
 
     return !m_cmd_is_ok; // 0=OK - 1=error
 }
@@ -439,4 +440,31 @@ void KIM2Device::state_error()
 void KIM2Device::state_error_exit()
 {
     ;
+}
+
+// RX methods - not yet implemented for KIM2
+void KIM2Device::start_receive(const KineisModulation mode)
+{
+    (void)mode;
+    DEBUG_WARN("KIM2Device::start_receive: RX not implemented for KIM2");
+}
+
+bool KIM2Device::stop_receive()
+{
+    DEBUG_WARN("KIM2Device::stop_receive: RX not implemented for KIM2");
+    return false;
+}
+
+void KIM2Device::set_frequency(double freq_mhz)
+{
+    (void)freq_mhz;
+    DEBUG_TRACE("KIM2Device::set_frequency: %.3f MHz", freq_mhz);
+    // Frequency is set via AT+FREQ command if needed
+}
+
+void KIM2Device::set_tcxo_warmup_time(unsigned int ms)
+{
+    (void)ms;
+    DEBUG_TRACE("KIM2Device::set_tcxo_warmup_time: %u ms", ms);
+    // TCXO warmup time configuration if needed
 }

@@ -1,0 +1,5 @@
+# Hashes of file build rules.
+f7c8e60669f2fc62775b7aad8a36fb78 CMakeFiles/dfu_app
+596d4a8ce6bad14b9fe10b8afa08c921 CMakeFiles/flash
+fd7339a6ab71d14f51112810274ba100 CMakeFiles/flash_softdev
+c197464f1e83b931663eda3ce016f5c7 CMakeFiles/merged_hex

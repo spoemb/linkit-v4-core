@@ -1,0 +1,27 @@
+CMakeFiles/LinkIt_SB_board.dir/home/fourn/linkit-v4/linkit-v4-core/libraries/prepass/prepass_package_code-PREPAS_V3.4/previpass.c.obj: \
+ /home/fourn/linkit-v4/linkit-v4-core/libraries/prepass/prepass_package_code-PREPAS_V3.4/previpass.c \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/math.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/reent.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/_ansi.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/newlib.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/_newlib_version.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/config.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/machine/ieeefp.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/features.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/lib/gcc/arm-none-eabi/10.2.1/include/stddef.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/_types.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/machine/_types.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/machine/_default_types.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/lock.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/cdefs.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/_ansi.h \
+ /home/fourn/linkit-v4/linkit-v4-core/libraries/prepass/prepass_package_code-PREPAS_V3.4/previpass.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/lib/gcc/arm-none-eabi/10.2.1/include/stdint.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/stdint.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/_intsup.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/sys/_stdint.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/lib/gcc/arm-none-eabi/10.2.1/include/stdbool.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/stdlib.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/machine/stdlib.h \
+ /tools/gcc-arm-none-eabi-10-2020-q4-major/arm-none-eabi/include/alloca.h \
+ /home/fourn/linkit-v4/linkit-v4-core/libraries/prepass/prepass_package_code-PREPAS_V3.4/previpass_util.h

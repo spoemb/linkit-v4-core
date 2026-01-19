@@ -1,6 +1,7 @@
 #include "m10qasync.hpp"
 #include "gpio.hpp"
 #include "bsp.hpp"
+#include <vector>
 #include "ubx_comms.hpp"
 #include "ubx.hpp"
 #include "pmu.hpp"
@@ -218,17 +219,20 @@ void M10QAsyncReceiver::react(const UBXCommsEventAckNack& ack) {
 }
 
 void M10QAsyncReceiver::react(const UBXCommsEventCfgValget& valget) {
-    
+
     unsigned int length = valget.length;
     DEBUG_TRACE("UBXCommsEventCfgValget received: length %u", length);
-    uint8_t* msg = new uint8_t[length];
+
+    // Use vector for automatic memory management (RAII)
+    std::vector<uint8_t> msg_buffer(length);
+    uint8_t* msg = msg_buffer.data();
     std::memcpy(msg, valget.msg, length);
     
     // Parse the fixed header fields
-    uint8_t version = msg[0];
-    uint8_t layer = msg[1];
-    uint16_t position = static_cast<uint16_t>(msg[2]) | (static_cast<uint16_t>(msg[3]) << 8); // Combine bytes for position
-    
+    [[maybe_unused]] uint8_t version = msg[0];
+    [[maybe_unused]] uint8_t layer = msg[1];
+    [[maybe_unused]] uint16_t position = static_cast<uint16_t>(msg[2]) | (static_cast<uint16_t>(msg[3]) << 8); // Combine bytes for position
+
     DEBUG_TRACE("Version: %u", version);
     DEBUG_TRACE("Layer: %u", layer);
     DEBUG_TRACE("Position: %u", position);
@@ -279,10 +283,8 @@ void M10QAsyncReceiver::react(const UBXCommsEventCfgValget& valget) {
         // Print the decoded configuration key-value pair
         DEBUG_TRACE("Config Key: 0x%08X, Value: %lld (0x%X)", key, paramValue, paramValue);
     }
-    
-    
-    // Clean up
-    delete[] msg;
+
+    // msg_buffer automatically freed when function exits (RAII)
 
     // Handle state
     if (m_op_state == OpState::PENDING) {
@@ -713,8 +715,9 @@ void M10QAsyncReceiver::state_startreceive_exit() {
 }
 
 void M10QAsyncReceiver::state_receive_enter() {
-    // Allow maximum 5 seconds for receiver to start outputting navigation samples
-    initiate_timeout(5000);
+    // Allow maximum 30 seconds for receiver to start outputting navigation samples
+    // (cold start can take 25+ seconds in poor signal conditions)
+    initiate_timeout(30000);
     m_op_state = OpState::IDLE;
     m_retries = 3;
 }
@@ -918,15 +921,11 @@ void M10QAsyncReceiver::state_senddatabase() {
 				break;
 			} else {
 				unsigned int actual_count = 0;
-				if (!m_ubx_comms.is_expected_msg_count(m_navigation_database, m_mga_ack_count,
+				[[maybe_unused]] bool success = m_ubx_comms.is_expected_msg_count(m_navigation_database, m_mga_ack_count,
 						m_expected_dbd_messages, actual_count, MessageClass::MSG_CLASS_MGA,
-						MGA::ID_ACK)) {
-					DEBUG_TRACE("M10QAsyncReceiver::state_senddatabase: missing MGA-ACK: %u/%u acks recieved",
-							actual_count, m_expected_dbd_messages);
-				} else {
-					DEBUG_TRACE("M10QAsyncReceiver::state_senddatabase: success: %u/%u acks recieved",
-							actual_count, m_expected_dbd_messages);
-				}
+						MGA::ID_ACK);
+				DEBUG_TRACE("M10QAsyncReceiver::state_senddatabase: %s: %u/%u acks recieved",
+						success ? "success" : "missing MGA-ACK", actual_count, m_expected_dbd_messages);
 				STATE_CHANGE(senddatabase, startreceive);
 				break;
 			}
@@ -1169,13 +1168,21 @@ void M10QAsyncReceiver::read_uart_port() {
 
     // Define the parameter key directly, using the key ID defined in CFG::UART1
     std::vector<uint32_t> uart1_baudrate_key = { CFG::UART1::BAUDRATE.key };
-
-    // Construct the VALGET message with version, layer, position, and key IDs
-    CFG::VALGET::MSG_VALGET uart1_valget_msg(0x00, CFG::VALGET::LAYERS::RAM, 0, uart1_baudrate_key);
+    constexpr size_t MAX_KEYS = 4;  // Maximum number of keys we'll query
     size_t valGetDataSize = uart1_baudrate_key.size() * sizeof(uint32_t);
 
+    // Validate that the key count does not exceed buffer capacity
+    if (uart1_baudrate_key.size() > MAX_KEYS)
+        throw ErrorCode::INVALID_PARAM;
+
+    // Allocate buffer with enough space for the flexible array member (fixed size)
+    alignas(CFG::VALGET::MSG_VALGET) uint8_t buffer[sizeof(CFG::VALGET::MSG_VALGET) + MAX_KEYS * sizeof(uint32_t)];
+
+    // Construct the VALGET message using placement new
+    auto* uart1_valget_msg = new (buffer) CFG::VALGET::MSG_VALGET(0x00, CFG::VALGET::LAYERS::RAM, 0, uart1_baudrate_key);
+
     // Send the VALGET message and expect a response for the UART1 baud rate
-    m_ubx_comms.send_packet_with_expect(MessageClass::MSG_CLASS_CFG, CFG::ID_VALGET, uart1_valget_msg,
+    m_ubx_comms.send_packet_with_expect(MessageClass::MSG_CLASS_CFG, CFG::ID_VALGET, *uart1_valget_msg,
                                         MessageClass::MSG_CLASS_CFG, CFG::ID_VALGET, valGetDataSize);
 
     m_ubx_comms.wait_send();

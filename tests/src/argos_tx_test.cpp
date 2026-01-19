@@ -37,6 +37,8 @@ TEST_GROUP(ArgosTxService)
 		configuration_store->init();
 		fake_rtc = new FakeRTC;
 		rtc = fake_rtc;
+		// Set RTC time so service_is_time_known() returns true
+		fake_rtc->settime(1580083200); // 27/01/2020 00:00:00
 		fake_timer = new FakeTimer;
 		system_timer = fake_timer; // linux_timer;
 		system_scheduler = new Scheduler(system_timer);
@@ -460,9 +462,10 @@ TEST(ArgosTxService, BuildLongCertificationPacket)
 TEST(ArgosTxService, BuildShortCertificationPacket)
 {
 	unsigned int size_bits;
-	std::string x = ArgosPacketBuilder::build_certification_packet("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", size_bits);
-	CHECK_EQUAL(120, size_bits);
-	CHECK_EQUAL("\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF"s, x);
+	// SHORT_PACKET_BYTES = 12, so input must be ≤12 bytes (24 hex chars)
+	std::string x = ArgosPacketBuilder::build_certification_packet("FFFFFFFFFFFFFFFFFFFF", size_bits); // 10 bytes
+	CHECK_EQUAL(96, size_bits); // SHORT_PACKET_BITS = 96
+	CHECK_EQUAL("\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x00\x00"s, x); // Padded to 12 bytes
 }
 
 TEST(ArgosTxService, BuildShortGNSSPacket)

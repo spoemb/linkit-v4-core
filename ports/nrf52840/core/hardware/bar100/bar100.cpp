@@ -35,7 +35,7 @@ Bar100::Bar100(unsigned int bus, unsigned char addr) {
 	uint8_t read_buffer[3];
 
 	command(CUST_ID0, read_buffer, sizeof(read_buffer), 1);
-	uint16_t custid0 = read_buffer[2] | (uint16_t)read_buffer[1] << 8;
+	[[maybe_unused]] uint16_t custid0 = read_buffer[2] | (uint16_t)read_buffer[1] << 8;
 
 	DEBUG_TRACE("Bar100::Bar100: CUST_ID0=%04X", (unsigned int)custid0);
 

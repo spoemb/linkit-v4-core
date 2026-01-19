@@ -1053,7 +1053,8 @@ private:
 		if (p == nullptr || *p != '\0')
 			p = strptime(s.c_str(), "%a %b %d %H:%M:%S %Y", &tm);
 
-		time_t t = mktime(&tm);
+		// Use timegm for UTC interpretation (not affected by local timezone)
+		time_t t = timegm(&tm);
 		if (t == -1 || p == nullptr || *p != '\0')
 		{
 			{

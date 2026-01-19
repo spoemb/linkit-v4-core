@@ -2,7 +2,9 @@
 #include "gnss_detector_service.hpp"
 #include "pressure_detector_service.hpp"
 #include "als_sensor_service.hpp"
+#ifdef OEM_PH_SENSOR_ENABLED
 #include "ph_sensor_service.hpp"
+#endif
 #include "sea_temp_sensor_service.hpp"
 #include "cdt_sensor_service.hpp"
 #include "gps_service.hpp"
@@ -35,9 +37,13 @@
 #include "nrf_rgb_led.hpp"
 #include "nrf_battery_mon.hpp"
 #include "ltr_303.hpp"
+#ifdef OEM_PH_SENSOR_ENABLED
 #include "oem_ph.hpp"
+#endif
+#ifdef EZO_RTD_SENSOR_ENABLED
 #include "oem_rtd.hpp"
 #include "ezo_rtd.hpp"
+#endif
 #include "cdt.hpp"
 #include "bma400.hpp"
 #include "ms58xx.hpp"
@@ -92,7 +98,7 @@ FSM_INITIAL_STATE(GenTracker, BootState)
 extern "C" void HardFault_Handler() {
 	for (;;)
 	{
-#if BUILD_TYPE==Release
+#ifdef NDEBUG
 		PMU::save_stack(PMULogType::HARDFAULT);
 		PMU::reset(false);
 #else
@@ -117,7 +123,7 @@ extern "C" void MemoryManagement_Handler(void)
 {
 	for (;;)
 	{
-#if BUILD_TYPE==Release
+#ifdef NDEBUG
 		PMU::save_stack(PMULogType::MMAN);
 		PMU::reset(false);
 #else
@@ -141,7 +147,7 @@ extern "C" void MemoryManagement_Handler(void)
 extern "C" {
 	void *__stack_check_guard = (void*)0xDEADBEEF;
 	void __wrap___stack_chk_fail(void) {
-#if BUILD_TYPE==Release
+#ifdef NDEBUG
 		PMU::save_stack(PMULogType::STACK);
 		PMU::reset(false);
 #else
@@ -168,7 +174,7 @@ extern "C" {
 extern "C" void vApplicationMallocFailedHook() {
 	for (;;)
 	{
-#if BUILD_TYPE==Release
+#ifdef NDEBUG
 		PMU::save_stack(PMULogType::MALLOC);
 		PMU::reset(false);
 #else
@@ -195,7 +201,7 @@ void etl_error_handler(const etl::exception& e)
 
 	for (;;)
 	{
-#if BUILD_TYPE==Release
+#ifdef NDEBUG
 		PMU::save_stack(PMULogType::ETL);
 		PMU::reset(false);
 #else
@@ -302,11 +308,13 @@ int main()
 
 	NrfI2C::init();
 	bool is_linkit_v3_v4 = (PMU::hardware_version() == "LinkIt V3") || (PMU::hardware_version() == "LinkIt V4");
+#ifdef EZO_RTD_SENSOR_ENABLED
 	{
 		try {
 			EZO_RTD_Sensor rtd; // Puts the device into standby mode
 		} catch (...) {}
 	}
+#endif
 	NrfI2C::uninit();
 
 	if ((is_linkit_v3_v4 && PMU::reset_cause() == "Pseudo Power On Reset") ||
@@ -461,15 +469,19 @@ int main()
 	FsLog als_sensor_log(&lfs_file_system, "ALS", 1024*1024);
 	als_sensor_log.set_log_formatter(&als_sensor_log_formatter);
 
+#ifdef OEM_PH_SENSOR_ENABLED
 	DEBUG_TRACE("PH Sensor Log...");
 	PHLogFormatter ph_sensor_log_formatter;
 	FsLog ph_sensor_log(&lfs_file_system, "PH", 1024*1024);
 	ph_sensor_log.set_log_formatter(&ph_sensor_log_formatter);
+#endif
 
+#ifdef EZO_RTD_SENSOR_ENABLED
 	DEBUG_TRACE("RTD Sensor Log...");
 	SeaTempLogFormatter rtd_sensor_log_formatter;
 	FsLog rtd_sensor_log(&lfs_file_system, "RTD", 1024*1024);
 	rtd_sensor_log.set_log_formatter(&rtd_sensor_log_formatter);
+#endif
 
 	DEBUG_TRACE("TSYS01 Sensor Log...");
 	SeaTempLogFormatter tsys01_sensor_log_formatter;
@@ -599,6 +611,7 @@ int main()
 		DEBUG_TRACE("LTR303: not detected");
 	}
 
+#ifdef OEM_PH_SENSOR_ENABLED
 	DEBUG_TRACE("OEM PH...");
 	try {
 		static OEM_PH_Sensor ph;
@@ -606,7 +619,9 @@ int main()
 	} catch (...) {
 		DEBUG_TRACE("OEM PH: not detected");
 	}
+#endif
 
+#ifdef EZO_RTD_SENSOR_ENABLED
 	DEBUG_TRACE("EZO RTD...");
 	try {
 		static EZO_RTD_Sensor rtd;
@@ -614,6 +629,7 @@ int main()
 	} catch (ErrorCode e) {
 		DEBUG_TRACE("EZO RTD: not detected [%04X]", e);
 	}
+#endif
 
 	DEBUG_TRACE("TSYS01...");
 	try {

@@ -207,9 +207,9 @@ void ArgosTxService::process_time_sync_burst() {
 		KineisPacket packet = ArgosPacketBuilder::build_gnss_packet(v, argos_config.is_out_of_zone, argos_config.is_lb,
 				argos_config.delta_time_loc,
 				size_bits);
-		DEBUG_INFO("ArgosTxService::process_time_sync_burst: mode=A2 data=%s sz=%u power=%u mW", Binascii::hexlify(packet).c_str(), size_bits,
+		DEBUG_INFO("ArgosTxService::process_time_sync_burst: mode=%s data=%s sz=%u power=%u mW", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits,
 				argos_power_to_integer(argos_config.power));
-		m_kineis.send(KineisModulation::LDK, packet, size_bits);
+		m_kineis.send(m_scheduled_mode, packet, size_bits);
 	} else {
 		// No eligible entries for transmission in the depth pile, so send a doppler burst instead
 		DEBUG_WARN("ArgosTxService::process_time_sync_burst: no entries eligible in depth pile");
@@ -232,9 +232,9 @@ void ArgosTxService::process_sensor_burst() {
 				argos_config.is_lb,
 				argos_config.is_out_of_zone,
 				size_bits);
-		DEBUG_INFO("ArgosTxService::process_sensor_burst: mode=%s data=%s sz=%u power=%u mW", argos_modulation_to_string((BaseArgosModulation)KineisModulation::LDK), Binascii::hexlify(packet).c_str(), size_bits,
+		DEBUG_INFO("ArgosTxService::process_sensor_burst: mode=%s data=%s sz=%u power=%u mW", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits,
 				argos_power_to_integer(argos_config.power));
-		m_kineis.send(KineisModulation::LDK, packet, size_bits);
+		m_kineis.send(m_scheduled_mode, packet, size_bits);
 	} else {
 		// No eligible entries for transmission in the depth pile, so send a doppler burst instead
 		DEBUG_WARN("ArgosTxService::process_sensor_burst: no entries eligible in depth pile");
@@ -252,9 +252,9 @@ void ArgosTxService::process_gnss_burst() {
 		KineisPacket packet = ArgosPacketBuilder::build_gnss_packet(v, argos_config.is_out_of_zone, argos_config.is_lb,
 				argos_config.delta_time_loc,
 				size_bits);
-		DEBUG_INFO("ArgosTxService::process_gnss_burst: mode=%s data=%s sz=%u power=%u mW", argos_modulation_to_string((BaseArgosModulation)KineisModulation::LDK), Binascii::hexlify(packet).c_str(), size_bits,
+		DEBUG_INFO("ArgosTxService::process_gnss_burst: mode=%s data=%s sz=%u power=%u mW", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits,
 				argos_power_to_integer(argos_config.power));
-		m_kineis.send(KineisModulation::LDK, packet, size_bits);
+		m_kineis.send(m_scheduled_mode, packet, size_bits);
 	} else {
 		// No eligible entries for transmission in the depth pile, so send a doppler burst instead
 		DEBUG_WARN("ArgosTxService::process_gnss_burst: no entries eligible in depth pile");

@@ -41,11 +41,19 @@ TEST_GROUP(AXLSensor)
 	}
 
 	void teardown() {
+		mock().clear();
 		delete system_scheduler;
 		delete fake_timer;
 		delete fake_config_store;
 		delete fake_logger;
 		delete fake_rtc;
+	}
+
+	void expect_calibration_writes(int count = 5) {
+		// The AXL service writes calibration values at start - ignore these
+		// 5 basic calls: g_force, power_mode, x, y, z calibration
+		// +2 for wakeup threshold and duration if configured
+		mock().expectNCalls(count, "calibration_write").ignoreOtherParameters();
 	}
 };
 
@@ -64,6 +72,7 @@ TEST(AXLSensor, SensorDisabled)
 	configuration_store->write_param(ParamID::AXL_SENSOR_ENABLE, sensor_en);
 	configuration_store->write_param(ParamID::AXL_SENSOR_PERIODIC, period);
 
+	expect_calibration_writes();
 	s.start([&num_callbacks](ServiceEvent &event) {
 		if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
 			num_callbacks++;
@@ -96,6 +105,7 @@ TEST(AXLSensor, SchedulingPeriodic)
 	configuration_store->write_param(ParamID::AXL_SENSOR_ENABLE, sensor_en);
 	configuration_store->write_param(ParamID::AXL_SENSOR_PERIODIC, period);
 
+	expect_calibration_writes();
 	s.start([&num_callbacks](ServiceEvent &event) {
 		if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
 			num_callbacks++;
@@ -109,6 +119,7 @@ TEST(AXLSensor, SchedulingPeriodic)
 		mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 3).andReturnValue((double)i+2);
 		mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 0).andReturnValue((double)i+3);
 		mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 4).andReturnValue((double)(i?1:0));
+		mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 5).andReturnValue((double)(i?1:0));
 		fake_timer->increment_counter(period*1000);
 		system_scheduler->run();
 	}
@@ -145,6 +156,7 @@ TEST(AXLSensor, SchedulingNoPeriodic)
 	configuration_store->write_param(ParamID::AXL_SENSOR_ENABLE, sensor_en);
 	configuration_store->write_param(ParamID::AXL_SENSOR_PERIODIC, period);
 
+	expect_calibration_writes();
 	s.start([&num_callbacks](ServiceEvent &event) {
 		if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
 			num_callbacks++;

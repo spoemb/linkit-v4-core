@@ -1,0 +1,3 @@
+# Remplacer les anciens patterns par les nouvelles fonctions helper
+s/mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_RST);\n    mock().expectOneCall("delay_ms").ignoreOtherParameters();\n    mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);\n    mock().expectOneCall("delay_ms").ignoreOtherParameters();\n    mock().expectOneCall("GPSEventPowerOn");/expect_power_on();/g
+s/mock().expectOneCall("GPSEventPowerOff");\n    mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);\n    mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_RST);/expect_power_off();/g

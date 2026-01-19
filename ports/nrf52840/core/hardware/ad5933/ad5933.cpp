@@ -224,7 +224,7 @@ void AD5933LL::powerdown()
 
 void AD5933LL::dump_regs()
 {
-    uint8_t value;
+    [[maybe_unused]] uint8_t value;
     for (unsigned int i = 0x80; i < 0x98; i++) {
         value = read_reg((AD5933Register)i);
         DEBUG_TRACE("reg[%02x]=%02x", i, (unsigned int)value);

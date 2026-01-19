@@ -15,7 +15,10 @@ public:
     ~KIM2Device();
 	void send(const KineisModulation mode, const KineisPacket& packet, const unsigned int size_bits) override;
 	void stop_send() override;
-	
+	void start_receive(const KineisModulation mode) override;
+	bool stop_receive() override;
+	void set_frequency(double freq_mhz) override;
+	void set_tcxo_warmup_time(unsigned int ms) override;
 
 private:
 	//State machine
@@ -31,9 +34,9 @@ private:
 	// Top-level state
 	Scheduler::TaskHandle m_task;
 	KIM2ManagerState      m_state;
-	bool                  m_stopping;
-	bool                  m_cmd_is_ok;
-	bool                  m_is_error;
+	volatile bool         m_stopping;
+	volatile bool         m_cmd_is_ok;
+	volatile bool         m_is_error;
 	struct Timeout {
 		Scheduler::TaskHandle handle;
 		bool     running;
@@ -44,7 +47,7 @@ private:
 	KineisPacket m_tx_buffer;
 	KineisPacket m_packet_buffer;
 	KineisModulation m_tx_mode;
-	bool         m_tx_done;
+	volatile bool m_tx_done;
 
 	//State machine
 	void state_machine();

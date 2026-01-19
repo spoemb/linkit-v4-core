@@ -10,6 +10,7 @@
 #include "fake_battery_mon.hpp"
 #include "dte_protocol.hpp"
 #include "mock_comparators.hpp"
+#include "axl_sensor_service.hpp"
 
 
 extern Timer *system_timer;
@@ -678,7 +679,9 @@ TEST(GPSService, GNSSNoPeriodicTriggerOnAXLWakeupEvent)
 	// Now fire an AXL event - next time will power on
 	ServiceEvent e;
 	e.event_type = ServiceEventType::SERVICE_LOG_UPDATED;
-	e.event_data = true;
+	ServiceSensorData sensor_data = {};
+	sensor_data.port[AXLSensorPort::WAKEUP_TRIGGERED] = 1.0;
+	e.event_data = sensor_data;
 	e.event_source = ServiceIdentifier::AXL_SENSOR;
 	e.event_originator_unique_id = 0x12345678;
 	s.notify_peer_event(e);

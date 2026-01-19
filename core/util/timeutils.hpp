@@ -4,6 +4,38 @@
 #include <ctime>
 #include <stdint.h>
 
+// Portable timegm implementation for embedded systems (newlib doesn't provide timegm)
+// Converts struct tm (interpreted as UTC) to time_t
+static std::time_t portable_timegm(struct tm *tm) {
+	// Days in each month (non-leap year)
+	static const int days_in_month[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+
+	int year = tm->tm_year + 1900;
+	int is_leap = ((year % 4 == 0) && (year % 100 != 0)) || (year % 400 == 0);
+
+	// Count days from 1970 to the start of this year
+	std::time_t days = 0;
+	for (int y = 1970; y < year; y++) {
+		days += (((y % 4 == 0) && (y % 100 != 0)) || (y % 400 == 0)) ? 366 : 365;
+	}
+
+	// Add days for completed months in the current year
+	for (int m = 0; m < tm->tm_mon; m++) {
+		days += days_in_month[m];
+		if (m == 1 && is_leap) days++;
+	}
+
+	// Add days in current month (tm_mday is 1-based)
+	days += tm->tm_mday - 1;
+
+	return days * 86400 + tm->tm_hour * 3600 + tm->tm_min * 60 + tm->tm_sec;
+}
+
+// Alias for compatibility
+#ifndef timegm
+#define timegm portable_timegm
+#endif
+
 static std::time_t convert_epochtime(uint16_t year, uint8_t month, uint8_t day, uint8_t hour, uint8_t min, uint8_t sec) {
 	struct tm t;
 	memset(&t, 0, sizeof(t));

@@ -92,8 +92,9 @@ void UBXComms::send(uint8_t *buffer, unsigned int sz, bool notify_sent, bool use
 		while(m_is_send_busy);
 	}
 
-	if (m_debug_enable)
+	if (m_debug_enable) {
 	    DEBUG_TRACE("UBXComms->GNSS: buffer=%s", Binascii::hexlify(std::string((char *)buffer, sz)).c_str());
+	}
 
 	// Check for non-local buffer
 	if (!use_ext_buffer && buffer != m_tx_buffer) {

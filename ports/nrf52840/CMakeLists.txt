@@ -179,9 +179,9 @@ target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
     ${PROJ_DIR}/core/hardware/bar100
     ${PROJ_DIR}/core/hardware/ad5933
     ${PROJ_DIR}/core/hardware/ltr_303
-    ${PROJ_DIR}/core/hardware/oem_ph
-    ${PROJ_DIR}/core/hardware/oem_rtd
-    ${PROJ_DIR}/core/hardware/ezo_rtd
+    $<$<BOOL:${OEM_PH_SENSOR_ENABLED}>:${PROJ_DIR}/core/hardware/oem_ph>
+    $<$<BOOL:${EZO_RTD_SENSOR_ENABLED}>:${PROJ_DIR}/core/hardware/oem_rtd>
+    $<$<BOOL:${EZO_RTD_SENSOR_ENABLED}>:${PROJ_DIR}/core/hardware/ezo_rtd>
     ${PROJ_DIR}/core/hardware/cdt
     ${PROJ_DIR}/core/hardware/bma400
     ${PROJ_DIR}/core/hardware/tsys01
@@ -279,9 +279,9 @@ target_sources(${TARGET_NAME} PRIVATE
     ${PROJ_DIR}/core/hardware/bma400/bma400.c
     ${PROJ_DIR}/core/hardware/cdt/cdt.cpp
     ${PROJ_DIR}/core/hardware/ltr_303/ltr_303.cpp
-    ${PROJ_DIR}/core/hardware/oem_ph/oem_ph.cpp
-    ${PROJ_DIR}/core/hardware/oem_rtd/oem_rtd.cpp
-    ${PROJ_DIR}/core/hardware/ezo_rtd/ezo_rtd.cpp
+    $<$<BOOL:${OEM_PH_SENSOR_ENABLED}>:${PROJ_DIR}/core/hardware/oem_ph/oem_ph.cpp>
+    $<$<BOOL:${EZO_RTD_SENSOR_ENABLED}>:${PROJ_DIR}/core/hardware/oem_rtd/oem_rtd.cpp>
+    $<$<BOOL:${EZO_RTD_SENSOR_ENABLED}>:${PROJ_DIR}/core/hardware/ezo_rtd/ezo_rtd.cpp>
     ${PROJ_DIR}/core/hardware/tsys01/TSYS01.cpp
     ${PROJ_DIR}/core/hardware/kim2/kim2.cpp
     ${PROJ_DIR}/core/hardware/kim2/kim2_comm.cpp
@@ -385,6 +385,8 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     #BATTERY_NOT_FITTED
     #DUMMY_PRESSURE_SENSOR
     #DEBUG_AD5933
+    #OEM_PH_SENSOR_ENABLED
+    #EZO_RTD_SENSOR_ENABLED
     DEBUG_TO_SYSTEMLOG
     ETL_LOG_ERRORS
     ARGOS_USE_CRC8

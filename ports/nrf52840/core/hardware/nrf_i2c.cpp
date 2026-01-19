@@ -23,12 +23,18 @@ void NrfI2C::uninit(void) {
 }
 
 void NrfI2C::disable(uint8_t bus) {
+	if (bus >= BSP::I2C_TOTAL_NUMBER)
+		throw ErrorCode::INVALID_PARAM;
 	nrfx_twim_disable(&BSP::I2C_Inits[bus].twim);
 	nrfx_twim_uninit(&BSP::I2C_Inits[bus].twim);
 	m_is_enabled[bus] = false;
 }
 
 void NrfI2C::read(uint8_t bus, uint8_t address, uint8_t *buffer, unsigned int length) {
+	if (bus >= BSP::I2C_TOTAL_NUMBER)
+		throw ErrorCode::INVALID_PARAM;
+	if (buffer == nullptr || length == 0)
+		throw ErrorCode::INVALID_PARAM;
 	if (!m_is_enabled[bus])
 		throw ErrorCode::RESOURCE_NOT_AVAILABLE;
     nrfx_err_t error = nrfx_twim_rx(&BSP::I2C_Inits[bus].twim, address, buffer, length);
@@ -39,6 +45,10 @@ void NrfI2C::read(uint8_t bus, uint8_t address, uint8_t *buffer, unsigned int le
 }
 
 void NrfI2C::write(uint8_t bus, uint8_t address, const uint8_t *buffer, unsigned int length, bool no_stop) {
+	if (bus >= BSP::I2C_TOTAL_NUMBER)
+		throw ErrorCode::INVALID_PARAM;
+	if (buffer == nullptr || length == 0)
+		throw ErrorCode::INVALID_PARAM;
 	if (!m_is_enabled[bus])
 		throw ErrorCode::RESOURCE_NOT_AVAILABLE;
 	nrfx_err_t error = nrfx_twim_tx(&BSP::I2C_Inits[bus].twim, address, buffer, length, no_stop);

@@ -117,9 +117,11 @@ const BaseMap param_map[] = {
 	////////////////////////////
 	// EXTERNAL sensors
 	////////////////////////////
+#ifdef OEM_PH_SENSOR_ENABLED
 	{ "PH_SENSOR_ENABLE", "PHP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "PH_SENSOR_PERIODIC", "PHP02", BaseEncoding::UINT, 0U, 0U, {}, true, true },
 	{ "PH_SENSOR_VALUE", "PHP03", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, true, true },
+#endif
 	{ "SEA_TEMP_SENSOR_ENABLE", "STP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "SEA_TEMP_SENSOR_PERIODIC", "STP02", BaseEncoding::UINT, 0U, 0U, {}, true, true },
 	{ "SEA_TEMP_SENSOR_VALUE", "STP03", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, true, true },
@@ -191,9 +193,11 @@ const BaseMap param_map[] = {
 	{ "SEA_TEMP_SENSOR_ENABLE_TX_MODE", "STP04", BaseEncoding::SENSORENABLETXMODE, 0, 0, {}, true, true },
 	{ "SEA_TEMP_SENSOR_ENABLE_TX_MAX_SAMPLES", "STP05", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 	{ "SEA_TEMP_SENSOR_ENABLE_TX_SAMPLE_PERIOD", "STP06", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
+#ifdef OEM_PH_SENSOR_ENABLED
 	{ "PH_SENSOR_ENABLE_TX_MODE", "PHP04", BaseEncoding::SENSORENABLETXMODE, 0, 0, {}, true, true },
 	{ "PH_SENSOR_ENABLE_TX_MAX_SAMPLES", "PHP05", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 	{ "PH_SENSOR_ENABLE_TX_SAMPLE_PERIOD", "PHP06", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
+#endif
 	{ "ALS_SENSOR_ENABLE_TX_MODE", "LTP04", BaseEncoding::SENSORENABLETXMODE, 0, 0, {}, true, true },
 	{ "ALS_SENSOR_ENABLE_TX_MAX_SAMPLES", "LTP05", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 	{ "ALS_SENSOR_ENABLE_TX_SAMPLE_PERIOD", "LTP06", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },

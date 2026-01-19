@@ -87,10 +87,25 @@ TEST_GROUP(M8)
     }
 
     void teardown() {
+        mock().clear();
         delete logger;
         delete fake_config;
         delete fake_timer;
         delete fake_rtc;
+    }
+
+    void expect_power_on() {
+        mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_RST);
+        mock().expectOneCall("delay_ms").ignoreOtherParameters();
+        mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
+        mock().expectOneCall("delay_ms").ignoreOtherParameters();
+        mock().expectOneCall("GPSEventPowerOn");
+    }
+
+    void expect_power_off() {
+        mock().expectOneCall("GPSEventPowerOff");
+        mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
+        mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_RST);
     }
 
     void increment_time_ms(uint64_t ms = 0)
@@ -219,15 +234,12 @@ TEST(M8, FailedToSyncCommsError)
     settings.hdop_filter_en = false;
     settings.max_nav_samples = 30;
 
-    mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
-    mock().expectOneCall("delay_ms").ignoreOtherParameters();
-    mock().expectOneCall("GPSEventPowerOn");
+    expect_power_on();
     m.power_on(settings);
     mock().expectOneCall("GPSEventError");
     increment_time_ms(6000);
     m.power_off();
-    mock().expectOneCall("GPSEventPowerOff");
-    mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
+    expect_power_off();
     increment_time_ms();
 }
 
@@ -245,17 +257,14 @@ TEST(M8, FailedToChangeBaudRate)
     settings.hdop_filter_en = false;
     settings.max_nav_samples = 30;
 
-    mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
-    mock().expectOneCall("delay_ms").ignoreOtherParameters();
-    mock().expectOneCall("GPSEventPowerOn");
+    expect_power_on();
     m.power_on(settings);
     increment_time_ms();
     ubx_nack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
     mock().expectOneCall("GPSEventError");
     increment_time_ms(3000);
     m.power_off();
-    mock().expectOneCall("GPSEventPowerOff");
-    mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
+    expect_power_off();
     increment_time_ms();
 }
 
@@ -274,9 +283,7 @@ TEST(M8, FailedToReceivePVT)
     settings.max_nav_samples = 30;
 
     // Power on
-    mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
-    mock().expectOneCall("delay_ms").ignoreOtherParameters();
-    mock().expectOneCall("GPSEventPowerOn");
+    expect_power_on();
     m.power_on(settings);
     increment_time_ms();
     ubx_nack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
@@ -320,8 +327,7 @@ TEST(M8, FailedToReceivePVT)
     mock().expectOneCall("GPSEventError");
     increment_time_ms(5000);
     m.power_off();
-    mock().expectOneCall("GPSEventPowerOff");
-    mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
+    expect_power_off();
     increment_time_ms();
 }
 
@@ -340,9 +346,7 @@ TEST(M8, PVTReportAfterPowerOffDemand)
     settings.max_nav_samples = 30;
 
     // Power on
-    mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
-    mock().expectOneCall("delay_ms").ignoreOtherParameters();
-    mock().expectOneCall("GPSEventPowerOn");
+    expect_power_on();
     m.power_on(settings);
     increment_time_ms();
     ubx_nack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
@@ -384,6 +388,7 @@ TEST(M8, PVTReportAfterPowerOffDemand)
 
     // Receive
     m.power_off();
+    expect_power_off();
     ubx_pvt(-12, 20);
     ubx_status(true);
     ubx_dop();
@@ -395,10 +400,6 @@ TEST(M8, PVTReportAfterPowerOffDemand)
     ubx_ack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
     increment_time_ms();
     ubx_ack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
-    increment_time_ms();
-
-    mock().expectOneCall("GPSEventPowerOff");
-    mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
     increment_time_ms(100);
 }
 
@@ -417,9 +418,7 @@ TEST(M8, PVTReportSuccessWithoutANO)
     settings.max_nav_samples = 30;
 
     // Power on
-    mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
-    mock().expectOneCall("delay_ms").ignoreOtherParameters();
-    mock().expectOneCall("GPSEventPowerOn");
+    expect_power_on();
     m.power_on(settings);
     increment_time_ms();
     ubx_nack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
@@ -468,16 +467,13 @@ TEST(M8, PVTReportSuccessWithoutANO)
 
     // Stop receiving
     m.power_off();
+    expect_power_off();
     increment_time_ms();
     ubx_ack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
     increment_time_ms();
     ubx_ack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
     increment_time_ms();
     ubx_ack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
-    increment_time_ms();
-
-    mock().expectOneCall("GPSEventPowerOff");
-    mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
     increment_time_ms(100);
 }
 
@@ -496,9 +492,7 @@ TEST(M8, PVTReportSuccessWithANO)
     settings.max_nav_samples = 30;
 
     // Power on
-    mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
-    mock().expectOneCall("delay_ms").ignoreOtherParameters();
-    mock().expectOneCall("GPSEventPowerOn");
+    expect_power_on();
     m.power_on(settings);
     increment_time_ms();
     ubx_nack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
@@ -547,6 +541,7 @@ TEST(M8, PVTReportSuccessWithANO)
 
     // Stop receiving
     m.power_off();
+    expect_power_off();
     increment_time_ms();
     ubx_ack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
     increment_time_ms();
@@ -558,9 +553,6 @@ TEST(M8, PVTReportSuccessWithANO)
 
     ubx_mga_ack(true, 56);
     ubx_mga_dbd(56);
-    increment_time_ms();
-    mock().expectOneCall("GPSEventPowerOff");
-    mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
     increment_time_ms(1000);
 }
 
@@ -579,9 +571,7 @@ TEST(M8, PVTReportSuccessWithANOMissingDBDAck)
     settings.max_nav_samples = 30;
 
     // Power on
-    mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
-    mock().expectOneCall("delay_ms").ignoreOtherParameters();
-    mock().expectOneCall("GPSEventPowerOn");
+    expect_power_on();
     m.power_on(settings);
     increment_time_ms();
     ubx_nack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
@@ -630,19 +620,14 @@ TEST(M8, PVTReportSuccessWithANOMissingDBDAck)
 
     // Stop receiving
     m.power_off();
+    expect_power_off();
     increment_time_ms();
     ubx_ack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
     increment_time_ms();
     ubx_ack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
     increment_time_ms();
     ubx_ack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
-    increment_time_ms();
-    increment_time_ms(100);
-
-    increment_time_ms();
-    mock().expectOneCall("GPSEventPowerOff");
-    mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
-    increment_time_ms(1000);
+    increment_time_ms(1100);
 }
 
 TEST(M8, PVTReportSuccessWithANOMissingDBDs)
@@ -660,9 +645,7 @@ TEST(M8, PVTReportSuccessWithANOMissingDBDs)
     settings.max_nav_samples = 30;
 
     // Power on
-    mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
-    mock().expectOneCall("delay_ms").ignoreOtherParameters();
-    mock().expectOneCall("GPSEventPowerOn");
+    expect_power_on();
     m.power_on(settings);
     increment_time_ms();
     ubx_nack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
@@ -711,6 +694,7 @@ TEST(M8, PVTReportSuccessWithANOMissingDBDs)
 
     // Stop receiving
     m.power_off();
+    expect_power_off();
     increment_time_ms();
     ubx_ack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
     increment_time_ms();
@@ -726,8 +710,6 @@ TEST(M8, PVTReportSuccessWithANOMissingDBDs)
     ubx_mga_ack(true, 56);
     increment_time_ms(1000);
     ubx_mga_ack(true, 56);
-    mock().expectOneCall("GPSEventPowerOff");
-    mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
     increment_time_ms(1000);
 }
 
@@ -747,9 +729,7 @@ TEST(M8, PVTReportSuccessWithANOAndStartNewReceive)
     settings.max_nav_samples = 30;
 
     // Power on
-    mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
-    mock().expectOneCall("delay_ms").ignoreOtherParameters();
-    mock().expectOneCall("GPSEventPowerOn");
+    expect_power_on();
     m.power_on(settings);
     increment_time_ms();
     ubx_nack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
@@ -798,6 +778,7 @@ TEST(M8, PVTReportSuccessWithANOAndStartNewReceive)
 
     // Stop receiving
     m.power_off();
+    expect_power_off();
     increment_time_ms();
     ubx_ack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
     increment_time_ms();
@@ -811,15 +792,11 @@ TEST(M8, PVTReportSuccessWithANOAndStartNewReceive)
     ubx_mga_ack(true, 56);
     increment_time_ms();
     ubx_mga_dbd(56);
-    mock().expectOneCall("GPSEventPowerOff");
-    mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
     increment_time_ms(1000);
 
 
     // Power on
-    mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
-    mock().expectOneCall("delay_ms").ignoreOtherParameters();
-    mock().expectOneCall("GPSEventPowerOn");
+    expect_power_on();
     m.power_on(settings);
     increment_time_ms();
     ubx_nack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
@@ -883,9 +860,7 @@ TEST(M8, FailedToStartReceive)
     settings.max_nav_samples = 30;
 
     // Power on
-    mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
-    mock().expectOneCall("delay_ms").ignoreOtherParameters();
-    mock().expectOneCall("GPSEventPowerOn");
+    expect_power_on();
     m.power_on(settings);
     increment_time_ms();
     ubx_nack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
@@ -897,14 +872,13 @@ TEST(M8, FailedToStartReceive)
     increment_time_ms();
     ubx_ack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_GNSS);
     increment_time_ms();
-    increment_time_ms(1000);
-    increment_time_ms(1000);
-    increment_time_ms(1000);
     mock().expectOneCall("GPSEventError");
     increment_time_ms(1000);
+    increment_time_ms(1000);
+    increment_time_ms(1000);
+    increment_time_ms(1000);
     m.power_off();
-    mock().expectOneCall("GPSEventPowerOff");
-    mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
+    expect_power_off();
     increment_time_ms();
 }
 
@@ -924,9 +898,7 @@ TEST(M8, UartCommsErrorDuringReceive)
     settings.max_nav_samples = 30;
 
     // Power on
-    mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
-    mock().expectOneCall("delay_ms").ignoreOtherParameters();
-    mock().expectOneCall("GPSEventPowerOn");
+    expect_power_on();
     m.power_on(settings);
     increment_time_ms();
     ubx_nack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
@@ -970,13 +942,12 @@ TEST(M8, UartCommsErrorDuringReceive)
     inject_error(0x01);
     increment_time_ms();
     inject_error(0x01);
-    increment_time_ms();
-    inject_error(0x01);
     mock().expectOneCall("GPSEventError");
     increment_time_ms();
+    inject_error(0x01);
+    increment_time_ms();
     m.power_off();
-    mock().expectOneCall("GPSEventPowerOff");
-    mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
+    expect_power_off();
     increment_time_ms();
 }
 
@@ -996,9 +967,7 @@ TEST(M8, UartCommsErrorDuringConfig)
     settings.max_nav_samples = 30;
 
     // Power on
-    mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
-    mock().expectOneCall("delay_ms").ignoreOtherParameters();
-    mock().expectOneCall("GPSEventPowerOn");
+    expect_power_on();
     m.power_on(settings);
     increment_time_ms();
     ubx_nack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
@@ -1015,8 +984,7 @@ TEST(M8, UartCommsErrorDuringConfig)
     mock().expectOneCall("GPSEventError");
     increment_time_ms();
     m.power_off();
-    mock().expectOneCall("GPSEventPowerOff");
-    mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
+    expect_power_off();
     increment_time_ms();
 }
 
@@ -1035,9 +1003,7 @@ TEST(M8, UartCommsErrorDuringConfigAndRecover)
     settings.max_nav_samples = 30;
 
     // Power on
-    mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
-    mock().expectOneCall("delay_ms").ignoreOtherParameters();
-    mock().expectOneCall("GPSEventPowerOn");
+    expect_power_on();
     m.power_on(settings);
     increment_time_ms();
     ubx_nack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
@@ -1073,9 +1039,7 @@ TEST(M8, PVTReportSuccessWithMGAOverflow)
     settings.max_nav_samples = 30;
 
     // Power on
-    mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
-    mock().expectOneCall("delay_ms").ignoreOtherParameters();
-    mock().expectOneCall("GPSEventPowerOn");
+    expect_power_on();
     m.power_on(settings);
     increment_time_ms();
     ubx_nack(UBX::MessageClass::MSG_CLASS_CFG, UBX::CFG::ID_MSG);
@@ -1123,6 +1087,7 @@ TEST(M8, PVTReportSuccessWithMGAOverflow)
     increment_time_ms();
 
     m.power_off();
+    expect_power_off();
     increment_time_ms();
 
     // Stop receiving
@@ -1138,7 +1103,5 @@ TEST(M8, PVTReportSuccessWithMGAOverflow)
     ubx_mga_ack(true, 300);
     increment_time_ms();
     ubx_mga_dbd(300);
-    mock().expectOneCall("GPSEventPowerOff");
-    mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
     increment_time_ms(1000);
 }
