@@ -117,26 +117,33 @@ const BaseMap param_map[] = {
 	////////////////////////////
 	// EXTERNAL sensors
 	////////////////////////////
-#ifdef OEM_PH_SENSOR_ENABLED
+#if ENABLE_PH_SENSOR
 	{ "PH_SENSOR_ENABLE", "PHP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "PH_SENSOR_PERIODIC", "PHP02", BaseEncoding::UINT, 0U, 0U, {}, true, true },
 	{ "PH_SENSOR_VALUE", "PHP03", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, true, true },
 #endif
+#if ENABLE_SEA_TEMP_SENSOR
 	{ "SEA_TEMP_SENSOR_ENABLE", "STP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "SEA_TEMP_SENSOR_PERIODIC", "STP02", BaseEncoding::UINT, 0U, 0U, {}, true, true },
 	{ "SEA_TEMP_SENSOR_VALUE", "STP03", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, true, true },
+#endif
+#if ENABLE_ALS_SENSOR
 	{ "ALS_SENSOR_ENABLE", "LTP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "ALS_SENSOR_PERIODIC", "LTP02", BaseEncoding::UINT, 0U, 0U, {}, true, true },
 	{ "ALS_SENSOR_VALUE", "LTP03", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, true, true },
+#endif
+#if ENABLE_CDT_SENSOR
 	{ "CDT_SENSOR_ENABLE", "CDP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "CDT_SENSOR_PERIODIC", "CDP02", BaseEncoding::UINT, 0U, 0U, {}, true, true },
 	{ "CDT_SENSOR_CONDUCTIVITY", "CDP03", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, true, true },
 	{ "CDT_SENSOR_DEPTH", "CDP04", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, true, true },
 	{ "CDT_SENSOR_TEMPERATURE", "CDP05", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, true, true },
+#endif
 
 	// EXTERNAL LED
 	{ "EXT_LED_MODE", "LDP02", BaseEncoding::LEDMODE, 0U, 0U, {}, true, true },
 
+#if ENABLE_AXL_SENSOR
 	// AXL
 	{ "AXL_SENSOR_ENABLE", "AXP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "AXL_SENSOR_PERIODIC", "AXP02", BaseEncoding::UINT, 0U, 0U, {}, true, true },
@@ -144,10 +151,13 @@ const BaseMap param_map[] = {
 	{ "AXL_SENSOR_WAKEUP_SAMPLES", "AXP04", BaseEncoding::UINT, 1U, 5U, {}, true, true },
 	{ "AXL_SENSOR_MEASUREMENT_RANGE", "AXP08", BaseEncoding::UINT, 0U, 4U, {}, true, true },
 	{ "AXL_SENSOR_POWER_MODE", "AXP09", BaseEncoding::UINT, 0U, 2U, {}, true, true },
+#endif
 
+#if ENABLE_PRESSURE_SENSOR
 	// PRESSURE
 	{ "PRESSURE_SENSOR_ENABLE", "PRP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "PRESSURE_SENSOR_PERIODIC", "PRP02", BaseEncoding::UINT, 0U, 0U, {}, true, true },
+#endif
 
 	// DEBUG
 	{ "DEBUG_OUTPUT_MODE", "DBP01", BaseEncoding::DEBUGMODE, 0, 0, {}, true, true },
@@ -184,30 +194,41 @@ const BaseMap param_map[] = {
 	{ "LB_CRITICAL_THRESH", "LBP12", BaseEncoding::FLOAT, 0.0, 12.0, {}, true, true },
 
 	// Pressure sensor logging mode
+#if ENABLE_PRESSURE_SENSOR
 	{ "PRESSURE_SENSOR_LOGGING_MODE", "PRP03", BaseEncoding::PRESSURESENSORLOGGINGMODE, 0, 0, {}, true, true },
+#endif
 
 	// GNSS trigger cold start on surfaced
 	{ "GNSS_TRIGGER_COLD_START_ON_SURFACED", "GNP28", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 
 	// Sensor Argos TX options
+#if ENABLE_SEA_TEMP_SENSOR
 	{ "SEA_TEMP_SENSOR_ENABLE_TX_MODE", "STP04", BaseEncoding::SENSORENABLETXMODE, 0, 0, {}, true, true },
 	{ "SEA_TEMP_SENSOR_ENABLE_TX_MAX_SAMPLES", "STP05", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 	{ "SEA_TEMP_SENSOR_ENABLE_TX_SAMPLE_PERIOD", "STP06", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
-#ifdef OEM_PH_SENSOR_ENABLED
+#endif
+#if ENABLE_PH_SENSOR
 	{ "PH_SENSOR_ENABLE_TX_MODE", "PHP04", BaseEncoding::SENSORENABLETXMODE, 0, 0, {}, true, true },
 	{ "PH_SENSOR_ENABLE_TX_MAX_SAMPLES", "PHP05", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 	{ "PH_SENSOR_ENABLE_TX_SAMPLE_PERIOD", "PHP06", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 #endif
+#if ENABLE_ALS_SENSOR
 	{ "ALS_SENSOR_ENABLE_TX_MODE", "LTP04", BaseEncoding::SENSORENABLETXMODE, 0, 0, {}, true, true },
 	{ "ALS_SENSOR_ENABLE_TX_MAX_SAMPLES", "LTP05", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 	{ "ALS_SENSOR_ENABLE_TX_SAMPLE_PERIOD", "LTP06", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
+#endif
+#if ENABLE_PRESSURE_SENSOR
 	{ "PRESSURE_SENSOR_ENABLE_TX_MODE", "PRP04", BaseEncoding::SENSORENABLETXMODE, 0, 0, {}, true, true },
 	{ "PRESSURE_SENSOR_ENABLE_TX_MAX_SAMPLES", "PRP05", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 	{ "PRESSURE_SENSOR_ENABLE_TX_SAMPLE_PERIOD", "PRP06", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
+#endif
+#if ENABLE_AXL_SENSOR
 	{ "AXL_SENSOR_ENABLE_TX_MODE", "AXP05", BaseEncoding::SENSORENABLETXMODE, 0, 0, {}, true, true },
 	{ "AXL_SENSOR_ENABLE_TX_MAX_SAMPLES", "AXP06", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 	{ "AXL_SENSOR_ENABLE_TX_SAMPLE_PERIOD", "AXP07", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
+#endif
 
+#if ENABLE_CAM_SENSOR
 	// Camera sensor
 	{ "CAM_ENABLE", "CAP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "CAM_TRIGGER_ON_SURFACED", "CAP02", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
@@ -215,6 +236,7 @@ const BaseMap param_map[] = {
 	{ "CAM_PERIOD_ON", "CAP04", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true },
 	{ "CAM_PERIOD_OFF", "CAP05", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true },
 	{ "LB_CAM_EN", "LBP13", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
+#endif
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

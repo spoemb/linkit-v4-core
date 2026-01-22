@@ -871,6 +871,19 @@ private:
 		throw DTE_PROTOCOL_PARAM_KEY_UNRECOGNISED;
 	}
 
+	// Returns true if key found, false otherwise (logs warning but doesn't throw)
+	static bool try_lookup_key(const std::string& key, ParamID& out_param) {
+		auto end = param_map_size;
+		for (unsigned int i = 0; i < end; i++) {
+			if (param_map[i].key == key) {
+				out_param = static_cast<ParamID>(i);
+				return true;
+			}
+		}
+		DEBUG_WARN("Unknown parameter key \"%s\" - skipping", key.c_str());
+		return false;
+	}
+
 	static double decode_frequency(const std::string& s) {
 		unsigned int offset_frequency;
 		decode(s, offset_frequency);
@@ -1195,8 +1208,13 @@ private:
 				pos = s.size();
 
 			auto key = s.substr(prev, pos - prev);
-			if (!key.empty())
-				val.push_back(lookup_key(s.substr(prev, pos - prev)));
+			if (!key.empty()) {
+				ParamID param;
+				if (try_lookup_key(key, param)) {
+					val.push_back(param);
+				}
+				// Unknown keys are logged and skipped
+			}
 
 			prev = pos + delim.size();
 		}
@@ -1227,7 +1245,11 @@ private:
 					std::string key = key_str.substr(0, equals_loc);
 					std::string value = key_str.substr(equals_loc + 1, std::string::npos);
 
-					key_value.param = lookup_key(key);
+					// Skip unknown parameters (logs warning but continues processing)
+					if (!try_lookup_key(key, key_value.param)) {
+						prev = pos + delim.size();
+						continue;
+					}
 					const BaseMap& param_ref = param_map[(unsigned int)key_value.param];
 					switch (param_ref.encoding) {
 						case BaseEncoding::DECIMAL:

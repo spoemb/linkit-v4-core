@@ -22,3 +22,6 @@ ports/nrf52840/bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc/_b
 ports/nrf52840/build/*
 .claude/*
 build_config.sh
+build/*
+.devcontainer/*
+tests/reports/*

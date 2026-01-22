@@ -24,7 +24,7 @@
 #define LOW_BATT_THRESHOLD			5
 
 // ADC constants
-#define ADC_MAX_VALUE 4096         // 2^12
+#define ADC_MAX_VALUE 16384        // 2^14 (14-bit resolution as configured in BSP)
 #define ADC_REFERENCE (0.6f)       // 0.6v internal reference
 
 // LUT steps from 4.2V down to 3.2V in 0.1V steps

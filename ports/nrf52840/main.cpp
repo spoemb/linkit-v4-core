@@ -1,15 +1,25 @@
 #include "sws_service.hpp"
 #include "gnss_detector_service.hpp"
+#if ENABLE_PRESSURE_SENSOR
 #include "pressure_detector_service.hpp"
+#include "pressure_sensor_service.hpp"
+#endif
+#if ENABLE_ALS_SENSOR
 #include "als_sensor_service.hpp"
-#ifdef OEM_PH_SENSOR_ENABLED
+#endif
+#if ENABLE_PH_SENSOR
 #include "ph_sensor_service.hpp"
 #endif
+#if ENABLE_SEA_TEMP_SENSOR
 #include "sea_temp_sensor_service.hpp"
+#endif
+#if ENABLE_CDT_SENSOR
 #include "cdt_sensor_service.hpp"
+#endif
 #include "gps_service.hpp"
-#include "pressure_sensor_service.hpp"
+#if ENABLE_AXL_SENSOR
 #include "axl_sensor_service.hpp"
+#endif
 #include "cam_service.hpp"
 #include "argos_tx_service.hpp"
 #include "argos_rx_service.hpp"
@@ -36,18 +46,28 @@
 #include "is25_flash.hpp"
 #include "nrf_rgb_led.hpp"
 #include "nrf_battery_mon.hpp"
+#if ENABLE_ALS_SENSOR
 #include "ltr_303.hpp"
-#ifdef OEM_PH_SENSOR_ENABLED
+#endif
+#if ENABLE_PH_SENSOR
 #include "oem_ph.hpp"
 #endif
-#ifdef EZO_RTD_SENSOR_ENABLED
+#if ENABLE_SEA_TEMP_SENSOR
 #include "oem_rtd.hpp"
 #include "ezo_rtd.hpp"
+#include "TSYS01.hpp"
 #endif
-#include "cdt.hpp"
-#include "bma400.hpp"
+#if ENABLE_CDT_SENSOR || ENABLE_PRESSURE_SENSOR
 #include "ms58xx.hpp"
 #include "bar100.hpp"
+#endif
+#if ENABLE_CDT_SENSOR
+#include "cdt.hpp"
+#include "ad5933.hpp"
+#endif
+#if ENABLE_AXL_SENSOR
+#include "bma400.hpp"
+#endif
 #include "fs_log.hpp"
 #include "nrf_i2c.hpp"
 #include "nrf_usb.hpp"
@@ -57,7 +77,6 @@
 #include "memory_monitor_service.hpp"
 #include "dive_mode_service.hpp"
 #include "gpio_buzzer.hpp"
-#include "TSYS01.hpp"
 #ifdef CAM_PWR_EN
 #include "runcam.hpp"
 #endif
@@ -308,7 +327,7 @@ int main()
 
 	NrfI2C::init();
 	bool is_linkit_v3_v4 = (PMU::hardware_version() == "LinkIt V3") || (PMU::hardware_version() == "LinkIt V4");
-#ifdef EZO_RTD_SENSOR_ENABLED
+#if ENABLE_SEA_TEMP_SENSOR
 	{
 		try {
 			EZO_RTD_Sensor rtd; // Puts the device into standby mode
@@ -464,44 +483,52 @@ int main()
 	FsLog fs_sensor_log(&lfs_file_system, "sensor.log", 1024*1024);
 	fs_sensor_log.set_log_formatter(&fs_sensor_log_formatter);
 
+#if ENABLE_ALS_SENSOR
 	DEBUG_TRACE("ALS Sensor Log...");
 	ALSLogFormatter als_sensor_log_formatter;
 	FsLog als_sensor_log(&lfs_file_system, "ALS", 1024*1024);
 	als_sensor_log.set_log_formatter(&als_sensor_log_formatter);
+#endif
 
-#ifdef OEM_PH_SENSOR_ENABLED
+#if ENABLE_PH_SENSOR
 	DEBUG_TRACE("PH Sensor Log...");
 	PHLogFormatter ph_sensor_log_formatter;
 	FsLog ph_sensor_log(&lfs_file_system, "PH", 1024*1024);
 	ph_sensor_log.set_log_formatter(&ph_sensor_log_formatter);
 #endif
 
-#ifdef EZO_RTD_SENSOR_ENABLED
+#if ENABLE_SEA_TEMP_SENSOR
 	DEBUG_TRACE("RTD Sensor Log...");
 	SeaTempLogFormatter rtd_sensor_log_formatter;
 	FsLog rtd_sensor_log(&lfs_file_system, "RTD", 1024*1024);
 	rtd_sensor_log.set_log_formatter(&rtd_sensor_log_formatter);
-#endif
 
 	DEBUG_TRACE("TSYS01 Sensor Log...");
 	SeaTempLogFormatter tsys01_sensor_log_formatter;
 	FsLog tsys01_sensor_log(&lfs_file_system, "TSYS01", 1024*1024);
 	tsys01_sensor_log.set_log_formatter(&tsys01_sensor_log_formatter);
+#endif
 
+#if ENABLE_CDT_SENSOR
 	DEBUG_TRACE("CDT Sensor Log...");
 	CDTLogFormatter cdt_sensor_log_formatter;
 	FsLog cdt_sensor_log(&lfs_file_system, "CDT", 1024*1024);
 	cdt_sensor_log.set_log_formatter(&cdt_sensor_log_formatter);
+#endif
 
+#if ENABLE_PRESSURE_SENSOR
 	DEBUG_TRACE("PRESSURE Sensor Log...");
 	PressureLogFormatter pressure_sensor_log_formatter;
 	FsLog pressure_sensor_log(&lfs_file_system, "PRESSURE", 1024*1024);
 	pressure_sensor_log.set_log_formatter(&pressure_sensor_log_formatter);
+#endif
 
+#if ENABLE_AXL_SENSOR
 	DEBUG_TRACE("AXL Sensor Log...");
 	AXLLogFormatter axl_sensor_log_formatter;
 	FsLog axl_sensor_log(&lfs_file_system, "AXL", 1024*1024);
 	axl_sensor_log.set_log_formatter(&axl_sensor_log_formatter);
+#endif
 
 #ifdef CAM_PWR_EN
 	DEBUG_TRACE("CAM Sensor Log...");
@@ -545,6 +572,7 @@ int main()
 		DEBUG_TRACE("GPS M10Q not detected");
 	}
 
+#if ENABLE_PRESSURE_SENSOR || ENABLE_CDT_SENSOR
 	DEBUG_TRACE("Pressure Sensor...");
 	PressureSensorDevice *pressure_sensor_devices[BSP::I2C_TOTAL_NUMBER];
 #ifndef DUMMY_PRESSURE_SENSOR
@@ -566,6 +594,7 @@ int main()
 	pressure_sensor_devices[0] = new PressureSensorDummyDevice();
 #endif
 
+#if ENABLE_CDT_SENSOR
 	DEBUG_TRACE("AD5933...");
 	AD5933 *ad5933_devices[BSP::I2C_TOTAL_NUMBER];
 	for (unsigned int i = 0; i < BSP::I2C_TOTAL_NUMBER; i++) {
@@ -577,6 +606,7 @@ int main()
 			ad5933_devices[i] = nullptr;
 		}
 	}
+#endif
 
 	bool cdt_present = false;
 	bool standalone_pressure = false;
@@ -584,25 +614,32 @@ int main()
 	for (unsigned int x = 0; x < 2; x++) {
 		// Check available devices on each bus
 		for (unsigned int i = 0; i < BSP::I2C_TOTAL_NUMBER; i++) {
-			//DEBUG_TRACE("cdt=%u press=%u bus=%u ad5933=%p pressure_sensor_device=%p", cdt_present, standalone_pressure, i, ad5933_devices[i], pressure_sensor_devices[i]);
+#if ENABLE_CDT_SENSOR
 			if (!cdt_present && ad5933_devices[i] && pressure_sensor_devices[i]) {
 				DEBUG_TRACE("CDT on bus %u...", i);
 				cdt_present = true;
 				static CDT cdt(*pressure_sensor_devices[i], *ad5933_devices[i]);
 				static CDTSensorService cdt_sensor_service(cdt, &cdt_sensor_log);
-			} else if (!standalone_pressure && pressure_sensor_devices[i]) {
+			} else
+#endif
+#if ENABLE_PRESSURE_SENSOR
+			if (!standalone_pressure && pressure_sensor_devices[i]) {
 				DEBUG_TRACE("Standalone Pressure Sensor on bus %u...", i);
 				standalone_pressure = true;
 				static PressureSensor pressure_sensor(*pressure_sensor_devices[i]);
 				static PressureDetectorService pressure_detector(pressure_sensor);
 				static PressureSensorService pressure_sensor_service(pressure_sensor, &pressure_sensor_log);
 			}
+#endif
+			(void)i; // Suppress unused warning when both disabled
 		}
 
 		if (standalone_pressure && cdt_present)
 			break;
 	}
+#endif // ENABLE_PRESSURE_SENSOR || ENABLE_CDT_SENSOR
 
+#if ENABLE_ALS_SENSOR
 	DEBUG_TRACE("LTR303...");
 	try {
 		static LTR303 ltr303;
@@ -610,8 +647,9 @@ int main()
 	} catch (...) {
 		DEBUG_TRACE("LTR303: not detected");
 	}
+#endif
 
-#ifdef OEM_PH_SENSOR_ENABLED
+#if ENABLE_PH_SENSOR
 	DEBUG_TRACE("OEM PH...");
 	try {
 		static OEM_PH_Sensor ph;
@@ -621,7 +659,7 @@ int main()
 	}
 #endif
 
-#ifdef EZO_RTD_SENSOR_ENABLED
+#if ENABLE_SEA_TEMP_SENSOR
 	DEBUG_TRACE("EZO RTD...");
 	try {
 		static EZO_RTD_Sensor rtd;
@@ -629,7 +667,6 @@ int main()
 	} catch (ErrorCode e) {
 		DEBUG_TRACE("EZO RTD: not detected [%04X]", e);
 	}
-#endif
 
 	DEBUG_TRACE("TSYS01...");
 	try {
@@ -638,7 +675,9 @@ int main()
 	} catch (ErrorCode e) {
 		DEBUG_TRACE("TSYS01: not detected [%04X]", e);
 	}
+#endif
 
+#if ENABLE_AXL_SENSOR
 	DEBUG_TRACE("BMA400...");
 	try {
 		static BMA400 bma400;
@@ -646,6 +685,7 @@ int main()
 	} catch (...) {
 		DEBUG_TRACE("BMA400: not detected");
 	}
+#endif
 
 #ifdef CAM_PWR_EN
 	DEBUG_TRACE("RunCam...");

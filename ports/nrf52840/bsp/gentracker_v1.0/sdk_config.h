@@ -11018,7 +11018,7 @@
 // <i> The SoftDevice handler will configure the stack with these parameters when calling @ref nrf_sdh_ble_default_cfg_set.
 // <i> Other libraries might depend on these values; keep them up-to-date even if you are not explicitely calling @ref nrf_sdh_ble_default_cfg_set.
 //==========================================================
-// <o> NRF_SDH_BLE_GAP_DATA_LENGTH   <27-251>
+// <o> NRF_SDH_BLE_GAP_DATA_LENGTH   <27-251> 
 
 
 // <i> Requested BLE GAP data length to be negotiated.
@@ -11044,21 +11044,21 @@
 #define NRF_SDH_BLE_TOTAL_LINK_COUNT 1
 #endif
 
-// <o> NRF_SDH_BLE_GAP_EVENT_LENGTH - GAP event length.
+// <o> NRF_SDH_BLE_GAP_EVENT_LENGTH - GAP event length. 
 // <i> The time set aside for this connection on every connection interval in 1.25 ms units.
 
 #ifndef NRF_SDH_BLE_GAP_EVENT_LENGTH
-#define NRF_SDH_BLE_GAP_EVENT_LENGTH 400
+#define NRF_SDH_BLE_GAP_EVENT_LENGTH 6
 #endif
 
-// <o> NRF_SDH_BLE_GATT_MAX_MTU_SIZE - Static maximum MTU size.
+// <o> NRF_SDH_BLE_GATT_MAX_MTU_SIZE - Static maximum MTU size. 
 #ifndef NRF_SDH_BLE_GATT_MAX_MTU_SIZE
 #define NRF_SDH_BLE_GATT_MAX_MTU_SIZE 247
 #endif
 
-// <o> NRF_SDH_BLE_GATTS_ATTR_TAB_SIZE - Attribute Table size in bytes. The size must be a multiple of 4.
+// <o> NRF_SDH_BLE_GATTS_ATTR_TAB_SIZE - Attribute Table size in bytes. The size must be a multiple of 4. 
 #ifndef NRF_SDH_BLE_GATTS_ATTR_TAB_SIZE
-#define NRF_SDH_BLE_GATTS_ATTR_TAB_SIZE 2048
+#define NRF_SDH_BLE_GATTS_ATTR_TAB_SIZE 1408
 #endif
 
 // <o> NRF_SDH_BLE_VS_UUID_COUNT - The number of vendor-specific UUIDs. 

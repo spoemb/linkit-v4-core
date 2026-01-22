@@ -1,7 +1,0 @@
-/home/fourn/linkit-v4/linkit-v4-core/build/CMakeFiles/LinkIt_SB_board.dir
-/home/fourn/linkit-v4/linkit-v4-core/build/CMakeFiles/flash_softdev.dir
-/home/fourn/linkit-v4/linkit-v4-core/build/CMakeFiles/flash.dir
-/home/fourn/linkit-v4/linkit-v4-core/build/CMakeFiles/dfu_app.dir
-/home/fourn/linkit-v4/linkit-v4-core/build/CMakeFiles/merged_hex.dir
-/home/fourn/linkit-v4/linkit-v4-core/build/CMakeFiles/edit_cache.dir
-/home/fourn/linkit-v4/linkit-v4-core/build/CMakeFiles/rebuild_cache.dir

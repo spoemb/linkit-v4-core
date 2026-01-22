@@ -474,16 +474,16 @@ TEST(ArgosTxService, BuildShortGNSSPacket)
 	GPSLogEntry e = make_gps_location(1, 12.3, 44.4, 1652105502);
 	std::vector<GPSLogEntry*> v({&e});
 	std::string x = ArgosPacketBuilder::build_gnss_packet(v, false, false, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	CHECK_EQUAL("F94B8B3633003C0F00001FF2C51564"s, Binascii::hexlify(x));
+	CHECK_EQUAL("097166C6600781E00003FE58"s, Binascii::hexlify(x));
 
 	x = ArgosPacketBuilder::build_gnss_packet(v, true, false, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	CHECK_EQUAL("EF4B8B3633003C0F00201FF2C5F2F5"s, Binascii::hexlify(x));
+	CHECK_EQUAL("097166C6600781E00403FE58"s, Binascii::hexlify(x));
 
 	x = ArgosPacketBuilder::build_gnss_packet(v, false, true, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	CHECK_EQUAL("FE4B8B3633003C0F00001FF2F9BF11"s, Binascii::hexlify(x));
+	CHECK_EQUAL("097166C6600781E00003FE5C"s, Binascii::hexlify(x));
 
 	x = ArgosPacketBuilder::build_gnss_packet(v, true, true, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	CHECK_EQUAL("E84B8B3633003C0F00201FF2F95880"s, Binascii::hexlify(x));
+	CHECK_EQUAL("097166C6600781E00403FE5C"s, Binascii::hexlify(x));
 }
 
 
@@ -571,7 +571,7 @@ TEST(ArgosTxService, TimeSyncBurstPosFix)
 
 	// First TX is time sync burst
 	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
-			withUnsignedIntParameter("size_bits", 120);
+			withUnsignedIntParameter("size_bits", 96);
 
 	inject_gps_location(1, 11.8768, -33.8232, t);
 	system_scheduler->run();
@@ -623,7 +623,7 @@ TEST(ArgosTxService, TimeSyncBurstNoPosFix)
 
 	// First TX is time sync burst
 	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
-			withUnsignedIntParameter("size_bits", 120);
+			withUnsignedIntParameter("size_bits", 96);
 
 	inject_gps_location(0, 11.8768, -33.8232, t);
 	system_scheduler->run();
@@ -716,7 +716,7 @@ TEST(ArgosTxService, LegacyTxServiceInv)
 	// Subsequent TX will be long packets
 	for (unsigned int i = 0; i < 1; i++) {
 		mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
-				withUnsignedIntParameter("size_bits", 120);
+				withUnsignedIntParameter("size_bits", 96);
 
 		t += serv.get_last_schedule();
 		fake_rtc->settime(t/1000);
@@ -774,7 +774,7 @@ TEST(ArgosTxService, LegacyTxLowBattery)
 	// Subsequent TX will be short packets (depth pile 1 in LB mode)
 	for (unsigned int i = 0; i < 10; i++) {
 		mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
-				withUnsignedIntParameter("size_bits", 120);
+				withUnsignedIntParameter("size_bits", 96);
 
 		t += serv.get_last_schedule();
 		fake_rtc->settime(t/1000);
@@ -828,7 +828,7 @@ TEST(ArgosTxService, LegacyTxOutOfZone)
 	// Subsequent TX will be short packets (depth pile 1 in OOZ mode)
 	for (unsigned int i = 0; i < 10; i++) {
 		mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
-				withUnsignedIntParameter("size_bits", 120);
+				withUnsignedIntParameter("size_bits", 96);
 
 		t += serv.get_last_schedule();
 		fake_rtc->settime(t/1000);
@@ -1013,7 +1013,7 @@ TEST(ArgosTxService, LegacyTxServiceDepthPile1)
 	// Subsequent TX will be short packets
 	for (unsigned int i = 0; i < 10; i++) {
 		mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
-				withUnsignedIntParameter("size_bits", 120);
+				withUnsignedIntParameter("size_bits", 96);
 
 		t += serv.get_last_schedule();
 		fake_rtc->settime(t/1000);
@@ -1278,7 +1278,7 @@ TEST(ArgosTxService, LastTxIsUpdated)
 
 	// First TX is time sync burst
 	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
-			withUnsignedIntParameter("size_bits", 120);
+			withUnsignedIntParameter("size_bits", 96);
 
 	inject_gps_location(1, 11.8768, -33.8232, t);
 	system_scheduler->run();
@@ -1535,23 +1535,23 @@ TEST(ArgosTxService, BuildSensorPacketAll) {
 	sea_temp.port[0] = 126000; // 0C
 
 	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, nullptr, false, false, size_bits);
-	CHECK_EQUAL("CC4B8B3633003C0F0012DB3750A6C0"s, Binascii::hexlify(x));
-	CHECK_EQUAL(115, size_bits);
+	CHECK_EQUAL("297166C6600781E00258"s, Binascii::hexlify(x));
+	CHECK_EQUAL(78, size_bits);
 	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, &pressure, &sea_temp, false, false, size_bits);
-	CHECK_EQUAL("DB4B8B3633003C0F0012C27106D601F41F401EC30D29A43B60"s, Binascii::hexlify(x));
-	CHECK_EQUAL(196, size_bits);
+	CHECK_EQUAL("297166C6600781E002584E20DAC03E8300000000"s, Binascii::hexlify(x));
+	CHECK_EQUAL(159, size_bits);
 	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, &ph, &pressure, &sea_temp, false, false, size_bits);
-	CHECK_EQUAL("9D4B8B3633003C0F0012CDAC03E83E803D86016C0F00A0"s, Binascii::hexlify(x));
-	CHECK_EQUAL(196 - 17, size_bits);
+	CHECK_EQUAL("297166C6600781E00259B5807D07D0070000"s, Binascii::hexlify(x));
+	CHECK_EQUAL(142, size_bits);
 	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, nullptr, &pressure, &sea_temp, false, false, size_bits);
-	CHECK_EQUAL("014B8B3633003C0F0012C271007D07D007B0C35F8554C8"s, Binascii::hexlify(x));
-	CHECK_EQUAL(196 - 14, size_bits);
+	CHECK_EQUAL("297166C6600781E002584E200FA0FA00000000"s, Binascii::hexlify(x));
+	CHECK_EQUAL(145, size_bits);
 	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, nullptr, &sea_temp, false, false, size_bits);
-	CHECK_EQUAL("9A4B8B3633003C0F0012C27106D603D860B455F0FE"s, Binascii::hexlify(x));
-	CHECK_EQUAL(196 - 29, size_bits);
+	CHECK_EQUAL("297166C6600781E002584E20DAC07B0C00"s, Binascii::hexlify(x));
+	CHECK_EQUAL(130, size_bits);
 	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, &pressure, nullptr, false, false, size_bits);
-	CHECK_EQUAL("554B8B3633003C0F0012C27106D601F41F41C886E7C4"s, Binascii::hexlify(x));
-	CHECK_EQUAL(196 - 21, size_bits);
+	CHECK_EQUAL("297166C6600781E002584E20DAC03E830000"s, Binascii::hexlify(x));
+	CHECK_EQUAL(138, size_bits);
 }
 
 TEST(ArgosTxService, BuildSensorPacketSeaTemp) {
@@ -1563,8 +1563,8 @@ TEST(ArgosTxService, BuildSensorPacketSeaTemp) {
 	sea_temp.port[0] = 147100; // 21.1C
 
 	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, &sea_temp, false, false, size_bits);
-	CHECK_EQUAL("0A4B8B3633003C0F0012C23E9CBCE00BD1"s, Binascii::hexlify(x));
-	CHECK_EQUAL(136, size_bits);
+	CHECK_EQUAL("297166C6600781E0025847D380"s, Binascii::hexlify(x));
+	CHECK_EQUAL(99, size_bits);
 }
 
 

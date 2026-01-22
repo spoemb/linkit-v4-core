@@ -22,6 +22,27 @@ if(NOT DEFINED EXT_GPIO5_DEVICE)
     set(EXT_GPIO5_DEVICE "CAM")
 endif()
 
+# Optional sensor enables (default: all disabled except AXL)
+# These can be overridden via cmake -DENABLE_PH_SENSOR=1 etc.
+if(NOT DEFINED ENABLE_PH_SENSOR)
+    set(ENABLE_PH_SENSOR 0)
+endif()
+if(NOT DEFINED ENABLE_SEA_TEMP_SENSOR)
+    set(ENABLE_SEA_TEMP_SENSOR 0)
+endif()
+if(NOT DEFINED ENABLE_PRESSURE_SENSOR)
+    set(ENABLE_PRESSURE_SENSOR 0)
+endif()
+if(NOT DEFINED ENABLE_ALS_SENSOR)
+    set(ENABLE_ALS_SENSOR 0)
+endif()
+if(NOT DEFINED ENABLE_CDT_SENSOR)
+    set(ENABLE_CDT_SENSOR 0)
+endif()
+if(NOT DEFINED ENABLE_AXL_SENSOR)
+    set(ENABLE_AXL_SENSOR 1)
+endif()
+
 if(${MODEL} MATCHES SB OR ${MODEL} MATCHES UW OR ${MODEL} MATCHES CORE)
     set(MODEL_SB 0)
     set(MODEL_UW 0)
@@ -179,9 +200,9 @@ target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
     ${PROJ_DIR}/core/hardware/bar100
     ${PROJ_DIR}/core/hardware/ad5933
     ${PROJ_DIR}/core/hardware/ltr_303
-    $<$<BOOL:${OEM_PH_SENSOR_ENABLED}>:${PROJ_DIR}/core/hardware/oem_ph>
-    $<$<BOOL:${EZO_RTD_SENSOR_ENABLED}>:${PROJ_DIR}/core/hardware/oem_rtd>
-    $<$<BOOL:${EZO_RTD_SENSOR_ENABLED}>:${PROJ_DIR}/core/hardware/ezo_rtd>
+    $<$<BOOL:${ENABLE_PH_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/oem_ph>
+    $<$<BOOL:${ENABLE_SEA_TEMP_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/oem_rtd>
+    $<$<BOOL:${ENABLE_SEA_TEMP_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/ezo_rtd>
     ${PROJ_DIR}/core/hardware/cdt
     ${PROJ_DIR}/core/hardware/bma400
     ${PROJ_DIR}/core/hardware/tsys01
@@ -263,7 +284,6 @@ target_sources(${TARGET_NAME} PRIVATE
     ${CORE_DIR}/services/argos_tx_service.cpp
     ${CORE_DIR}/services/argos_rx_service.cpp
     ${CORE_DIR}/services/uwdetector_service.cpp
-    ${CORE_DIR}/services/cam_service.cpp
     ${CORE_DIR}/logging/logger.cpp
     ${CORE_DIR}/util/haversine.cpp
     ${CORE_DIR}/filesystem/ota_flash_file_updater.cpp
@@ -279,9 +299,9 @@ target_sources(${TARGET_NAME} PRIVATE
     ${PROJ_DIR}/core/hardware/bma400/bma400.c
     ${PROJ_DIR}/core/hardware/cdt/cdt.cpp
     ${PROJ_DIR}/core/hardware/ltr_303/ltr_303.cpp
-    $<$<BOOL:${OEM_PH_SENSOR_ENABLED}>:${PROJ_DIR}/core/hardware/oem_ph/oem_ph.cpp>
-    $<$<BOOL:${EZO_RTD_SENSOR_ENABLED}>:${PROJ_DIR}/core/hardware/oem_rtd/oem_rtd.cpp>
-    $<$<BOOL:${EZO_RTD_SENSOR_ENABLED}>:${PROJ_DIR}/core/hardware/ezo_rtd/ezo_rtd.cpp>
+    $<$<BOOL:${ENABLE_PH_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/oem_ph/oem_ph.cpp>
+    $<$<BOOL:${ENABLE_SEA_TEMP_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/oem_rtd/oem_rtd.cpp>
+    $<$<BOOL:${ENABLE_SEA_TEMP_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/ezo_rtd/ezo_rtd.cpp>
     ${PROJ_DIR}/core/hardware/tsys01/TSYS01.cpp
     ${PROJ_DIR}/core/hardware/kim2/kim2.cpp
     ${PROJ_DIR}/core/hardware/kim2/kim2_comm.cpp
@@ -330,6 +350,7 @@ if(CAM_ENABLE)
     # Add CAM-specific sources
     target_sources(${TARGET_NAME} PRIVATE
         ${PROJ_DIR}/core/hardware/run_cam/runcam.cpp
+        ${CORE_DIR}/services/cam_service.cpp
     )
 elseif(BUZZER_ENABLE)
     message(STATUS "Configuring for BUZZER on GPIO_EXT_GPIO5")
@@ -363,6 +384,12 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     GPS_${GPS_MODEL}
     ENABLE_CAM_SENSOR=${ENABLE_CAM_SENSOR}
     ENABLE_BUZZER=${ENABLE_BUZZER}
+    ENABLE_PH_SENSOR=${ENABLE_PH_SENSOR}
+    ENABLE_SEA_TEMP_SENSOR=${ENABLE_SEA_TEMP_SENSOR}
+    ENABLE_PRESSURE_SENSOR=${ENABLE_PRESSURE_SENSOR}
+    ENABLE_ALS_SENSOR=${ENABLE_ALS_SENSOR}
+    ENABLE_CDT_SENSOR=${ENABLE_CDT_SENSOR}
+    ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR}
     BUILD_TYPE=${CMAKE_BUILD_TYPE}
     #SCHEDULER_DEBUG
     DEBUG_ENABLE=1
@@ -385,8 +412,6 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     #BATTERY_NOT_FITTED
     #DUMMY_PRESSURE_SENSOR
     #DEBUG_AD5933
-    #OEM_PH_SENSOR_ENABLED
-    #EZO_RTD_SENSOR_ENABLED
     DEBUG_TO_SYSTEMLOG
     ETL_LOG_ERRORS
     ARGOS_USE_CRC8

@@ -1,7 +1,8 @@
 #!/bin/bash
+# Build unit tests only (not turtle simulation)
 
 mkdir -p tests/build
 cd tests/build
-rm CMakeCache.txt
-cmake -GNinja  ..
-ninja
+rm -f CMakeCache.txt
+cmake -GNinja ..
+ninja CLSGenTrackerTests

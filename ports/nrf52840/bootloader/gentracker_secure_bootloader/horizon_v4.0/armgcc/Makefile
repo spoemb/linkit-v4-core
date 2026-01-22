@@ -16,7 +16,7 @@ SRC_FILES += \
   $(SDK_ROOT)/components/libraries/log/src/nrf_log_str_formatter.c \
   $(SDK_ROOT)/components/libraries/log/src/nrf_log_backend_serial.c \
   ${SDK_ROOT}/../nrf_log_redirect/nrf_log_redirect.c \
-  $(SDK_ROOT)/components/boards/boards.c \
+  $(SDK_ROOT)/components/boards/boards.c 
   $(SDK_ROOT)/modules/nrfx/mdk/system_nrf52840.c \
   $(SDK_ROOT)/components/libraries/crypto/backend/cc310_bl/cc310_bl_backend_ecc.c \
   $(SDK_ROOT)/components/libraries/crypto/backend/cc310_bl/cc310_bl_backend_ecdsa.c \

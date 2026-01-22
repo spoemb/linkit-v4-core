@@ -123,7 +123,7 @@
 		{
 			"type": "shell",
 			"label": "Unit Tests: run",
-			"command": "cd tests/build && ln -sf ../data . && ./CLSGenTrackerTests -ojunit",
+			"command": "cd tests/build && ln -sf ../data . && ./CLSGenTrackerTests -v",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -132,6 +132,81 @@
 				"$gcc"
 			],
 			"group": "build",
+		},
+		{
+			"type": "shell",
+			"label": "Unit Tests: run with summary",
+			"command": "./scripts/run_unit_tests.sh",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build",
+			"presentation": {
+				"reveal": "always",
+				"panel": "new"
+			}
+		},
+		{
+			"type": "shell",
+			"label": "Turtle Simulation: compile",
+			"command": "mkdir -p tests/build && cd tests/build && rm -f CMakeCache.txt && cmake -GNinja .. && ninja TurtleSimulation",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build",
+		},
+		{
+			"type": "shell",
+			"label": "Turtle Simulation: run",
+			"command": "cd tests/build && ./TurtleSimulation -v",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "test",
+			"presentation": {
+				"reveal": "always",
+				"panel": "new"
+			}
+		},
+		{
+			"type": "shell",
+			"label": "Turtle Simulation: run with HTML report",
+			"command": "./scripts/run_turtle_simulation.sh",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "test",
+			"presentation": {
+				"reveal": "always",
+				"panel": "new"
+			}
+		},
+		{
+			"type": "shell",
+			"label": "Turtle Simulation: open latest report",
+			"command": "xdg-open tests/reports/turtle_simulation_latest.html || open tests/reports/turtle_simulation_latest.html || start tests/reports/turtle_simulation_latest.html",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [],
+			"group": "none"
 		},
     ],
   }

@@ -241,29 +241,41 @@ protected:
 		/* UNDERWATER_DETECT_SOURCE */ BaseUnderwaterDetectSource::SWS,
 #endif
 		/* UNDERWATER_DETECT_THRESH */ (double)1.1,
+#if ENABLE_PH_SENSOR
 		/* PH_SENSOR_ENABLE */ (bool)false,
 		/* PH_SENSOR_PERIODIC */ 0U,
 		/* PH_SENSOR_VALUE */ (double)0.0,
+#endif
+#if ENABLE_SEA_TEMP_SENSOR
 		/* SEA_TEMP_SENSOR_ENABLE */ (bool)false,
 		/* SEA_TEMP_SENSOR_PERIODIC */ 0U,
 		/* SEA_TEMP_SENSOR_VALUE */ (double)0.0,
+#endif
+#if ENABLE_ALS_SENSOR
 		/* ALS_SENSOR_ENABLE */ (bool)false,
 		/* ALS_SENSOR_PERIODIC */ 0U,
 		/* ALS_SENSOR_VALUE */ (double)0.0,
+#endif
+#if ENABLE_CDT_SENSOR
 		/* CDT_SENSOR_ENABLE */ (bool)false,
 		/* CDT_SENSOR_PERIODIC */ 0U,
 		/* CDT_SENSOR_CONDUCTIVITY */ (double)0.0,
 		/* CDT_SENSOR_DEPTH */ (double)0.0,
 		/* CDT_SENSOR_TEMPERATURE */ (double)0.0,
+#endif
 		/* EXT_LED_MODE */ BaseLEDMode::ALWAYS,
+#if ENABLE_AXL_SENSOR
 		/* AXL_SENSOR_ENABLE */ (bool)false,
 		/* AXL_SENSOR_PERIODIC */ 0U,
 		/* AXL_SENSOR_WAKEUP_THRESHOLD */ (double)0.0,
 		/* AXL_SENSOR_WAKEUP_SAMPLES */ 5U,
 		/* AXL_SENSOR_MEASUREMENT_RANGE */ 0U,
 		/* AXL_SENSOR_POWER_MODE */ 0U,
+#endif
+#if ENABLE_PRESSURE_SENSOR
 		/* PRESSURE_SENSOR_ENABLE */ (bool)false,
 		/* PRESSURE_SENSOR_PERIODIC */ 0U,
+#endif
 		/* DEBUG_OUTPUT_MODE */ BaseDebugMode::USB_CDC,  // Default: USB CDC (was UART on Linkit V3)
 		/* GNSS_ASSISTNOW_OFFLINE_EN */ (bool)false,
 #if MODEL_UW
@@ -300,31 +312,45 @@ protected:
 		/* UW_GNSS_DETECT_THRESH */ 1U,
 #endif
 		/* LB_CRITICAL_THRESH */ 2.8,
+#if ENABLE_PRESSURE_SENSOR
 		/* PRESSURE_SENSOR_LOGGING_MODE */ BasePressureSensorLoggingMode::ALWAYS,
+#endif
 		/* GNSS_TRIGGER_COLD_START_ON_SURFACED */ (bool)false,
 
+#if ENABLE_SEA_TEMP_SENSOR
 		/* SEA_TEMP_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
 		/* SEA_TEMP_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
 		/* SEA_TEMP_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
+#endif
+#if ENABLE_PH_SENSOR
 		/* PH_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
 		/* PH_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
 		/* PH_SENSOR_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
+#endif
+#if ENABLE_ALS_SENSOR
 		/* ALS_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
 		/* ALS_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
 		/* ALS_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
+#endif
+#if ENABLE_PRESSURE_SENSOR
 		/* PRESSURE_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
 		/* PRESSURE_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
 		/* PRESSURE_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
+#endif
+#if ENABLE_AXL_SENSOR
 		/* AXL_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
 		/* AXL_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
 		/* AXL_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
+#endif
 
+#if ENABLE_CAM_SENSOR
 		/* CAM_ENABLE */ (bool)false,
 		/* CAM_TRIGGER_ON_SURFACED */ (bool)false,
 		/* CAM_TRIGGER_ON_AXL_WAKEUP */ (bool)false,
 		/* CAM_PERIOD_ON */ 1U * 60U,
 		/* CAM_PERIOD_OFF */ 5U * 60U,
 		/* LB_CAM_EN */ (bool)false,
+#endif
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,
@@ -423,7 +449,9 @@ public:
 			} else if (param_id == ParamID::DEVICE_DECID) {
 				m_params.at((unsigned)param_id) = (unsigned int)PMU::device_identifier();
 				b_is_valid = true;
-			} else if (param_id == ParamID::ALS_SENSOR_VALUE) {
+			}
+#if ENABLE_ALS_SENSOR
+			else if (param_id == ParamID::ALS_SENSOR_VALUE) {
 				try {
 					Sensor& s = SensorManager::find_by_name("ALS");
 					m_params.at((unsigned)param_id) = s.read(1);
@@ -431,7 +459,10 @@ public:
 					m_params.at((unsigned)param_id) = (double)std::nan("");
 				}
 				b_is_valid = true;
-			} else if (param_id == ParamID::PH_SENSOR_VALUE) {
+			}
+#endif
+#if ENABLE_PH_SENSOR
+			else if (param_id == ParamID::PH_SENSOR_VALUE) {
 				try {
 					Sensor& s = SensorManager::find_by_name("PH");
 					m_params.at((unsigned)param_id) = s.read();
@@ -439,7 +470,10 @@ public:
 					m_params.at((unsigned)param_id) = (double)std::nan("");
 				}
 				b_is_valid = true;
-			} else if (param_id == ParamID::SEA_TEMP_SENSOR_VALUE) {
+			}
+#endif
+#if ENABLE_SEA_TEMP_SENSOR
+			else if (param_id == ParamID::SEA_TEMP_SENSOR_VALUE) {
 				// Sea temp sensor can be either RTD or TSYS01
 				try {
 					try {
@@ -453,7 +487,10 @@ public:
 					m_params.at((unsigned)param_id) = (double)std::nan("");
 				}
 				b_is_valid = true;
-			} else if (param_id == ParamID::CDT_SENSOR_CONDUCTIVITY_VALUE) {
+			}
+#endif
+#if ENABLE_CDT_SENSOR
+			else if (param_id == ParamID::CDT_SENSOR_CONDUCTIVITY_VALUE) {
 				try {
 					Sensor& s = SensorManager::find_by_name("CDT");
 					m_params.at((unsigned)param_id) = s.read(0);
@@ -477,7 +514,9 @@ public:
 					m_params.at((unsigned)param_id) = (double)std::nan("");
 				}
 				b_is_valid = true;
-			} else {
+			}
+#endif
+			else {
 				b_is_valid = is_valid();
 			}
 
@@ -761,14 +800,22 @@ public:
 		argos_config.sensor_tx_enable = 0;
 		if (argos_config.gnss_en) {
 			argos_config.sensor_tx_enable = 0;
+#if ENABLE_ALS_SENSOR
 			argos_config.sensor_tx_enable |=
 				(int)(read_param<bool>(ParamID::ALS_SENSOR_ENABLE) && read_param<BaseSensorEnableTxMode>(ParamID::ALS_SENSOR_ENABLE_TX_MODE) != BaseSensorEnableTxMode::OFF) << (int)ServiceIdentifier::ALS_SENSOR;
+#endif
+#if ENABLE_PRESSURE_SENSOR
 			argos_config.sensor_tx_enable |=
 				(int)(read_param<bool>(ParamID::PRESSURE_SENSOR_ENABLE) && read_param<BaseSensorEnableTxMode>(ParamID::PRESSURE_SENSOR_ENABLE_TX_MODE) != BaseSensorEnableTxMode::OFF) << (int)ServiceIdentifier::PRESSURE_SENSOR;
+#endif
+#if ENABLE_SEA_TEMP_SENSOR
 			argos_config.sensor_tx_enable |=
 				(int)(read_param<bool>(ParamID::SEA_TEMP_SENSOR_ENABLE) && read_param<BaseSensorEnableTxMode>(ParamID::SEA_TEMP_SENSOR_ENABLE_TX_MODE) != BaseSensorEnableTxMode::OFF) << (int)ServiceIdentifier::SEA_TEMP_SENSOR;
+#endif
+#if ENABLE_PH_SENSOR
 			argos_config.sensor_tx_enable |=
 				(int)(read_param<bool>(ParamID::PH_SENSOR_ENABLE) && read_param<BaseSensorEnableTxMode>(ParamID::PH_SENSOR_ENABLE_TX_MODE) != BaseSensorEnableTxMode::OFF) << (int)ServiceIdentifier::PH_SENSOR;
+#endif
 		}
 	}
 
