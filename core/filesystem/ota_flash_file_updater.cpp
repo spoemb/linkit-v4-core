@@ -2,7 +2,6 @@
 #include "error.hpp"
 #include "crc32.hpp"
 #include "debug.hpp"
-#include "is25_flash.hpp"
 
 // Flash header for firmware image in external flash
 static constexpr const uint32_t FLASH_HEADER_SIZE = sizeof(lfs_size_t) + sizeof(uint32_t);
@@ -42,13 +41,7 @@ void OTAFlashFileUpdater::start_file_transfer(OTAFileIdentifier file_id, lfs_siz
 		m_file = new LFSFile(m_filesystem, "artic_firmware.dat", LFS_O_WRONLY | LFS_O_CREAT);
 		break;
 	case OTAFileIdentifier::MCU_FIRMWARE:
-	{
 		DEBUG_INFO("OTAFlashFileUpdater::start_file_transfer: MCU_FIRMWARE");
-
-		// Power up flash once for entire transfer
-		Is25Flash* is25_flash = static_cast<Is25Flash*>(m_flash_if);
-		is25_flash->power_up();
-
 		// Erase reserved region of external flash
 		for (unsigned int i = 0; i < m_reserved_blocks; i++) {
 			uint8_t buffer[256];
@@ -70,7 +63,6 @@ void OTAFlashFileUpdater::start_file_transfer(OTAFileIdentifier file_id, lfs_siz
 			m_flash_if->sync())
 			throw ErrorCode::OTA_TRANSFER_FLASH_ERROR;
 		break;
-	}
 	case OTAFileIdentifier::GPS_CONFIG:
 		DEBUG_INFO("OTAFlashFileUpdater::start_file_transfer: GPS_CONFIG");
 		m_filesystem->remove("gps_config.dat");
@@ -106,15 +98,14 @@ void OTAFlashFileUpdater::write_file_data(void * const data, lfs_size_t length)
 		std::vector<uint8_t> aligned_buffer;
 		aligned_buffer.resize(length);
 		std::memcpy(&aligned_buffer[0], data, length);
-		// Use fast write without sync - CRC32 validates at end
-		Is25Flash* is25_flash = static_cast<Is25Flash*>(m_flash_if);
-		if (is25_flash->prog_fast(0, (m_reserved_block_offset * m_flash_if->m_block_size) + m_file_bytes_received + FLASH_HEADER_SIZE, &aligned_buffer[0], length))
+		if (m_flash_if->prog(0, (m_reserved_block_offset * m_flash_if->m_block_size) + m_file_bytes_received + FLASH_HEADER_SIZE, &aligned_buffer[0], length) ||
+			m_flash_if->sync())
 			throw ErrorCode::OTA_TRANSFER_FLASH_ERROR;
 	}
 
 	m_file_bytes_received += length;
 
-	DEBUG_INFO("OTAFlashFileUpdater::write_file_data: %u/%u", m_file_bytes_received, m_file_size);
+	DEBUG_TRACE("OTAFlashFileUpdater::write_file_data: %u/%u", m_file_bytes_received, m_file_size);
 
 	m_crc32_calc ^= 0xFFFFFFFF;
 	CRC32::checksum((unsigned char *)data, length, m_crc32_calc);
@@ -145,14 +136,6 @@ void OTAFlashFileUpdater::complete_file_transfer()
 		DEBUG_ERROR("OTAFlashFileUpdater:: not all bytes received");
 		abort_file_transfer();
 		throw ErrorCode::OTA_TRANSFER_INCOMPLETE;
-	}
-
-	// For MCU firmware, sync all pending writes and power down
-	if (m_file_id == OTAFileIdentifier::MCU_FIRMWARE) {
-		Is25Flash* is25_flash = static_cast<Is25Flash*>(m_flash_if);
-		if (m_flash_if->sync())
-			throw ErrorCode::OTA_TRANSFER_FLASH_ERROR;
-		is25_flash->power_down();
 	}
 
 	if (m_crc32_calc != m_crc32) {
