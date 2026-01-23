@@ -363,8 +363,8 @@ TEST(Sm, CheckBLEInactivityTimeout)
 	CHECK_TRUE(fsm_handle::is_in_state<ConfigurationState>());
 	mock().disable();
 
-	// Wait until BLE inactivity timeout
-	fake_timer->set_counter(364000);
+	// Wait until BLE inactivity timeout (20 minutes = 1,200,000 ms)
+	fake_timer->set_counter(1201000);
 	system_scheduler->run();
 	CHECK_TRUE(fsm_handle::is_in_state<OffState>());
 }

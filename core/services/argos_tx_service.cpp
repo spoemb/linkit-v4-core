@@ -23,10 +23,12 @@ ArgosTxService::ArgosTxService(KineisDevice& device) : Service(ServiceIdentifier
 void ArgosTxService::service_init() {
 	ArgosConfig argos_config;
 	configuration_store->get_argos_configuration(argos_config);
-	
+
 	//@TODO => Get ID & ADDR ? m_artic.set_device_identifier(argos_config.argos_id);
 
 	m_kineis.subscribe(*this);
+	m_kineis.set_frequency(argos_config.frequency);
+	m_kineis.set_tcxo_warmup_time(argos_config.argos_tcxo_warmup_time);
 	DEBUG_TRACE("ArgosTxService::service_init DEBUG ARGOS ID %d", argos_config.argos_id);
 	m_sched.reset(argos_config.argos_id); // TODO verify if already set at this moment
 	m_depth_pile_manager.clear();
@@ -83,15 +85,15 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 				DEBUG_TRACE("ArgosTxService::service_next_schedule_in_ms: can't schedule as GNSS_EN and RTC not set");
 				return Service::SCHEDULE_DISABLED;
 			}
-			if (m_depth_pile_manager.eligible() == 0) {
-				DEBUG_TRACE("ArgosTxService::service_next_schedule_in_ms: depth pile has no eligible entries");
-				return Service::SCHEDULE_DISABLED;
-			}
 			if (m_is_first_tx && argos_config.time_sync_burst_en) {
 				m_scheduled_mode = KineisModulation::LDA2;
 				m_scheduled_task = [this]() { process_time_sync_burst(); };
 				m_sched.schedule_at(now);
 				return 0;
+			}
+			if (m_depth_pile_manager.eligible() == 0) {
+				DEBUG_TRACE("ArgosTxService::service_next_schedule_in_ms: depth pile has no eligible entries");
+				return Service::SCHEDULE_DISABLED;
 			}
 			if (argos_config.mode == BaseArgosMode::DUTY_CYCLE) {
 				m_scheduled_mode = KineisModulation::LDA2;
@@ -936,8 +938,12 @@ void ArgosDepthPileManager::notify_peer_event(ServiceEvent& e) {
 
 	if (e.event_source == ServiceIdentifier::GNSS_SENSOR &&
 		e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
-		DEBUG_TRACE("ArgosDepthPileManager::notify_peer_event: GNSS cache set");
 		GPSLogEntry& entry = std::get<GPSLogEntry>(e.event_data);
+		if (!entry.info.valid) {
+			DEBUG_TRACE("ArgosDepthPileManager::notify_peer_event: GNSS cache skipped (invalid fix)");
+			return;
+		}
+		DEBUG_TRACE("ArgosDepthPileManager::notify_peer_event: GNSS cache set");
 		m_gps_cache = entry;
 		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::GNSS_SENSOR);
 	} else if (e.event_source == ServiceIdentifier::ALS_SENSOR &&

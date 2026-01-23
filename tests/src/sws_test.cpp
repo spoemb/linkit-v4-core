@@ -6,7 +6,7 @@
 #include "sws_service.hpp"
 #include "bsp.hpp"
 #include "fake_config_store.hpp"
-#include "linux_timer.hpp"
+#include "fake_timer.hpp"
 
 
 extern Timer *system_timer;
@@ -17,19 +17,19 @@ extern Scheduler *system_scheduler;
 TEST_GROUP(SWS)
 {
 	FakeConfigurationStore *fake_config_store;
-	LinuxTimer *linux_timer;
+	FakeTimer *fake_timer;
 	void setup() {
 		fake_config_store = new FakeConfigurationStore;
 		configuration_store = fake_config_store;
-		linux_timer = new LinuxTimer;
-		system_timer = linux_timer;
+		fake_timer = new FakeTimer;
+		system_timer = fake_timer;
 		system_scheduler = new Scheduler(system_timer);
 		configuration_store->init();
 	}
 
 	void teardown() {
 		delete system_scheduler;
-		delete linux_timer;
+		delete fake_timer;
 		delete fake_config_store;
 	}
 };
@@ -40,7 +40,7 @@ TEST(SWS, UnderwaterEvent)
 	bool switch_state = false;
 	unsigned int num_callbacks = 0;
 
-	system_timer->start();
+	fake_timer->start();
 
 	unsigned int surf_period = 1;
 	unsigned int under_period = 1;
@@ -61,8 +61,8 @@ TEST(SWS, UnderwaterEvent)
 		mock().expectOneCall("delay_ms").withUnsignedIntParameter("ms", 1);
 		mock().expectOneCall("clear").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SLOW_SWS_SEND);
 		mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SLOW_SWS_RX).andReturnValue(1);
-		DEBUG_TRACE("t=%lu", linux_timer->get_counter());
-		while (!system_scheduler->run());
+		fake_timer->increment_counter(s.get_last_schedule());
+		system_scheduler->run();
 	}
 
 	CHECK_TRUE(switch_state);
@@ -77,7 +77,7 @@ TEST(SWS, SurfacedEvent)
 	bool switch_state = false;
 	unsigned int num_callbacks = 0;
 
-	system_timer->start();
+	fake_timer->start();
 
 	unsigned int surf_period = 1;
 	unsigned int under_period = 1;
@@ -98,8 +98,8 @@ TEST(SWS, SurfacedEvent)
 		mock().expectOneCall("delay_ms").withUnsignedIntParameter("ms", 1);
 		mock().expectOneCall("clear").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SLOW_SWS_SEND);
 		mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SLOW_SWS_RX).andReturnValue(0);
-		DEBUG_TRACE("t=%lu", linux_timer->get_counter());
-		while (!system_scheduler->run());
+		fake_timer->increment_counter(s.get_last_schedule());
+		system_scheduler->run();
 	}
 
 	CHECK_FALSE(switch_state);
@@ -114,7 +114,7 @@ TEST(SWS, SchedulingPeriodSurfaced)
 	bool switch_state = false;
 	unsigned int num_callbacks = 0;
 
-	system_timer->start();
+	fake_timer->start();
 
 	unsigned int surf_period = 2;
 	unsigned int under_period = 1;
@@ -136,8 +136,8 @@ TEST(SWS, SchedulingPeriodSurfaced)
 		mock().expectOneCall("delay_ms").withUnsignedIntParameter("ms", 1);
 		mock().expectOneCall("clear").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SLOW_SWS_SEND);
 		mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SLOW_SWS_RX).andReturnValue(0);
-		DEBUG_TRACE("t=%lu", linux_timer->get_counter());
-		while (!system_scheduler->run());
+		fake_timer->increment_counter(s.get_last_schedule());
+		system_scheduler->run();
 	}
 
 	CHECK_FALSE(switch_state);
@@ -152,7 +152,7 @@ TEST(SWS, SchedulingPeriodUnderwater)
 	bool switch_state = false;
 	unsigned int num_callbacks = 0;
 
-	system_timer->start();
+	fake_timer->start();
 
 	unsigned int surf_period = 1;
 	unsigned int under_period = 2;
@@ -174,8 +174,8 @@ TEST(SWS, SchedulingPeriodUnderwater)
 		mock().expectOneCall("delay_ms").withUnsignedIntParameter("ms", 1);
 		mock().expectOneCall("clear").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SLOW_SWS_SEND);
 		mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SLOW_SWS_RX).andReturnValue(1);
-		DEBUG_TRACE("t=%lu", linux_timer->get_counter());
-		while (!system_scheduler->run());
+		fake_timer->increment_counter(s.get_last_schedule());
+		system_scheduler->run();
 	}
 
 	CHECK_TRUE(switch_state);
@@ -190,7 +190,7 @@ TEST(SWS, UnderwaterModeDisabled)
 	bool switch_state = false;
 	unsigned int num_callbacks = 0;
 
-	system_timer->start();
+	fake_timer->start();
 
 	unsigned int surf_period = 1;
 	unsigned int under_period = 2;
@@ -217,7 +217,7 @@ TEST(SWS, UnderwaterWithDryEventStillTreatedAsUnderwater)
 	bool switch_state = false;
 	unsigned int num_callbacks = 0;
 
-	system_timer->start();
+	fake_timer->start();
 
 	unsigned int surf_period = 1;
 	unsigned int under_period = 1;
@@ -243,8 +243,8 @@ TEST(SWS, UnderwaterWithDryEventStillTreatedAsUnderwater)
 		mock().expectOneCall("delay_ms").withUnsignedIntParameter("ms", 1);
 		mock().expectOneCall("clear").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SLOW_SWS_SEND);
 		mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SLOW_SWS_RX).andReturnValue(1);
-		DEBUG_TRACE("t=%lu", linux_timer->get_counter());
-		while (!system_scheduler->run());
+		fake_timer->increment_counter(s.get_last_schedule());
+		system_scheduler->run();
 	}
 
 	for (unsigned int i = 0; i < 2; i++) {
@@ -252,8 +252,8 @@ TEST(SWS, UnderwaterWithDryEventStillTreatedAsUnderwater)
 		mock().expectOneCall("delay_ms").withUnsignedIntParameter("ms", 1);
 		mock().expectOneCall("clear").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SLOW_SWS_SEND);
 		mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SLOW_SWS_RX).andReturnValue(0);
-		DEBUG_TRACE("t=%lu", linux_timer->get_counter());
-		while (!system_scheduler->run());
+		fake_timer->increment_counter(s.get_last_schedule());
+		system_scheduler->run();
 	}
 
 	CHECK_TRUE(switch_state);
@@ -269,7 +269,7 @@ TEST(SWS, UnderwaterWithNDryEventsTerminatesEarly)
 	bool switch_state = false;
 	unsigned int num_callbacks = 0;
 
-	system_timer->start();
+	fake_timer->start();
 
 	unsigned int surf_period = 1;
 	unsigned int under_period = 1;
@@ -295,8 +295,8 @@ TEST(SWS, UnderwaterWithNDryEventsTerminatesEarly)
 		mock().expectOneCall("delay_ms").withUnsignedIntParameter("ms", 1);
 		mock().expectOneCall("clear").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SLOW_SWS_SEND);
 		mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SLOW_SWS_RX).andReturnValue(0);
-		DEBUG_TRACE("t=%lu", linux_timer->get_counter());
-		while (!system_scheduler->run());
+		fake_timer->increment_counter(s.get_last_schedule());
+		system_scheduler->run();
 	}
 
 	CHECK_FALSE(switch_state);

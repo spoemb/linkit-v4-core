@@ -45,7 +45,7 @@ static std::time_t convert_epochtime(uint16_t year, uint8_t month, uint8_t day, 
 	t.tm_mday = day;
 	t.tm_mon = month - 1;
 	t.tm_year = year - 1900;
-	std::time_t et = std::mktime(&t);
+	std::time_t et = portable_timegm(&t);
 
 	return et;
 }

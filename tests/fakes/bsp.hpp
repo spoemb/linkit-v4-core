@@ -11,7 +11,8 @@
 #define SWS_ADC        BSP::ADC::ADC_CHANNEL_1
 #define BATTERY_ADC    BSP::ADC::ADC_CHANNEL_0
 
-#define ADC_GAIN              (1.0f/3.0f)  // 1/3 gain
+#define ADC_GAIN              (1.0f/6.0f)  // 1/6 gain
+#define V_DIV_GAIN            2.0f
 #define RP506_ADC_GAIN        4.0f
 
 namespace BSP
