@@ -105,17 +105,11 @@ protected:
 		/* ARGOS_POWER */ BaseArgosPower::POWER_350_MW,
 		/* TR_NOM */ 60U,
 
-#if ARGOS_EXT
-		/* ARGOS_MODE */ BaseArgosMode::OFF,
-#else
-
 #if MODEL_SB
 		/* ARGOS_MODE */ BaseArgosMode::PASS_PREDICTION,
 #else
 		/* ARGOS_MODE */ BaseArgosMode::LEGACY,
 #endif
-
-#endif // ARGOS_EXT
 
 #if MODEL_SB
 		/* NTRY_PER_MESSAGE */ 6U,
@@ -185,11 +179,7 @@ protected:
 		/* ARGOS_RX_AOP_UPDATE_PERIOD */ 90U,
 		/* ARGOS_RX_COUNTER */ 0U,
 		/* ARGOS_RX_TIME */ 0U,
-#if 0 == NO_GPS_POWER_REG
 		/* ASSIST_NOW_EN */ (bool)true,
-#else
-		/* ASSIST_NOW_EN */ (bool)false,
-#endif
 		/* LB_GNSS_HACCFILT_THR */ 5U,
 		/* LB_NTRY_PER_MESSAGE */ 4U,
 

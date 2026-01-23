@@ -84,11 +84,7 @@
 #define POWER_ON_RESET_REQUIRES_REED_SWITCH
 #define PSEUDO_POWER_OFF
 
-// Other options
-#define HW_VERSION_DETECT 1
-#define NO_GPS_POWER_REG  0
 #define NO_ARGOS_PA_GAIN_CTRL 1
-#define ARGOS_EXT 0
 
 namespace BSP
 {

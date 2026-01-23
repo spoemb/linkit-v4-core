@@ -131,14 +131,9 @@ void M10QAsyncReceiver::power_off() {
 void M10QAsyncReceiver::enter_shutdown() {
     m_ubx_comms.deinit();
 
-#if 0 == NO_GPS_POWER_REG
     // Disable the power supply for the GPS
     GPIOPins::clear(BSP::GPIO::GPIO_GPS_PWR_EN);
     GPIOPins::clear(BSP::GPIO::GPIO_GPS_RST);
-#else
-    // Use GPIO_GPS_EXT_INT as a shutdown
-    GPIOPins::clear(BSP::GPIO::GPIO_GPS_EXT_INT);
-#endif
 }
 
 void M10QAsyncReceiver::exit_shutdown() {
@@ -147,17 +142,11 @@ void M10QAsyncReceiver::exit_shutdown() {
     m_ubx_comms.subscribe(*this);
     m_ubx_comms.set_debug_enable(m_nav_settings.debug_enable);
 
-#if 0 == NO_GPS_POWER_REG
-	// DEBUG_INFO("M10QAsyncReceiver::NOGPS_POWER_REG: Enabling GPS power supply");
     // Enable the power supply for the GPS
     GPIOPins::set(BSP::GPIO::GPIO_GPS_RST);
-    PMU::delay_ms(10); 
+    PMU::delay_ms(10);
     GPIOPins::set(BSP::GPIO::GPIO_GPS_PWR_EN);
     PMU::delay_ms(1000); // Necessary to allow the device to boot
-#else
-    // Use GPIO_GPS_EXT_INT as a wake-up
-    GPIOPins::set(BSP::GPIO::GPIO_GPS_EXT_INT);
-#endif
 }
 
 void M10QAsyncReceiver::state_machine() {
@@ -1204,11 +1193,6 @@ void M10QAsyncReceiver::setup_power_management() {
     CFG::PM::WAITTIMEFIX.set_value(0);             // No need to wait for time fix
     CFG::PM::UPDATEEPH.set_value(1);               // Regular ephemeris updates
 
-#if 1 == NO_GPS_POWER_REG
-    CFG::PM::EXTINTWAKE.set_value(1);              // EXTINT pin controls wake state
-    CFG::PM::EXTINTBACKUP.set_value(1);            // EXTINT pin controls backup state
-#endif
-
     // Collect all parameters for VALSET
     std::vector<CFG::UBXParameter> pm_config = {
         CFG::PM::OPERATEMODE,
@@ -1221,10 +1205,6 @@ void M10QAsyncReceiver::setup_power_management() {
         CFG::PM::DONOTENTEROFF,
         CFG::PM::WAITTIMEFIX,
         CFG::PM::UPDATEEPH,
-#if 1 == NO_GPS_POWER_REG
-        CFG::PM::EXTINTWAKE,
-        CFG::PM::EXTINTBACKUP
-#endif
     };
 
     // Create the VALSET message with power management configuration

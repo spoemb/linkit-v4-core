@@ -19,19 +19,14 @@
 
 ### ⚠️ Notes Importantes
 
-**Résolution ADC** : Cette implémentation utilise une résolution ADC de **14-bit (0-16383)** sur les deux variantes de boards :
-- ✅ **Gentracker V1.0** : 14-bit (board principale pour Linkit)
-- ✅ **Horizon V4.0** : 14-bit
+**Résolution ADC** : Cette implémentation utilise une résolution ADC de **14-bit (0-16383)** sur le nRF52840, garantissant une précision maximale pour la détection.
 
-Les deux boards utilisent le même nRF52840 et bénéficient donc de la même précision maximale. Cela garantit un comportement uniforme et une meilleure précision de détection.
-
-**Différences entre boards** :
-| Caractéristique | Gentracker V1.0 | Horizon V4.0 |
-|----------------|-----------------|--------------|
-| SWS_RECEIVER (ADC) | P0.02 (AIN0) | P0.02 (AIN0) |
-| SWS_SENDER (GPIO) | P0.10 | P0.12 |
-| Résolution ADC | 14-bit | 14-bit |
-| Configuration ADC | Identique | Identique |
+**Configuration hardware (Gentracker V1.0)** :
+| Caractéristique | Valeur |
+|----------------|--------|
+| SWS_RECEIVER (ADC) | P0.02 (AIN0) |
+| SWS_SENDER (GPIO) | P0.10 |
+| Résolution ADC | 14-bit |
 
 ### Contexte
 
@@ -132,8 +127,6 @@ SWSAnalogService
 | `core/protocol/base_types.hpp` | +6 nouveaux ParamID | Configuration |
 | `core/protocol/dte_params.cpp` | Définitions UNP20-UNP25 | DTE protocol |
 | `core/configuration/config_store.hpp` | Valeurs par défaut | Init config |
-| `ports/nrf52840/bsp/horizon_v4.0/bsp.hpp` | +ADC_CHANNEL_1 | Hardware |
-| `ports/nrf52840/bsp/horizon_v4.0/bsp.cpp` | Config ADC AIN0 (14-bit) | ADC setup |
 | `ports/nrf52840/bsp/gentracker_v1.0/bsp.hpp` | +ADC_CHANNEL_1 | Hardware |
 | `ports/nrf52840/bsp/gentracker_v1.0/bsp.cpp` | Config ADC AIN0 (14-bit) | ADC setup |
 | `tests/fakes/bsp.hpp` | Support 2 canaux ADC | Tests |
@@ -278,17 +271,10 @@ Le système SWS analog est supporté sur les deux variantes de boards du Linkit 
 | **SWS_RECEIVER** | P0.02 | AIN0 | Mesure analogique de conductivité |
 | **SWS_SENDER** | P0.10 | - | Génération du signal (GPIO output) |
 
-**Linkit V4 - Horizon V4.0** :
-
-| Signal | Pin nRF52840 | ADC | Description |
-|--------|-------------|-----|-------------|
-| **SWS_RECEIVER** | P0.02 | AIN0 | Mesure analogique de conductivité |
-| **SWS_SENDER** | P0.12 | - | Génération du signal (GPIO output) |
-
-**Configuration ADC (identique sur les deux boards)** :
+**Configuration ADC** :
 
 ```cpp
-// Dans bsp.hpp (gentracker_v1.0 et horizon_v4.0)
+// Dans bsp.hpp (gentracker_v1.0)
 #define SWS_ADC        BSP::ADC::ADC_CHANNEL_1
 
 // Dans bsp.cpp - Configuration globale
@@ -356,7 +342,7 @@ Résolution 14-bit = 0 - 16383
 | `UW_MAX_DIVE_TIME` | UNP24 | UINT | 0 | ∞ | 7200 | Temps max plongée (sec, 0=désactivé) |
 | `UW_MIN_SURFACE_TIME` | UNP25 | UINT | 0 | ∞ | 10 | Temps min surface (sec, anti-splash) |
 
-**Note** : Les paramètres THRESHOLD_MIN/MAX acceptent des valeurs jusqu'à 16383 (14-bit) sur les deux boards (gentracker et horizon).
+**Note** : Les paramètres THRESHOLD_MIN/MAX acceptent des valeurs jusqu'à 16383 (14-bit).
 
 ### Paramètres Existants Réutilisés
 
@@ -562,14 +548,6 @@ OK (7 tests, 7 ran, 15 checks, 0 ignored, 0 filtered out, 84 ms)
 #define SWS_ENABLE_PIN BSP::GPIO::GPIO_SLOW_SWS_SEND  // P0.10 ✓
 ```
 
-**Pour Horizon V4.0** :
-```cpp
-// Dans bsp.hpp horizon_v4.0
-#define SWS_SAMPLE_PIN BSP::GPIO::GPIO_SWS        // P0.02 (AIN0) ✓
-#define SWS_ENABLE_PIN BSP::GPIO::GPIO_SLOW_SWS_SEND  // P0.12 ✓
-```
-
-**Important** : Les deux boards utilisent la même résolution ADC 14-bit et la même configuration de canal (AIN0 avec gain 1/4).
 
 Si GPIO_SWS n'est pas sur P0.02, il faudra :
 - Soit modifier le PCB
@@ -842,7 +820,7 @@ struct SWSLogEntry {
 
 - **nRF52840 SAADC** : `nRF5_SDK_17.0.2/components/drivers_nrf/hal/nrf_saadc.h`
 - **UWDetectorService** : `core/services/uwdetector_service.hpp`
-- **Configuration BSP** : `ports/nrf52840/bsp/horizon_v4.0/`
+- **Configuration BSP** : `ports/nrf52840/bsp/gentracker_v1.0/`
 
 ### Algorithmes Utilisés
 

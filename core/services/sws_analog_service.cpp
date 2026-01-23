@@ -14,8 +14,7 @@
 #define ADC_REFERENCE_V 0.6f           // 0.6V internal reference
 #define ADC_GAIN_1_4 (1.0f/4.0f)       // Gain 1/4 for SWS channel
 
-// ADC validation limits (conservative values work for both 12-bit and 14-bit)
-// Gentracker: 12-bit (0-4095), Horizon: 14-bit (0-16383)
+// ADC validation limits for 14-bit ADC (0-16383)
 #define ADC_INVALID_MIN 50             // Minimum valid ADC value
 // Note: ADC_INVALID_MAX is checked against configured THRESHOLD_MAX parameter
 

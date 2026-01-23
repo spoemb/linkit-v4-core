@@ -67,7 +67,6 @@
                 "${workspaceRoot}/ports/nrf52840/drivers/nRF5_SDK_17.0.2/integration/nrfx",
                 "${workspaceRoot}",
                 "${workspaceRoot}/ports/nrf52840/drivers/nrf_log_redirect",
-                "${workspaceRoot}/ports/nrf52840/bsp/horizon_v4.0",
                 "${workspaceRoot}/libraries/littlefs",
                 "${workspaceRoot}/libraries/prepass/prepass_package_code-PREPAS_V3.4",
                 "${workspaceRoot}/core/ble_services",

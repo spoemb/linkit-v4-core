@@ -303,11 +303,7 @@ void ConfigurationState::exit() {
 
 void GenTracker::set_ble_device_name() {
 	std::string device_model = configuration_store->read_param<std::string>(ParamID::DEVICE_MODEL);
-#if ARGOS_EXT
-	unsigned int identifier = configuration_store->read_param<unsigned int>(ParamID::DEVICE_DECID);
-#else
 	unsigned int identifier = configuration_store->read_param<unsigned int>(ParamID::ARGOS_DECID);
-#endif
 	std::string device_name = device_model + " " + std::to_string(identifier);
 	DEBUG_TRACE("GenTracker::set_ble_device_name: %s", device_name.c_str());
 	ble_service->set_device_name(device_name);

@@ -99,9 +99,6 @@ target_compile_options(${PROJECT_NAME} PRIVATE
     -DINPLACE_FUNCTION_SIZE_SCHEDULER=1024
     -DINPLACE_FUNCTION_SIZE_TIMER=1536
     
-    # For M10Q power management
-    -DNO_GPS_POWER_REG=0
-
     # Always output coloured text from GCC
     -fdiagnostics-color=always
 )
@@ -257,7 +254,6 @@ target_compile_options(${TURTLE_SIM_NAME} PRIVATE
     -DARGOS_USE_CRC8
     -DINPLACE_FUNCTION_SIZE_SCHEDULER=1024
     -DINPLACE_FUNCTION_SIZE_TIMER=1536
-    -DNO_GPS_POWER_REG=0
     -fdiagnostics-color=always
 )
 
