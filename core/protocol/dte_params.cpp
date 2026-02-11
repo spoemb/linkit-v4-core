@@ -102,6 +102,14 @@ const BaseMap param_map[] = {
 	// Battery voltage
 	{ "BATT_VOLTAGE", "POT06", BaseEncoding::FLOAT, 0.0, 12.0, {}, true, false },
 
+#ifdef EXTERNAL_WAKEUP
+	// TPL5111 power management parameters
+	{ "SHUTDOWN_TIMER", "PWP01", BaseEncoding::UINT, 0U, 86400U, {}, true, true },      // Time before powerdown (0=disabled, max 24h)
+	{ "BOOT_COUNTER", "PWP02", BaseEncoding::UINT, 0U, 0U, {}, true, false },           // Read-only boot counter
+	{ "BOOT_COUNTER_MODULO", "PWP03", BaseEncoding::UINT, 2U, 1000U, {}, true, true },  // Min 2 to avoid permanent shutdown
+	{ "WAKEUP_PERIOD", "PWP04", BaseEncoding::UINT, 0U, 86400U, {}, true, false },      // Read-only reference period
+#endif
+
 	// TCXO warmup period
 	{ "ARGOS_TCXO_WARMUP_TIME", "ARP35", BaseEncoding::UINT, 0U, 30U, {}, true, true },
 
@@ -135,6 +143,13 @@ const BaseMap param_map[] = {
 	{ "CDT_SENSOR_CONDUCTIVITY", "CDP03", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, true, true },
 	{ "CDT_SENSOR_DEPTH", "CDP04", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, true, true },
 	{ "CDT_SENSOR_TEMPERATURE", "CDP05", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, true, true },
+#endif
+#if ENABLE_THERMISTOR_SENSOR
+	{ "THERMISTOR_SENSOR_ENABLE", "THP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
+	{ "THERMISTOR_SENSOR_PERIODIC", "THP02", BaseEncoding::UINT, 0U, 0U, {}, true, true },
+	{ "THERMISTOR_SENSOR_VALUE", "THP03", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, true, false },
+	{ "THERMISTOR_SENSOR_WAKEUP_THRESH", "THP04", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, true, true },
+	{ "THERMISTOR_SENSOR_WAKEUP_SAMPLES", "THP05", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true },
 #endif
 
 	// EXTERNAL LED
@@ -223,6 +238,11 @@ const BaseMap param_map[] = {
 	{ "AXL_SENSOR_ENABLE_TX_MODE", "AXP05", BaseEncoding::SENSORENABLETXMODE, 0, 0, {}, true, true },
 	{ "AXL_SENSOR_ENABLE_TX_MAX_SAMPLES", "AXP06", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 	{ "AXL_SENSOR_ENABLE_TX_SAMPLE_PERIOD", "AXP07", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
+#endif
+#if ENABLE_THERMISTOR_SENSOR
+	{ "THERMISTOR_SENSOR_ENABLE_TX_MODE", "THP06", BaseEncoding::SENSORENABLETXMODE, 0, 0, {}, true, true },
+	{ "THERMISTOR_SENSOR_ENABLE_TX_MAX_SAMPLES", "THP07", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
+	{ "THERMISTOR_SENSOR_ENABLE_TX_SAMPLE_PERIOD", "THP08", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 #endif
 
 #if ENABLE_CAM_SENSOR

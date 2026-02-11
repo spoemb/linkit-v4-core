@@ -87,6 +87,8 @@
   #include "custom_board.h"
 #elif defined(BOARD_GENTRACKER_V1)
   #include "gentracker_v1.h"
+#elif defined(BOARD_RSPB_V1)
+  #include "rspb_v1.h"
 #else
 #error "Board is not defined"
 

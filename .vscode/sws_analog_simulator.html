@@ -1,0 +1,3285 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SWS Analog Simulator - Linkit V4</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-tertiary: #0f3460;
+            --accent: #e94560;
+            --accent-secondary: #00d9ff;
+            --text: #eaeaea;
+            --text-muted: #a0a0a0;
+            --success: #00c853;
+            --warning: #ffc107;
+            --danger: #ff5252;
+            --water: #0077b6;
+            --surface: #90e0ef;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+            border-radius: 15px;
+            border: 1px solid var(--accent);
+        }
+
+        header h1 {
+            color: var(--accent);
+            margin-bottom: 10px;
+        }
+
+        header p {
+            color: var(--text-muted);
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 350px 1fr 350px;
+            gap: 20px;
+        }
+
+        @media (max-width: 1400px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .panel h2 {
+            color: var(--accent-secondary);
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            font-size: 1.1em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .panel h2::before {
+            content: '';
+            width: 4px;
+            height: 20px;
+            background: var(--accent);
+            border-radius: 2px;
+        }
+
+        .param-group {
+            margin-bottom: 15px;
+        }
+
+        .param-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: var(--text-muted);
+            font-size: 0.85em;
+        }
+
+        .param-group .value-display {
+            color: var(--accent-secondary);
+            font-weight: bold;
+            float: right;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: var(--bg-tertiary);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent);
+            cursor: pointer;
+        }
+
+        input[type="number"] {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 6px;
+            background: var(--bg-tertiary);
+            color: var(--text);
+            font-size: 14px;
+        }
+
+        select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 6px;
+            background: var(--bg-tertiary);
+            color: var(--text);
+            font-size: 14px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            margin: 5px;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #d63850;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text);
+            border: 1px solid var(--accent-secondary);
+        }
+
+        .btn-secondary:hover {
+            background: var(--accent-secondary);
+            color: var(--bg-primary);
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-warning {
+            background: var(--warning);
+            color: black;
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-optimize {
+            background: linear-gradient(135deg, #a371f7, #7c3aed);
+            color: white;
+            width: 100%;
+            padding: 12px;
+            font-size: 1em;
+        }
+
+        .btn-optimize:hover {
+            background: linear-gradient(135deg, #7c3aed, #5b21b6);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(124, 58, 237, 0.4);
+        }
+
+        .btn-optimize:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .optimize-progress {
+            margin-top: 10px;
+            padding: 10px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            display: none;
+        }
+
+        .optimize-progress.active {
+            display: block;
+        }
+
+        .progress-bar-container {
+            height: 8px;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 8px 0;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #a371f7, #00d9ff);
+            transition: width 0.3s;
+        }
+
+        .optimize-result {
+            margin-top: 15px;
+            padding: 15px;
+            background: linear-gradient(135deg, rgba(0, 200, 83, 0.1), rgba(0, 217, 255, 0.1));
+            border: 1px solid var(--success);
+            border-radius: 8px;
+            display: none;
+        }
+
+        .optimize-result.active {
+            display: block;
+        }
+
+        .optimize-result h4 {
+            color: var(--success);
+            margin-bottom: 10px;
+        }
+
+        .result-params {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+            font-size: 0.85em;
+        }
+
+        .result-param {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 8px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+        }
+
+        .result-param .name { color: var(--text-muted); }
+        .result-param .value { color: var(--accent-secondary); font-weight: bold; }
+
+        /* Aging/Weathering styles */
+        .aging-indicator {
+            background: linear-gradient(90deg, var(--success) 0%, var(--warning) 50%, var(--danger) 100%);
+            height: 8px;
+            border-radius: 4px;
+            position: relative;
+            margin: 10px 0;
+        }
+
+        .aging-marker {
+            position: absolute;
+            top: -4px;
+            width: 16px;
+            height: 16px;
+            background: white;
+            border: 2px solid var(--accent);
+            border-radius: 50%;
+            transform: translateX(-50%);
+            transition: left 0.3s;
+        }
+
+        .aging-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7em;
+            color: var(--text-muted);
+            margin-top: 5px;
+        }
+
+        .conductivity-visual {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+
+        .conductivity-bar {
+            height: 20px;
+            background: linear-gradient(90deg, #1a1a2e 0%, #00d9ff 100%);
+            border-radius: 4px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .conductivity-fill {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            background: rgba(0, 217, 255, 0.6);
+            transition: width 0.5s;
+        }
+
+        .inertia-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+            padding: 8px;
+            background: var(--bg-primary);
+            border-radius: 6px;
+            font-size: 0.85em;
+        }
+
+        .inertia-indicator .icon {
+            font-size: 1.2em;
+        }
+
+        .scenario-aging {
+            background: linear-gradient(135deg, rgba(255, 152, 0, 0.2), rgba(244, 67, 54, 0.2));
+            border: 1px solid var(--warning);
+        }
+
+        .status-display {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .status-card {
+            background: var(--bg-tertiary);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .status-card .label {
+            font-size: 0.75em;
+            color: var(--text-muted);
+            margin-bottom: 5px;
+        }
+
+        .status-card .value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: var(--accent-secondary);
+        }
+
+        .status-card.large {
+            grid-column: span 2;
+        }
+
+        .status-card.surface .value {
+            color: var(--surface);
+        }
+
+        .status-card.underwater .value {
+            color: var(--water);
+        }
+
+        .state-indicator {
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 20px;
+            transition: all 0.5s;
+        }
+
+        .state-indicator.surface {
+            background: linear-gradient(135deg, #90e0ef, #48cae4);
+            color: #023e8a;
+        }
+
+        .state-indicator.underwater {
+            background: linear-gradient(135deg, #0077b6, #023e8a);
+            color: white;
+        }
+
+        .state-indicator h3 {
+            font-size: 1.8em;
+            margin-bottom: 5px;
+        }
+
+        .state-indicator p {
+            opacity: 0.8;
+        }
+
+        #chart-container {
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            padding: 20px;
+            height: 400px;
+            position: relative;
+        }
+
+        #adc-chart {
+            width: 100%;
+            height: 100%;
+        }
+
+        .timeline-controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+
+        .scenario-btn {
+            flex: 1;
+            min-width: 120px;
+        }
+
+        .log-container {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 10px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: 'Consolas', monospace;
+            font-size: 0.8em;
+        }
+
+        .log-entry {
+            padding: 3px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .log-entry.info { color: var(--accent-secondary); }
+        .log-entry.warn { color: var(--warning); }
+        .log-entry.error { color: var(--danger); }
+        .log-entry.success { color: var(--success); }
+
+        .threshold-visual {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .threshold-bar {
+            position: relative;
+            height: 30px;
+            background: linear-gradient(to right, var(--surface) 0%, var(--water) 100%);
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+
+        .threshold-marker {
+            position: absolute;
+            top: -5px;
+            width: 3px;
+            height: 40px;
+            background: var(--accent);
+            transform: translateX(-50%);
+        }
+
+        .threshold-marker::after {
+            content: attr(data-value);
+            position: absolute;
+            top: 45px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.7em;
+            white-space: nowrap;
+        }
+
+        .adc-marker {
+            position: absolute;
+            top: 5px;
+            width: 20px;
+            height: 20px;
+            background: var(--accent);
+            border-radius: 50%;
+            transform: translateX(-50%);
+            transition: left 0.3s;
+            box-shadow: 0 0 10px var(--accent);
+        }
+
+        .hysteresis-zone {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            background: rgba(233, 69, 96, 0.3);
+            border-left: 2px dashed var(--accent);
+            border-right: 2px dashed var(--accent);
+        }
+
+        .environment-visual {
+            text-align: center;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            transition: all 0.5s;
+        }
+
+        .environment-visual.air {
+            background: linear-gradient(180deg, #87ceeb 0%, #e0f7fa 100%);
+        }
+
+        .environment-visual.freshwater {
+            background: linear-gradient(180deg, #4fc3f7 0%, #0288d1 100%);
+        }
+
+        .environment-visual.saltwater {
+            background: linear-gradient(180deg, #0277bd 0%, #01579b 100%);
+        }
+
+        .environment-visual .icon {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+
+        .electrode-status {
+            display: flex;
+            justify-content: space-around;
+            padding: 10px;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .electrode {
+            text-align: center;
+        }
+
+        .electrode .health {
+            width: 50px;
+            height: 10px;
+            background: var(--bg-primary);
+            border-radius: 5px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+
+        .electrode .health-bar {
+            height: 100%;
+            background: var(--success);
+            transition: width 0.3s, background 0.3s;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+
+        .stat-item {
+            background: var(--bg-tertiary);
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .stat-item .label {
+            font-size: 0.7em;
+            color: var(--text-muted);
+        }
+
+        .stat-item .value {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: var(--accent-secondary);
+        }
+
+        .divider {
+            height: 1px;
+            background: rgba(255,255,255,0.1);
+            margin: 15px 0;
+        }
+
+        .speed-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .speed-control label {
+            white-space: nowrap;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--accent);
+        }
+
+        .info-tooltip {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            background: var(--accent-secondary);
+            color: var(--bg-primary);
+            border-radius: 50%;
+            text-align: center;
+            font-size: 0.7em;
+            line-height: 16px;
+            cursor: help;
+            margin-left: 5px;
+        }
+
+        .calibration-status {
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+        }
+
+        .calibration-status.calibrating {
+            background: rgba(255, 193, 7, 0.2);
+            border: 1px solid var(--warning);
+            color: var(--warning);
+        }
+
+        .calibration-status.calibrated {
+            background: rgba(0, 200, 83, 0.2);
+            border: 1px solid var(--success);
+            color: var(--success);
+        }
+
+        .mini-chart {
+            height: 60px;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌊 SWS Analog Simulator - Linkit V4</h1>
+            <p>Simulateur interactif de l'algorithme de détection Surface/Underwater avec threshold dynamique</p>
+        </header>
+
+        <div class="main-grid">
+            <!-- Panneau gauche - Configuration -->
+            <div class="left-panel">
+                <div class="panel">
+                    <h2>⚙️ Paramètres ADC</h2>
+
+                    <div class="param-group">
+                        <label>
+                            SWS_ANALOG_THRESHOLD_MIN (UNP20)
+                            <span class="value-display" id="thresholdMinDisplay">100</span>
+                        </label>
+                        <input type="range" id="thresholdMin" min="50" max="1000" value="100">
+                    </div>
+
+                    <div class="param-group">
+                        <label>
+                            SWS_ANALOG_THRESHOLD_MAX (UNP21)
+                            <span class="value-display" id="thresholdMaxDisplay">3000</span>
+                        </label>
+                        <input type="range" id="thresholdMax" min="1000" max="10000" value="3000">
+                    </div>
+
+                    <div class="param-group">
+                        <label>
+                            SWS_ANALOG_HYSTERESIS % (UNP22)
+                            <span class="value-display" id="hysteresisDisplay">14%</span>
+                        </label>
+                        <input type="range" id="hysteresis" min="0" max="30" value="14">
+                    </div>
+
+                    <div class="param-group">
+                        <label>
+                            THRESHOLD_RATIO (position du seuil)
+                            <span class="value-display" id="thresholdRatioDisplay">35%</span>
+                        </label>
+                        <input type="range" id="thresholdRatio" min="20" max="80" value="35">
+                    </div>
+                </div>
+
+                <div class="panel" style="margin-top: 20px;">
+                    <h2>⏱️ Paramètres Temporels</h2>
+
+                    <div class="param-group">
+                        <label>
+                            UW_MAX_DIVE_TIME (sec)
+                            <span class="value-display" id="maxDiveTimeDisplay">7200</span>
+                        </label>
+                        <input type="range" id="maxDiveTime" min="60" max="14400" value="7200" step="60">
+                    </div>
+
+                    <div class="param-group">
+                        <label>
+                            UW_MIN_SURFACE_TIME (sec)
+                            <span class="value-display" id="minSurfaceTimeDisplay">10</span>
+                        </label>
+                        <input type="range" id="minSurfaceTime" min="1" max="60" value="10">
+                    </div>
+
+                    <div class="param-group">
+                        <label>
+                            CALIB_INTERVAL (sec)
+                            <span class="value-display" id="calibIntervalDisplay">3600</span>
+                        </label>
+                        <input type="range" id="calibInterval" min="300" max="7200" value="3600" step="60">
+                    </div>
+
+                    <div class="param-group">
+                        <label>
+                            UW_SAMPLE_GAP (ms)
+                            <span class="value-display" id="sampleGapDisplay">1000</span>
+                        </label>
+                        <input type="range" id="sampleGap" min="100" max="5000" value="1000" step="100">
+                    </div>
+                </div>
+
+                <div class="panel" style="margin-top: 20px;">
+                    <h2>🔧 Paramètres Algorithme</h2>
+
+                    <div class="param-group">
+                        <label>
+                            UW_MAX_SAMPLES (confirmation plongée)
+                            <span class="value-display" id="maxSamplesDisplay">1</span>
+                        </label>
+                        <input type="range" id="maxSamples" min="1" max="10" value="1">
+                    </div>
+
+                    <div class="param-group">
+                        <label>
+                            UW_MIN_DRY_SAMPLES (confirmation surface)
+                            <span class="value-display" id="minDrySamplesDisplay">2</span>
+                        </label>
+                        <input type="range" id="minDrySamples" min="1" max="10" value="2">
+                    </div>
+
+                    <div class="param-group">
+                        <label>
+                            ALPHA (EMA factor)
+                            <span class="value-display" id="alphaDisplay">0.19</span>
+                        </label>
+                        <input type="range" id="alpha" min="1" max="50" value="19">
+                    </div>
+
+                    <div class="param-group">
+                        <label>
+                            MOVING_AVG_SIZE
+                            <span class="value-display" id="movingAvgSizeDisplay">2</span>
+                        </label>
+                        <input type="range" id="movingAvgSize" min="1" max="20" value="2">
+                    </div>
+                </div>
+
+                <!-- Nouveau panneau d'optimisation -->
+                <div class="panel" style="margin-top: 20px;">
+                    <h2>🔬 Optimisation Automatique</h2>
+
+                    <button class="btn btn-optimize" id="btnOptimize">
+                        🚀 Rechercher Paramètres Optimaux
+                    </button>
+
+                    <div class="optimize-progress" id="optimizeProgress">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.85em; margin-bottom: 5px;">
+                            <span id="optimizeStatus">Initialisation...</span>
+                            <span id="optimizePercent">0%</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" id="optimizeProgressBar" style="width: 0%"></div>
+                        </div>
+                        <div style="font-size: 0.75em; color: var(--text-muted);">
+                            Meilleur score: <span id="optimizeBestScore">--</span>
+                        </div>
+                    </div>
+
+                    <div class="optimize-result" id="optimizeResult">
+                        <h4>✅ Paramètres Optimaux Trouvés</h4>
+                        <div style="margin-bottom: 10px; font-size: 0.9em;">
+                            Score: <strong id="resultScore" style="color: var(--accent-secondary);">--</strong>
+                        </div>
+                        <div class="result-params" id="resultParams"></div>
+                        <button class="btn btn-success" id="btnApplyOptimal" style="width: 100%; margin-top: 10px;">
+                            ✓ Appliquer ces paramètres
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panneau central - Visualisation -->
+            <div class="center-panel">
+                <div class="panel">
+                    <h2>📊 Visualisation Temps Réel</h2>
+
+                    <div id="chart-container">
+                        <canvas id="adc-chart"></canvas>
+                    </div>
+
+                    <div class="threshold-visual" style="margin-top: 20px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.8em; color: var(--text-muted);">
+                            <span>0 (Air)</span>
+                            <span>ADC 14-bit</span>
+                            <span>16383 (Max)</span>
+                        </div>
+                        <div class="threshold-bar" id="thresholdBar">
+                            <div class="hysteresis-zone" id="hysteresisZone"></div>
+                            <div class="threshold-marker" id="thresholdLowMarker" data-value=""></div>
+                            <div class="threshold-marker" id="thresholdHighMarker" data-value=""></div>
+                            <div class="adc-marker" id="adcMarker"></div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-top: 25px; font-size: 0.75em;">
+                            <span style="color: var(--surface);">● SURFACE</span>
+                            <span style="color: var(--accent);">● Zone Hystérésis</span>
+                            <span style="color: var(--water);">● UNDERWATER</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel" style="margin-top: 20px;">
+                    <h2>🎮 Contrôles de Simulation</h2>
+
+                    <div class="speed-control">
+                        <label>Vitesse:</label>
+                        <input type="range" id="simSpeed" min="1" max="100" value="10" style="flex: 1;">
+                        <span id="simSpeedDisplay">x10</span>
+                    </div>
+
+                    <div class="timeline-controls">
+                        <button class="btn btn-primary" id="btnStart">▶ Démarrer</button>
+                        <button class="btn btn-secondary" id="btnPause">⏸ Pause</button>
+                        <button class="btn btn-danger" id="btnReset">🔄 Reset</button>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <h3 style="margin-bottom: 10px; font-size: 0.9em; color: var(--text-muted);">Scénarios Prédéfinis</h3>
+                    <div class="timeline-controls">
+                        <button class="btn btn-secondary scenario-btn" data-scenario="normal">🐢 Plongée Normale</button>
+                        <button class="btn btn-secondary scenario-btn" data-scenario="splash">💦 Éclaboussures</button>
+                        <button class="btn btn-secondary scenario-btn" data-scenario="salinity">🧂 Changement Salinité</button>
+                        <button class="btn btn-secondary scenario-btn" data-scenario="drift">📉 Dérive Électrodes</button>
+                        <button class="btn btn-secondary scenario-btn" data-scenario="long">🏊 Plongée Longue</button>
+                    </div>
+                    <div class="timeline-controls" style="margin-top: 10px;">
+                        <button class="btn btn-secondary scenario-btn scenario-aging" data-scenario="aged6m">🕐 6 Mois d'usure</button>
+                        <button class="btn btn-secondary scenario-btn scenario-aging" data-scenario="aged1y">⏰ 1 An sous l'eau</button>
+                        <button class="btn btn-secondary scenario-btn scenario-aging" data-scenario="extreme">💀 Usure extrême</button>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <h3 style="margin-bottom: 10px; font-size: 0.9em; color: var(--text-muted);">Contrôle Manuel</h3>
+                    <div class="timeline-controls">
+                        <button class="btn btn-success" id="btnSurface">☀️ Forcer Surface</button>
+                        <button class="btn btn-primary" id="btnDive">🌊 Forcer Plongée</button>
+                        <button class="btn btn-warning" id="btnCalibrate">🔧 Recalibrer</button>
+                    </div>
+                </div>
+
+                <div class="panel" style="margin-top: 20px;">
+                    <h2>📋 Logs Système</h2>
+                    <div class="log-container" id="logContainer"></div>
+                </div>
+            </div>
+
+            <!-- Panneau droit - État et Statistiques -->
+            <div class="right-panel">
+                <div class="panel">
+                    <h2>🎯 État Actuel</h2>
+
+                    <!-- Ground Truth vs Detected State Display -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                        <div style="text-align: center; padding: 10px; background: var(--bg-tertiary); border-radius: 8px; border: 2px solid var(--success);">
+                            <div style="font-size: 0.75em; color: var(--text-muted); margin-bottom: 5px;">🐢 TORTUE (Réel)</div>
+                            <div id="groundTruthState" style="font-size: 1.2em; font-weight: bold; color: var(--success);">SURFACE</div>
+                        </div>
+                        <div style="text-align: center; padding: 10px; background: var(--bg-tertiary); border-radius: 8px; border: 2px solid var(--accent);">
+                            <div style="font-size: 0.75em; color: var(--text-muted); margin-bottom: 5px;">📡 TRACKER (Détecté)</div>
+                            <div id="detectedState" style="font-size: 1.2em; font-weight: bold; color: var(--accent);">SURFACE</div>
+                        </div>
+                    </div>
+
+                    <!-- Latency & Accuracy Display -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 15px; font-size: 0.85em;">
+                        <div style="text-align: center; padding: 8px; background: var(--bg-tertiary); border-radius: 6px;">
+                            <div style="color: var(--text-muted);">Latence</div>
+                            <div id="latencyDisplay" style="font-weight: bold; color: var(--text);">0.0s</div>
+                        </div>
+                        <div style="text-align: center; padding: 8px; background: var(--bg-tertiary); border-radius: 6px;">
+                            <div style="color: var(--text-muted);">Moy. Latence</div>
+                            <div id="avgLatencyDisplay" style="font-weight: bold; color: var(--text);">0.0s</div>
+                        </div>
+                        <div style="text-align: center; padding: 8px; background: var(--bg-tertiary); border-radius: 6px;">
+                            <div style="color: var(--text-muted);">État Match</div>
+                            <div id="stateMatchDisplay" style="font-weight: bold; color: var(--success);">✓ OK</div>
+                        </div>
+                    </div>
+
+                    <!-- Error Rates -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px; font-size: 0.8em;">
+                        <div style="text-align: center; padding: 6px; background: rgba(255,82,82,0.1); border-radius: 6px;">
+                            <div style="color: var(--text-muted);">Faux Positif</div>
+                            <div id="falsePositiveDisplay" style="font-weight: bold; color: #ff5252;">0.0s (0%)</div>
+                        </div>
+                        <div style="text-align: center; padding: 6px; background: rgba(255,193,7,0.1); border-radius: 6px;">
+                            <div style="color: var(--text-muted);">Faux Négatif</div>
+                            <div id="falseNegativeDisplay" style="font-weight: bold; color: #ffc107;">0.0s (0%)</div>
+                        </div>
+                    </div>
+
+                    <div class="state-indicator surface" id="stateIndicator">
+                        <h3 id="stateText">SURFACE</h3>
+                        <p id="stateSubtext">Électrodes en air</p>
+                    </div>
+
+                    <div class="calibration-status calibrated" id="calibrationStatus">
+                        ✓ Calibration complète
+                    </div>
+
+                    <div class="status-display">
+                        <div class="status-card">
+                            <div class="label">ADC Brut</div>
+                            <div class="value" id="adcRaw">0</div>
+                        </div>
+                        <div class="status-card">
+                            <div class="label">ADC Filtré</div>
+                            <div class="value" id="adcFiltered">0</div>
+                        </div>
+                        <div class="status-card">
+                            <div class="label">Threshold Air</div>
+                            <div class="value" id="threshAir">200</div>
+                        </div>
+                        <div class="status-card">
+                            <div class="label">Threshold Eau</div>
+                            <div class="value" id="threshWater">600</div>
+                        </div>
+                        <div class="status-card large">
+                            <div class="label">Threshold Actif (±Hystérésis)</div>
+                            <div class="value" id="threshCurrent">360 ±36</div>
+                        </div>
+                    </div>
+
+                    <!-- Trend & Variance Detection Info -->
+                    <div style="margin-top: 15px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px; border-left: 3px solid var(--accent-secondary);">
+                        <h4 style="color: var(--accent-secondary); margin-bottom: 10px; font-size: 0.9em;">📊 Détection Biofouling</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.85em;">
+                            <div>
+                                <div style="color: var(--text-muted);">Tendance décroissante</div>
+                                <div id="trendCount" style="font-weight: bold; color: var(--text);">0 / 4</div>
+                            </div>
+                            <div>
+                                <div style="color: var(--text-muted);">Drop total (buffer)</div>
+                                <div id="trendDrop" style="font-weight: bold; color: var(--text);">0%</div>
+                            </div>
+                            <div>
+                                <div style="color: var(--text-muted);">Drop cumulatif (peak)</div>
+                                <div id="cumulativeDrop" style="font-weight: bold; color: var(--text);">0%</div>
+                            </div>
+                            <div>
+                                <div style="color: var(--text-muted);">Variance</div>
+                                <div id="varianceValue" style="font-weight: bold; color: var(--text);">0</div>
+                            </div>
+                            <div>
+                                <div style="color: var(--text-muted);">Override actif</div>
+                                <div id="biofoulingOverride" style="font-weight: bold; color: var(--success);">Non</div>
+                            </div>
+                            <div>
+                                <div style="color: var(--text-muted);">Lockout surface</div>
+                                <div id="surfaceLockout" style="font-weight: bold; color: var(--text);">0s</div>
+                            </div>
+                        </div>
+                        <div id="trendSurfaceAlert" style="display: none; margin-top: 10px; padding: 8px; background: rgba(233, 69, 96, 0.2); border-radius: 4px; color: var(--accent); font-size: 0.8em;">
+                            ⚠️ Trend/Variance suggère SURFACE
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel" style="margin-top: 20px;">
+                    <h2>🌍 Environnement</h2>
+
+                    <div class="param-group">
+                        <label>Milieu Simulé</label>
+                        <select id="environment">
+                            <option value="air">☀️ Air sec</option>
+                            <option value="humid">💧 Air humide</option>
+                            <option value="freshwater">🚰 Eau douce</option>
+                            <option value="brackish">🌊 Eau saumâtre (1%)</option>
+                            <option value="saltwater">🌊 Eau de mer (3.5%)</option>
+                            <option value="deadsea">🧂 Eau très salée (10%)</option>
+                        </select>
+                    </div>
+
+                    <div class="param-group">
+                        <label>
+                            Salinité (%)
+                            <span class="value-display" id="salinityDisplay">0.0%</span>
+                        </label>
+                        <input type="range" id="salinity" min="0" max="150" value="0" step="1">
+                    </div>
+
+                    <div class="param-group">
+                        <label>
+                            Bruit ADC (±)
+                            <span class="value-display" id="noiseDisplay">±20</span>
+                        </label>
+                        <input type="range" id="noise" min="0" max="200" value="20">
+                    </div>
+
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="enableDrift">
+                        <label for="enableDrift">Activer dérive électrodes</label>
+                    </div>
+
+                    <div class="param-group" id="driftGroup" style="display: none;">
+                        <label>
+                            Vitesse de dérive
+                            <span class="value-display" id="driftSpeedDisplay">Normal</span>
+                        </label>
+                        <input type="range" id="driftSpeed" min="1" max="10" value="3">
+                    </div>
+                </div>
+
+                <div class="panel" style="margin-top: 20px;">
+                    <h2>🦠 Biofouling & Dépôts Surface</h2>
+                    <p style="font-size: 0.75em; color: var(--text-muted); margin-bottom: 15px;">
+                        Simulation de l'accumulation de sel et biofilm sur le boîtier après exposition prolongée
+                    </p>
+
+                    <div class="electrode-status">
+                        <div class="electrode">
+                            <div>Électrode 1</div>
+                            <div class="health">
+                                <div class="health-bar" id="electrode1Health" style="width: 100%;"></div>
+                            </div>
+                        </div>
+                        <div class="electrode">
+                            <div>Électrode 2</div>
+                            <div class="health">
+                                <div class="health-bar" id="electrode2Health" style="width: 100%;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="param-group">
+                        <label>
+                            Temps d'exposition cumulé
+                            <span class="value-display" id="deviceAgeDisplay">Neuf</span>
+                        </label>
+                        <input type="range" id="deviceAge" min="0" max="100" value="0">
+                    </div>
+                    <div class="aging-indicator">
+                        <div class="aging-marker" id="agingMarker" style="left: 0%;"></div>
+                    </div>
+                    <div class="aging-labels">
+                        <span>Neuf</span>
+                        <span>6 mois</span>
+                        <span>1 an+</span>
+                    </div>
+
+                    <div class="param-group" style="margin-top: 15px;">
+                        <label>
+                            🧂 Dépôt de sel cristallisé
+                            <span class="value-display" id="saltDepositDisplay">0%</span>
+                        </label>
+                        <input type="range" id="saltDeposit" min="0" max="100" value="0">
+                    </div>
+
+                    <div class="param-group">
+                        <label>
+                            🦠 Biofouling (algues, biofilm)
+                            <span class="value-display" id="biofoulingDisplay">0%</span>
+                        </label>
+                        <input type="range" id="biofouling" min="0" max="100" value="0">
+                    </div>
+
+                    <div class="param-group">
+                        <label>
+                            📈 Conductivité résiduelle surface (ADC offset)
+                            <span class="value-display" id="residualConductivityDisplay">0</span>
+                        </label>
+                        <input type="range" id="residualConductivity" min="0" max="1200" value="0">
+                    </div>
+
+                    <div class="param-group">
+                        <label>
+                            ⏱️ Temps de séchage surface (sec)
+                            <span class="value-display" id="dryingInertiaDisplay">1s</span>
+                        </label>
+                        <input type="range" id="dryingInertia" min="1" max="120" value="1">
+                    </div>
+
+                    <div class="conductivity-visual">
+                        <div style="font-size: 0.8em; color: var(--text-muted); margin-bottom: 5px;">
+                            💧 État de la surface du boîtier
+                        </div>
+                        <div class="conductivity-bar">
+                            <div class="conductivity-fill" id="conductivityFill" style="width: 0%;"></div>
+                        </div>
+                        <div class="inertia-indicator">
+                            <span class="icon">📊</span>
+                            <span>ADC actuel: <strong id="instantAdc">0</strong></span>
+                            <span style="margin-left: auto;">Cible (sec): <strong id="targetAdc">0</strong></span>
+                        </div>
+                        <div style="font-size: 0.7em; color: var(--text-muted); margin-top: 8px; padding: 8px; background: var(--bg-primary); border-radius: 4px;">
+                            ℹ️ Après exposition prolongée, le sel et le biofilm créent une couche conductrice permanente.
+                            L'ADC ne redescend plus à 0 en surface et la transition est plus lente.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel" style="margin-top: 20px;">
+                    <h2>📈 Statistiques Session</h2>
+
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="label">Temps Total</div>
+                            <div class="value" id="statTotalTime">00:00</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">Temps Surface</div>
+                            <div class="value" id="statSurfaceTime">00:00</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">Temps Plongée</div>
+                            <div class="value" id="statDiveTime">00:00</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">Transitions</div>
+                            <div class="value" id="statTransitions">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">Recalibrations</div>
+                            <div class="value" id="statCalibrations">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">Faux Positifs</div>
+                            <div class="value" id="statFalsePositives">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // SWS ANALOG SIMULATOR - Core Algorithm
+        // ============================================
+
+        class SWSAnalogSimulator {
+            constructor() {
+                // Configuration parameters - OPTIMIZED FOR FAST SURFACE DETECTION
+                // Priority: Detect surface as fast as possible (biofouling scenarios)
+                this.config = {
+                    thresholdMin: 100,
+                    thresholdMax: 3000,
+                    hysteresis: 14,        // Balance transitions/stability
+                    thresholdRatio: 35,    // LOW: threshold closer to air = faster surface detect
+                    maxDiveTime: 7200,
+                    minSurfaceTime: 10,
+                    calibInterval: 3600,
+                    sampleGap: 1000,       // 1 second between samples (firmware rate)
+                    samplePeriod: 1.0,     // Sample every 1 simulated second (matches firmware 1Hz)
+                    maxSamples: 1,         // Immediate dive detection
+                    minDrySamples: 2,      // ULTRA-FAST: surface confirmation in 2s
+                    alpha: 0.19,           // Fast EMA adaptation
+                    movingAvgSize: 2       // Ultra-fast response
+                };
+
+                // Calibration data (saved in noinit RAM)
+                this.calibration = {
+                    thresholdAir: 200,
+                    thresholdWater: 600,
+                    thresholdCurrent: 0,
+                    hysteresisValue: 0,
+                    isCalibrated: false,
+                    lastCalibTime: 0
+                };
+
+                // Runtime state
+                this.state = {
+                    currentState: 0, // 0 = SURFACE, 1 = UNDERWATER (DETECTED by tracker)
+                    previousState: 0,
+                    timeInCurrentState: 0,
+                    consecutiveSamples: 0,
+                    movingAvgBuffer: [],
+                    surfaceReadingsBuffer: [],  // For adaptive air baseline
+                    minAdcDuringDive: null,     // Track min ADC for biofouling detection
+                    timeInHysteresis: 0,        // Track stuck-in-zone time
+                    adcRaw: 0,
+                    adcFiltered: 0,
+                    // Ground truth vs Detected state tracking (for latency measurement)
+                    groundTruthState: 0,        // 0 = SURFACE, 1 = UNDERWATER (ACTUAL turtle state)
+                    groundTruthChangeTime: 0,   // When ground truth last changed
+                    detectedChangeTime: 0,      // When detected state last changed
+                    lastLatency: 0,             // Latency of last state change (seconds)
+                    latencyHistory: [],         // History of latencies for stats
+                    falsePositiveTime: 0,       // Time spent in false positive (detected UW, actually surface)
+                    falseNegativeTime: 0,       // Time spent in false negative (detected surface, actually UW)
+                    // Trend detection (for biofouling surface detection)
+                    trendBuffer: [],            // Last N readings for trend analysis
+                    decreasingTrendCount: 0,    // Consecutive decreasing samples
+                    totalDropPercent: 0,        // Total drop from max to min in buffer
+                    // Variance detection
+                    varianceValue: 0,           // Current variance of trend buffer
+                    // Detection flags (for UI display)
+                    trendSuggestsSurface: false,
+                    varianceSuggestsSurface: false,
+                    biofoulingSurfaceOverride: false,
+                    fastDropDetected: false,  // Fast drop detection flag
+                    // Sampling rate control (to match firmware 1Hz)
+                    timeSinceLastSample: 0,
+                    // Surface lockout after max dive time (prevent immediate re-submersion)
+                    surfaceLockoutRemaining: 0,
+                    // Cumulative drop tracking (more robust than consecutive-only)
+                    peakAdcSinceUnderwater: 0,
+                    cumulativeDropFromPeak: 0
+                };
+
+                // Environment simulation
+                this.environment = {
+                    type: 'air',
+                    salinity: 0,
+                    noise: 20,
+                    driftEnabled: false,
+                    driftSpeed: 3,
+                    saltDeposit: 0,
+                    electrodeHealth: [100, 100],
+                    // Surface contamination parameters (biofouling & salt)
+                    deviceAge: 0,              // 0-100 (exposure time: 0=new, 100=1 year+)
+                    biofouling: 0,             // 0-100 (algae, biofilm coverage)
+                    residualConductivity: 0,   // ADC offset due to salt/biofilm buildup on surface
+                    dryingInertia: 1,          // Time constant for surface drying (seconds)
+                    // Internal state for inertia simulation
+                    currentAdcValue: 0,        // Current ADC with inertia (slow drying)
+                    targetAdcValue: 0,         // Instant target ADC (what it would be without inertia)
+                    surfaceWetness: 0,         // 0-100% surface wetness level
+                    exposureTime: 0            // Total time spent underwater (accumulates)
+                };
+
+                // Simulation control
+                this.simulation = {
+                    running: false,
+                    speed: 10,
+                    elapsedTime: 0,
+                    lastUpdate: 0,
+                    scenario: null
+                };
+
+                // Statistics
+                this.stats = {
+                    totalTime: 0,
+                    surfaceTime: 0,
+                    diveTime: 0,
+                    transitions: 0,
+                    calibrations: 1,
+                    falsePositives: 0
+                };
+
+                // Chart data
+                this.chartData = {
+                    labels: [],
+                    adcRaw: [],
+                    adcFiltered: [],
+                    thresholdHigh: [],
+                    thresholdLow: [],
+                    state: [],
+                    maxPoints: 200
+                };
+
+                this.updateDynamicThreshold();
+                this.initChart();
+            }
+
+            // Calculate threshold based on air and water calibration
+            updateDynamicThreshold() {
+                const ratio = this.config.thresholdRatio / 100;
+                const range = this.calibration.thresholdWater - this.calibration.thresholdAir;
+                this.calibration.thresholdCurrent = Math.round(
+                    this.calibration.thresholdAir + ratio * range
+                );
+                this.calibration.hysteresisValue = Math.round(
+                    this.calibration.thresholdCurrent * (this.config.hysteresis / 100)
+                );
+            }
+
+            // Simulate ADC reading with biofouling and salt deposit effects
+            readAnalogSWS() {
+                // ========== 1. BASE ADC VALUE (ideal, clean sensor) ==========
+                let idealValue = 0;
+
+                switch (this.environment.type) {
+                    case 'air':
+                        idealValue = 150 + this.environment.salinity * 2;
+                        break;
+                    case 'humid':
+                        idealValue = 400 + this.environment.salinity * 3;
+                        break;
+                    case 'freshwater':
+                        idealValue = 1200 + this.environment.salinity * 20;
+                        break;
+                    case 'brackish':
+                        idealValue = 2500 + this.environment.salinity * 30;
+                        break;
+                    case 'saltwater':
+                        idealValue = 4000 + this.environment.salinity * 40;
+                        break;
+                    case 'deadsea':
+                        idealValue = 8000 + this.environment.salinity * 50;
+                        break;
+                }
+
+                // ========== 2. SURFACE CONTAMINATION EFFECTS ==========
+                // Salt crystals and biofouling on the tracker surface create
+                // a permanent conductive layer between electrodes
+
+                // Combined contamination factor (salt + biofouling)
+                const saltContrib = this.environment.saltDeposit / 100;      // 0-1
+                const bioContrib = this.environment.biofouling / 100;        // 0-1
+                const contaminationLevel = Math.min(1, saltContrib * 0.6 + bioContrib * 0.4);
+
+                // Residual conductivity: the ADC floor when "dry"
+                // After heavy contamination, even in air the surface conducts
+                const baseResidual = this.environment.residualConductivity;
+
+                // Dynamic residual: increases with contamination
+                // Salt crystals are hygroscopic - they absorb moisture from air
+                const dynamicResidual = baseResidual + contaminationLevel * 400;
+
+                // ========== 3. SURFACE WETNESS STATE ==========
+                // Track how wet the surface is (0-100%)
+                // This determines how much the contaminants are conducting
+
+                const isInWater = ['freshwater', 'brackish', 'saltwater', 'deadsea'].includes(this.environment.type);
+
+                if (isInWater) {
+                    // Surface gets wet quickly
+                    this.environment.surfaceWetness = Math.min(100,
+                        this.environment.surfaceWetness + 20);
+                } else {
+                    // Surface dries slowly based on inertia
+                    // More contamination = slower drying (salt retains moisture)
+                    const baseDryRate = 1 / this.environment.dryingInertia;
+                    const contaminationSlowdown = 1 + contaminationLevel * 3; // Up to 4x slower
+                    const effectiveDryRate = baseDryRate / contaminationSlowdown;
+
+                    this.environment.surfaceWetness = Math.max(0,
+                        this.environment.surfaceWetness - effectiveDryRate * 2);
+                }
+
+                // ========== 4. COMPUTE ACTUAL ADC VALUE ==========
+
+                // Target value depends on surface wetness and contamination
+                const wetnessFactor = this.environment.surfaceWetness / 100;
+
+                let targetValue;
+                if (isInWater) {
+                    // In water: normal reading, slightly reduced by deposits
+                    targetValue = idealValue * (1 - contaminationLevel * 0.15);
+                } else {
+                    // In air: value depends on surface wetness and residual conductivity
+                    // When surface is wet, we still read high values
+                    // As it dries, we approach the residual floor (not zero!)
+                    const dryValue = dynamicResidual; // Floor value when "dry"
+                    const wetValue = idealValue * 0.4 + 800; // Wet surface still conducts
+                    targetValue = dryValue + (wetValue - dryValue) * wetnessFactor;
+                }
+
+                // Store target for display
+                this.environment.targetAdcValue = Math.round(targetValue);
+
+                // ========== 5. APPLY INERTIA (SMOOTH TRANSITIONS) ==========
+                // ADC doesn't jump instantly - physical process of drying/wetting
+
+                const currentAdc = this.environment.currentAdcValue || targetValue;
+
+                if (targetValue < currentAdc) {
+                    // Going down (drying) - SLOW transition
+                    // Contaminated surfaces hold moisture longer
+                    const tau = this.environment.dryingInertia * (1 + contaminationLevel * 2);
+                    const alpha = 1 - Math.exp(-0.1 / tau);
+                    this.environment.currentAdcValue = currentAdc - (currentAdc - targetValue) * alpha;
+                } else {
+                    // Going up (wetting) - FAST transition
+                    const wetAlpha = 0.4;
+                    this.environment.currentAdcValue = currentAdc + (targetValue - currentAdc) * wetAlpha;
+                }
+
+                let finalValue = this.environment.currentAdcValue;
+
+                // ========== 6. ELECTRODE HEALTH EFFECTS ==========
+                const healthFactor = (this.environment.electrodeHealth[0] +
+                                     this.environment.electrodeHealth[1]) / 200;
+                finalValue *= healthFactor;
+
+                // ========== 7. NOISE ==========
+                // More noise with contamination (unstable surface layer)
+                const noiseFactor = 1 + contaminationLevel * 1.5;
+                const noise = (Math.random() - 0.5) * 2 * this.environment.noise * noiseFactor;
+                finalValue += noise;
+
+                // Clamp to ADC range (14-bit)
+                return Math.max(0, Math.min(16383, Math.round(finalValue)));
+            }
+
+            // Moving average filter
+            applyMovingAverage(value) {
+                this.state.movingAvgBuffer.push(value);
+                if (this.state.movingAvgBuffer.length > this.config.movingAvgSize) {
+                    this.state.movingAvgBuffer.shift();
+                }
+                const sum = this.state.movingAvgBuffer.reduce((a, b) => a + b, 0);
+                return Math.round(sum / this.state.movingAvgBuffer.length);
+            }
+
+            // Exponential moving average for water calibration
+            // STRICT CONDITIONS to prevent corruption from biofouling surface readings
+            updateWaterBaseline(value) {
+                // Problem: With biofouling, surface readings are elevated (e.g., 800-1500 instead of 200)
+                // If we update water baseline with these values, threshold drops and we can't detect surface
+                //
+                // Solution: Only update water baseline if ALL conditions are met:
+                // 1. Value is clearly above current threshold (truly underwater, not in hysteresis zone)
+                // 2. Value is significantly above air baseline (at least 5x - true saltwater is 10x+)
+                // 3. Value meets ABSOLUTE minimum for seawater (typical seawater ADC > 2000 on 14-bit)
+                // 4. AND value is within expected water range OR higher (salinity increase is OK)
+
+                const thresholdWithMargin = this.calibration.thresholdCurrent + this.calibration.hysteresisValue;
+                const minExpectedWater = this.calibration.thresholdWater * 0.85;  // Allow 15% drop max
+
+                // CRITICAL: These absolute thresholds prevent biofouling corruption
+                const ABSOLUTE_MIN_WATER = 2000;  // True seawater on 14-bit ADC > 2000
+                const MIN_WATER_AIR_RATIO = 5;    // Must be 5x+ air baseline
+
+                const clearlyUnderwater = value > thresholdWithMargin;
+                const aboveAbsoluteMin = value >= ABSOLUTE_MIN_WATER;
+                const significantlyAboveAir = value >= this.calibration.thresholdAir * MIN_WATER_AIR_RATIO;
+                const withinExpectedRange = value >= minExpectedWater;
+                const salinityIncrease = value > this.calibration.thresholdWater;
+
+                // ALL conditions must be met to update water baseline
+                if (clearlyUnderwater && aboveAbsoluteMin && significantlyAboveAir &&
+                    (withinExpectedRange || salinityIncrease)) {
+                    const oldWater = this.calibration.thresholdWater;
+                    this.calibration.thresholdWater = Math.round(
+                        this.config.alpha * value +
+                        (1 - this.config.alpha) * this.calibration.thresholdWater
+                    );
+                    this.updateDynamicThreshold();
+                    this.log('trace', `Water baseline: ${oldWater} → ${this.calibration.thresholdWater}`);
+                }
+            }
+
+            // Main detection algorithm
+            detectorState() {
+                // 1. Read ADC
+                const raw = this.readAnalogSWS();
+                this.state.adcRaw = raw;
+
+                // 2. Validate reading
+                if (raw < 50 || raw > 16300) {
+                    this.log('warn', `Invalid ADC reading ${raw}, using previous state`);
+                    return this.state.currentState;
+                }
+
+                // 3. Apply filter
+                const filtered = this.applyMovingAverage(raw);
+                this.state.adcFiltered = filtered;
+
+                // 3.3 TREND DETECTION (for biofouling surface detection)
+                // Track ADC values to detect decreasing trend (= drying = surface)
+                const TREND_BUFFER_SIZE = 8;
+                const TREND_DECREASE_THRESHOLD_PERCENT = 2;  // 2% decrease threshold
+                const TREND_DECREASE_ABSOLUTE_MIN = 8;       // REDUCED: 8 ADC for faster detection
+                const TREND_CONSECUTIVE_DECREASE_MIN = 3;    // REDUCED: 3 consecutive (was 4)
+                const TREND_TOTAL_DROP_PERCENT = 10;         // REDUCED: 10% total drop (was 15%)
+                const CUMULATIVE_DROP_PERCENT = 15;          // REDUCED: 15% cumulative (was 20%)
+                const VARIANCE_HIGH_THRESHOLD = 10000;
+                const ABSOLUTE_MIN_WATER = 2000;
+                const SURFACE_LOCKOUT_DURATION = 30;         // 30s lockout after max dive time
+
+                // Get previous value before adding new one
+                const prevTrendValue = this.state.trendBuffer.length > 0 ?
+                    this.state.trendBuffer[this.state.trendBuffer.length - 1] : 0;
+
+                // Add to trend buffer
+                this.state.trendBuffer.push(filtered);
+                if (this.state.trendBuffer.length > TREND_BUFFER_SIZE) {
+                    this.state.trendBuffer.shift();
+                }
+
+                // Track peak ADC while "underwater" (for cumulative drop detection)
+                if (this.state.currentState === 1) {
+                    if (filtered > this.state.peakAdcSinceUnderwater) {
+                        this.state.peakAdcSinceUnderwater = filtered;
+                    }
+                    // Calculate cumulative drop from peak
+                    if (this.state.peakAdcSinceUnderwater > 0) {
+                        this.state.cumulativeDropFromPeak = Math.round(
+                            (this.state.peakAdcSinceUnderwater - filtered) * 100 / this.state.peakAdcSinceUnderwater
+                        );
+                    }
+                }
+
+                // Check if value is decreasing (more sensitive threshold for slow drying)
+                let isDecreasing = false;
+                if (prevTrendValue > 0) {
+                    // Use lower of: 2% OR absolute 10 ADC counts (helps with slow biofouling drying)
+                    const percentThreshold = prevTrendValue * TREND_DECREASE_THRESHOLD_PERCENT / 100;
+                    const decreaseThreshold = Math.max(TREND_DECREASE_ABSOLUTE_MIN, percentThreshold);
+                    isDecreasing = (prevTrendValue > filtered + decreaseThreshold);
+                }
+
+                // More tolerant: decrement by 1 instead of reset to 0 (like optimizer)
+                if (isDecreasing) {
+                    this.state.decreasingTrendCount++;
+                } else {
+                    this.state.decreasingTrendCount = Math.max(0, this.state.decreasingTrendCount - 1);
+                }
+
+                // Calculate max, min, and total drop percentage
+                const trendMax = Math.max(...this.state.trendBuffer);
+                const trendMin = Math.min(...this.state.trendBuffer);
+                const totalDropPercent = trendMax > 0 ? Math.round((trendMax - trendMin) * 100 / trendMax) : 0;
+                this.state.totalDropPercent = totalDropPercent;  // Store for UI
+
+                // Calculate variance
+                if (this.state.trendBuffer.length >= 4) {
+                    const mean = this.state.trendBuffer.reduce((a, b) => a + b, 0) / this.state.trendBuffer.length;
+                    const sumSq = this.state.trendBuffer.reduce((sum, val) => {
+                        const diff = val - mean;
+                        return sum + diff * diff;
+                    }, 0);
+                    this.state.varianceValue = Math.round(sumSq / this.state.trendBuffer.length);
+                }
+
+                // Trend-based surface detection flag (consecutive OR cumulative drop)
+                const consecutiveTrend = (this.state.decreasingTrendCount >= TREND_CONSECUTIVE_DECREASE_MIN &&
+                                          totalDropPercent >= TREND_TOTAL_DROP_PERCENT);
+                const cumulativeTrend = (this.state.cumulativeDropFromPeak >= CUMULATIVE_DROP_PERCENT &&
+                                         this.state.timeInCurrentState > 10);  // REDUCED: 10s (was 20s)
+                const trendSuggestsSurface = consecutiveTrend || cumulativeTrend;
+                this.state.trendSuggestsSurface = trendSuggestsSurface;  // Store for UI
+
+                // Variance-based surface detection flag
+                const varianceSuggestsSurface = (this.state.varianceValue >= VARIANCE_HIGH_THRESHOLD);
+                this.state.varianceSuggestsSurface = varianceSuggestsSurface;  // Store for UI
+
+                // 3.5 ADAPTIVE AIR BASELINE RECALIBRATION
+                // When at surface for extended time with biofouling, the air
+                // baseline drifts up. We adapt the threshold accordingly.
+                if (this.state.currentState === 0 && this.state.timeInCurrentState > 10) {
+                    this.state.surfaceReadingsBuffer.push(filtered);
+                    // Match firmware: SURFACE_BUFFER_SIZE = 10
+                    if (this.state.surfaceReadingsBuffer.length > 10) {
+                        this.state.surfaceReadingsBuffer.shift();
+                    }
+
+                    // Every 10 seconds at surface, check if we need to adapt
+                    // Match firmware: count >= SURFACE_BUFFER_SIZE / 2 = 5
+                    // Use Math.floor to handle floating-point time
+                    const timeInt = Math.floor(this.state.timeInCurrentState);
+                    if (this.state.surfaceReadingsBuffer.length >= 5 &&
+                        timeInt > 0 && timeInt % 10 === 0) {
+                        const avgSurface = this.state.surfaceReadingsBuffer.reduce((a,b)=>a+b,0) /
+                                          this.state.surfaceReadingsBuffer.length;
+
+                        // If surface readings are significantly above air baseline
+                        // (indicates biofouling/salt deposits)
+                        if (avgSurface > this.calibration.thresholdAir * 1.3) {
+                            const oldAir = this.calibration.thresholdAir;
+                            // Gradually adapt upward (slow adaptation, 10% per update)
+                            this.calibration.thresholdAir = Math.round(
+                                this.calibration.thresholdAir * 0.9 + avgSurface * 0.1
+                            );
+                            this.updateDynamicThreshold();
+                            this.log('info', `Adaptive air baseline: ${oldAir} → ${this.calibration.thresholdAir} (biofouling compensation)`);
+                        }
+                    }
+                } else if (this.state.currentState === 1) {
+                    // Reset surface buffer when underwater
+                    this.state.surfaceReadingsBuffer = [];
+                }
+
+                // 3.6 FORCED RECALIBRATION - Détection biofouling sévère
+                // Si on reste "underwater" trop longtemps avec des lectures stables,
+                // c'est probablement que le baseline air a dérivé (biofouling)
+                if (this.state.currentState === 1) {
+                    // Track minimum ADC value seen during this "dive"
+                    if (!this.state.minAdcDuringDive || filtered < this.state.minAdcDuringDive) {
+                        this.state.minAdcDuringDive = filtered;
+                    }
+
+                    // After extended time underwater, check if readings suggest biofouling
+                    // Use Math.floor for modulo check with floating-point time
+                    const diveTimeInt = Math.floor(this.state.timeInCurrentState);
+                    if (diveTimeInt > 60 && diveTimeInt % 30 === 0) {
+                        const minAdc = this.state.minAdcDuringDive;
+                        const expectedWater = this.calibration.thresholdWater;
+
+                        // If minimum ADC is way above water threshold, something's wrong
+                        // This indicates the air baseline has shifted up significantly
+                        if (minAdc > this.calibration.thresholdAir * 3 &&
+                            minAdc < expectedWater * 0.7) {
+                            // The minimum reading during "dive" is actually surface with biofouling
+                            const oldAir = this.calibration.thresholdAir;
+                            const newAir = Math.round(minAdc * 0.85);  // Set new air baseline
+
+                            if (newAir > oldAir * 1.5) {
+                                this.calibration.thresholdAir = newAir;
+                                this.updateDynamicThreshold();
+                                this.log('warn', `Forced recalib: Air ${oldAir} → ${newAir} (biofouling detected)`);
+
+                                // Force re-evaluation of state
+                                this.state.consecutiveSamples = 0;
+                            }
+                        }
+                    }
+                } else {
+                    // Reset when at surface
+                    this.state.minAdcDuringDive = null;
+                }
+
+                // 4. Calculate thresholds with hysteresis
+                const thresholdHigh = this.calibration.thresholdCurrent +
+                                     this.calibration.hysteresisValue;
+                const thresholdLow = this.calibration.thresholdCurrent -
+                                    this.calibration.hysteresisValue;
+
+                // 5. State decision with hysteresis
+                let newState = this.state.currentState;
+
+                // === FAST DROP DETECTION (immediate surface on rapid ADC decrease) ===
+                // If ADC drops significantly in a short time, bypass all delays
+                let fastDropDetected = false;
+                if (this.state.currentState === 1 && this.state.trendBuffer.length >= 3 && this.state.timeInCurrentState > 3) {
+                    // Find max ADC in trend buffer (last 3-4 samples)
+                    const recentMax = Math.max(...this.state.trendBuffer.slice(-4));
+                    if (recentMax > 0 && filtered < recentMax) {
+                        const fastDropPercent = Math.round((recentMax - filtered) * 100 / recentMax);
+                        // If >8% drop in ~3s AND below true seawater range → immediate surface
+                        if (fastDropPercent >= 8 && filtered < ABSOLUTE_MIN_WATER) {
+                            fastDropDetected = true;
+                            this.log('info', `FAST DROP: ${fastDropPercent}% (max=${recentMax} curr=${filtered}) → SURFACE`);
+                        }
+                    }
+                }
+                this.state.fastDropDetected = fastDropDetected;  // Store for UI
+
+                // === TREND/VARIANCE BASED SURFACE DETECTION (Biofouling override) ===
+                // Even if ADC is above threshold, detect surface if:
+                // 1. We're currently "underwater" and (been there > 15s OR fast drop detected)
+                // 2. ADC shows consistent decreasing trend (drying) OR high variance OR fast drop
+                // 3. ADC is below true seawater range (< 2000)
+                let biofoulingSurfaceOverride = false;
+                if (this.state.currentState === 1 && (this.state.timeInCurrentState > 15 || fastDropDetected)) {
+                    if ((trendSuggestsSurface || varianceSuggestsSurface || fastDropDetected) && filtered < ABSOLUTE_MIN_WATER) {
+                        biofoulingSurfaceOverride = true;
+                        this.log('info', `Surface override: trend=${trendSuggestsSurface} var=${varianceSuggestsSurface} fast=${fastDropDetected} ADC=${filtered}`);
+
+                        // Recalibrate air baseline to trend minimum
+                        if (trendMin > this.calibration.thresholdAir && trendMin < ABSOLUTE_MIN_WATER) {
+                            const oldAir = this.calibration.thresholdAir;
+                            this.calibration.thresholdAir = Math.round(trendMin * 0.9);
+                            this.updateDynamicThreshold();
+                            this.log('info', `Trend-based air recalib: ${oldAir} → ${this.calibration.thresholdAir}`);
+                        }
+                    }
+                }
+                this.state.biofoulingSurfaceOverride = biofoulingSurfaceOverride;  // Store for UI
+
+                if (biofoulingSurfaceOverride) {
+                    // Force surface detection based on trend/variance
+                    newState = 0;
+                    this.state.consecutiveSamples = 0;
+                    this.state.timeInHysteresis = 0;
+                } else if (filtered > thresholdHigh) {
+                    this.state.consecutiveSamples++;
+                    if (this.state.consecutiveSamples >= this.config.maxSamples) {
+                        newState = 1; // UNDERWATER
+                        this.updateWaterBaseline(filtered);
+                    }
+                } else if (filtered < thresholdLow) {
+                    if (this.state.currentState === 1) {
+                        this.state.consecutiveSamples++;
+                        if (this.state.consecutiveSamples >= this.config.minDrySamples) {
+                            newState = 0; // SURFACE
+                        }
+                    } else {
+                        newState = 0;
+                        this.state.consecutiveSamples = 0;
+                    }
+                } else {
+                    // In hysteresis zone - maintain state
+                    this.state.consecutiveSamples = 0;
+
+                    // Track time in hysteresis zone - might indicate biofouling
+                    this.state.timeInHysteresis = (this.state.timeInHysteresis || 0) + 1;
+
+                    // If stuck in hysteresis for 30+ seconds, recalibrate
+                    if (this.state.timeInHysteresis > 30 && this.state.timeInHysteresis % 15 === 0) {
+                        const oldAir = this.calibration.thresholdAir;
+                        // Move air baseline up to current reading (minus margin)
+                        const newAir = Math.round(filtered * 0.75);
+                        if (newAir > oldAir * 1.2) {
+                            this.calibration.thresholdAir = newAir;
+                            this.updateDynamicThreshold();
+                            this.log('warn', `Hysteresis recalib: Air ${oldAir} → ${newAir} (stuck in zone)`);
+                        }
+                    }
+                }
+
+                // Reset hysteresis counter when we get a clear reading
+                if (filtered > thresholdHigh * 1.2 || filtered < thresholdLow * 0.8) {
+                    this.state.timeInHysteresis = 0;
+                }
+
+                // 6. Safety checks
+                // Decrement surface lockout timer
+                if (this.state.surfaceLockoutRemaining > 0) {
+                    this.state.surfaceLockoutRemaining = Math.max(0, this.state.surfaceLockoutRemaining - 1);
+                }
+
+                // Max dive time
+                if (newState === 1 &&
+                    this.state.timeInCurrentState > this.config.maxDiveTime) {
+                    this.log('warn', `Max dive time exceeded (${this.state.timeInCurrentState}s), forcing surface with ${SURFACE_LOCKOUT_DURATION}s lockout`);
+                    newState = 0;
+
+                    // CRITICAL: Set surface lockout to prevent immediate re-submersion
+                    this.state.surfaceLockoutRemaining = SURFACE_LOCKOUT_DURATION;
+
+                    // If we hit max dive time, likely biofouling issue - recalibrate air baseline
+                    const minAdc = this.state.minAdcDuringDive;
+                    if (minAdc && minAdc > this.calibration.thresholdAir * 2) {
+                        const oldAir = this.calibration.thresholdAir;
+                        this.calibration.thresholdAir = Math.round(minAdc * 0.8);
+                        this.updateDynamicThreshold();
+                        this.log('warn', `Max dive recalib: Air ${oldAir} → ${this.calibration.thresholdAir} (biofouling suspected)`);
+                    }
+                }
+
+                // Surface lockout: prevent return to underwater during lockout period
+                if (this.state.surfaceLockoutRemaining > 0 && newState === 1) {
+                    this.log('info', `Surface lockout active (${this.state.surfaceLockoutRemaining}s remaining), staying at surface`);
+                    newState = 0;
+                }
+
+                // Min surface time
+                if (this.state.currentState === 0 &&
+                    this.state.timeInCurrentState < this.config.minSurfaceTime &&
+                    newState === 1) {
+                    newState = 0; // Stay at surface
+                }
+
+                // 7. State change detection
+                if (newState !== this.state.currentState) {
+                    this.log('info', `State change: ${this.state.currentState === 0 ? 'SURFACE' : 'UNDERWATER'} → ${newState === 0 ? 'SURFACE' : 'UNDERWATER'} (ADC=${filtered})`);
+                    this.state.previousState = this.state.currentState;
+                    this.state.currentState = newState;
+                    this.state.timeInCurrentState = 0;
+                    this.state.consecutiveSamples = 0;
+                    this.stats.transitions++;
+
+                    // Reset trend and variance tracking on state change
+                    this.state.trendBuffer = [];
+                    this.state.decreasingTrendCount = 0;
+                    this.state.varianceValue = 0;
+
+                    // Reset cumulative tracking on state change
+                    this.state.peakAdcSinceUnderwater = 0;
+                    this.state.cumulativeDropFromPeak = 0;
+                }
+
+                return newState;
+            }
+
+            // Calibration routines
+            calibrateAir() {
+                this.log('info', 'Starting air calibration (10 samples)...');
+                this.calibration.isCalibrated = false;
+
+                // Take 10 samples
+                let sum = 0;
+                const samples = [];
+                for (let i = 0; i < 10; i++) {
+                    const value = this.readAnalogSWS();
+                    samples.push(value);
+                    sum += value;
+                }
+
+                this.calibration.thresholdAir = Math.round(sum / 10);
+                this.calibration.thresholdWater = this.calibration.thresholdAir * 3;
+                this.updateDynamicThreshold();
+                this.calibration.isCalibrated = true;
+                this.calibration.lastCalibTime = this.simulation.elapsedTime;
+                this.stats.calibrations++;
+
+                this.log('success', `Air calibration complete: air=${this.calibration.thresholdAir}, water=${this.calibration.thresholdWater}, thresh=${this.calibration.thresholdCurrent}`);
+            }
+
+            // Periodic recalibration check
+            checkRecalibration() {
+                const timeSinceCalib = this.simulation.elapsedTime - this.calibration.lastCalibTime;
+                if (timeSinceCalib >= this.config.calibInterval && this.state.currentState === 0) {
+                    this.log('info', 'Periodic recalibration triggered');
+                    this.calibrateAir();
+                }
+            }
+
+            // Update simulation
+            update(deltaTime) {
+                if (!this.simulation.running) return;
+
+                const scaledDelta = deltaTime * this.simulation.speed;
+                this.simulation.elapsedTime += scaledDelta;
+                this.state.timeInCurrentState += scaledDelta;
+                this.stats.totalTime += scaledDelta;
+                this.state.timeSinceLastSample += scaledDelta;
+
+                // === GROUND TRUTH STATE (actual turtle position) ===
+                // Determine actual state from environment type
+                const isActuallyUnderwater = ['freshwater', 'brackish', 'saltwater', 'deadsea'].includes(this.environment.type);
+                const newGroundTruth = isActuallyUnderwater ? 1 : 0;
+
+                // Track ground truth state changes
+                if (newGroundTruth !== this.state.groundTruthState) {
+                    this.state.groundTruthState = newGroundTruth;
+                    this.state.groundTruthChangeTime = this.simulation.elapsedTime;
+                    this.log('info', `🐢 GROUND TRUTH: ${newGroundTruth === 0 ? 'SURFACE' : 'UNDERWATER'} at t=${this.simulation.elapsedTime.toFixed(1)}s`);
+                }
+
+                // === LATENCY & ERROR TRACKING ===
+                // Track false positives and negatives
+                if (this.state.currentState !== this.state.groundTruthState) {
+                    if (this.state.currentState === 1 && this.state.groundTruthState === 0) {
+                        // False positive: detected underwater but actually at surface
+                        this.state.falsePositiveTime += scaledDelta;
+                    } else if (this.state.currentState === 0 && this.state.groundTruthState === 1) {
+                        // False negative: detected surface but actually underwater
+                        this.state.falseNegativeTime += scaledDelta;
+                    }
+                }
+
+                // Update stats
+                if (this.state.currentState === 0) {
+                    this.stats.surfaceTime += scaledDelta;
+                } else {
+                    this.stats.diveTime += scaledDelta;
+                }
+
+                // Apply drift if enabled
+                if (this.environment.driftEnabled) {
+                    this.applyDrift(scaledDelta);
+                }
+
+                // Run detection at firmware sample rate (1Hz = every 1 simulated second)
+                // This ensures trend buffer fills at the same rate as firmware
+                // regardless of simulation speed
+                const previousDetectedState = this.state.currentState;
+                if (this.state.timeSinceLastSample >= this.config.samplePeriod) {
+                    this.detectorState();
+                    this.state.timeSinceLastSample = 0;
+                }
+
+                // Track detected state changes and calculate latency
+                if (this.state.currentState !== previousDetectedState) {
+                    this.state.detectedChangeTime = this.simulation.elapsedTime;
+
+                    // Calculate latency from ground truth change to detection
+                    if (this.state.groundTruthChangeTime > 0) {
+                        const latency = this.state.detectedChangeTime - this.state.groundTruthChangeTime;
+                        if (latency >= 0 && latency < 300) { // Reasonable latency range
+                            this.state.lastLatency = latency;
+                            this.state.latencyHistory.push(latency);
+                            if (this.state.latencyHistory.length > 50) {
+                                this.state.latencyHistory.shift();
+                            }
+                            this.log('info', `📡 DETECTED: ${this.state.currentState === 0 ? 'SURFACE' : 'UNDERWATER'} | Latency: ${latency.toFixed(1)}s`);
+                        }
+                    }
+                }
+
+                // Check for recalibration
+                this.checkRecalibration();
+
+                // Update chart
+                this.updateChartData();
+
+                // Run scenario if active
+                if (this.simulation.scenario) {
+                    this.runScenario(scaledDelta);
+                }
+            }
+
+            applyDrift(deltaTime) {
+                const driftRate = this.environment.driftSpeed * 0.001 * deltaTime;
+
+                // Electrode degradation over time
+                this.environment.electrodeHealth[0] = Math.max(50,
+                    this.environment.electrodeHealth[0] - driftRate);
+                this.environment.electrodeHealth[1] = Math.max(50,
+                    this.environment.electrodeHealth[1] - driftRate);
+
+                // Salt deposit accumulation (faster in water)
+                if (this.state.currentState === 1) {
+                    this.environment.saltDeposit = Math.min(100,
+                        this.environment.saltDeposit + driftRate * 5);
+                }
+            }
+
+            // Scenario execution
+            runScenario(deltaTime) {
+                const scenario = this.simulation.scenario;
+                scenario.elapsed += deltaTime;
+
+                switch (scenario.type) {
+                    case 'normal':
+                        this.runNormalDiveScenario(scenario);
+                        break;
+                    case 'splash':
+                        this.runSplashScenario(scenario);
+                        break;
+                    case 'salinity':
+                        this.runSalinityScenario(scenario);
+                        break;
+                    case 'drift':
+                        this.runDriftScenario(scenario);
+                        break;
+                    case 'long':
+                        this.runLongDiveScenario(scenario);
+                        break;
+                    case 'aged6m':
+                        this.runAged6mScenario(scenario);
+                        break;
+                    case 'aged1y':
+                        this.runAged1yScenario(scenario);
+                        break;
+                    case 'extreme':
+                        this.runExtremeScenario(scenario);
+                        break;
+                }
+            }
+
+            runNormalDiveScenario(scenario) {
+                // Dive pattern: surface 30s, dive 60s, surface 30s, repeat
+                const cycleTime = scenario.elapsed % 120;
+                if (cycleTime < 30) {
+                    this.environment.type = 'air';
+                } else if (cycleTime < 90) {
+                    this.environment.type = 'saltwater';
+                    this.environment.salinity = 35;
+                } else {
+                    this.environment.type = 'air';
+                }
+            }
+
+            runSplashScenario(scenario) {
+                // Random splashes while at surface
+                this.environment.type = 'air';
+                if (Math.random() < 0.05) {
+                    this.environment.type = 'freshwater';
+                    setTimeout(() => {
+                        this.environment.type = 'air';
+                    }, 500);
+                }
+            }
+
+            runSalinityScenario(scenario) {
+                // Gradual salinity change
+                const phase = Math.floor(scenario.elapsed / 60) % 4;
+                switch (phase) {
+                    case 0:
+                        this.environment.type = 'freshwater';
+                        this.environment.salinity = 5;
+                        break;
+                    case 1:
+                        this.environment.type = 'brackish';
+                        this.environment.salinity = 15;
+                        break;
+                    case 2:
+                        this.environment.type = 'saltwater';
+                        this.environment.salinity = 35;
+                        break;
+                    case 3:
+                        this.environment.type = 'deadsea';
+                        this.environment.salinity = 100;
+                        break;
+                }
+            }
+
+            runDriftScenario(scenario) {
+                this.environment.driftEnabled = true;
+                this.environment.driftSpeed = 8;
+                // Alternate between surface and water to accelerate deposit
+                const cycleTime = scenario.elapsed % 40;
+                this.environment.type = cycleTime < 20 ? 'air' : 'saltwater';
+            }
+
+            runLongDiveScenario(scenario) {
+                // Long continuous dive
+                if (scenario.elapsed < 30) {
+                    this.environment.type = 'air';
+                } else {
+                    this.environment.type = 'saltwater';
+                    this.environment.salinity = 35;
+                }
+            }
+
+            runAged6mScenario(scenario) {
+                // 6 months of exposure - moderate contamination
+                // Progressive buildup during scenario
+                const progress = Math.min(1, scenario.elapsed / 120);
+
+                // Set contamination levels
+                this.environment.deviceAge = 50 * progress;
+                this.environment.saltDeposit = 30 * progress;
+                this.environment.biofouling = 20 * progress;
+                this.environment.residualConductivity = 200 * progress;
+                this.environment.dryingInertia = 5 + 10 * progress;
+
+                // Normal dive pattern with degraded readings
+                const cycleTime = scenario.elapsed % 90;
+                if (cycleTime < 25) {
+                    this.environment.type = 'air';
+                } else if (cycleTime < 70) {
+                    this.environment.type = 'saltwater';
+                    this.environment.salinity = 35;
+                } else {
+                    this.environment.type = 'air';
+                }
+
+                // Update UI sliders
+                this.updateContaminationUI();
+            }
+
+            runAged1yScenario(scenario) {
+                // 1 year under water - heavy contamination
+                // This simulates what happens after long-term deployment
+                const progress = Math.min(1, scenario.elapsed / 180);
+
+                // Heavy contamination
+                this.environment.deviceAge = 80 + 20 * progress;
+                this.environment.saltDeposit = 60 + 30 * progress;
+                this.environment.biofouling = 50 + 40 * progress;
+                this.environment.residualConductivity = 400 + 400 * progress;
+                this.environment.dryingInertia = 20 + 40 * progress;
+
+                // Dive pattern - notice how surface readings don't go back to baseline
+                const cycleTime = scenario.elapsed % 120;
+                if (cycleTime < 40) {
+                    this.environment.type = 'air'; // But ADC stays high due to contamination!
+                } else {
+                    this.environment.type = 'saltwater';
+                    this.environment.salinity = 35;
+                }
+
+                this.updateContaminationUI();
+            }
+
+            runExtremeScenario(scenario) {
+                // Extreme contamination - worst case scenario
+                // Heavy biofouling + salt crystals everywhere
+                const progress = Math.min(1, scenario.elapsed / 60);
+
+                this.environment.deviceAge = 100;
+                this.environment.saltDeposit = 90 + 10 * progress;
+                this.environment.biofouling = 85 + 15 * progress;
+                this.environment.residualConductivity = 800 + 400 * progress;
+                this.environment.dryingInertia = 60 + 60 * progress;
+
+                // Even in air, readings stay very high
+                const cycleTime = scenario.elapsed % 60;
+                if (cycleTime < 30) {
+                    this.environment.type = 'air';
+                } else {
+                    this.environment.type = 'saltwater';
+                    this.environment.salinity = 35;
+                }
+
+                this.updateContaminationUI();
+            }
+
+            updateContaminationUI() {
+                // Update sliders to reflect current contamination state
+                document.getElementById('deviceAge').value = this.environment.deviceAge;
+                document.getElementById('saltDeposit').value = this.environment.saltDeposit;
+                document.getElementById('biofouling').value = this.environment.biofouling;
+                document.getElementById('residualConductivity').value = this.environment.residualConductivity;
+                document.getElementById('dryingInertia').value = this.environment.dryingInertia;
+
+                // Update displays
+                const ageLabels = ['Neuf', '1 mois', '3 mois', '6 mois', '9 mois', '1 an+'];
+                const ageIndex = Math.min(5, Math.floor(this.environment.deviceAge / 20));
+                document.getElementById('deviceAgeDisplay').textContent = ageLabels[ageIndex];
+                document.getElementById('agingMarker').style.left = this.environment.deviceAge + '%';
+
+                document.getElementById('saltDepositDisplay').textContent = Math.round(this.environment.saltDeposit) + '%';
+                document.getElementById('biofoulingDisplay').textContent = Math.round(this.environment.biofouling) + '%';
+                document.getElementById('residualConductivityDisplay').textContent = Math.round(this.environment.residualConductivity);
+                document.getElementById('dryingInertiaDisplay').textContent = Math.round(this.environment.dryingInertia) + 's';
+            }
+
+            startScenario(type) {
+                this.simulation.scenario = {
+                    type: type,
+                    elapsed: 0,
+                    startTime: this.simulation.elapsedTime
+                };
+                this.log('info', `Started scenario: ${type}`);
+            }
+
+            stopScenario() {
+                this.simulation.scenario = null;
+            }
+
+            // Chart management
+            initChart() {
+                const ctx = document.getElementById('adc-chart').getContext('2d');
+                this.chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: this.chartData.labels,
+                        datasets: [
+                            {
+                                label: 'ADC Brut',
+                                data: this.chartData.adcRaw,
+                                borderColor: 'rgba(255, 255, 255, 0.3)',
+                                backgroundColor: 'transparent',
+                                borderWidth: 1,
+                                pointRadius: 0,
+                                tension: 0.1
+                            },
+                            {
+                                label: 'ADC Filtré',
+                                data: this.chartData.adcFiltered,
+                                borderColor: '#00d9ff',
+                                backgroundColor: 'transparent',
+                                borderWidth: 2,
+                                pointRadius: 0,
+                                tension: 0.3
+                            },
+                            {
+                                label: 'Seuil Haut',
+                                data: this.chartData.thresholdHigh,
+                                borderColor: '#e94560',
+                                backgroundColor: 'transparent',
+                                borderWidth: 1,
+                                borderDash: [5, 5],
+                                pointRadius: 0
+                            },
+                            {
+                                label: 'Seuil Bas',
+                                data: this.chartData.thresholdLow,
+                                borderColor: '#e94560',
+                                backgroundColor: 'transparent',
+                                borderWidth: 1,
+                                borderDash: [5, 5],
+                                pointRadius: 0
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        scales: {
+                            x: {
+                                display: true,
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                ticks: {
+                                    color: '#a0a0a0',
+                                    maxTicksLimit: 10
+                                }
+                            },
+                            y: {
+                                display: true,
+                                min: 0,
+                                max: 5000,
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                ticks: {
+                                    color: '#a0a0a0'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top',
+                                labels: {
+                                    color: '#a0a0a0',
+                                    usePointStyle: true
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            updateChartData() {
+                const time = Math.round(this.simulation.elapsedTime);
+                const threshHigh = this.calibration.thresholdCurrent + this.calibration.hysteresisValue;
+                const threshLow = this.calibration.thresholdCurrent - this.calibration.hysteresisValue;
+
+                this.chartData.labels.push(time + 's');
+                this.chartData.adcRaw.push(this.state.adcRaw);
+                this.chartData.adcFiltered.push(this.state.adcFiltered);
+                this.chartData.thresholdHigh.push(threshHigh);
+                this.chartData.thresholdLow.push(threshLow);
+
+                // Limit data points
+                if (this.chartData.labels.length > this.chartData.maxPoints) {
+                    this.chartData.labels.shift();
+                    this.chartData.adcRaw.shift();
+                    this.chartData.adcFiltered.shift();
+                    this.chartData.thresholdHigh.shift();
+                    this.chartData.thresholdLow.shift();
+                }
+
+                // Update chart y-axis based on max value
+                const maxVal = Math.max(...this.chartData.adcFiltered, ...this.chartData.thresholdHigh) * 1.2;
+                this.chart.options.scales.y.max = Math.max(2000, Math.min(16383, maxVal));
+
+                this.chart.update('none');
+            }
+
+            // Logging
+            log(type, message) {
+                const container = document.getElementById('logContainer');
+                const entry = document.createElement('div');
+                entry.className = `log-entry ${type}`;
+                const time = this.formatTime(this.simulation.elapsedTime);
+                entry.textContent = `[${time}] ${message}`;
+                container.appendChild(entry);
+                container.scrollTop = container.scrollHeight;
+
+                // Limit log entries
+                while (container.children.length > 100) {
+                    container.removeChild(container.firstChild);
+                }
+            }
+
+            formatTime(seconds) {
+                const mins = Math.floor(seconds / 60);
+                const secs = Math.floor(seconds % 60);
+                return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            }
+
+            reset() {
+                this.simulation.elapsedTime = 0;
+                this.simulation.running = false;
+                this.simulation.scenario = null;
+
+                this.state = {
+                    currentState: 0,
+                    previousState: 0,
+                    timeInCurrentState: 0,
+                    consecutiveSamples: 0,
+                    movingAvgBuffer: [],
+                    surfaceReadingsBuffer: [],
+                    minAdcDuringDive: null,
+                    timeInHysteresis: 0,
+                    adcRaw: 0,
+                    adcFiltered: 0,
+                    // Ground truth vs Detected state tracking (for latency measurement)
+                    groundTruthState: 0,        // 0 = SURFACE, 1 = UNDERWATER (ACTUAL turtle state)
+                    groundTruthChangeTime: 0,   // When ground truth last changed
+                    detectedChangeTime: 0,      // When detected state last changed
+                    lastLatency: 0,             // Latency of last state change (seconds)
+                    latencyHistory: [],         // History of latencies for stats
+                    falsePositiveTime: 0,       // Time spent in false positive (detected UW, actually surface)
+                    falseNegativeTime: 0,       // Time spent in false negative (detected surface, actually UW)
+                    // Trend/Variance detection (reset)
+                    trendBuffer: [],
+                    decreasingTrendCount: 0,
+                    totalDropPercent: 0,
+                    varianceValue: 0,
+                    trendSuggestsSurface: false,
+                    varianceSuggestsSurface: false,
+                    biofoulingSurfaceOverride: false,
+                    fastDropDetected: false,  // Fast drop detection flag
+                    // Sampling rate control (to match firmware 1Hz)
+                    timeSinceLastSample: 0,
+                    // Surface lockout after max dive time (prevent immediate re-submersion)
+                    surfaceLockoutRemaining: 0,
+                    // Cumulative drop tracking (more robust than consecutive-only)
+                    peakAdcSinceUnderwater: 0,
+                    cumulativeDropFromPeak: 0
+                };
+
+                this.calibration = {
+                    thresholdAir: 200,
+                    thresholdWater: 600,
+                    thresholdCurrent: 0,
+                    hysteresisValue: 0,
+                    isCalibrated: false,
+                    lastCalibTime: 0
+                };
+
+                this.environment = {
+                    type: 'air',
+                    salinity: 0,
+                    noise: 20,
+                    driftEnabled: false,
+                    driftSpeed: 3,
+                    saltDeposit: 0,
+                    electrodeHealth: [100, 100],
+                    // Surface contamination parameters (reset to clean state)
+                    deviceAge: 0,
+                    biofouling: 0,
+                    residualConductivity: 0,
+                    dryingInertia: 1,
+                    currentAdcValue: 0,
+                    targetAdcValue: 0,
+                    surfaceWetness: 0,
+                    exposureTime: 0
+                };
+
+                // Reset biofouling UI sliders to default
+                document.getElementById('deviceAge').value = 0;
+                document.getElementById('saltDeposit').value = 0;
+                document.getElementById('biofouling').value = 0;
+                document.getElementById('residualConductivity').value = 0;
+                document.getElementById('dryingInertia').value = 1;
+                document.getElementById('deviceAgeDisplay').textContent = 'Neuf';
+                document.getElementById('saltDepositDisplay').textContent = '0%';
+                document.getElementById('biofoulingDisplay').textContent = '0%';
+                document.getElementById('residualConductivityDisplay').textContent = '0';
+                document.getElementById('dryingInertiaDisplay').textContent = '1s';
+                document.getElementById('agingMarker').style.left = '0%';
+                document.getElementById('conductivityFill').style.width = '0%';
+                document.getElementById('instantAdc').textContent = '0';
+                document.getElementById('targetAdc').textContent = '0';
+
+                this.stats = {
+                    totalTime: 0,
+                    surfaceTime: 0,
+                    diveTime: 0,
+                    transitions: 0,
+                    calibrations: 1,
+                    falsePositives: 0
+                };
+
+                this.chartData = {
+                    labels: [],
+                    adcRaw: [],
+                    adcFiltered: [],
+                    thresholdHigh: [],
+                    thresholdLow: [],
+                    state: [],
+                    maxPoints: 200
+                };
+
+                this.updateDynamicThreshold();
+                this.calibrateAir();
+
+                document.getElementById('logContainer').innerHTML = '';
+                this.log('info', 'Simulator reset');
+            }
+        }
+
+        // ============================================
+        // UI Controller
+        // ============================================
+
+        class UIController {
+            constructor(simulator) {
+                this.simulator = simulator;
+                this.lastFrameTime = 0;
+                this.animationId = null;
+
+                this.bindEvents();
+                this.updateUI();
+            }
+
+            bindEvents() {
+                // Parameter sliders
+                const paramBindings = [
+                    { id: 'thresholdMin', config: 'thresholdMin', display: 'thresholdMinDisplay' },
+                    { id: 'thresholdMax', config: 'thresholdMax', display: 'thresholdMaxDisplay' },
+                    { id: 'hysteresis', config: 'hysteresis', display: 'hysteresisDisplay', suffix: '%' },
+                    { id: 'thresholdRatio', config: 'thresholdRatio', display: 'thresholdRatioDisplay', suffix: '%' },
+                    { id: 'maxDiveTime', config: 'maxDiveTime', display: 'maxDiveTimeDisplay' },
+                    { id: 'minSurfaceTime', config: 'minSurfaceTime', display: 'minSurfaceTimeDisplay' },
+                    { id: 'calibInterval', config: 'calibInterval', display: 'calibIntervalDisplay' },
+                    { id: 'sampleGap', config: 'sampleGap', display: 'sampleGapDisplay' },
+                    { id: 'maxSamples', config: 'maxSamples', display: 'maxSamplesDisplay' },
+                    { id: 'minDrySamples', config: 'minDrySamples', display: 'minDrySamplesDisplay' },
+                    { id: 'movingAvgSize', config: 'movingAvgSize', display: 'movingAvgSizeDisplay' }
+                ];
+
+                paramBindings.forEach(binding => {
+                    const element = document.getElementById(binding.id);
+                    element.addEventListener('input', (e) => {
+                        const value = parseInt(e.target.value);
+                        this.simulator.config[binding.config] = value;
+                        document.getElementById(binding.display).textContent =
+                            value + (binding.suffix || '');
+                        this.simulator.updateDynamicThreshold();
+                    });
+                });
+
+                // Alpha (special case - divide by 100)
+                document.getElementById('alpha').addEventListener('input', (e) => {
+                    const value = parseInt(e.target.value) / 100;
+                    this.simulator.config.alpha = value;
+                    document.getElementById('alphaDisplay').textContent = value.toFixed(2);
+                });
+
+                // Simulation speed
+                document.getElementById('simSpeed').addEventListener('input', (e) => {
+                    this.simulator.simulation.speed = parseInt(e.target.value);
+                    document.getElementById('simSpeedDisplay').textContent =
+                        'x' + e.target.value;
+                });
+
+                // Environment
+                document.getElementById('environment').addEventListener('change', (e) => {
+                    this.simulator.environment.type = e.target.value;
+                    // Set appropriate salinity
+                    const salinityMap = {
+                        'air': 0, 'humid': 0, 'freshwater': 5,
+                        'brackish': 15, 'saltwater': 35, 'deadsea': 100
+                    };
+                    const salinity = salinityMap[e.target.value] || 0;
+                    this.simulator.environment.salinity = salinity;
+                    document.getElementById('salinity').value = salinity;
+                    document.getElementById('salinityDisplay').textContent =
+                        (salinity / 10).toFixed(1) + '%';
+                });
+
+                document.getElementById('salinity').addEventListener('input', (e) => {
+                    const value = parseInt(e.target.value);
+                    this.simulator.environment.salinity = value;
+                    document.getElementById('salinityDisplay').textContent =
+                        (value / 10).toFixed(1) + '%';
+                });
+
+                document.getElementById('noise').addEventListener('input', (e) => {
+                    const value = parseInt(e.target.value);
+                    this.simulator.environment.noise = value;
+                    document.getElementById('noiseDisplay').textContent = '±' + value;
+                });
+
+                document.getElementById('enableDrift').addEventListener('change', (e) => {
+                    this.simulator.environment.driftEnabled = e.target.checked;
+                    document.getElementById('driftGroup').style.display =
+                        e.target.checked ? 'block' : 'none';
+                });
+
+                document.getElementById('driftSpeed').addEventListener('input', (e) => {
+                    const value = parseInt(e.target.value);
+                    this.simulator.environment.driftSpeed = value;
+                    const labels = ['Très lent', 'Lent', 'Normal', 'Rapide', 'Très rapide'];
+                    document.getElementById('driftSpeedDisplay').textContent =
+                        labels[Math.min(Math.floor(value / 2), 4)];
+                });
+
+                document.getElementById('saltDeposit').addEventListener('input', (e) => {
+                    const value = parseInt(e.target.value);
+                    this.simulator.environment.saltDeposit = value;
+                    document.getElementById('saltDepositDisplay').textContent = value + '%';
+                });
+
+                // Biofouling and surface contamination sliders
+                document.getElementById('deviceAge').addEventListener('input', (e) => {
+                    const value = parseInt(e.target.value);
+                    this.simulator.environment.deviceAge = value;
+                    const ageLabels = ['Neuf', '1 mois', '3 mois', '6 mois', '9 mois', '1 an+'];
+                    const ageIndex = Math.min(5, Math.floor(value / 20));
+                    document.getElementById('deviceAgeDisplay').textContent = ageLabels[ageIndex];
+                    document.getElementById('agingMarker').style.left = value + '%';
+                });
+
+                document.getElementById('biofouling').addEventListener('input', (e) => {
+                    const value = parseInt(e.target.value);
+                    this.simulator.environment.biofouling = value;
+                    document.getElementById('biofoulingDisplay').textContent = value + '%';
+                });
+
+                document.getElementById('residualConductivity').addEventListener('input', (e) => {
+                    const value = parseInt(e.target.value);
+                    this.simulator.environment.residualConductivity = value;
+                    document.getElementById('residualConductivityDisplay').textContent = value;
+                });
+
+                document.getElementById('dryingInertia').addEventListener('input', (e) => {
+                    const value = parseInt(e.target.value);
+                    this.simulator.environment.dryingInertia = value;
+                    document.getElementById('dryingInertiaDisplay').textContent = value + 's';
+                });
+
+                // Control buttons
+                document.getElementById('btnStart').addEventListener('click', () => {
+                    if (!this.simulator.calibration.isCalibrated) {
+                        this.simulator.calibrateAir();
+                    }
+                    this.simulator.simulation.running = true;
+                    this.startAnimation();
+                });
+
+                document.getElementById('btnPause').addEventListener('click', () => {
+                    this.simulator.simulation.running = false;
+                });
+
+                document.getElementById('btnReset').addEventListener('click', () => {
+                    this.simulator.reset();
+                    this.updateUI();
+                    if (this.simulator.chart) {
+                        this.simulator.chart.data.labels = [];
+                        this.simulator.chart.data.datasets.forEach(ds => ds.data = []);
+                        this.simulator.chart.update();
+                    }
+                });
+
+                document.getElementById('btnSurface').addEventListener('click', () => {
+                    this.simulator.environment.type = 'air';
+                    this.simulator.environment.salinity = 0;
+                    document.getElementById('environment').value = 'air';
+                    document.getElementById('salinity').value = 0;
+                    document.getElementById('salinityDisplay').textContent = '0.0%';
+                    this.simulator.stopScenario();
+                });
+
+                document.getElementById('btnDive').addEventListener('click', () => {
+                    this.simulator.environment.type = 'saltwater';
+                    this.simulator.environment.salinity = 35;
+                    document.getElementById('environment').value = 'saltwater';
+                    document.getElementById('salinity').value = 35;
+                    document.getElementById('salinityDisplay').textContent = '3.5%';
+                    this.simulator.stopScenario();
+                });
+
+                document.getElementById('btnCalibrate').addEventListener('click', () => {
+                    this.simulator.calibrateAir();
+                    this.updateUI();
+                });
+
+                // Scenario buttons
+                document.querySelectorAll('.scenario-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const scenario = e.target.dataset.scenario;
+                        this.simulator.startScenario(scenario);
+                        if (!this.simulator.simulation.running) {
+                            this.simulator.simulation.running = true;
+                            this.startAnimation();
+                        }
+                    });
+                });
+            }
+
+            startAnimation() {
+                if (this.animationId) return;
+
+                const animate = (timestamp) => {
+                    if (!this.lastFrameTime) this.lastFrameTime = timestamp;
+                    const deltaTime = (timestamp - this.lastFrameTime) / 1000;
+                    this.lastFrameTime = timestamp;
+
+                    if (this.simulator.simulation.running) {
+                        this.simulator.update(deltaTime);
+                        this.updateUI();
+                    }
+
+                    this.animationId = requestAnimationFrame(animate);
+                };
+
+                this.animationId = requestAnimationFrame(animate);
+            }
+
+            updateUI() {
+                const sim = this.simulator;
+
+                // State indicator
+                const stateIndicator = document.getElementById('stateIndicator');
+                const stateText = document.getElementById('stateText');
+                const stateSubtext = document.getElementById('stateSubtext');
+
+                if (sim.state.currentState === 0) {
+                    stateIndicator.className = 'state-indicator surface';
+                    stateText.textContent = '☀️ SURFACE';
+                    stateSubtext.textContent = `En surface depuis ${sim.formatTime(sim.state.timeInCurrentState)}`;
+                } else {
+                    stateIndicator.className = 'state-indicator underwater';
+                    stateText.textContent = '🌊 UNDERWATER';
+                    stateSubtext.textContent = `En plongée depuis ${sim.formatTime(sim.state.timeInCurrentState)}`;
+                }
+
+                // === GROUND TRUTH vs DETECTED STATE DISPLAY ===
+                const groundTruthEl = document.getElementById('groundTruthState');
+                const detectedEl = document.getElementById('detectedState');
+                const stateMatchEl = document.getElementById('stateMatchDisplay');
+
+                // Ground truth state (actual turtle)
+                if (sim.state.groundTruthState === 0) {
+                    groundTruthEl.textContent = '☀️ SURFACE';
+                    groundTruthEl.style.color = '#00c853';
+                } else {
+                    groundTruthEl.textContent = '🌊 UNDERWATER';
+                    groundTruthEl.style.color = '#00b4d8';
+                }
+
+                // Detected state (tracker)
+                if (sim.state.currentState === 0) {
+                    detectedEl.textContent = '☀️ SURFACE';
+                    detectedEl.style.color = '#00c853';
+                } else {
+                    detectedEl.textContent = '🌊 UNDERWATER';
+                    detectedEl.style.color = '#00b4d8';
+                }
+
+                // State match indicator
+                if (sim.state.currentState === sim.state.groundTruthState) {
+                    stateMatchEl.textContent = '✓ OK';
+                    stateMatchEl.style.color = '#00c853';
+                } else {
+                    stateMatchEl.textContent = '✗ ERREUR';
+                    stateMatchEl.style.color = '#ff5252';
+                }
+
+                // Latency display
+                document.getElementById('latencyDisplay').textContent =
+                    `${(sim.state.lastLatency || 0).toFixed(1)}s`;
+
+                // Average latency
+                const avgLatency = sim.state.latencyHistory.length > 0
+                    ? sim.state.latencyHistory.reduce((a, b) => a + b, 0) / sim.state.latencyHistory.length
+                    : 0;
+                document.getElementById('avgLatencyDisplay').textContent =
+                    `${avgLatency.toFixed(1)}s`;
+
+                // Error rates display
+                const totalTime = sim.stats.totalTime || 1;
+                const fpPercent = (sim.state.falsePositiveTime / totalTime * 100).toFixed(1);
+                const fnPercent = (sim.state.falseNegativeTime / totalTime * 100).toFixed(1);
+
+                document.getElementById('falsePositiveDisplay').textContent =
+                    `${sim.state.falsePositiveTime.toFixed(1)}s (${fpPercent}%)`;
+                document.getElementById('falseNegativeDisplay').textContent =
+                    `${sim.state.falseNegativeTime.toFixed(1)}s (${fnPercent}%)`;
+
+                // Calibration status
+                const calibStatus = document.getElementById('calibrationStatus');
+                if (sim.calibration.isCalibrated) {
+                    calibStatus.className = 'calibration-status calibrated';
+                    calibStatus.textContent = '✓ Calibration complète';
+                } else {
+                    calibStatus.className = 'calibration-status calibrating';
+                    calibStatus.textContent = '⏳ Calibration en cours...';
+                }
+
+                // ADC values
+                document.getElementById('adcRaw').textContent = sim.state.adcRaw;
+                document.getElementById('adcFiltered').textContent = sim.state.adcFiltered;
+                document.getElementById('threshAir').textContent = sim.calibration.thresholdAir;
+                document.getElementById('threshWater').textContent = sim.calibration.thresholdWater;
+                document.getElementById('threshCurrent').textContent =
+                    `${sim.calibration.thresholdCurrent} ±${sim.calibration.hysteresisValue}`;
+
+                // Trend & Variance detection display
+                const TREND_CONSECUTIVE_MIN = 3;  // Match optimized value
+                const TREND_DROP_MIN = 15;
+                const VARIANCE_THRESHOLD = 10000;
+
+                document.getElementById('trendCount').textContent =
+                    `${sim.state.decreasingTrendCount} / ${TREND_CONSECUTIVE_MIN}`;
+                document.getElementById('trendDrop').textContent =
+                    `${sim.state.totalDropPercent || 0}% / ${TREND_DROP_MIN}%`;
+                document.getElementById('cumulativeDrop').textContent =
+                    `${sim.state.cumulativeDropFromPeak || 0}% / 20%`;
+                document.getElementById('varianceValue').textContent =
+                    `${sim.state.varianceValue || 0}`;
+                document.getElementById('surfaceLockout').textContent =
+                    `${Math.round(sim.state.surfaceLockoutRemaining || 0)}s`;
+
+                // Color code based on threshold proximity
+                const trendCountEl = document.getElementById('trendCount');
+                const trendDropEl = document.getElementById('trendDrop');
+                const cumulativeDropEl = document.getElementById('cumulativeDrop');
+                const varianceEl = document.getElementById('varianceValue');
+                const lockoutEl = document.getElementById('surfaceLockout');
+
+                trendCountEl.style.color = sim.state.decreasingTrendCount >= TREND_CONSECUTIVE_MIN ? '#e94560' : '#eaeaea';
+                trendDropEl.style.color = (sim.state.totalDropPercent || 0) >= TREND_DROP_MIN ? '#e94560' : '#eaeaea';
+                cumulativeDropEl.style.color = (sim.state.cumulativeDropFromPeak || 0) >= 20 ? '#e94560' : '#eaeaea';
+                varianceEl.style.color = (sim.state.varianceValue || 0) >= VARIANCE_THRESHOLD ? '#e94560' : '#eaeaea';
+                lockoutEl.style.color = (sim.state.surfaceLockoutRemaining || 0) > 0 ? '#ffc107' : '#eaeaea';
+
+                // Override status
+                const overrideEl = document.getElementById('biofoulingOverride');
+                if (sim.state.biofoulingSurfaceOverride) {
+                    overrideEl.textContent = 'OUI!';
+                    overrideEl.style.color = '#e94560';
+                } else {
+                    overrideEl.textContent = 'Non';
+                    overrideEl.style.color = '#00c853';
+                }
+
+                // Alert banner
+                const alertEl = document.getElementById('trendSurfaceAlert');
+                if (sim.state.trendSuggestsSurface || sim.state.varianceSuggestsSurface) {
+                    alertEl.style.display = 'block';
+                    if (sim.state.trendSuggestsSurface && sim.state.varianceSuggestsSurface) {
+                        alertEl.textContent = '⚠️ TREND + VARIANCE suggèrent SURFACE';
+                    } else if (sim.state.trendSuggestsSurface) {
+                        alertEl.textContent = '⚠️ TREND suggère SURFACE (ADC décroissant)';
+                    } else {
+                        alertEl.textContent = '⚠️ VARIANCE suggère SURFACE (instabilité)';
+                    }
+                } else {
+                    alertEl.style.display = 'none';
+                }
+
+                // Threshold bar visualization
+                const maxADC = 5000;
+                const threshLow = sim.calibration.thresholdCurrent - sim.calibration.hysteresisValue;
+                const threshHigh = sim.calibration.thresholdCurrent + sim.calibration.hysteresisValue;
+
+                const lowPos = (threshLow / maxADC) * 100;
+                const highPos = (threshHigh / maxADC) * 100;
+                const adcPos = Math.min(100, (sim.state.adcFiltered / maxADC) * 100);
+
+                document.getElementById('thresholdLowMarker').style.left = lowPos + '%';
+                document.getElementById('thresholdLowMarker').dataset.value = threshLow;
+                document.getElementById('thresholdHighMarker').style.left = highPos + '%';
+                document.getElementById('thresholdHighMarker').dataset.value = threshHigh;
+                document.getElementById('adcMarker').style.left = adcPos + '%';
+
+                const hysteresisZone = document.getElementById('hysteresisZone');
+                hysteresisZone.style.left = lowPos + '%';
+                hysteresisZone.style.width = (highPos - lowPos) + '%';
+
+                // Electrode health
+                const health1 = sim.environment.electrodeHealth[0];
+                const health2 = sim.environment.electrodeHealth[1];
+                const healthBar1 = document.getElementById('electrode1Health');
+                const healthBar2 = document.getElementById('electrode2Health');
+
+                healthBar1.style.width = health1 + '%';
+                healthBar2.style.width = health2 + '%';
+
+                const getHealthColor = (h) => h > 70 ? '#00c853' : h > 40 ? '#ffc107' : '#ff5252';
+                healthBar1.style.background = getHealthColor(health1);
+                healthBar2.style.background = getHealthColor(health2);
+
+                // Update salt deposit slider
+                document.getElementById('saltDeposit').value = sim.environment.saltDeposit;
+                document.getElementById('saltDepositDisplay').textContent =
+                    Math.round(sim.environment.saltDeposit) + '%';
+
+                // Update surface contamination / conductivity visualization
+                const currentAdc = Math.round(sim.environment.currentAdcValue || 0);
+                const targetAdc = Math.round(sim.environment.targetAdcValue || 0);
+                const maxConductivity = 5000; // Max ADC for visualization scaling
+
+                document.getElementById('instantAdc').textContent = currentAdc;
+                document.getElementById('targetAdc').textContent = targetAdc;
+
+                // Conductivity fill shows how much residual conductivity there is
+                const conductivityPercent = Math.min(100, (currentAdc / maxConductivity) * 100);
+                document.getElementById('conductivityFill').style.width = conductivityPercent + '%';
+
+                // Also update surface wetness indicator via fill color
+                const wetness = sim.environment.surfaceWetness || 0;
+                const conductivityFill = document.getElementById('conductivityFill');
+                if (wetness > 70) {
+                    conductivityFill.style.background = 'rgba(0, 119, 182, 0.8)'; // Deep blue - very wet
+                } else if (wetness > 30) {
+                    conductivityFill.style.background = 'rgba(0, 217, 255, 0.6)'; // Light blue - moist
+                } else {
+                    conductivityFill.style.background = 'rgba(255, 193, 7, 0.5)'; // Yellow - drying
+                }
+
+                // Statistics
+                document.getElementById('statTotalTime').textContent =
+                    sim.formatTime(sim.stats.totalTime);
+                document.getElementById('statSurfaceTime').textContent =
+                    sim.formatTime(sim.stats.surfaceTime);
+                document.getElementById('statDiveTime').textContent =
+                    sim.formatTime(sim.stats.diveTime);
+                document.getElementById('statTransitions').textContent = sim.stats.transitions;
+                document.getElementById('statCalibrations').textContent = sim.stats.calibrations;
+                document.getElementById('statFalsePositives').textContent = sim.stats.falsePositives;
+            }
+        }
+
+        // ============================================
+        // PARAMETER OPTIMIZER
+        // ============================================
+
+        class ParameterOptimizer {
+            constructor(uiController) {
+                this.ui = uiController;
+                this.isRunning = false;
+                this.bestResult = null;
+            }
+
+            // Lightweight simulator for optimization
+            runSimulation(params, scenarioName, duration) {
+                const state = { current: 0, timeInState: 0, consecutive: 0, avgBuffer: [] };
+                const calib = { air: 200, water: 600, threshold: 0, hyst: 0 };
+
+                // Calculate threshold
+                const ratio = params.thresholdRatio / 100;
+                calib.threshold = calib.air + ratio * (calib.water - calib.air);
+                calib.hyst = calib.threshold * (params.hysteresis / 100);
+
+                const metrics = {
+                    correct: 0, total: 0, fp: 0, fn: 0,
+                    latencies: [], surfaceLatencies: [],  // Track surface-specific latency
+                    oscillations: 0
+                };
+                let lastExpected = 0, pendingTrans = null, lastChange = 0;
+                let surfaceReadings = [];  // For adaptive air baseline
+
+                const scenarios = {
+                    normal: (t) => {
+                        const c = t % 120;
+                        if (c < 30) return { adc: 200 + (Math.random()-0.5)*60, exp: 0 };
+                        if (c < 90) return { adc: 2500 + (Math.random()-0.5)*200, exp: 1 };
+                        return { adc: 200 + (Math.random()-0.5)*60, exp: 0 };
+                    },
+                    splash: (t) => {
+                        if (Math.random() < 0.08) return { adc: 1200 + (Math.random()-0.5)*400, exp: 0, splash: true };
+                        return { adc: 180 + (Math.random()-0.5)*50, exp: 0 };
+                    },
+                    salinity: (t) => {
+                        const phase = Math.floor(t / 90) % 5;
+                        const levels = [{adc:200,s:0},{adc:1200,s:1},{adc:2500,s:1},{adc:4000,s:1},{adc:200,s:0}];
+                        const l = levels[phase];
+                        return { adc: l.adc + (Math.random()-0.5)*l.adc*0.1, exp: l.s };
+                    },
+                    drift: (t) => {
+                        const drift = Math.max(0.5, 1 - (t/1200)*0.3);
+                        const c = t % 80;
+                        if (c < 30) return { adc: (200/drift) + (Math.random()-0.5)*80, exp: 0 };
+                        return { adc: (2500*drift) + (Math.random()-0.5)*300, exp: 1 };
+                    },
+                    rapid: (t) => {
+                        const c = t % 20;
+                        if (c < 8) return { adc: 180 + (Math.random()-0.5)*40, exp: 0 };
+                        if (c < 16) return { adc: 2800 + (Math.random()-0.5)*160, exp: 1 };
+                        return { adc: 180 + (Math.random()-0.5)*40, exp: 0 };
+                    },
+                    noise: (t) => {
+                        const c = t % 100;
+                        if (c < 40) return { adc: 200 + (Math.random()-0.5)*600, exp: 0 };
+                        return { adc: 2500 + (Math.random()-0.5)*600, exp: 1 };
+                    },
+                    turtle: (t) => {
+                        const patterns = [
+                            {s:0,e:20,st:0,a:180},{s:20,e:180,st:1,a:2800},{s:180,e:195,st:0,a:190},
+                            {s:195,e:350,st:1,a:2600},{s:350,e:380,st:0,a:200},{s:380,e:500,st:1,a:3000},
+                            {s:500,e:530,st:0,a:185},{s:530,e:600,st:1,a:2700}
+                        ];
+                        const ct = t % 600;
+                        for (const p of patterns) {
+                            if (ct >= p.s && ct < p.e) return { adc: p.a + (Math.random()-0.5)*100, exp: p.st };
+                        }
+                        return { adc: 200, exp: 0 };
+                    },
+                    // ===== BIOFOULING / AGING SCENARIOS =====
+                    // These simulate salt deposits and biofilm on tracker surface
+                    // Key challenge: ADC doesn't return to baseline, slow drying
+
+                    aged6m: (t) => {
+                        // 6 months exposure - moderate contamination
+                        // Residual conductivity ~300, slow decay
+                        const residual = 300;  // ADC floor when "dry"
+                        const c = t % 90;
+
+                        if (c < 25) {
+                            // Surface phase - but ADC stays elevated and decays slowly
+                            const decayProgress = c / 25;  // 0 to 1
+                            const wetValue = 1800;  // Coming from water
+                            const dryTarget = residual + 100;  // Never fully dry
+                            const currentAdc = wetValue - (wetValue - dryTarget) * Math.pow(decayProgress, 0.3);
+                            return { adc: currentAdc + (Math.random()-0.5)*120, exp: 0 };
+                        } else {
+                            // Underwater - normal readings slightly affected
+                            return { adc: 2400 + (Math.random()-0.5)*200, exp: 1 };
+                        }
+                    },
+
+                    aged1y: (t) => {
+                        // 1 year exposure - heavy contamination
+                        // Residual ~600, very slow decay, high noise
+                        const residual = 600;
+                        const c = t % 120;
+
+                        if (c < 40) {
+                            // Surface - very slow drying, ADC stays HIGH
+                            const decayProgress = c / 40;
+                            const wetValue = 2200;
+                            const dryTarget = residual + 200;  // High floor
+                            // Very slow exponential decay (salt retains moisture)
+                            const currentAdc = wetValue - (wetValue - dryTarget) * Math.pow(decayProgress, 0.2);
+                            return { adc: currentAdc + (Math.random()-0.5)*200, exp: 0 };
+                        } else {
+                            return { adc: 2600 + (Math.random()-0.5)*250, exp: 1 };
+                        }
+                    },
+
+                    extreme: (t) => {
+                        // Extreme contamination - worst case
+                        // Residual ~900, surface detection very challenging
+                        const residual = 900;
+                        const c = t % 60;
+
+                        if (c < 30) {
+                            // Surface - ADC barely drops, stays near threshold
+                            const decayProgress = c / 30;
+                            const wetValue = 2500;
+                            const dryTarget = residual + 300;  // Very high floor!
+                            const currentAdc = wetValue - (wetValue - dryTarget) * Math.pow(decayProgress, 0.15);
+                            return { adc: currentAdc + (Math.random()-0.5)*300, exp: 0 };
+                        } else {
+                            return { adc: 2800 + (Math.random()-0.5)*300, exp: 1 };
+                        }
+                    },
+
+                    // Adaptive recalibration test - air baseline shifts over time
+                    adaptiveAir: (t) => {
+                        // Simulates air baseline that gradually increases
+                        const baselineDrift = Math.min(400, t * 0.5);  // Drifts up over time
+                        const c = t % 100;
+
+                        if (c < 35) {
+                            // Surface with elevated baseline
+                            return { adc: 180 + baselineDrift + (Math.random()-0.5)*80, exp: 0, needsRecalib: baselineDrift > 200 };
+                        } else {
+                            return { adc: 2500 + (Math.random()-0.5)*200, exp: 1 };
+                        }
+                    }
+                };
+
+                const scenario = scenarios[scenarioName];
+                if (!scenario) return null;
+
+                for (let t = 0; t < duration; t++) {
+                    const { adc, exp, splash, needsRecalib } = scenario(t);
+
+                    // Moving average
+                    state.avgBuffer.push(adc);
+                    if (state.avgBuffer.length > params.movingAvgSize) state.avgBuffer.shift();
+                    const filtered = state.avgBuffer.reduce((a,b)=>a+b,0) / state.avgBuffer.length;
+
+                    // ===== ADAPTIVE AIR BASELINE RECALIBRATION =====
+                    // When at surface for extended time, update air baseline
+                    // This handles biofouling causing elevated surface readings
+                    if (state.current === 0 && state.timeInState > 10) {
+                        surfaceReadings.push(filtered);
+                        if (surfaceReadings.length > 20) surfaceReadings.shift();
+
+                        // If we've been at surface long enough, adapt air baseline
+                        if (surfaceReadings.length >= 10 && state.timeInState % 10 === 0) {
+                            const avgSurface = surfaceReadings.reduce((a,b)=>a+b,0) / surfaceReadings.length;
+                            // Only raise baseline, never lower it too fast
+                            if (avgSurface > calib.air * 1.2) {
+                                // Gradually adapt air baseline upward
+                                calib.air = calib.air * 0.9 + avgSurface * 0.1;
+                                calib.threshold = calib.air + ratio * (calib.water - calib.air);
+                                calib.hyst = calib.threshold * (params.hysteresis / 100);
+                            }
+                        }
+                    } else {
+                        surfaceReadings = [];  // Reset when underwater
+                    }
+
+                    // Detection
+                    const threshHigh = calib.threshold + calib.hyst;
+                    const threshLow = calib.threshold - calib.hyst;
+                    let newState = state.current;
+
+                    if (filtered > threshHigh) {
+                        state.consecutive++;
+                        if (state.consecutive >= params.maxSamples) {
+                            newState = 1;
+                            // Update water baseline (EMA)
+                            if (filtered > calib.air * 1.5) {
+                                calib.water = params.alpha * filtered + (1-params.alpha) * calib.water;
+                                calib.threshold = calib.air + ratio * (calib.water - calib.air);
+                                calib.hyst = calib.threshold * (params.hysteresis / 100);
+                            }
+                        }
+                    } else if (filtered < threshLow) {
+                        if (state.current === 1) {
+                            state.consecutive++;
+                            if (state.consecutive >= params.minDrySamples) newState = 0;
+                        } else {
+                            newState = 0;
+                            state.consecutive = 0;
+                        }
+                    } else {
+                        state.consecutive = 0;
+                    }
+
+                    // Track transitions
+                    if (exp !== lastExpected) {
+                        pendingTrans = { time: t, target: exp, isSurface: exp === 0 };
+                    }
+                    lastExpected = exp;
+
+                    metrics.total++;
+                    if (newState === exp) {
+                        metrics.correct++;
+                        if (pendingTrans && newState === pendingTrans.target) {
+                            const latency = t - pendingTrans.time;
+                            metrics.latencies.push(latency);
+                            // Track surface-specific latency
+                            if (pendingTrans.isSurface) {
+                                metrics.surfaceLatencies.push(latency);
+                            }
+                            pendingTrans = null;
+                        }
+                    } else {
+                        if (newState === 1 && exp === 0 && !splash) metrics.fp++;
+                        else if (newState === 0 && exp === 1) metrics.fn++;
+                    }
+
+                    if (newState !== state.current) {
+                        if (t - lastChange < 5) metrics.oscillations++;
+                        lastChange = t;
+                        state.current = newState;
+                        state.timeInState = 0;
+                        state.consecutive = 0;
+                    }
+                    state.timeInState++;
+                }
+
+                // Calculate average latencies
+                const avgLatency = metrics.latencies.length > 0 ?
+                    metrics.latencies.reduce((a,b)=>a+b,0) / metrics.latencies.length : 0;
+                const avgSurfaceLatency = metrics.surfaceLatencies.length > 0 ?
+                    metrics.surfaceLatencies.reduce((a,b)=>a+b,0) / metrics.surfaceLatencies.length : avgLatency;
+
+                return {
+                    detection: metrics.correct / metrics.total,
+                    fp: metrics.fp / metrics.total,
+                    fn: metrics.fn / metrics.total,
+                    latency: avgLatency,
+                    surfaceLatency: avgSurfaceLatency,  // Surface-specific latency for scoring
+                    stability: 1 - Math.min(1, metrics.oscillations / 20)
+                };
+            }
+
+            calculateScore(results) {
+                // Scoring optimized for FAST SURFACE DETECTION even with biofouling
+                // Priority: Surface latency > False negatives > Detection > False positives > Stability
+                const w = {
+                    det: 0.20,       // Base detection accuracy
+                    fp: 0.15,        // False positives (underwater when should be surface)
+                    fn: 0.25,        // FALSE NEGATIVES - critical! Missing surface is bad
+                    surfaceLat: 0.25, // SURFACE LATENCY - how fast we detect surface
+                    stab: 0.15       // Stability
+                };
+
+                let total = 0, count = 0;
+                for (const [name, r] of Object.entries(results)) {
+                    if (!r) continue;
+
+                    // Extra weight for aging scenarios - they're harder
+                    const isAgingScenario = ['aged6m', 'aged1y', 'extreme', 'adaptiveAir'].includes(name);
+                    const scenarioWeight = isAgingScenario ? 1.5 : 1.0;
+
+                    // Surface latency score - penalize slow detection heavily
+                    // Target: detect surface within 5 samples
+                    const surfaceLatScore = Math.max(0, 1 - (r.surfaceLatency || r.latency) / 15);
+
+                    const score = (
+                        w.det * r.detection +
+                        w.fp * (1 - Math.min(1, r.fp * 50)) +
+                        w.fn * (1 - Math.min(1, r.fn * 100)) +  // Heavy penalty for missing surface
+                        w.surfaceLat * surfaceLatScore +
+                        w.stab * r.stability
+                    ) * scenarioWeight;
+
+                    total += score;
+                    count += scenarioWeight;
+                }
+                return count > 0 ? total / count : 0;
+            }
+
+            async optimize(iterations = 500) {
+                this.isRunning = true;
+                this.bestResult = null;
+
+                const progressEl = document.getElementById('optimizeProgress');
+                const statusEl = document.getElementById('optimizeStatus');
+                const percentEl = document.getElementById('optimizePercent');
+                const barEl = document.getElementById('optimizeProgressBar');
+                const bestScoreEl = document.getElementById('optimizeBestScore');
+                const resultEl = document.getElementById('optimizeResult');
+                const btnOptimize = document.getElementById('btnOptimize');
+
+                progressEl.classList.add('active');
+                resultEl.classList.remove('active');
+                btnOptimize.disabled = true;
+
+                // Include aging/biofouling scenarios - prioritize them for real-world turtle tracking
+                const scenarios = [
+                    'normal', 'splash', 'salinity', 'drift', 'turtle',  // Base scenarios
+                    'aged6m', 'aged1y', 'extreme', 'adaptiveAir'        // Biofouling scenarios
+                ];
+                const duration = 600;
+                const results = [];
+
+                const ranges = {
+                    hysteresis: { min: 8, max: 15 },
+                    thresholdRatio: { min: 45, max: 55 },
+                    alpha: { min: 0.08, max: 0.16 },
+                    movingAvgSize: { min: 3, max: 5 },
+                    maxSamples: { min: 2, max: 4 },
+                    minDrySamples: { min: 4, max: 6 }
+                };
+
+                const rand = (min, max, isInt = false) => {
+                    const v = min + Math.random() * (max - min);
+                    return isInt ? Math.round(v) : v;
+                };
+
+                for (let i = 0; i < iterations && this.isRunning; i++) {
+                    const params = {
+                        hysteresis: rand(ranges.hysteresis.min, ranges.hysteresis.max),
+                        thresholdRatio: rand(ranges.thresholdRatio.min, ranges.thresholdRatio.max),
+                        alpha: rand(ranges.alpha.min, ranges.alpha.max),
+                        movingAvgSize: rand(ranges.movingAvgSize.min, ranges.movingAvgSize.max, true),
+                        maxSamples: rand(ranges.maxSamples.min, ranges.maxSamples.max, true),
+                        minDrySamples: rand(ranges.minDrySamples.min, ranges.minDrySamples.max, true)
+                    };
+
+                    const scenarioResults = {};
+                    for (const s of scenarios) {
+                        scenarioResults[s] = this.runSimulation(params, s, duration);
+                    }
+
+                    const score = this.calculateScore(scenarioResults);
+                    const avgDet = Object.values(scenarioResults).filter(r=>r).reduce((s,r)=>s+r.detection,0) / scenarios.length;
+
+                    if (!this.bestResult || score > this.bestResult.score) {
+                        this.bestResult = { params, score, detection: avgDet, scenarioResults };
+                        bestScoreEl.textContent = (score * 100).toFixed(1) + '%';
+                    }
+
+                    // Update progress
+                    const pct = ((i + 1) / iterations * 100).toFixed(0);
+                    statusEl.textContent = `Test ${i + 1}/${iterations}`;
+                    percentEl.textContent = pct + '%';
+                    barEl.style.width = pct + '%';
+
+                    // Yield to UI
+                    if (i % 20 === 0) await new Promise(r => setTimeout(r, 0));
+                }
+
+                // Show results
+                if (this.bestResult) {
+                    document.getElementById('resultScore').textContent =
+                        (this.bestResult.score * 100).toFixed(1) + '% (Détection: ' +
+                        (this.bestResult.detection * 100).toFixed(1) + '%)';
+
+                    const paramsEl = document.getElementById('resultParams');
+                    const p = this.bestResult.params;
+                    paramsEl.innerHTML = `
+                        <div class="result-param"><span class="name">HYSTERESIS</span><span class="value">${Math.round(p.hysteresis)}%</span></div>
+                        <div class="result-param"><span class="name">RATIO</span><span class="value">${Math.round(p.thresholdRatio)}%</span></div>
+                        <div class="result-param"><span class="name">ALPHA</span><span class="value">${p.alpha.toFixed(2)}</span></div>
+                        <div class="result-param"><span class="name">AVG_SIZE</span><span class="value">${p.movingAvgSize}</span></div>
+                        <div class="result-param"><span class="name">MAX_SAMPLES</span><span class="value">${p.maxSamples}</span></div>
+                        <div class="result-param"><span class="name">DRY_SAMPLES</span><span class="value">${p.minDrySamples}</span></div>
+                    `;
+
+                    resultEl.classList.add('active');
+                }
+
+                statusEl.textContent = 'Terminé!';
+                btnOptimize.disabled = false;
+                this.isRunning = false;
+            }
+
+            applyOptimalParams() {
+                if (!this.bestResult) return;
+
+                const p = this.bestResult.params;
+                const sim = this.ui.simulator;
+
+                // Update config
+                sim.config.hysteresis = Math.round(p.hysteresis);
+                sim.config.thresholdRatio = Math.round(p.thresholdRatio);
+                sim.config.alpha = p.alpha;
+                sim.config.movingAvgSize = p.movingAvgSize;
+                sim.config.maxSamples = p.maxSamples;
+                sim.config.minDrySamples = p.minDrySamples;
+
+                // Update UI sliders
+                document.getElementById('hysteresis').value = Math.round(p.hysteresis);
+                document.getElementById('hysteresisDisplay').textContent = Math.round(p.hysteresis) + '%';
+
+                document.getElementById('thresholdRatio').value = Math.round(p.thresholdRatio);
+                document.getElementById('thresholdRatioDisplay').textContent = Math.round(p.thresholdRatio) + '%';
+
+                document.getElementById('alpha').value = Math.round(p.alpha * 100);
+                document.getElementById('alphaDisplay').textContent = p.alpha.toFixed(2);
+
+                document.getElementById('movingAvgSize').value = p.movingAvgSize;
+                document.getElementById('movingAvgSizeDisplay').textContent = p.movingAvgSize;
+
+                document.getElementById('maxSamples').value = p.maxSamples;
+                document.getElementById('maxSamplesDisplay').textContent = p.maxSamples;
+
+                document.getElementById('minDrySamples').value = p.minDrySamples;
+                document.getElementById('minDrySamplesDisplay').textContent = p.minDrySamples;
+
+                // Recalculate threshold
+                sim.updateDynamicThreshold();
+
+                // Log
+                sim.log('success', `Paramètres optimaux appliqués: Hyst=${Math.round(p.hysteresis)}% Ratio=${Math.round(p.thresholdRatio)}% Alpha=${p.alpha.toFixed(2)}`);
+            }
+        }
+
+        // ============================================
+        // Initialize
+        // ============================================
+
+        // Load Chart.js
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+        script.onload = () => {
+            const simulator = new SWSAnalogSimulator();
+            const ui = new UIController(simulator);
+            const optimizer = new ParameterOptimizer(ui);
+
+            simulator.calibrateAir();
+            ui.updateUI();
+
+            // Bind optimizer buttons
+            document.getElementById('btnOptimize').addEventListener('click', () => {
+                optimizer.optimize(500);
+            });
+
+            document.getElementById('btnApplyOptimal').addEventListener('click', () => {
+                optimizer.applyOptimalParams();
+            });
+
+            // Store optimizer reference
+            window.optimizer = optimizer;
+        };
+        document.head.appendChild(script);
+    </script>
+</body>
+</html>

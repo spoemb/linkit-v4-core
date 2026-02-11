@@ -83,9 +83,21 @@ public:
 	}
 #endif
 
+	// Single-shot CRC calculation (initializes, processes, and finalizes)
 	static void checksum(uint8_t *data, unsigned int n_bytes, uint32_t& crc) {
 		for (unsigned int i = 0; i < n_bytes; i++)
 			crc = m_table[*data++ ^ (crc & 0xff)] ^ (crc>>8);
+		crc ^= 0xFFFFFFFF;
+	}
+
+	// Streaming CRC calculation - does NOT finalize
+	// Use: init with 0xFFFFFFFF, call update for each chunk, then finalize with XOR 0xFFFFFFFF
+	static void checksum_update(uint8_t *data, unsigned int n_bytes, uint32_t& crc) {
+		for (unsigned int i = 0; i < n_bytes; i++)
+			crc = m_table[*data++ ^ (crc & 0xff)] ^ (crc>>8);
+	}
+
+	static void checksum_finalize(uint32_t& crc) {
 		crc ^= 0xFFFFFFFF;
 	}
 };

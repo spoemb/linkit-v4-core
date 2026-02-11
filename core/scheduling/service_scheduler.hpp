@@ -37,7 +37,8 @@ enum class ServiceIdentifier : unsigned int {
 	AXL_SENSOR,
 	MEMORY_MONITOR,
 	DIVE_MODE,
-	CAM_SENSOR
+	CAM_SENSOR,
+	THERMISTOR_SENSOR
 };
 
 struct ServiceEvent {

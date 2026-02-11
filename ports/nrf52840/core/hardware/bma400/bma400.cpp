@@ -59,12 +59,15 @@ BMA400LL::BMA400LL(unsigned int bus, unsigned char addr, int wakeup_pin)
 	, m_cal_y(0)
 	, m_cal_z(1.0)
 {
+	DEBUG_TRACE("BMA400LL::BMA400LL: constructor entered, bus=%u addr=0x%02X wakeup_pin=%d", bus, addr, wakeup_pin);
 	try {
 		init();
 	} catch (...) {
+		DEBUG_ERROR("BMA400LL::BMA400LL: init() threw exception, unregistering device");
 		BMA400LLManager::unregister_device(m_unique_id);
 		throw;
 	}
+	DEBUG_TRACE("BMA400LL::BMA400LL: constructor complete");
 }
 
 BMA400LL::~BMA400LL()
@@ -76,6 +79,8 @@ void BMA400LL::init()
 {
 	int8_t rslt;
 
+	DEBUG_TRACE("BMA400LL::init: configuring device interface");
+
 	// Configure device interface
 	m_bma400_dev.intf = BMA400_I2C_INTF;
 	m_bma400_dev.intf_ptr = &m_unique_id;
@@ -85,16 +90,19 @@ void BMA400LL::init()
 	m_bma400_dev.read_write_len = BMA400_READ_WRITE_LENGTH;
 	m_bma400_dev.resolution = 12;
 
-	// Initialize device
+	// Initialize device (reads chip ID via I2C)
+	DEBUG_TRACE("BMA400LL::init: calling bma400_init (I2C read chip ID)");
 	rslt = bma400_init(&m_bma400_dev);
 	check_result("bma400_init", rslt);
 
 	// Soft reset to known state
+	DEBUG_TRACE("BMA400LL::init: calling bma400_soft_reset");
 	rslt = bma400_soft_reset(&m_bma400_dev);
 	check_result("bma400_soft_reset", rslt);
 
 	// Default to sleep mode (lowest power consumption)
 	// When sensor is activated (wakeup enabled), it will switch to configured power mode
+	DEBUG_TRACE("BMA400LL::init: setting sleep mode");
 	setup_sleep_mode();
 
 	DEBUG_TRACE("BMA400LL::init complete");
@@ -118,7 +126,9 @@ int8_t BMA400LL::i2c_write(uint8_t reg_addr, const uint8_t *reg_data, uint32_t l
 	buffer[0] = reg_addr;
 	memcpy(&buffer[1], reg_data, length);
 
+	DEBUG_TRACE("BMA400LL::i2c_write: bus=%u addr=0x%02X reg=0x%02X len=%u", device.m_bus, device.m_addr, reg_addr, length);
 	NrfI2C::write(device.m_bus, device.m_addr, buffer, length + 1, false);
+	DEBUG_TRACE("BMA400LL::i2c_write: done");
 
 	return BMA400_OK;
 }
@@ -127,8 +137,11 @@ int8_t BMA400LL::i2c_read(uint8_t reg_addr, uint8_t *reg_data, uint32_t length, 
 {
 	BMA400LL& device = BMA400LLManager::lookup_device(*(uint8_t *)intf_ptr);
 
+	DEBUG_TRACE("BMA400LL::i2c_read: bus=%u addr=0x%02X reg=0x%02X len=%u", device.m_bus, device.m_addr, reg_addr, length);
 	NrfI2C::write(device.m_bus, device.m_addr, &reg_addr, 1, true);
+	DEBUG_TRACE("BMA400LL::i2c_read: write done, reading...");
 	NrfI2C::read(device.m_bus, device.m_addr, reg_data, length);
+	DEBUG_TRACE("BMA400LL::i2c_read: done");
 
 	return BMA400_OK;
 }

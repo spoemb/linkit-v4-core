@@ -35,6 +35,10 @@ extern "C" {
 #define ENABLE_CDT_SENSOR 0
 #endif
 
+#ifndef ENABLE_THERMISTOR_SENSOR
+#define ENABLE_THERMISTOR_SENSOR 0
+#endif
+
 #ifndef ENABLE_AXL_SENSOR
 #define ENABLE_AXL_SENSOR 1
 #endif
@@ -136,6 +140,12 @@ enum class ParamID {
 	CERT_TX_REPETITION,
 	HW_VERSION,
 	BATT_VOLTAGE,
+#ifdef EXTERNAL_WAKEUP
+	SHUTDOWN_TIMER,
+	BOOT_COUNTER,
+	BOOT_COUNTER_MODULO,
+	WAKEUP_PERIOD,
+#endif
 	ARGOS_TCXO_WARMUP_TIME,
 	DEVICE_DECID,
 	GNSS_TRIGGER_ON_SURFACED,
@@ -163,6 +173,13 @@ enum class ParamID {
 	CDT_SENSOR_CONDUCTIVITY_VALUE,
 	CDT_SENSOR_DEPTH_VALUE,
 	CDT_SENSOR_TEMPERATURE_VALUE,
+#endif
+#if ENABLE_THERMISTOR_SENSOR
+	THERMISTOR_SENSOR_ENABLE,
+	THERMISTOR_SENSOR_PERIODIC,
+	THERMISTOR_SENSOR_VALUE,
+	THERMISTOR_SENSOR_WAKEUP_THRESH,
+	THERMISTOR_SENSOR_WAKEUP_SAMPLES,
 #endif
 	EXT_LED_MODE,
 #if ENABLE_AXL_SENSOR
@@ -226,6 +243,11 @@ enum class ParamID {
 	AXL_SENSOR_ENABLE_TX_MAX_SAMPLES,
 	AXL_SENSOR_ENABLE_TX_SAMPLE_PERIOD,
 #endif
+#if ENABLE_THERMISTOR_SENSOR
+	THERMISTOR_SENSOR_ENABLE_TX_MODE,
+	THERMISTOR_SENSOR_ENABLE_TX_MAX_SAMPLES,
+	THERMISTOR_SENSOR_ENABLE_TX_SAMPLE_PERIOD,
+#endif
 #if ENABLE_CAM_SENSOR
 	CAM_ENABLE,
 	CAM_TRIGGER_ON_SURFACED,
@@ -278,30 +300,43 @@ enum class BaseUnderwaterDetectSource {
 };
 
 enum class BaseLogDType {
-	INTERNAL,
-	GNSS_SENSOR,
-	ALS_SENSOR,
-	PH_SENSOR,
-	RTD_SENSOR,
-	CDT_SENSOR,
-	CAM_SENSOR,
-	AXL_SENSOR,
-	PRESSURE_SENSOR,
-	TSYS01_SENSOR
+	INTERNAL          = 0,
+	GNSS_SENSOR       = 1,
+	ALS_SENSOR        = 2,
+	PH_SENSOR         = 3,
+	RTD_SENSOR        = 4,
+	CDT_SENSOR        = 5,
+	CAM_SENSOR        = 6,
+	AXL_SENSOR        = 7,
+	PRESSURE_SENSOR   = 8,
+	THERMISTOR_SENSOR = 9,
+	TSYS01_SENSOR     = 10
 };
 
 enum class BaseEraseType {
-	GNSS_SENSOR = 1,
-	SYSTEM,
-	ALL,
-	ALS_SENSOR,
-	PH_SENSOR,
-	RTD_SENSOR,
-	CDT_SENSOR,
-	CAM_SENSOR,
-	AXL_SENSOR,
-	PRESSURE_SENSOR,
-	TSYS01_SENSOR
+	GNSS_SENSOR       = 1,
+	SYSTEM            = 2,
+	ALL               = 3,
+	ALS_SENSOR        = 4,
+	PH_SENSOR         = 5,
+	RTD_SENSOR        = 6,
+	CDT_SENSOR        = 7,
+	CAM_SENSOR        = 8,
+	AXL_SENSOR        = 9,
+	PRESSURE_SENSOR   = 10,
+	THERMISTOR_SENSOR = 11,
+	TSYS01_SENSOR     = 12
+};
+
+enum class BaseSensorCalType {
+	AXL        = 0,
+	PRESSURE   = 1,
+	ALS        = 2,
+	PH         = 3,
+	RTD        = 4,
+	CDT        = 5,
+	MCP47X6    = 6,
+	THERMISTOR = 7
 };
 
 enum class BaseArgosMode {
@@ -466,7 +501,8 @@ enum class BaseZoneType {
 };
 
 enum class BaseDebugMode {
-	USB_CDC,  // USB CDC debug output (default for Linkit V4, was UART on V3)
+	UART,     // UART debug output on SWO pin (P0.11 for RSPB)
+	USB_CDC,  // USB CDC debug output (default for Linkit V4)
 	BLE_NUS   // Bluetooth Low Energy Nordic UART Service
 };
 

@@ -130,14 +130,14 @@ const DTECommandMap command_map[] = {
 	{
 		.name = "DUMPD",
 		.command = DTECommand::DUMPD_REQ,
-		.prototype = 
+		.prototype =
 		{
 			{
 				.name = "d_type",
 				.key = "",
 				.encoding = BaseEncoding::HEXADECIMAL,
 				.min_value = 0U,
-				.max_value = 8U,
+				.max_value = 10U,  // Updated: includes THERMISTOR_SENSOR(9), TSYS01_SENSOR(10)
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false
@@ -202,7 +202,7 @@ const DTECommandMap command_map[] = {
 				.key = "",
 				.encoding = BaseEncoding::UINT,
 				.min_value = 1U,
-				.max_value = 9U,
+				.max_value = 12U,  // Updated: includes THERMISTOR_SENSOR(11), TSYS01_SENSOR(12)
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false
@@ -219,7 +219,7 @@ const DTECommandMap command_map[] = {
 				.key = "",
 				.encoding = BaseEncoding::UINT,
 				.min_value = 0U,
-				.max_value = 6U,
+				.max_value = 7U,  // Updated: includes THERMISTOR (BaseSensorCalType)
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false
@@ -313,7 +313,7 @@ const DTECommandMap command_map[] = {
 				.key = "",
 				.encoding = BaseEncoding::UINT,
 				.min_value = 0U,
-				.max_value = 6U,
+				.max_value = 7U,  // Updated: includes THERMISTOR (BaseSensorCalType)
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false
@@ -330,6 +330,38 @@ const DTECommandMap command_map[] = {
 			}
 		}
 	},
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	// SMD DFU command - allows firmware update of SMD satellite module
+	// Usage: $SMDDFU,<action>[,<firmware_data_base64>]*<checksum>\r\n
+	// Actions: 0=enter, 1=exit, 2=status, 3=update, 4=info, 5=version
+	{
+		.name = "SMDDFU",
+		.command = DTECommand::SMDDFU_REQ,
+		.prototype =
+		{
+			{
+				.name = "action",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 5U,  // 0=enter, 1=exit, 2=status, 3=update, 4=info, 5=version
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "firmware",
+				.key = "",
+				.encoding = BaseEncoding::BASE64,  // Optional: firmware binary in base64
+				.min_value = 0,
+				.max_value = 0,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	},
+#endif
 	{
 		.name = "PARML",
 		.command = DTECommand::PARML_RESP,
@@ -539,6 +571,57 @@ const DTECommandMap command_map[] = {
 			}
 		}
 	},
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	// SMD DFU response
+	// Response: $SMDDFU,<status>,<dfu_mode>,<progress>[,<info>]*<checksum>\r\n
+	{
+		.name = "SMDDFU",
+		.command = DTECommand::SMDDFU_RESP,
+		.prototype =
+		{
+			{
+				.name = "status",
+				.key = "",
+				.encoding = BaseEncoding::UINT,  // DFU response status code
+				.min_value = 0U,
+				.max_value = 0xFFU,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "dfu_mode",
+				.key = "",
+				.encoding = BaseEncoding::BOOLEAN,  // True if in DFU mode
+				.min_value = 0U,
+				.max_value = 1U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "progress",
+				.key = "",
+				.encoding = BaseEncoding::UINT,  // Progress percentage 0-100
+				.min_value = 0U,
+				.max_value = 100U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "info",
+				.key = "",
+				.encoding = BaseEncoding::TEXT,  // Additional info (bootloader version, etc.)
+				.min_value = "",
+				.max_value = "",
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	},
+#endif
 };
 
 const size_t command_map_size = sizeof(command_map) / sizeof(command_map[0]);

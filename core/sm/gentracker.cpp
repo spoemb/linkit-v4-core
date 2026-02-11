@@ -21,6 +21,11 @@
 #include "ble_service.hpp"
 #include "gentracker.hpp"
 
+// USB DTE interface (platform-specific)
+#ifdef USB_DTE_ENABLED
+#include "usb_interface.hpp"
+#endif
+
 // These contexts must be created before the FSM is initialised
 extern FileSystem *main_filesystem;
 extern Scheduler *system_scheduler;
@@ -292,11 +297,20 @@ void ConfigurationState::entry() {
 	set_ble_device_name();
 	ble_service->start([this](BLEServiceEvent& event) -> int { return on_ble_event(event); } );
 	restart_inactivity_timeout();
+
+#ifdef USB_DTE_ENABLED
+	// Start USB DTE polling (runs in parallel with BLE)
+	DEBUG_TRACE("ConfigurationState: Starting USB DTE polling");
+	schedule_usb_poll();
+#endif
 }
 
 void ConfigurationState::exit() {
 	DEBUG_INFO("exit: ConfigurationState");
 	system_scheduler->cancel_task(m_ble_inactivity_timeout_task);
+#ifdef USB_DTE_ENABLED
+	system_scheduler->cancel_task(m_usb_poll_task);
+#endif
 	ble_service->stop();
 	led_handle::dispatch<SetLEDOff>({});
 }
@@ -442,6 +456,75 @@ void ConfigurationState::process_received_data() {
 		} while (action == DTEAction::AGAIN);
 	}
 }
+
+#ifdef USB_DTE_ENABLED
+void ConfigurationState::schedule_usb_poll() {
+	m_usb_poll_task = system_scheduler->post_task_prio(
+		std::bind(&ConfigurationState::process_usb_data, this),
+		"USBDTEPoll",
+		Scheduler::DEFAULT_PRIORITY,
+		USB_POLL_INTERVAL_MS
+	);
+}
+
+void ConfigurationState::process_usb_data() {
+	auto& usb = UsbInterface::get_instance();
+
+	// Check if USB has data
+	if (usb.has_data()) {
+		auto req = usb.read_line();
+
+		if (req.size()) {
+			DEBUG_TRACE("USB DTE received %u bytes:", req.size());
+#if defined(DEBUG_ENABLE) && DEBUG_LEVEL >= 4
+			printf("%s\n", req.c_str());
+#endif
+
+			std::string resp;
+			DTEAction action;
+
+			do {
+				action = dte_handler->handle_dte_message(req, resp);
+				if (resp.size()) {
+					DEBUG_TRACE("USB DTE responding: %s", resp.c_str());
+					usb.write(resp);
+
+					// Reset inactivity timeout on USB activity too
+					restart_inactivity_timeout();
+
+					// Kick the watchdog
+					PMU::kick_watchdog();
+				}
+
+				if (action == DTEAction::FACTR) {
+					DEBUG_INFO("Perform factory reset of configuration store (USB)");
+					configuration_store->factory_reset();
+					PMU::reset(false);
+				}
+				else if (action == DTEAction::RESET) {
+					DEBUG_INFO("Perform device reset (USB)");
+					system_scheduler->post_task_prio([](){
+						PMU::reset(false);
+					},
+					"DTEActionPMUReset",
+					Scheduler::DEFAULT_PRIORITY, 3000);
+				}
+				else if (action == DTEAction::SECUR) {
+					DEBUG_INFO("Perform secure procedure (USB)");
+				}
+
+			} while (action == DTEAction::AGAIN);
+		}
+	}
+
+	// Schedule next poll
+	schedule_usb_poll();
+}
+#else
+// Empty implementations when USB DTE is disabled
+void ConfigurationState::schedule_usb_poll() {}
+void ConfigurationState::process_usb_data() {}
+#endif
 
 void BatteryCriticalState::entry() {
 	DEBUG_INFO("entry: BatteryCriticalState");

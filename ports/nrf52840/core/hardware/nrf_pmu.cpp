@@ -63,6 +63,32 @@ void PMU::powerdown() {
 // 	GPIOPins::clear(CAM_PWR_BUTT);
 // #endif
 
+#if defined(EXTERNAL_WAKEUP)
+	DEBUG_TRACE("Powerdown with external wakeup enabled");
+
+	// Disable all power rails to peripherals
+#ifdef SENSORS_PWR_PIN
+	GPIOPins::clear(SENSORS_PWR_PIN);  // Sensors power OFF
+#endif
+#ifdef GPS_POWER
+	GPIOPins::clear(GPS_POWER);        // GPS power OFF
+#endif
+#ifdef GPS_RST
+	GPIOPins::set(GPS_RST);            // GPS held in reset
+#endif
+#ifdef SAT_PWR_EN
+	GPIOPins::clear(SAT_PWR_EN);       // Satellite module power OFF
+#endif
+#ifdef SAT_RESET
+	GPIOPins::set(SAT_RESET);          // Satellite module held in reset
+#endif
+
+	// Disable SWS (Slow Wire Service) to save power
+#ifdef SWS_ENABLE_PIN
+	GPIOPins::clear(SWS_ENABLE_PIN);
+#endif
+#endif // EXTERNAL_WAKEUP
+
 #if defined(POWER_CONTROL_PIN)
 	DEBUG_TRACE("Attempt power off using power pin");
 	GPIOPins::clear(POWER_CONTROL_PIN);
@@ -74,6 +100,14 @@ void PMU::powerdown() {
 	// Mark this as a pseudo power off
 	NRF_POWER->GPREGRET = 0x80;
 	sd_nvic_SystemReset();
+#endif
+
+#if defined(EXTERNAL_WAKEUP) && defined(MCU_DONE_PIN)
+	// Signal TPL5111 to cut power by pulsing MCU_DONE
+	DEBUG_TRACE("External wakeup enabled, set MCU_DONE and wait for TPL5111 power cut");
+	GPIOPins::set(MCU_DONE_PIN);
+	PMU::delay_ms(100); // Allow time for TPL5111 to respond
+	GPIOPins::clear(MCU_DONE_PIN);
 #endif
 
 	// This is not a real powerdown but rather an infinite sleep
@@ -132,6 +166,9 @@ uint32_t PMU::device_identifier()
 
 const std::string PMU::hardware_version()
 {
+#ifdef BOARD_RSPB
+	return "RSPB V1";
+#else
 	// Try to read I2C register of MCP4716 (present on V2 but not V1)
 	uint8_t xfer;
 	nrfx_err_t error = nrfx_twim_rx(&BSP::I2C_Inits[MCP4716_DEVICE].twim, MCP4716_I2C_ADDR, &xfer, sizeof(xfer));
@@ -145,6 +182,7 @@ const std::string PMU::hardware_version()
 		else
 			return "LinkIt V1";
 	}
+#endif
 }
 
 void PMU::watchdog_handler() {

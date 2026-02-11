@@ -221,6 +221,12 @@ protected:
 		/* CERT_TX_REPETITION */ 60U,
 		/* HW_VERSION */ ""s,
 		/* BATT_VOLTAGE */ (double)0,
+#ifdef EXTERNAL_WAKEUP
+		/* SHUTDOWN_TIMER */ 0U,          // Time in seconds before powerdown (0 = disabled)
+		/* BOOT_COUNTER */ 0U,            // Counter incremented on each boot
+		/* BOOT_COUNTER_MODULO */ 2U,     // Modulo for boot counter check (default 2 = every 2nd boot)
+		/* WAKEUP_PERIOD */ 6300U,        // TPL5111 wakeup period in seconds (default 1H45 = 6300s)
+#endif
 		/* ARGOS_TCXO_WARMUP_TIME */ 5U,
 		/* DEVICE_DECID */ 0U,
 		/* GNSS_TRIGGER_ON_SURFACED */ (bool)true,
@@ -252,6 +258,13 @@ protected:
 		/* CDT_SENSOR_CONDUCTIVITY */ (double)0.0,
 		/* CDT_SENSOR_DEPTH */ (double)0.0,
 		/* CDT_SENSOR_TEMPERATURE */ (double)0.0,
+#endif
+#if ENABLE_THERMISTOR_SENSOR
+		/* THERMISTOR_SENSOR_ENABLE */ (bool)false,
+		/* THERMISTOR_SENSOR_PERIODIC */ 0U,
+		/* THERMISTOR_SENSOR_VALUE */ (double)0.0,
+		/* THERMISTOR_SENSOR_WAKEUP_THRESH */ (double)0.0,
+		/* THERMISTOR_SENSOR_WAKEUP_SAMPLES */ 0U,
 #endif
 		/* EXT_LED_MODE */ BaseLEDMode::ALWAYS,
 #if ENABLE_AXL_SENSOR
@@ -331,6 +344,11 @@ protected:
 		/* AXL_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
 		/* AXL_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
 		/* AXL_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
+#endif
+#if ENABLE_THERMISTOR_SENSOR
+		/* THERMISTOR_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
+		/* THERMISTOR_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
+		/* THERMISTOR_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
 #endif
 
 #if ENABLE_CAM_SENSOR
@@ -806,6 +824,10 @@ public:
 			argos_config.sensor_tx_enable |=
 				(int)(read_param<bool>(ParamID::PH_SENSOR_ENABLE) && read_param<BaseSensorEnableTxMode>(ParamID::PH_SENSOR_ENABLE_TX_MODE) != BaseSensorEnableTxMode::OFF) << (int)ServiceIdentifier::PH_SENSOR;
 #endif
+#if ENABLE_THERMISTOR_SENSOR
+			argos_config.sensor_tx_enable |=
+				(int)(read_param<bool>(ParamID::THERMISTOR_SENSOR_ENABLE) && read_param<BaseSensorEnableTxMode>(ParamID::THERMISTOR_SENSOR_ENABLE_TX_MODE) != BaseSensorEnableTxMode::OFF) << (int)ServiceIdentifier::THERMISTOR_SENSOR;
+#endif
 		}
 	}
 
@@ -823,4 +845,52 @@ public:
 		unsigned int rx_time = read_param<unsigned int>(ParamID::ARGOS_RX_TIME) + inc;
 		write_param(ParamID::ARGOS_RX_TIME, rx_time);
 	}
+
+#ifdef EXTERNAL_WAKEUP
+	// Boot counter management for TPL5111 periodic wakeup
+	unsigned int boot_count_increment() {
+		unsigned int boot_counter = read_param<unsigned int>(ParamID::BOOT_COUNTER);
+		unsigned int boot_counter_modulo = read_param<unsigned int>(ParamID::BOOT_COUNTER_MODULO);
+		// Protection against corrupted counter value exceeding modulo bounds
+		if (boot_counter > (boot_counter_modulo + 1)) {
+			boot_counter = 0;
+		} else {
+			boot_counter++;
+		}
+		write_param(ParamID::BOOT_COUNTER, boot_counter);
+		save_params();
+		return boot_counter;
+	}
+
+	unsigned int boot_count_clear() {
+		unsigned int boot_counter = 0;
+		write_param(ParamID::BOOT_COUNTER, boot_counter);
+		save_params();
+		return boot_counter;
+	}
+
+	unsigned int boot_count_read() {
+		return read_param<unsigned int>(ParamID::BOOT_COUNTER);
+	}
+
+	// Check if this boot should be skipped based on modulo
+	// Returns true if device should shutdown immediately (not our turn to run)
+	bool boot_count_check_modulo(unsigned int boot_counter) {
+		unsigned int modulo = read_param<unsigned int>(ParamID::BOOT_COUNTER_MODULO);
+
+		// Protection: modulo must be >= 2 to avoid shutdown every boot (modulo=1)
+		// or division by zero (modulo=0). If misconfigured, always allow boot.
+		if (modulo < 2) {
+			DEBUG_WARN("BOOT_COUNTER_MODULO=%u invalid (must be >=2), allowing boot", modulo);
+			return false;
+		}
+
+		if (boot_counter % modulo == 0) {
+			boot_count_clear();
+			return true;  // This is our turn to run
+		}
+
+		return false;  // Not our turn, should shutdown
+	}
+#endif
 };

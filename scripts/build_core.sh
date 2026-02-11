@@ -74,7 +74,7 @@ cd ports/nrf52840/build/CORE
 git show-ref --tags -d | grep ^`git rev-parse HEAD` | sed -e "s,.* refs/tags/,," -e "s/\\^{}//" > TAG_NAME
 if [ -z "$(cat TAG_NAME)"]; then
     git describe --dirty > TAG_NAME
-fi<
+fi
 # Default to both disabled (0)
 CAM_ENABLE=${CAM_ENABLE:-1}
 BUZZER_ENABLE=${BUZZER_ENABLE:-0}

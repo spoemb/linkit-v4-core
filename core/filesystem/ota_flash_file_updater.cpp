@@ -2,9 +2,19 @@
 #include "error.hpp"
 #include "crc32.hpp"
 #include "debug.hpp"
+#include "pmu.hpp"
+
+// SMD DFU support (only when SMD satellite module is enabled)
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+#include "smd_sat.hpp"
+extern SmdSat *smd_sat_instance;  // Defined in main.cpp when SMD is used
+#endif
 
 // Flash header for firmware image in external flash
 static constexpr const uint32_t FLASH_HEADER_SIZE = sizeof(lfs_size_t) + sizeof(uint32_t);
+
+// SMD firmware header: [size:4B BE][stm32_crc32:4B BE]
+static constexpr const uint32_t SMD_FW_HEADER_SIZE = 8;
 
 
 OTAFlashFileUpdater::OTAFlashFileUpdater(LFSFileSystem *filesystem, FlashInterface *flash_if, lfs_off_t reserved_block_offset, lfs_size_t reserved_blocks)
@@ -68,6 +78,18 @@ void OTAFlashFileUpdater::start_file_transfer(OTAFileIdentifier file_id, lfs_siz
 		m_filesystem->remove("gps_config.dat");
 		m_file = new LFSFile(m_filesystem, "gps_config.dat", LFS_O_WRONLY | LFS_O_CREAT);
 		break;
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	case OTAFileIdentifier::SMD_FIRMWARE_UART:
+		DEBUG_INFO("OTAFlashFileUpdater::start_file_transfer: SMD_FIRMWARE_UART");
+		m_filesystem->remove("smd_firmware.dat");
+		m_file = new LFSFile(m_filesystem, "smd_firmware.dat", LFS_O_WRONLY | LFS_O_CREAT);
+		break;
+	case OTAFileIdentifier::SMD_FIRMWARE_SPI:
+		DEBUG_INFO("OTAFlashFileUpdater::start_file_transfer: SMD_FIRMWARE_SPI");
+		m_filesystem->remove("smd_firmware.dat");
+		m_file = new LFSFile(m_filesystem, "smd_firmware.dat", LFS_O_WRONLY | LFS_O_CREAT);
+		break;
+#endif
 	default:
 		throw ErrorCode::OTA_TRANSFER_INVALID_FILE_ID;
 		break;
@@ -77,7 +99,7 @@ void OTAFlashFileUpdater::start_file_transfer(OTAFileIdentifier file_id, lfs_siz
 	m_file_id = file_id;
 	m_file_size = length;
 	m_crc32 = crc32;
-	m_crc32_calc = 0;
+	m_crc32_calc = 0xFFFFFFFF;  // Initialize CRC to 0xFFFFFFFF for streaming calculation
 	m_file_bytes_received = 0;
 }
 
@@ -107,8 +129,8 @@ void OTAFlashFileUpdater::write_file_data(void * const data, lfs_size_t length)
 
 	DEBUG_TRACE("OTAFlashFileUpdater::write_file_data: %u/%u", m_file_bytes_received, m_file_size);
 
-	m_crc32_calc ^= 0xFFFFFFFF;
-	CRC32::checksum((unsigned char *)data, length, m_crc32_calc);
+	// Update CRC (streaming mode - no finalization yet)
+	CRC32::checksum_update((unsigned char *)data, length, m_crc32_calc);
 }
 
 void OTAFlashFileUpdater::abort_file_transfer()
@@ -138,8 +160,25 @@ void OTAFlashFileUpdater::complete_file_transfer()
 		throw ErrorCode::OTA_TRANSFER_INCOMPLETE;
 	}
 
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	// For SMD firmware files, skip OTA CRC verification
+	// The SMD bootloader will verify using the STM32 CRC in the file header
+	if (m_file_id == OTAFileIdentifier::SMD_FIRMWARE_UART ||
+	    m_file_id == OTAFileIdentifier::SMD_FIRMWARE_SPI) {
+		DEBUG_INFO("OTAFlashFileUpdater:: SMD firmware - skipping OTA CRC (bootloader will verify)");
+		return;
+	}
+#endif
+
+	// Finalize CRC calculation
+	CRC32::checksum_finalize(m_crc32_calc);
+
+	DEBUG_TRACE("OTAFlashFileUpdater::complete_file_transfer: CRC calc=0x%08X expected=0x%08X",
+	            m_crc32_calc, m_crc32);
+
 	if (m_crc32_calc != m_crc32) {
-		DEBUG_ERROR("OTAFlashFileUpdater:: CRC failure");
+		DEBUG_ERROR("OTAFlashFileUpdater:: CRC failure (calc=0x%08X expected=0x%08X)",
+		            m_crc32_calc, m_crc32);
 		abort_file_transfer();
 		throw ErrorCode::OTA_TRANSFER_CRC_ERROR;
 	}
@@ -149,7 +188,96 @@ void OTAFlashFileUpdater::apply_file_update() {
 	DEBUG_TRACE("OTAFlashFileUpdater::apply_file_update");
 	if (m_file_id == OTAFileIdentifier::MCU_FIRMWARE) {
 		DEBUG_INFO("OTAFlashFileUpdater::apply_file_update: device reset required for update to take effect");
-	} else {
+	}
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	else if (m_file_id == OTAFileIdentifier::SMD_FIRMWARE_UART ||
+	         m_file_id == OTAFileIdentifier::SMD_FIRMWARE_SPI) {
+		// SMD firmware update
+		// File format: [size:4B LE][stm32_crc32:4B LE][firmware_data]
+		DEBUG_INFO("OTAFlashFileUpdater::apply_file_update: SMD DFU via %s",
+		           m_file_id == OTAFileIdentifier::SMD_FIRMWARE_SPI ? "SPI" : "UART");
+
+		delete m_file;  // Close the file first
+
+		// Open for reading
+		LFSFile fw_file(m_filesystem, "smd_firmware.dat", LFS_O_RDONLY);
+		lfs_soff_t fw_file_size = fw_file.size();
+
+		if (fw_file_size < (lfs_soff_t)SMD_FW_HEADER_SIZE) {
+			DEBUG_ERROR("OTAFlashFileUpdater::apply_file_update: SMD firmware file too small");
+			m_file_size = 0;
+			return;
+		}
+
+		// Read header [size:4B LE][stm32_crc32:4B LE]
+		uint8_t header[SMD_FW_HEADER_SIZE];
+		fw_file.read(header, SMD_FW_HEADER_SIZE);
+
+		// Parse little-endian values (pylinkit sends LE format)
+		uint32_t fw_size = ((uint32_t)header[3] << 24) |
+		                   ((uint32_t)header[2] << 16) |
+		                   ((uint32_t)header[1] << 8) |
+		                   ((uint32_t)header[0]);
+		uint32_t stm32_crc32 = ((uint32_t)header[7] << 24) |
+		                       ((uint32_t)header[6] << 16) |
+		                       ((uint32_t)header[5] << 8) |
+		                       ((uint32_t)header[4]);
+
+		DEBUG_INFO("OTAFlashFileUpdater: SMD firmware size=%u, STM32 CRC32=0x%08X", fw_size, stm32_crc32);
+
+		// Verify size matches
+		if (fw_size != (uint32_t)(fw_file_size - SMD_FW_HEADER_SIZE)) {
+			DEBUG_ERROR("OTAFlashFileUpdater: SMD firmware size mismatch: header=%u, actual=%u",
+			            fw_size, (uint32_t)(fw_file_size - SMD_FW_HEADER_SIZE));
+			m_file_size = 0;
+			return;
+		}
+
+		// Allocate buffer for firmware
+		uint8_t *fw_buffer = new uint8_t[fw_size];
+		if (!fw_buffer) {
+			DEBUG_ERROR("OTAFlashFileUpdater: Failed to allocate SMD firmware buffer");
+			m_file_size = 0;
+			return;
+		}
+
+		// Read firmware data
+		fw_file.read(fw_buffer, fw_size);
+
+		// Check if SMD instance is available
+		if (!smd_sat_instance) {
+			DEBUG_ERROR("OTAFlashFileUpdater: SMD satellite instance not available");
+			delete[] fw_buffer;
+			m_file_size = 0;
+			return;
+		}
+
+		// Ensure SMD is in a clean stopped state before DFU
+		// This guarantees dfu_enter() will perform the proper power-on sequence
+		DEBUG_INFO("OTAFlashFileUpdater: Stopping SMD for clean DFU state...");
+		smd_sat_instance->power_off_immediate();
+
+		// Perform firmware update via SPI (both modes use SPI now, UART is deprecated)
+		DEBUG_INFO("OTAFlashFileUpdater: Starting SMD DFU...");
+
+		SmdDfuResponse result = smd_sat_instance->firmware_update(fw_buffer, fw_size,
+			[](uint8_t percent) {
+				DEBUG_INFO("SMD DFU progress: %u%%", percent);
+				PMU::kick_watchdog();
+			});
+
+		delete[] fw_buffer;
+
+		if (result == DFU_RSP_OK) {
+			DEBUG_INFO("OTAFlashFileUpdater: SMD DFU completed successfully");
+			// Remove firmware file after successful update
+			m_filesystem->remove("smd_firmware.dat");
+		} else {
+			DEBUG_ERROR("OTAFlashFileUpdater: SMD DFU failed with error %d", result);
+		}
+	}
+#endif
+	else {
 		delete m_file;
 	}
 	m_file_size = 0;

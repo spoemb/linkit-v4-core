@@ -16,35 +16,12 @@
         }
     },
     "tasks": [
+		// =====================================================================
+		// LINKIT Board Tasks
+		// =====================================================================
 		{
 			"type": "shell",
-			"label": "Bootloader: build",
-			"command": "make mergehex",
-			"args": [],
-			"options": {
-			"cwd": "${workspaceFolder}/ports/nrf52840/bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc"
-			},	
-			"problemMatcher": [
-				"$gcc"
-			],
-			"group": "build",
-		},
-		{
-			"type": "shell",
-			"label": "Bootloader: clean build",
-			"command": "rm -rf ${workspaceFolder}/ports/nrf52840/bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc/_build && make mergehex",
-			"args": [],
-			"options": {
-				"cwd": "${workspaceFolder}/ports/nrf52840/bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc"
-			},
-			"problemMatcher": [
-				"$gcc"
-			],
-			"group": "build",
-		},
-		{
-			"type": "shell",
-			"label": "Core: build",
+			"label": "LINKIT: build",
 			"command": "./scripts/build_core.sh",
 			"args": [],
 			"options": {
@@ -53,11 +30,14 @@
 			"problemMatcher": [
 				"$gcc"
 			],
-			"group": "build",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
 		},
 		{
 			"type": "shell",
-			"label": "Core: clean build",
+			"label": "LINKIT: clean build",
 			"command": "rm -rf ports/nrf52840/build/CORE && ./scripts/build_core.sh",
 			"args": [],
 			"options": {
@@ -66,24 +46,11 @@
 			"problemMatcher": [
 				"$gcc"
 			],
-			"group": "build",
+			"group": "build"
 		},
 		{
 			"type": "shell",
-			"label": "Bootloader: flash",
-			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex --sectoranduicrerase && nrfjprog -f nrf52 --reset",
-			"args": [],
-			"options": {
-				"cwd": "${workspaceFolder}"
-			},
-			"problemMatcher": [
-				"$gcc"
-			],
-			"group": "build",
-		},
-		{
-			"type": "shell",
-			"label": "Core: flash",
+			"label": "LINKIT: flash",
 			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/build/CORE/LinkIt_CORE_board_merged-*.hex --sectorerase && nrfjprog -f nrf52 --reset",
 			"args": [],
 			"options": {
@@ -92,8 +59,188 @@
 			"problemMatcher": [
 				"$gcc"
 			],
-			"group": "build",
+			"group": "build"
 		},
+		// =====================================================================
+		// RSPB Board Tasks (with SMD satellite module)
+		// =====================================================================
+		{
+			"type": "shell",
+			"label": "RSPB: build (Debug)",
+			"command": "mkdir -p ports/nrf52840/build/RSPB && cd ports/nrf52840/build/RSPB && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=RSPB -DCMAKE_BUILD_TYPE=Debug -DMODEL=CORE -DARGOS_SMD=ON -DENABLE_PRESSURE_SENSOR=ON -DENABLE_AXL_SENSOR=ON ../.. && make -j20",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
+		},
+		{
+			"type": "shell",
+			"label": "RSPB: clean build (Debug)",
+			"command": "rm -rf ports/nrf52840/build/RSPB && mkdir -p ports/nrf52840/build/RSPB && cd ports/nrf52840/build/RSPB && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=RSPB -DCMAKE_BUILD_TYPE=Debug -DMODEL=CORE -DARGOS_SMD=ON -DENABLE_PRESSURE_SENSOR=ON -DENABLE_AXL_SENSOR=ON ../.. && make -j20",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
+		},
+		{
+			"type": "shell",
+			"label": "RSPB: build (Release)",
+			"command": "./scripts/build_rspb.sh",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
+		},
+		{
+			"type": "shell",
+			"label": "RSPB: clean build (Release)",
+			"command": "rm -rf ports/nrf52840/build/RSPB && ./scripts/build_rspb.sh",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
+		},
+		{
+			"type": "shell",
+			"label": "RSPB: flash (Debug)",
+			"detail": "Flash Debug build with SoftDevice (no bootloader)",
+			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/drivers/nRF5_SDK_17.0.2/components/softdevice/s140/hex/s140_nrf52_7.2.0_softdevice.hex --sectorerase && nrfjprog -f nrf52 --program ports/nrf52840/build/RSPB/LinkIt_RSPB_CORE_board.hex --sectorerase && nrfjprog -f nrf52 --reset",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
+		},
+		{
+			"type": "shell",
+			"label": "RSPB: flash (merged)",
+			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/build/RSPB/LinkIt_RSPB_CORE_board_merged-*.hex --sectorerase && nrfjprog -f nrf52 --reset",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
+		},
+		{
+			"type": "shell",
+			"label": "RSPB: flash (app only)",
+			"detail": "Flash application without bootloader - use for development when bootloader is already on device",
+			"command": "nrfjprog -f nrf52 --program ports/nrf52840/build/RSPB/LinkIt_RSPB_CORE_board-*.hex --sectorerase && nrfjprog -f nrf52 --reset",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
+		},
+		// =====================================================================
+		// Bootloader Tasks
+		// =====================================================================
+		{
+			"type": "shell",
+			"label": "Bootloader LINKIT: build",
+			"command": "make mergehex",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}/ports/nrf52840/bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
+		},
+		{
+			"type": "shell",
+			"label": "Bootloader LINKIT: clean build",
+			"command": "rm -rf ${workspaceFolder}/ports/nrf52840/bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc/_build && make mergehex",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}/ports/nrf52840/bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
+		},
+		{
+			"type": "shell",
+			"label": "Bootloader LINKIT: flash",
+			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex --sectoranduicrerase && nrfjprog -f nrf52 --reset",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
+		},
+		{
+			"type": "shell",
+			"label": "Bootloader RSPB: build",
+			"command": "make mergehex",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}/ports/nrf52840/bootloader/gentracker_secure_bootloader/rspbtracker_v1.0/armgcc"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
+		},
+		{
+			"type": "shell",
+			"label": "Bootloader RSPB: clean build",
+			"command": "rm -rf ${workspaceFolder}/ports/nrf52840/bootloader/gentracker_secure_bootloader/rspbtracker_v1.0/armgcc/_build && make mergehex",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}/ports/nrf52840/bootloader/gentracker_secure_bootloader/rspbtracker_v1.0/armgcc"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
+		},
+		{
+			"type": "shell",
+			"label": "Bootloader RSPB: flash",
+			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/bootloader/gentracker_secure_bootloader/rspbtracker_v1.0/armgcc/_build/rspb_bootloader_v1_linkit_merged.hex --sectoranduicrerase && nrfjprog -f nrf52 --reset",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
+		},
+		// =====================================================================
+		// Unit Tests Tasks
+		// =====================================================================
 		{
 			"type": "shell",
 			"label": "Unit Tests: compile",
@@ -105,7 +252,7 @@
 			"problemMatcher": [
 				"$gcc"
 			],
-			"group": "build",
+			"group": "build"
 		},
 		{
 			"type": "shell",
@@ -118,7 +265,7 @@
 			"problemMatcher": [
 				"$gcc"
 			],
-			"group": "build",
+			"group": "build"
 		},
 		{
 			"type": "shell",
@@ -131,7 +278,7 @@
 			"problemMatcher": [
 				"$gcc"
 			],
-			"group": "build",
+			"group": "build"
 		},
 		{
 			"type": "shell",
@@ -150,6 +297,9 @@
 				"panel": "new"
 			}
 		},
+		// =====================================================================
+		// Turtle Simulation Tasks
+		// =====================================================================
 		{
 			"type": "shell",
 			"label": "Turtle Simulation: compile",
@@ -161,7 +311,7 @@
 			"problemMatcher": [
 				"$gcc"
 			],
-			"group": "build",
+			"group": "build"
 		},
 		{
 			"type": "shell",
@@ -207,6 +357,6 @@
 			},
 			"problemMatcher": [],
 			"group": "none"
-		},
-    ],
+		}
+    ]
   }

@@ -71,11 +71,15 @@ class ConfigurationState : public GenTracker
 {
 private:
 	static inline const unsigned int BLE_INACTIVITY_TIMEOUT_MS = 20 * 60 * 1000;  // Increased to 20 minutes for OTA transfers
+	static inline const unsigned int USB_POLL_INTERVAL_MS = 50;  // USB polling interval
 	Scheduler::TaskHandle m_ble_inactivity_timeout_task;
+	Scheduler::TaskHandle m_usb_poll_task;
 	int on_ble_event(BLEServiceEvent&);
 	void on_ble_inactivity_timeout();
 	void restart_inactivity_timeout();
 	void process_received_data();
+	void process_usb_data();
+	void schedule_usb_poll();
 
 public:
 	void entry() override;

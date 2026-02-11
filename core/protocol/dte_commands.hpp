@@ -23,6 +23,9 @@ enum class DTECommand {
 	SCALW_REQ,
 	ARGOSTX_REQ,
 	SCALR_REQ,
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	SMDDFU_REQ,    // SMD satellite module DFU command
+#endif
 	__NUM_REQ,
 	PARML_RESP = RESP_CMD_BASE,
 	PARMR_RESP,
@@ -41,7 +44,20 @@ enum class DTECommand {
 	SCALW_RESP,
 	ARGOSTX_RESP,
 	SCALR_RESP,
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	SMDDFU_RESP,   // SMD satellite module DFU response
+#endif
 	__NUM_RESP
+};
+
+// SMD DFU action types (for SMDDFU command)
+enum class SmdDfuAction {
+	ENTER = 0,     // Enter DFU mode
+	EXIT = 1,      // Exit DFU mode (jump to application)
+	STATUS = 2,    // Get DFU status
+	UPDATE = 3,    // Perform firmware update (requires firmware data)
+	INFO = 4,      // Get bootloader info
+	VERSION = 5    // Get application firmware version
 };
 
 struct DTECommandMap {

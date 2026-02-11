@@ -120,9 +120,15 @@ public:
 	static inline const unsigned int SHORT_PACKET_PAYLOAD_BITS   = 94;
 	static inline const unsigned int SHORT_PACKET_BYTES			 = 12;
 
+#if ARGOS_SMD
+	static inline const unsigned int LONG_PACKET_BITS   		 = 224;
+	static inline const unsigned int LONG_PACKET_PAYLOAD_BITS    = 192;
+	static inline const unsigned int LONG_PACKET_BYTES			 = 24;
+#else
 	static inline const unsigned int LONG_PACKET_BITS   		 = 248;
 	static inline const unsigned int LONG_PACKET_PAYLOAD_BITS    = 216;
 	static inline const unsigned int LONG_PACKET_BYTES			 = 31;
+#endif
 
 	static inline const unsigned int SENSOR_PACKET_HEADER 		 = 0b001;
 	static inline const unsigned int SENSOR_PACKET_BYTES		 = 16;
@@ -266,6 +272,8 @@ public:
 			} else if (service == ServiceIdentifier::PRESSURE_SENSOR) {
 				return m_pressure_depth_pile.retrieve(depth_pile, 1).at(0);
 			} else if (service == ServiceIdentifier::SEA_TEMP_SENSOR) {
+				return m_sea_temp_depth_pile.retrieve(depth_pile, 1).at(0);
+			} else if (service == ServiceIdentifier::THERMISTOR_SENSOR) {
 				return m_sea_temp_depth_pile.retrieve(depth_pile, 1).at(0);
 			} else
 				throw ErrorCode::RESOURCE_NOT_AVAILABLE;

@@ -10,6 +10,11 @@
 #include "timeutils.hpp"
 #include "calibration.hpp"
 
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+#include "smd_sat.hpp"
+extern SmdSat *smd_sat_instance;
+#endif
+
 using namespace std::literals::string_literals;
 
 
@@ -494,6 +499,104 @@ public:
 		return DTEEncoder::encode(DTECommand::SCALR_RESP, error_code, value);
 	}
 
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	static std::string SMDDFU_REQ(int error_code, std::vector<BaseType>& arg_list) {
+		if (error_code) {
+			return DTEEncoder::encode(DTECommand::SMDDFU_RESP, error_code);
+		}
+
+		unsigned int action = std::get<unsigned int>(arg_list[0]);
+		unsigned int status = 0;
+		bool dfu_mode = false;
+		unsigned int progress = 0;
+		std::string info = "";
+
+		// Check if SMD instance is available
+		if (!smd_sat_instance) {
+			DEBUG_ERROR("DTEHandler::SMDDFU_REQ: SMD satellite instance not available");
+			return DTEEncoder::encode(DTECommand::SMDDFU_RESP, (int)DTEError::INCORRECT_DATA);
+		}
+
+		switch ((SmdDfuAction)action) {
+		case SmdDfuAction::VERSION:
+			// Get application firmware version (SMD must NOT be in DFU/bootloader mode)
+			{
+				// Check if SMD is in DFU mode - cannot read app version in bootloader
+				if (smd_sat_instance->is_dfu_mode()) {
+					status = 1;
+					info = "SMD in DFU mode - exit first";
+					break;
+				}
+
+				std::string version = smd_sat_instance->get_firmware_version();
+				if (version.empty()) {
+					status = 1;  // Error
+					info = "Failed to read version";
+				} else {
+					status = 0;  // OK
+					info = version;
+				}
+			}
+			break;
+
+		case SmdDfuAction::ENTER:
+			if (smd_sat_instance->dfu_enter()) {
+				status = 0;
+				dfu_mode = true;
+			} else {
+				status = 1;
+			}
+			break;
+
+		case SmdDfuAction::EXIT:
+			if (smd_sat_instance->dfu_exit()) {
+				status = 0;
+				dfu_mode = false;
+			} else {
+				status = 1;
+			}
+			break;
+
+		case SmdDfuAction::STATUS:
+			status = 0;
+			dfu_mode = smd_sat_instance->is_dfu_mode();
+			break;
+
+		case SmdDfuAction::INFO:
+			dfu_mode = smd_sat_instance->is_dfu_mode();
+			if (dfu_mode) {
+				SmdDfuInfo dfu_info;
+				if (smd_sat_instance->dfu_get_bootloader_info(&dfu_info)) {
+					status = 0;
+					info = "BL v" + std::to_string(dfu_info.version_major) + "." +
+					       std::to_string(dfu_info.version_minor);
+				} else {
+					status = 1;
+				}
+			} else {
+				status = 1;
+				info = "Not in DFU mode";
+			}
+			break;
+
+		case SmdDfuAction::UPDATE:
+			// Firmware update requires data in arg_list[1]
+			if (arg_list.size() < 2) {
+				return DTEEncoder::encode(DTECommand::SMDDFU_RESP, (int)DTEError::INCORRECT_DATA);
+			}
+			// Note: Actual update is handled via OTA file transfer mechanism
+			status = 1;
+			info = "Use OTA transfer for update";
+			break;
+
+		default:
+			return DTEEncoder::encode(DTECommand::SMDDFU_RESP, (int)DTEError::INCORRECT_DATA);
+		}
+
+		return DTEEncoder::encode(DTECommand::SMDDFU_RESP, status, dfu_mode, progress, info);
+	}
+#endif
+
 
 public:
 	void reset_state() {
@@ -590,6 +693,11 @@ public:
 		case DTECommand::SCALR_REQ:
 			resp = SCALR_REQ(error_code, arg_list);
 			break;
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+		case DTECommand::SMDDFU_REQ:
+			resp = SMDDFU_REQ(error_code, arg_list);
+			break;
+#endif
 		default:
 			break;
 		}

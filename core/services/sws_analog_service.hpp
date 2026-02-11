@@ -46,13 +46,43 @@ private:
     static uint16_t m_calib_crc __attribute__((section(".noinit")));
 
     // History buffer for moving average filter
-    static constexpr int ADC_HISTORY_SIZE = 5;
+    // Optimized: smaller buffer = faster response
+    static constexpr int ADC_HISTORY_SIZE = 2;  // Was 5, now 2 for fast response
     uint16_t m_adc_history[ADC_HISTORY_SIZE];
     uint8_t m_adc_history_idx;
 
     // Timing tracking for safety timeouts
     uint64_t m_last_state_change_time;
     uint64_t m_time_in_current_state;
+
+    // Sample confirmation counters (for robust detection)
+    uint8_t m_consecutive_samples;      // Consecutive samples in same direction
+    uint16_t m_min_adc_during_dive;     // Track min ADC for biofouling detection
+    uint32_t m_time_in_hysteresis;      // Time stuck in hysteresis zone
+
+    // Surface readings buffer for adaptive air baseline
+    static constexpr int SURFACE_BUFFER_SIZE = 10;
+    uint16_t m_surface_readings[SURFACE_BUFFER_SIZE];
+    uint8_t m_surface_readings_idx;
+    uint8_t m_surface_readings_count;
+
+    // Trend detection buffer (for derivative-based surface detection)
+    static constexpr int TREND_BUFFER_SIZE = 8;  // Track last 8 readings for trend
+    uint16_t m_trend_buffer[TREND_BUFFER_SIZE];
+    uint8_t m_trend_buffer_idx;
+    uint8_t m_trend_buffer_count;
+    uint8_t m_decreasing_trend_count;  // Consecutive decreasing samples
+
+    // Cumulative drop tracking (more robust than consecutive-only for slow biofouling drying)
+    uint16_t m_peak_adc_since_underwater;  // Track peak ADC since going "underwater"
+    uint16_t m_cumulative_drop_percent;    // Drop from peak to current
+
+    // Surface lockout after max dive time (prevent immediate re-submersion)
+    uint32_t m_surface_lockout_remaining;  // Seconds remaining in lockout
+
+    // Variance detection (high variance = surface drying, low variance = stable underwater)
+    uint32_t m_variance_sum_sq;  // Sum of squared differences for variance calc
+    uint16_t m_variance_mean;    // Running mean for variance calc
 
     // Configuration parameters (loaded from config store)
     uint16_t m_threshold_min;
@@ -61,6 +91,12 @@ private:
     uint32_t m_calib_interval_sec;
     uint32_t m_max_dive_time_sec;
     uint32_t m_min_surface_time_sec;
+
+    // New optimized parameters for fast surface detection
+    uint8_t m_threshold_ratio_percent;  // Position of threshold (37% = closer to air)
+    uint8_t m_alpha_percent;            // EMA factor for water baseline (13 = 0.13)
+    uint8_t m_max_samples;              // Samples to confirm dive (1 = immediate)
+    uint8_t m_min_dry_samples;          // Samples to confirm surface (5 = robust)
 
     /**
      * @brief Read analog ADC value from SWS channel

@@ -45,7 +45,16 @@
 #include "gpio.hpp"
 #include "is25_flash.hpp"
 #include "nrf_rgb_led.hpp"
+
+// Battery monitor includes based on BATTERY_MONITOR_TYPE
+#if defined(BATTERY_MONITOR_ANALOG)
 #include "nrf_battery_mon.hpp"
+#elif defined(BATTERY_MONITOR_FAKE)
+#include "fake_battery_mon.hpp"
+#elif defined(BATTERY_MONITOR_STC3117)
+#include "stc3117_gasgauge.hpp"
+#endif
+
 #if ENABLE_ALS_SENSOR
 #include "ltr_303.hpp"
 #endif
@@ -60,6 +69,7 @@
 #if ENABLE_CDT_SENSOR || ENABLE_PRESSURE_SENSOR
 #include "ms58xx.hpp"
 #include "bar100.hpp"
+#include "lps28dfw.hpp"
 #endif
 #if ENABLE_CDT_SENSOR
 #include "cdt.hpp"
@@ -83,7 +93,18 @@
 
 // Always use M10Q GPS module
 #include "m10qasync.hpp"
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+#include "smd_sat.hpp"
+#else
 #include "kim2.hpp"
+#endif
+#if ENABLE_THERMISTOR_SENSOR
+#include "thermistor_sensor_service.hpp"
+#include "thermistor.hpp"
+#endif
+#ifdef DEBUG_UART_TX_PIN
+#include "nrf_debug_uart.hpp"
+#endif
 
 FileSystem *main_filesystem;
 
@@ -99,7 +120,14 @@ ReedSwitch *reed_switch;
 DTEHandler *dte_handler;
 RTC *rtc;
 BatteryMonitor *battery_monitor;
-BaseDebugMode g_debug_mode = BaseDebugMode::USB_CDC;  // Default debug output to USB CDC
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+SmdSat *smd_sat_instance = nullptr;  // For SMD DFU OTA support
+#endif
+#if defined(BOARD_RSPB)
+BaseDebugMode g_debug_mode = BaseDebugMode::UART;     // Default debug output to UART on SWO pin for RSPB
+#else
+BaseDebugMode g_debug_mode = BaseDebugMode::USB_CDC;  // Default debug output to USB CDC for LINKIT
+#endif
 Buzzer *buzzer_ctl;
 
 static bool m_is_debug_init = false;
@@ -241,10 +269,15 @@ void etl_error_handler(const etl::exception& e)
 	}
 }
 
-// Redirect std::cout and printf output to USB CDC or BLE NUS
+// Redirect std::cout and printf output to UART, USB CDC, or BLE NUS
 // We have to define this as extern "C" as we are overriding a weak C function
 extern "C" int _write(int file, char *ptr, int len)
 {
+#ifdef DEBUG_UART_TX_PIN
+	if (g_debug_mode == BaseDebugMode::UART && NrfDebugUart::is_init())
+		NrfDebugUart::write(ptr, len);
+	else
+#endif
 	if (g_debug_mode == BaseDebugMode::USB_CDC && m_is_debug_init)
 		NrfUSB::write(ptr, len);
 	else if (ble_service && !__get_IPSR() && g_debug_mode == BaseDebugMode::BLE_NUS) {
@@ -257,8 +290,10 @@ extern "C" int _write(int file, char *ptr, int len)
 int main()
 {
 	PMU::initialise();
+#ifndef DEBUG_NO_WATCHDOG
 	PMU::start_watchdog();
 	PMU::kick_watchdog();
+#endif
 	GPIOPins::initialise();
 
 	etl::error_handler::set_callback<etl_error_handler>();
@@ -277,11 +312,18 @@ int main()
 	system_timer = &NrfTimer::get_instance();
 	NrfTimer::get_instance().init();
 
-	// Init USB for debug log
+	// Init debug output (UART, USB CDC, or BLE)
 	m_is_debug_init = true;
 	ConsoleLog console_log;
 	DebugLogger::console_log = &console_log;
-	NrfUSB::init();
+#ifdef DEBUG_UART_TX_PIN
+	if (g_debug_mode == BaseDebugMode::UART) {
+		NrfDebugUart::init(DEBUG_UART_TX_PIN);
+	} else
+#endif
+	{
+		NrfUSB::init();
+	}
     setvbuf(stdout, NULL, _IONBF, 0);
     nrf_log_redirect_init();
 
@@ -321,6 +363,9 @@ int main()
 
 	// Check the reed switch is engaged for 3 seconds if this is a power on event
     DEBUG_TRACE("PMU Reset Cause = %s", PMU::reset_cause().c_str());
+
+	// Ensure sensors power is enabled with proper delay before I2C init
+	GPIOPins::set_sensors_pwr();
 
 #ifdef POWER_ON_RESET_REQUIRES_REED_SWITCH
 #ifdef PSEUDO_POWER_OFF
@@ -465,12 +510,50 @@ int main()
 	configuration_store = &store;
 	configuration_store->init();
 
+#ifdef EXTERNAL_WAKEUP
+	// TPL5111 boot counter management
+	// On first boot (after flash/format), boot counter is 0 and we always run
+	// On subsequent boots, we check the modulo to decide if this is our turn to run
+	{
+		unsigned int boot_counter = configuration_store->boot_count_increment();
+		DEBUG_INFO("EXTERNAL_WAKEUP: Boot counter = %u", boot_counter);
+
+		// Check if this is not our turn to run based on modulo
+		// boot_count_check_modulo returns true if (counter % modulo == 0) meaning it IS our turn
+		// TODO: Re-enable for production
+		// if (boot_counter > 0 && !configuration_store->boot_count_check_modulo(boot_counter)) {
+		// 	DEBUG_INFO("EXTERNAL_WAKEUP: Not our turn to run (modulo check), powering down");
+		// 	PMU::powerdown();
+		// 	// Should not reach here - TPL5111 will cut power
+		// }
+		DEBUG_INFO("EXTERNAL_WAKEUP: Our turn to run, continuing boot");
+	}
+#endif
+
 	DEBUG_TRACE("Battery monitor...");
 	double critical_batt_voltage = configuration_store->read_param<double>(ParamID::LB_CRITICAL_THRESH);
 	unsigned int low_batt_level = configuration_store->read_param<unsigned int>(ParamID::LB_TRESHOLD);
+
+#if defined(BATTERY_MONITOR_ANALOG)
+    #ifdef BATTERY_ADC
     NrfBatteryMonitor nrf_battery_monitor(BATTERY_ADC, BATT_CHEM_NCR18650_3100_3400,
     		(uint16_t)(critical_batt_voltage*1000), low_batt_level);
     battery_monitor = &nrf_battery_monitor;
+    #else
+    static BatteryMonitor stub_battery_monitor(low_batt_level, (uint16_t)(critical_batt_voltage*1000));
+    battery_monitor = &stub_battery_monitor;
+    #endif
+#elif defined(BATTERY_MONITOR_FAKE)
+    DEBUG_INFO("Using FAKE battery monitor (always 4.1V)");
+    static FakeBatteryMonitor fake_battery_monitor((uint16_t)(critical_batt_voltage*1000), low_batt_level);
+    battery_monitor = &fake_battery_monitor;
+#elif defined(BATTERY_MONITOR_STC3117)
+    DEBUG_INFO("Using STC3117 fuel gauge battery monitor");
+    static GaugeBatteryMonitor stc3117_battery_monitor((uint16_t)(critical_batt_voltage*1000), low_batt_level);
+    battery_monitor = &stc3117_battery_monitor;
+#else
+    #error "No battery monitor type defined! Set BATTERY_MONITOR_TYPE in CMake"
+#endif
 
 	DEBUG_TRACE("LFS System Log...");
 	SysLogFormatter sys_log_formatter;
@@ -530,6 +613,13 @@ int main()
 	axl_sensor_log.set_log_formatter(&axl_sensor_log_formatter);
 #endif
 
+#if ENABLE_THERMISTOR_SENSOR
+	DEBUG_TRACE("Thermistor Sensor Log...");
+	ThermistorLogFormatter thermistor_sensor_log_formatter;
+	FsLog thermistor_sensor_log(&lfs_file_system, "THERMISTOR", 1024*1024);
+	thermistor_sensor_log.set_log_formatter(&thermistor_sensor_log_formatter);
+#endif
+
 #ifdef CAM_PWR_EN
 	DEBUG_TRACE("CAM Sensor Log...");
 	CAMLogFormatter cam_sensor_log_formatter;
@@ -554,6 +644,17 @@ int main()
 	SWSService sws;
 
 
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	DEBUG_TRACE("SMD Satellite...");
+	try {
+		static SmdSat argos_smd;
+		smd_sat_instance = &argos_smd;  // Store pointer for SMD DFU OTA
+		static ArgosTxService argos_tx_service(argos_smd);
+	} catch (...) {
+		DEBUG_TRACE("SMD not detected");
+		smd_sat_instance = nullptr;
+	}
+#else
 	DEBUG_TRACE("KIM2...");
 	try {
 		static KIM2Device kim2;
@@ -561,6 +662,7 @@ int main()
 	} catch (...) {
 		DEBUG_TRACE("KIM2 not detected");
 	}
+#endif
 
 	// Always use M10Q GPS module
 	DEBUG_TRACE("GPS M10Q ...");
@@ -577,11 +679,35 @@ int main()
 	PressureSensorDevice *pressure_sensor_devices[BSP::I2C_TOTAL_NUMBER];
 #ifndef DUMMY_PRESSURE_SENSOR
 	for (unsigned int i = 0; i < BSP::I2C_TOTAL_NUMBER; i++) {
-		static unsigned int i2caddr[3] = { MS5803_ADDRESS, MS5837_ADDRESS, BAR100_ADDRESS };
-		static std::string variant[3] = { MS5803_VARIANT, MS5837_VARIANT, "BAR100-R3-RP" };
-		for (unsigned int j = 0; j < 3; j++) {
+		// Sensor detection order - LPS28DFW is default for RSPB board
+#if defined(BOARD_RSPB)
+		static unsigned int i2caddr[4] = { LPS28DFW_ADDRESS, MS5803_ADDRESS, MS5837_ADDRESS, BAR100_ADDRESS };
+		static std::string variant[4] = { "LPS28DFW", MS5803_VARIANT, MS5837_VARIANT, "BAR100-R3-RP" };
+#else
+		static unsigned int i2caddr[4] = { MS5803_ADDRESS, MS5837_ADDRESS, BAR100_ADDRESS, LPS28DFW_ADDRESS };
+		static std::string variant[4] = { MS5803_VARIANT, MS5837_VARIANT, "BAR100-R3-RP", "LPS28DFW" };
+#endif
+		for (unsigned int j = 0; j < 4; j++) {
 			try {
-				pressure_sensor_devices[i] = (j == 2) ? (PressureSensorDevice *)new Bar100(i, i2caddr[j]) : (PressureSensorDevice *)new MS58xxLL(i, i2caddr[j], variant[j]);
+				PressureSensorDevice *device;
+#if defined(BOARD_RSPB)
+				if (j == 0) {
+					device = new LPS28DFW(i, i2caddr[j]);
+				} else if (j == 3) {
+					device = new Bar100(i, i2caddr[j]);
+				} else {
+					device = new MS58xxLL(i, i2caddr[j], variant[j]);
+				}
+#else
+				if (j == 2) {
+					device = new Bar100(i, i2caddr[j]);
+				} else if (j == 3) {
+					device = new LPS28DFW(i, i2caddr[j]);
+				} else {
+					device = new MS58xxLL(i, i2caddr[j], variant[j]);
+				}
+#endif
+				pressure_sensor_devices[i] = device;
 				DEBUG_TRACE("%s: found on i2cbus=%u i2caddr=0x%02x", variant[j].c_str(), i, i2caddr[j]);
 				break;
 			} catch (...) {
@@ -687,6 +813,16 @@ int main()
 	}
 #endif
 
+#if ENABLE_THERMISTOR_SENSOR
+	DEBUG_TRACE("Thermistor NTC...");
+	try {
+		static Thermistor thermistor(THERMISTOR_ADC);
+		static ThermistorSensorService thermistor_sensor_service(thermistor, &thermistor_sensor_log);
+	} catch (...) {
+		DEBUG_TRACE("Thermistor: not detected");
+	}
+#endif
+
 #ifdef CAM_PWR_EN
 	DEBUG_TRACE("RunCam...");
 	try {
@@ -702,6 +838,22 @@ int main()
 
 	DEBUG_TRACE("Dive mode monitor...");
 	DiveModeService dive_mode_service(nrf_reed_switch);
+
+#ifdef EXTERNAL_WAKEUP
+	// TPL5111 shutdown timer - powerdown after SHUTDOWN_TIMER seconds
+	{
+		unsigned int shutdown_timer = configuration_store->read_param<unsigned int>(ParamID::SHUTDOWN_TIMER);
+		if (shutdown_timer > 0) {
+			DEBUG_INFO("EXTERNAL_WAKEUP: Shutdown timer scheduled for %u seconds", shutdown_timer);
+			system_scheduler->post_task_prio([]() {
+				DEBUG_INFO("EXTERNAL_WAKEUP: Shutdown timer expired, powering down");
+				PMU::powerdown();
+			}, "SHUTDOWN_TIMER", Scheduler::DEFAULT_PRIORITY, shutdown_timer * 1000);
+		} else {
+			DEBUG_INFO("EXTERNAL_WAKEUP: Shutdown timer disabled (SHUTDOWN_TIMER=0)");
+		}
+	}
+#endif
 
 	DEBUG_TRACE("Entering main SM...");
 

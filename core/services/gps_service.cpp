@@ -1,7 +1,9 @@
 #include "gps_service.hpp"
 #include "config_store.hpp"
 #include "scheduler.hpp"
+#if ENABLE_AXL_SENSOR
 #include "axl_sensor_service.hpp"
+#endif
 
 extern ConfigurationStore *configuration_store;
 extern Scheduler *system_scheduler;
@@ -243,6 +245,7 @@ void GPSService::populate_gps_log_with_time(GPSLogEntry &entry, std::time_t time
 }
 
 bool GPSService::service_is_triggered_on_event(ServiceEvent& event, bool& immediate) {
+#if ENABLE_AXL_SENSOR
 	if (event.event_source == ServiceIdentifier::AXL_SENSOR &&
 			event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
 		// Check if AXL wakeup was triggered by reading the ServiceSensorData
@@ -253,6 +256,10 @@ bool GPSService::service_is_triggered_on_event(ServiceEvent& event, bool& immedi
 			return trigger_on_axl;
 		}
 	}
+#else
+	(void)event;
+	(void)immediate;
+#endif
 
 	return false;
 }

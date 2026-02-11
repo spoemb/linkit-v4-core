@@ -16,6 +16,7 @@ set(CORE_DIR      ../../core)
 set(LIB_DIR       ../../libraries)
 
 option(BOARD "Board to compile for" LINKIT)
+option(ARGOS_SMD "Use SMD satellite module" OFF)
 
 # Configure GPIO5 device (default: CAM)
 if(NOT DEFINED EXT_GPIO5_DEVICE)
@@ -42,6 +43,38 @@ endif()
 if(NOT DEFINED ENABLE_AXL_SENSOR)
     set(ENABLE_AXL_SENSOR 1)
 endif()
+if(NOT DEFINED ENABLE_THERMISTOR_SENSOR)
+    set(ENABLE_THERMISTOR_SENSOR 0)
+endif()
+
+# Battery monitor type: ANALOG, FAKE (always 4.1V), STC3117 (I2C fuel gauge)
+# Default: STC3117 for RSPB board, ANALOG for others
+if(NOT DEFINED BATTERY_MONITOR_TYPE)
+    if(${BOARD} MATCHES RSPB)
+        set(BATTERY_MONITOR_TYPE "STC3117")
+    else()
+        set(BATTERY_MONITOR_TYPE "ANALOG")
+    endif()
+endif()
+
+# Validate battery monitor type
+if(NOT ${BATTERY_MONITOR_TYPE} MATCHES "ANALOG|FAKE|STC3117")
+    message(FATAL_ERROR "BATTERY_MONITOR_TYPE must be one of {ANALOG, FAKE, STC3117}")
+endif()
+
+message(STATUS "Battery monitor type: ${BATTERY_MONITOR_TYPE}")
+
+# Convert ON/OFF to 1/0 for C preprocessor compatibility
+if(ENABLE_PRESSURE_SENSOR)
+    set(ENABLE_PRESSURE_SENSOR 1)
+else()
+    set(ENABLE_PRESSURE_SENSOR 0)
+endif()
+if(ENABLE_AXL_SENSOR)
+    set(ENABLE_AXL_SENSOR 1)
+else()
+    set(ENABLE_AXL_SENSOR 0)
+endif()
 
 if(${MODEL} MATCHES SB OR ${MODEL} MATCHES UW OR ${MODEL} MATCHES CORE)
     set(MODEL_SB 0)
@@ -64,9 +97,31 @@ endif()
 
 # Board configuration
 set(GPS_MODEL M10Q)
-set(TARGET_NAME ${PROJECT_NAME}_${MODEL}_board)
-set(BOARD_DIR     "${PROJ_DIR}/bsp/gentracker_v1.0")
-set(BOOTLOADER "bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex")
+
+if(${BOARD} MATCHES RSPB)
+    set(TARGET_NAME ${PROJECT_NAME}_RSPB_${MODEL}_board)
+    set(BOARD_DIR "${PROJ_DIR}/bsp/rspbtracker_v1.0")
+    set(DEVICE_MODEL "RSPB ${MODEL}")
+    set(HAS_WCHG 0)
+    set(BOOTLOADER "bootloader/gentracker_secure_bootloader/rspbtracker_v1.0/armgcc/_build/rspb_bootloader_v1_linkit_merged.hex")
+    set(ENABLE_THERMISTOR_SENSOR 1)
+    # TPL5111 external wakeup timer support
+    set(EXTERNAL_WAKEUP 1)
+    # TPL5111 configured for 1H45 = 6300 seconds wakeup period (physical config with resistor)
+    if(NOT DEFINED WAKEUP_PERIOD)
+        set(WAKEUP_PERIOD 6300)
+    endif()
+    if(ARGOS_SMD)
+        set(ARGOS_SMD_ENABLED 1)
+    else()
+        set(ARGOS_SMD_ENABLED 0)
+    endif()
+else()
+    set(TARGET_NAME ${PROJECT_NAME}_${MODEL}_board)
+    set(BOARD_DIR "${PROJ_DIR}/bsp/gentracker_v1.0")
+    set(ARGOS_SMD_ENABLED 0)
+    set(BOOTLOADER "bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex")
+endif()
 
 if (DEBUG_LEVEL)
 else()
@@ -193,6 +248,8 @@ target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
     ${PROJ_DIR}/core/hardware/bma400
     ${PROJ_DIR}/core/hardware/tsys01
     ${PROJ_DIR}/core/hardware/run_cam
+    $<$<BOOL:${ENABLE_PRESSURE_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/lps28dfw>
+    $<$<STREQUAL:${BATTERY_MONITOR_TYPE},STC3117>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/stc3117>
 )
 
 target_sources(${TARGET_NAME} PRIVATE
@@ -280,6 +337,8 @@ target_sources(${TARGET_NAME} PRIVATE
     ${PROJ_DIR}/core/filesystem/is25_flash.cpp
     ${PROJ_DIR}/core/hardware/ms58xx/ms58xx.cpp
     ${PROJ_DIR}/core/hardware/bar100/bar100.cpp
+    $<$<BOOL:${ENABLE_PRESSURE_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/lps28dfw/lps28dfw.cpp>
+    $<$<BOOL:${ENABLE_PRESSURE_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/lps28dfw/lps28dfw_reg.c>
     ${PROJ_DIR}/core/hardware/ad5933/ad5933.cpp
     ${PROJ_DIR}/core/hardware/bma400/bma400.cpp
     ${PROJ_DIR}/core/hardware/bma400/bma400.c
@@ -288,9 +347,9 @@ target_sources(${TARGET_NAME} PRIVATE
     $<$<BOOL:${ENABLE_PH_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/oem_ph/oem_ph.cpp>
     $<$<BOOL:${ENABLE_SEA_TEMP_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/oem_rtd/oem_rtd.cpp>
     $<$<BOOL:${ENABLE_SEA_TEMP_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/ezo_rtd/ezo_rtd.cpp>
-    ${PROJ_DIR}/core/hardware/tsys01/TSYS01.cpp
-    ${PROJ_DIR}/core/hardware/kim2/kim2.cpp
-    ${PROJ_DIR}/core/hardware/kim2/kim2_comm.cpp
+    $<$<BOOL:${ENABLE_SEA_TEMP_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/tsys01/TSYS01.cpp>
+    $<$<NOT:$<BOOL:${ARGOS_SMD_ENABLED}>>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/kim2/kim2.cpp>
+    $<$<NOT:$<BOOL:${ARGOS_SMD_ENABLED}>>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/kim2/kim2_comm.cpp>
     ${PROJ_DIR}/core/hardware/nrf_timer.cpp
     ${PROJ_DIR}/core/hardware/nrf_rtc.cpp
     ${PROJ_DIR}/core/hardware/nrf_spim.cpp
@@ -298,9 +357,14 @@ target_sources(${TARGET_NAME} PRIVATE
     ${PROJ_DIR}/core/hardware/nrf_pmu.cpp
     ${PROJ_DIR}/core/hardware/nrf_switch.cpp
     ${PROJ_DIR}/core/hardware/nrf_irq.cpp
-    ${PROJ_DIR}/core/hardware/nrf_battery_mon.cpp
+    $<$<STREQUAL:${BATTERY_MONITOR_TYPE},ANALOG>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/nrf_battery_mon.cpp>
+    $<$<STREQUAL:${BATTERY_MONITOR_TYPE},FAKE>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/fake_battery_mon.cpp>
+    $<$<STREQUAL:${BATTERY_MONITOR_TYPE},STC3117>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/stc3117/stc3117_gasgauge.cpp>
+    $<$<STREQUAL:${BATTERY_MONITOR_TYPE},STC3117>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/stc3117/stc311x_gasgauge.c>
+    $<$<STREQUAL:${BATTERY_MONITOR_TYPE},STC3117>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/stc3117/Generic_I2C.c>
     ${PROJ_DIR}/core/hardware/nrf_i2c.cpp
     ${PROJ_DIR}/core/hardware/nrf_usb.cpp
+    $<$<STREQUAL:${BOARD},RSPB>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/nrf_debug_uart.cpp>
     ${PROJ_DIR}/core/interface/ble_interface.cpp
     ${PROJ_DIR}/core/interface/ble_stm_ota.c
     ${PROJ_DIR}/core/memmang/heap_4.c
@@ -359,6 +423,26 @@ target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
     ${PROJ_DIR}/core/hardware/m10qasync
 )
 
+# SMD satellite module (conditional)
+if(ARGOS_SMD)
+    target_sources(${TARGET_NAME} PRIVATE
+        ${PROJ_DIR}/core/hardware/smd_sat/smd_sat.cpp
+    )
+    target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
+        ${PROJ_DIR}/core/hardware/smd_sat
+    )
+endif()
+
+# Thermistor NTC sensor (conditional)
+if(ENABLE_THERMISTOR_SENSOR EQUAL 1)
+    target_sources(${TARGET_NAME} PRIVATE
+        ${PROJ_DIR}/core/hardware/thermistor/thermistor.cpp
+    )
+    target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
+        ${PROJ_DIR}/core/hardware/thermistor
+    )
+endif()
+
 
 target_compile_definitions(${TARGET_NAME} PRIVATE
     Release=0
@@ -376,12 +460,24 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     ENABLE_ALS_SENSOR=${ENABLE_ALS_SENSOR}
     ENABLE_CDT_SENSOR=${ENABLE_CDT_SENSOR}
     ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR}
+    ENABLE_THERMISTOR_SENSOR=${ENABLE_THERMISTOR_SENSOR}
+    ARGOS_SMD=${ARGOS_SMD_ENABLED}
+    # Battery monitor type defines
+    $<$<STREQUAL:${BATTERY_MONITOR_TYPE},ANALOG>:BATTERY_MONITOR_ANALOG>
+    $<$<STREQUAL:${BATTERY_MONITOR_TYPE},FAKE>:BATTERY_MONITOR_FAKE>
+    $<$<STREQUAL:${BATTERY_MONITOR_TYPE},STC3117>:BATTERY_MONITOR_STC3117>
+    # USB DTE interface (parallel with BLE)
+    USB_DTE_ENABLED
     BUILD_TYPE=${CMAKE_BUILD_TYPE}
     #SCHEDULER_DEBUG
     DEBUG_ENABLE=1
     DEBUG_LEVEL=${DEBUG_LEVEL}
     DEBUG_USING_RTC
-    BOARD_PCA10059
+    $<$<STREQUAL:${CMAKE_BUILD_TYPE},Debug>:DEBUG_NO_WATCHDOG>
+    $<$<STREQUAL:${BOARD},RSPB>:BOARD_RSPB_V1>
+    $<$<STREQUAL:${BOARD},RSPB>:BOARD_RSPB>
+    $<$<STREQUAL:${BOARD},RSPB>:EXTERNAL_WAKEUP>
+    $<$<NOT:$<STREQUAL:${BOARD},RSPB>>:BOARD_PCA10059>
     BOARD_${BOARD}
     CONFIG_GPIO_AS_PINRESET
     CONFIG_NFCT_PINS_AS_GPIOS
@@ -391,7 +487,7 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     S140
     SOFTDEVICE_PRESENT
     __HEAP_SIZE=0 # Use configTOTAL_HEAP_SIZE instead
-    __STACK_SIZE=110000
+    __STACK_SIZE=32768
     configTOTAL_HEAP_SIZE=65536
     DEVICE_MODEL_NAME="${DEVICE_MODEL}"s
     #LFS_YES_TRACE

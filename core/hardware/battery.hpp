@@ -47,4 +47,5 @@ public:
 		internal_update();
 		actuate_events();
 	}
+	virtual int shutdown() { return 0; }  // Optional shutdown for fuel gauges
 };
