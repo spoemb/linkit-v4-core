@@ -11,7 +11,7 @@ extern "C" {
 #include "error.hpp"
 #include "debug.hpp"
 #include "nrf_delay.h"
-#include "gpio.hpp"
+#include "gpio.hpp"  // For SensorsPowerGuard (VSENSORS management - needed for I2C bus stability)
 #include "nrf_gpio.h"
 #include "nrf_i2c.hpp"
 
@@ -60,6 +60,7 @@ GaugeBatteryMonitor::GaugeBatteryMonitor(uint16_t critical_voltage,
 }
 
 int GaugeBatteryMonitor::init() {
+    SensorsPowerGuard power_guard;  // Acquire VSENSORS for I2C bus stability (other sensors on same bus)
     DEBUG_TRACE("STC3117: Starting gauge for measurement");
 
     if (m_is_init) {
@@ -107,6 +108,7 @@ int GaugeBatteryMonitor::init() {
 
 
 int GaugeBatteryMonitor::shutdown() {
+    SensorsPowerGuard power_guard;  // Acquire VSENSORS for I2C bus stability (other sensors on same bus)
     if (!m_is_init) {
         return STC3117_OK;
     }
@@ -154,6 +156,7 @@ int GaugeBatteryMonitor::i2c_read(int I2cSlaveAddr, int RegAddress, unsigned cha
 }
 
 int GaugeBatteryMonitor::check_i2c_device() {
+    SensorsPowerGuard power_guard;  // Acquire VSENSORS for I2C bus stability (other sensors on same bus)
     int status = STC31xx_CheckI2cDeviceId();
     if (status != 0) {
         DEBUG_ERROR("STC3117: I2C device check failed (status=%d)", status);
@@ -162,6 +165,9 @@ int GaugeBatteryMonitor::check_i2c_device() {
 }
 
 void GaugeBatteryMonitor::internal_update() {
+    // Acquire VSENSORS for I2C bus stability (other sensors on same bus)
+    SensorsPowerGuard power_guard;
+
     // === POWER OPTIMIZED: Wake up → Read → Shutdown ===
 
     // 1. Initialize gauge (wake from standby)

@@ -475,6 +475,26 @@ void BleInterface::stm_ota_event_handler(uint16_t conn_handle, ble_stm_ota_t * p
 
 				m_is_first_ota_packet = false;
 
+				// Debug: print first 16 bytes of OTA packet
+				DEBUG_TRACE("OTA first packet (%u bytes): %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+					p_evt->length,
+					p_evt->length > 0 ? ((uint8_t *)p_evt->p_data)[0] : 0,
+					p_evt->length > 1 ? ((uint8_t *)p_evt->p_data)[1] : 0,
+					p_evt->length > 2 ? ((uint8_t *)p_evt->p_data)[2] : 0,
+					p_evt->length > 3 ? ((uint8_t *)p_evt->p_data)[3] : 0,
+					p_evt->length > 4 ? ((uint8_t *)p_evt->p_data)[4] : 0,
+					p_evt->length > 5 ? ((uint8_t *)p_evt->p_data)[5] : 0,
+					p_evt->length > 6 ? ((uint8_t *)p_evt->p_data)[6] : 0,
+					p_evt->length > 7 ? ((uint8_t *)p_evt->p_data)[7] : 0,
+					p_evt->length > 8 ? ((uint8_t *)p_evt->p_data)[8] : 0,
+					p_evt->length > 9 ? ((uint8_t *)p_evt->p_data)[9] : 0,
+					p_evt->length > 10 ? ((uint8_t *)p_evt->p_data)[10] : 0,
+					p_evt->length > 11 ? ((uint8_t *)p_evt->p_data)[11] : 0,
+					p_evt->length > 12 ? ((uint8_t *)p_evt->p_data)[12] : 0,
+					p_evt->length > 13 ? ((uint8_t *)p_evt->p_data)[13] : 0,
+					p_evt->length > 14 ? ((uint8_t *)p_evt->p_data)[14] : 0,
+					p_evt->length > 15 ? ((uint8_t *)p_evt->p_data)[15] : 0);
+
 				s_evt.event_type = BLEServiceEventType::OTA_START;
 				s_evt.file_id = m_ota_file_id;
 				s_evt.file_size = ((uint8_t *)p_evt->p_data)[3] |

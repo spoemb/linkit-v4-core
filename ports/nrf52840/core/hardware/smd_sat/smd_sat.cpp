@@ -878,7 +878,7 @@ SmdSat::~SmdSat() {
 
 void SmdSat::shutdown(void) {
 	// Keep SMD powered but in reset to avoid I2C bus corruption
-	GPIOPins::clear(SAT_RESET);   // Assert reset
+	GPIOPins::drive_low(SAT_RESET);   // Assert reset
 	nrf_delay_ms(SMDSAT_DELAY_RST_MS);
 	// SAT_PWR_EN stays HIGH - SMD pulls I2C LOW when unpowered
 }
@@ -965,6 +965,11 @@ void SmdSat::state_stopped_enter() {
 	nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.miso_pin, NRF_GPIO_PIN_PULLDOWN);
 	nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.sck_pin, NRF_GPIO_PIN_PULLDOWN);
 
+#ifdef SMD_VPA_PIN
+	// Drive VPA LOW when SMD is stopped (saves power)
+	GPIOPins::drive_low(SMD_VPA_PIN);
+#endif
+
 	this->shutdown();
 	is_kmac_profil_loaded = false;
 	// Reset Protocol A+ state - will re-detect on next power-on
@@ -988,15 +993,19 @@ void SmdSat::state_powering_on_exit() {
 void SmdSat::state_powering_on() {
 	DEBUG_TRACE("SmdSat::%s: Starting power-on sequence", __func__);
 
-	GPIOPins::clear(SAT_RESET);
+	GPIOPins::drive_low(SAT_RESET);
 	nrf_delay_ms(10);
 
 	GPIOPins::set(SAT_PWR_EN);
+#ifdef SMD_VPA_PIN
+	// Release VPA to HIGH-Z so SMD can control it autonomously
+	GPIOPins::release_to_highz(SMD_VPA_PIN);
+#endif
 	DEBUG_TRACE("SmdSat::%s: Power enabled, waiting for stabilization", __func__);
 
 	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 
-	GPIOPins::set(SAT_RESET);
+	GPIOPins::release_to_highz(SAT_RESET);
 	DEBUG_TRACE("SmdSat::%s: Reset released", __func__);
 
 	SMD_STATE_CHANGE(powering_on, idle_pending);
@@ -1261,10 +1270,13 @@ void SmdSat::set_credentials(unsigned int dec_id, unsigned int address, const st
 	};
 
 	if (was_stopped) {
-		GPIOPins::clear(SAT_RESET);
+		GPIOPins::drive_low(SAT_RESET);
 		GPIOPins::set(SAT_PWR_EN);
+#ifdef SMD_VPA_PIN
+		GPIOPins::release_to_highz(SMD_VPA_PIN);
+#endif
 		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
-		GPIOPins::set(SAT_RESET);
+		GPIOPins::release_to_highz(SAT_RESET);
 		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 	}
 	if (m_nrf_spim == nullptr) {
@@ -1409,10 +1421,13 @@ void SmdSat::read_credentials(unsigned int *dec_id, unsigned int *address, std::
 	DEBUG_TRACE("SmdSat::%s",__func__);
 	bool stop_spi = false;
 	if (m_state == SmdSatState::stopped) {
-		GPIOPins::clear(SAT_RESET);
+		GPIOPins::drive_low(SAT_RESET);
 		GPIOPins::set(SAT_PWR_EN);
+#ifdef SMD_VPA_PIN
+		GPIOPins::release_to_highz(SMD_VPA_PIN);
+#endif
 		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
-		GPIOPins::set(SAT_RESET);
+		GPIOPins::release_to_highz(SAT_RESET);
 		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 	}
 	if (m_nrf_spim == nullptr) {
@@ -1708,10 +1723,14 @@ bool SmdSat::dfu_enter() {
 	bool stop_spi = false;
 
 	if (was_stopped) {
-		GPIOPins::clear(SAT_RESET);
+		GPIOPins::drive_low(SAT_RESET);
 		GPIOPins::set(SAT_PWR_EN);
+#ifdef SMD_VPA_PIN
+		// Release VPA to HIGH-Z so SMD can control it
+		GPIOPins::release_to_highz(SMD_VPA_PIN);
+#endif
 		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
-		GPIOPins::set(SAT_RESET);
+		GPIOPins::release_to_highz(SAT_RESET);
 		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 	}
 
@@ -1958,10 +1977,13 @@ std::string SmdSat::get_firmware_version() {
 	// Power on SMD if needed
 	if (was_stopped) {
 		DEBUG_INFO("SmdSat::%s: Powering on SMD to read version", __func__);
-		GPIOPins::clear(SAT_RESET);
+		GPIOPins::drive_low(SAT_RESET);
 		GPIOPins::set(SAT_PWR_EN);
+#ifdef SMD_VPA_PIN
+		GPIOPins::release_to_highz(SMD_VPA_PIN);
+#endif
 		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
-		GPIOPins::set(SAT_RESET);
+		GPIOPins::release_to_highz(SAT_RESET);
 		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 	}
 

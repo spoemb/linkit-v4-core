@@ -13,6 +13,7 @@
 #include "pmu.hpp"
 #include "error.hpp"
 #include "config_store.hpp"
+#include "gpio.hpp"  // For SensorsPowerGuard (VSENSORS management)
 
 extern ConfigurationStore *configuration_store;
 
@@ -77,6 +78,7 @@ BMA400LL::~BMA400LL()
 
 void BMA400LL::init()
 {
+	SensorsPowerGuard power_guard;  // Acquire VSENSORS power for I2C access
 	int8_t rslt;
 
 	DEBUG_TRACE("BMA400LL::init: configuring device interface");
@@ -254,6 +256,7 @@ void BMA400LL::setup_normal_mode()
 
 void BMA400LL::read_xyz(double& x, double& y, double& z, int16_t& temperature)
 {
+	SensorsPowerGuard power_guard;  // Acquire VSENSORS power for I2C access
 	int8_t rslt;
 	struct bma400_sensor_data data;
 	uint8_t g_force = range_to_g(m_g_range);
@@ -324,6 +327,7 @@ void BMA400LL::read_xyz(double& x, double& y, double& z, int16_t& temperature)
 
 int16_t BMA400LL::read_temperature()
 {
+	SensorsPowerGuard power_guard;  // Acquire VSENSORS power for I2C access
 	// Wait for temperature reading
 	PMU::delay_us(11200);
 
@@ -370,6 +374,7 @@ void BMA400LL::set_z_calibration(double z) { m_cal_z = z; }
 
 void BMA400LL::calibrate_offset(uint8_t g_range, double& offset_x, double& offset_y, double& offset_z)
 {
+	SensorsPowerGuard power_guard;  // Acquire VSENSORS power for I2C access
 	int8_t rslt;
 	const uint8_t n_samples = 200;
 	const double gravity = 9.80665;
@@ -441,6 +446,7 @@ void BMA400LL::calibrate_offset(uint8_t g_range, double& offset_x, double& offse
 
 void BMA400LL::enable_wakeup(std::function<void()> func)
 {
+	SensorsPowerGuard power_guard;  // Acquire VSENSORS power for I2C access
 	int8_t rslt;
 
 	DEBUG_INFO("BMA400::enable_wakeup: configured power_mode=%u (%s wakeup)",
@@ -533,6 +539,7 @@ void BMA400LL::enable_wakeup_normal(std::function<void()> func)
 
 void BMA400LL::disable_wakeup()
 {
+	SensorsPowerGuard power_guard;  // Acquire VSENSORS power for I2C access
 	int8_t rslt;
 
 	m_irq.disable();

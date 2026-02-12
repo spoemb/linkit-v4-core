@@ -2,6 +2,7 @@
 #include "nrf_i2c.hpp"
 #include "pmu.hpp"
 #include "debug.hpp"
+#include "gpio.hpp"  // For SensorsPowerGuard (VSENSORS management)
 
 LPS28DFW::LPS28DFW(unsigned int bus, unsigned char address)
     : m_bus(bus), m_addr(address) {
@@ -12,6 +13,7 @@ LPS28DFW::LPS28DFW(unsigned int bus, unsigned char address)
 }
 
 bool LPS28DFW::init() {
+    SensorsPowerGuard power_guard;  // Acquire VSENSORS power for I2C access
     DEBUG_TRACE("LPS28DFW::init - bus=%u, addr=0x%02X", m_bus, m_addr);
     lps28dfw_id_t id;
     if (lps28dfw_id_get(&m_ctx, &id) != 0 || id.whoami != LPS28DFW_ID) {
@@ -32,6 +34,7 @@ bool LPS28DFW::init() {
 }
 
 void LPS28DFW::read(double& temperature, double& pressure) {
+    SensorsPowerGuard power_guard;  // Acquire VSENSORS power for I2C access
     if (lps28dfw_trigger_sw(&m_ctx, &m_mode) != 0) {
         DEBUG_ERROR("LPS28DFW::read - trigger_sw failed");
         temperature = pressure = 0;

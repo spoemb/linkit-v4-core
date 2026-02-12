@@ -6,7 +6,7 @@
 #include "nrf_delay.h"
 
 // Static member initialization
-bool GPIOPins::m_sensors_pwr_state = false;
+uint8_t GPIOPins::m_sensors_pwr_refcount = 0;
 
 void GPIOPins::initialise()
 {
@@ -29,21 +29,18 @@ void GPIOPins::initialise()
 	set(GPS_RST);
 	clear(GPS_POWER);
 
-	// SMD satellite module has I2C pins routed to the I2C bus.
-	// When SMD is not powered, its internal circuitry pulls the bus LOW.
-	// Power ON the SMD (but keep in reset) so its I2C pins don't interfere.
-	clear(SAT_RESET);    // Assert reset first (hold SMD in reset)
-	nrf_delay_ms(1);
-	set(SAT_PWR_EN);     // Power ON the SMD (I2C bus now free)
-	nrf_delay_ms(10);    // Wait for SMD power to stabilize
+	// SMD satellite module - keep powered OFF at init
+	// SMD driver (smd_sat.cpp) will power it on when needed
+	clear(SAT_PWR_EN);
+	release_to_highz(SAT_RESET);
 
 	clear(SWS_ENABLE_PIN);
 #ifdef GPIO_AG_PWR_PIN
 	set(GPIO_AG_PWR_PIN);	// BMA400 must be ON to avoid leakage current. BMA 400 sleep current is 200nA
 #endif
 #ifdef SENSORS_PWR_PIN
-	set(SENSORS_PWR_PIN);	// Enable sensors power (BMA400, etc.) for RSPB board
-	// Note: Full 50ms delay happens in set_sensors_pwr() before I2C init
+	// VSENSORS starts OFF - sensors will acquire/release power as needed
+	clear(SENSORS_PWR_PIN);
 #endif
 #ifdef ADC_ENABLE
 	set(ADC_ENABLE);		// Enable ADC to avoid leakage current (I2C pull up)
@@ -76,34 +73,53 @@ void GPIOPins::set(uint32_t pin)
 	nrf_gpio_pin_set(BSP::GPIO_Inits[pin].pin_number);
 }
 
-void GPIOPins::set_sensors_pwr()
+void GPIOPins::acquire_sensors_pwr()
 {
 #ifdef SENSORS_PWR_PIN
-	if (!m_sensors_pwr_state)
+	if (m_sensors_pwr_refcount == 0)
 	{
-		DEBUG_TRACE("GPIOPins::set_sensors_pwr: Setting sensors power pin");
+		DEBUG_TRACE("GPIOPins::acquire_sensors_pwr: Powering ON VSENSORS (refcount 0->1)");
 		set(SENSORS_PWR_PIN);
 		nrf_delay_ms(50);  // 50ms delay for sensors to power up (BMA400 needs ~2ms, LPS28DFW needs ~10ms, extra margin for I2C stability)
-		m_sensors_pwr_state = true;
 	}
+	else
+	{
+		DEBUG_TRACE("GPIOPins::acquire_sensors_pwr: refcount %u->%u (already on)", m_sensors_pwr_refcount, m_sensors_pwr_refcount + 1);
+	}
+	m_sensors_pwr_refcount++;
 #endif
 }
 
-void GPIOPins::clear_sensors_pwr()
+void GPIOPins::release_sensors_pwr()
 {
 #ifdef SENSORS_PWR_PIN
-	if (m_sensors_pwr_state)
+	if (m_sensors_pwr_refcount == 0)
 	{
-		DEBUG_TRACE("GPIOPins::clear_sensors_pwr: Clearing sensors power pin");
+		DEBUG_WARN("GPIOPins::release_sensors_pwr: refcount already 0, ignoring release");
+		return;
+	}
+	m_sensors_pwr_refcount--;
+	if (m_sensors_pwr_refcount == 0)
+	{
+		DEBUG_TRACE("GPIOPins::release_sensors_pwr: Powering OFF VSENSORS (refcount 1->0)");
 		clear(SENSORS_PWR_PIN);
-		m_sensors_pwr_state = false;
+		nrf_delay_ms(50);  // Power supply stabilization delay to avoid reboot when other rails power up
+	}
+	else
+	{
+		DEBUG_TRACE("GPIOPins::release_sensors_pwr: refcount %u->%u (still in use)", m_sensors_pwr_refcount + 1, m_sensors_pwr_refcount);
 	}
 #endif
 }
 
 bool GPIOPins::get_sensors_pwr_state()
 {
-	return m_sensors_pwr_state;
+	return m_sensors_pwr_refcount > 0;
+}
+
+uint8_t GPIOPins::get_sensors_pwr_refcount()
+{
+	return m_sensors_pwr_refcount;
 }
 
 void GPIOPins::clear(uint32_t pin)
@@ -129,6 +145,33 @@ void GPIOPins::enable(uint32_t pin)
 }
 
 void GPIOPins::disable(uint32_t pin)
+{
+	nrf_gpio_cfg_default(BSP::GPIO_Inits[pin].pin_number);
+}
+
+void GPIOPins::pulse_low_then_release(uint32_t pin, uint32_t duration_ms)
+{
+	uint32_t pin_number = BSP::GPIO_Inits[pin].pin_number;
+
+	// Configure as output and drive LOW
+	nrf_gpio_cfg_output(pin_number);
+	nrf_gpio_pin_clear(pin_number);
+
+	// Hold LOW for specified duration
+	nrf_delay_ms(duration_ms);
+
+	// Release to high-impedance (input/disconnected) - allows probe to control
+	nrf_gpio_cfg_default(pin_number);
+}
+
+void GPIOPins::drive_low(uint32_t pin)
+{
+	uint32_t pin_number = BSP::GPIO_Inits[pin].pin_number;
+	nrf_gpio_cfg_output(pin_number);
+	nrf_gpio_pin_clear(pin_number);
+}
+
+void GPIOPins::release_to_highz(uint32_t pin)
 {
 	nrf_gpio_cfg_default(BSP::GPIO_Inits[pin].pin_number);
 }

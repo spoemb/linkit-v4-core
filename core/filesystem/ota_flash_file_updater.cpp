@@ -83,11 +83,39 @@ void OTAFlashFileUpdater::start_file_transfer(OTAFileIdentifier file_id, lfs_siz
 		DEBUG_INFO("OTAFlashFileUpdater::start_file_transfer: SMD_FIRMWARE_UART");
 		m_filesystem->remove("smd_firmware.dat");
 		m_file = new LFSFile(m_filesystem, "smd_firmware.dat", LFS_O_WRONLY | LFS_O_CREAT);
+		{
+			// Write the 8-byte header to the file (ble_interface strips it from data stream)
+			// Format: [size:4B BE][crc32:4B BE]
+			uint8_t header[8];
+			header[0] = (length >> 24) & 0xFF;
+			header[1] = (length >> 16) & 0xFF;
+			header[2] = (length >> 8) & 0xFF;
+			header[3] = length & 0xFF;
+			header[4] = (crc32 >> 24) & 0xFF;
+			header[5] = (crc32 >> 16) & 0xFF;
+			header[6] = (crc32 >> 8) & 0xFF;
+			header[7] = crc32 & 0xFF;
+			m_file->write(header, 8);
+		}
 		break;
 	case OTAFileIdentifier::SMD_FIRMWARE_SPI:
 		DEBUG_INFO("OTAFlashFileUpdater::start_file_transfer: SMD_FIRMWARE_SPI");
 		m_filesystem->remove("smd_firmware.dat");
 		m_file = new LFSFile(m_filesystem, "smd_firmware.dat", LFS_O_WRONLY | LFS_O_CREAT);
+		{
+			// Write the 8-byte header to the file (ble_interface strips it from data stream)
+			// Format: [size:4B BE][crc32:4B BE]
+			uint8_t header[8];
+			header[0] = (length >> 24) & 0xFF;
+			header[1] = (length >> 16) & 0xFF;
+			header[2] = (length >> 8) & 0xFF;
+			header[3] = length & 0xFF;
+			header[4] = (crc32 >> 24) & 0xFF;
+			header[5] = (crc32 >> 16) & 0xFF;
+			header[6] = (crc32 >> 8) & 0xFF;
+			header[7] = crc32 & 0xFF;
+			m_file->write(header, 8);
+		}
 		break;
 #endif
 	default:
@@ -209,19 +237,19 @@ void OTAFlashFileUpdater::apply_file_update() {
 			return;
 		}
 
-		// Read header [size:4B LE][stm32_crc32:4B LE]
+		// Read header [size:4B BE][stm32_crc32:4B BE]
 		uint8_t header[SMD_FW_HEADER_SIZE];
 		fw_file.read(header, SMD_FW_HEADER_SIZE);
 
-		// Parse little-endian values (pylinkit sends LE format)
-		uint32_t fw_size = ((uint32_t)header[3] << 24) |
-		                   ((uint32_t)header[2] << 16) |
-		                   ((uint32_t)header[1] << 8) |
-		                   ((uint32_t)header[0]);
-		uint32_t stm32_crc32 = ((uint32_t)header[7] << 24) |
-		                       ((uint32_t)header[6] << 16) |
-		                       ((uint32_t)header[5] << 8) |
-		                       ((uint32_t)header[4]);
+		// Parse big-endian values (matches BLE OTA protocol)
+		uint32_t fw_size = ((uint32_t)header[0] << 24) |
+		                   ((uint32_t)header[1] << 16) |
+		                   ((uint32_t)header[2] << 8) |
+		                   ((uint32_t)header[3]);
+		uint32_t stm32_crc32 = ((uint32_t)header[4] << 24) |
+		                       ((uint32_t)header[5] << 16) |
+		                       ((uint32_t)header[6] << 8) |
+		                       ((uint32_t)header[7]);
 
 		DEBUG_INFO("OTAFlashFileUpdater: SMD firmware size=%u, STM32 CRC32=0x%08X", fw_size, stm32_crc32);
 

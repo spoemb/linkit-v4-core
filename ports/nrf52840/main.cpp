@@ -138,8 +138,8 @@ FSM_INITIAL_STATE(GenTracker, BootState)
 // Reserve the last 1MB of IS25 flash memory for firmware updates
 #define OTA_UPDATE_RESERVED_BLOCKS ((1024 * 1024) / IS25_BLOCK_SIZE)
 
-// Reed switch debouncing time (ms)
-#define REED_SWITCH_DEBOUNCE_TIME_MS    25
+// Reed switch debouncing time (ms) - increased from 25ms to filter noise from VSENSORS switching
+#define REED_SWITCH_DEBOUNCE_TIME_MS    100
 
 
 extern "C" void HardFault_Handler() {
@@ -364,22 +364,25 @@ int main()
 	// Check the reed switch is engaged for 3 seconds if this is a power on event
     DEBUG_TRACE("PMU Reset Cause = %s", PMU::reset_cause().c_str());
 
-	// Ensure sensors power is enabled with proper delay before I2C init
-	GPIOPins::set_sensors_pwr();
+	// Note: VSENSORS power is now managed by each sensor via SensorsPowerGuard (reference counting)
 
 #ifdef POWER_ON_RESET_REQUIRES_REED_SWITCH
 #ifdef PSEUDO_POWER_OFF
 
-	NrfI2C::init();
-	bool is_linkit_v3_v4 = (PMU::hardware_version() == "LinkIt V3") || (PMU::hardware_version() == "LinkIt V4");
-#if ENABLE_SEA_TEMP_SENSOR
 	{
-		try {
-			EZO_RTD_Sensor rtd; // Puts the device into standby mode
-		} catch (...) {}
-	}
+		SensorsPowerGuard power_guard;  // Acquire VSENSORS for I2C bus stability during init
+		NrfI2C::init();
+		bool is_linkit_v3_v4_early = (PMU::hardware_version() == "LinkIt V3") || (PMU::hardware_version() == "LinkIt V4");
+#if ENABLE_SEA_TEMP_SENSOR
+		{
+			try {
+				EZO_RTD_Sensor rtd; // Puts the device into standby mode
+			} catch (...) {}
+		}
 #endif
-	NrfI2C::uninit();
+		NrfI2C::uninit();
+	}
+	bool is_linkit_v3_v4 = (PMU::hardware_version() == "LinkIt V3") || (PMU::hardware_version() == "LinkIt V4");
 
 	if ((is_linkit_v3_v4 && PMU::reset_cause() == "Pseudo Power On Reset") ||
 		(!is_linkit_v3_v4 && (PMU::reset_cause() == "Power On Reset" ||
@@ -472,7 +475,11 @@ int main()
 	system_scheduler = &scheduler;
 
     // Initialise the I2C drivers
-    NrfI2C::init();
+    // Note: VSENSORS must be on during I2C init to prevent bus appearing stuck
+    {
+        SensorsPowerGuard power_guard;
+        NrfI2C::init();
+    }
 
     DEBUG_TRACE("Reed gesture...");
 	ReedSwitch reed_gesture_switch(nrf_reed_switch);
