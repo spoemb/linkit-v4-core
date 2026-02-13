@@ -216,20 +216,19 @@ bool NrfI2C::recover_bus(uint8_t bus) {
 // ============================================================================
 
 void NrfI2C::init(void) {
-	DEBUG_TRACE("NrfI2C::init - initializing %u I2C buses", BSP::I2C_TOTAL_NUMBER);
+	//DEBUG_TRACE("NrfI2C::init - initializing %u I2C buses", BSP::I2C_TOTAL_NUMBER);
 
 	for (unsigned int i = 0; i < BSP::I2C_TOTAL_NUMBER; i++) {
-		uint32_t scl_pin = BSP::I2C_Inits[i].twim_config.scl;
-		uint32_t sda_pin = BSP::I2C_Inits[i].twim_config.sda;
+		// Skip buses that are already initialized
+		if (m_is_enabled[i]) {
+			//DEBUG_TRACE("NrfI2C::init - bus %u already enabled, skipping", i);
+			continue;
+		}
 
-		DEBUG_TRACE("NrfI2C::init - bus %u: SCL=P%u.%u, SDA=P%u.%u", i,
-			scl_pin >> 5, scl_pin & 0x1F,
-			sda_pin >> 5, sda_pin & 0x1F);
-
-		// Enable internal pull-ups on I2C pins (helps with floating pins from unpowered devices)
-		nrf_gpio_cfg(scl_pin, NRF_GPIO_PIN_DIR_INPUT, NRF_GPIO_PIN_INPUT_CONNECT,
+		// Pre-configure I2C pins with pull-ups before bus-stuck check
+		nrf_gpio_cfg(BSP::I2C_Inits[i].twim_config.scl, NRF_GPIO_PIN_DIR_INPUT, NRF_GPIO_PIN_INPUT_CONNECT,
 		             NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_S0D1, NRF_GPIO_PIN_NOSENSE);
-		nrf_gpio_cfg(sda_pin, NRF_GPIO_PIN_DIR_INPUT, NRF_GPIO_PIN_INPUT_CONNECT,
+		nrf_gpio_cfg(BSP::I2C_Inits[i].twim_config.sda, NRF_GPIO_PIN_DIR_INPUT, NRF_GPIO_PIN_INPUT_CONNECT,
 		             NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_S0D1, NRF_GPIO_PIN_NOSENSE);
 		PMU::delay_us(100);
 

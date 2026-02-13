@@ -850,13 +850,16 @@ private:
 	static const DTECommandMap* lookup_command(const std::string& command_str, bool is_req) {
 		unsigned int start = is_req ? 0 : (unsigned int)DTECommand::__NUM_REQ;
 		unsigned int end = is_req ? (unsigned int)DTECommand::__NUM_REQ : command_map_size;
+		DEBUG_TRACE("lookup_command: '%s' is_req=%d start=%u end=%u command_map_size=%u",
+			command_str.c_str(), is_req, start, end, (unsigned int)command_map_size);
 		for (unsigned int i = start; i < end; i++) {
 			if (command_map[i].name == command_str) {
-				//std::cout << "command: " << command_str << " match: " << command_map[i].name << "\n";
+				DEBUG_TRACE("lookup_command: found '%s' at index %u", command_str.c_str(), i);
 				return &command_map[i];
 			}
 		}
-		DEBUG_ERROR("DTE_PROTOCOL_UNKNOWN_COMMAND");
+		DEBUG_ERROR("DTE_PROTOCOL_UNKNOWN_COMMAND: '%s' not found in range [%u, %u)",
+			command_str.c_str(), start, end);
 		throw DTE_PROTOCOL_UNKNOWN_COMMAND;
 	}
 
@@ -1088,6 +1091,8 @@ private:
 			return BaseArgosMode::LEGACY;
 		} else if (s == "3") {
 			return BaseArgosMode::DUTY_CYCLE;
+		} else if (s == "4") {
+			return BaseArgosMode::DOPPLER;
 		} else {
 			DEBUG_ERROR("DTE_PROTOCOL_VALUE_OUT_OF_RANGE in %s(%s)", __FUNCTION__, s.c_str());
 			throw DTE_PROTOCOL_VALUE_OUT_OF_RANGE;
@@ -1438,7 +1443,7 @@ public:
 		constexpr std::string_view length_deliminator("#");
 		constexpr std::string_view command_deliminator(";");
 		constexpr std::string_view payload_end_deliminator("\r");
-		constexpr size_t size_of_command_field = 5;
+		constexpr size_t size_of_command_field = 6;  // Increased from 5 to support SMDDFU command
 		constexpr size_t size_of_length_field = 3;
 
 		bool is_req = false;
@@ -1469,15 +1474,16 @@ public:
 			return false;
 		}
 
-		// Extract the command and check it is one we recognise //
-		const DTECommandMap *cmd_ref = lookup_command(std::string(str.substr(str_pos, size_of_command_field)), is_req);
-		str_pos += size_of_command_field;
-		command = cmd_ref->command;
-
-		// Check the command length deliminator //
-		if (str.compare(str_pos, length_deliminator.size(), length_deliminator) != 0)
+		// Extract the command by finding the '#' delimiter (variable length command names)
+		size_t cmd_end_pos = str.find(length_deliminator, str_pos);
+		if (cmd_end_pos == std::string::npos || cmd_end_pos == str_pos)
 			return false;
-		str_pos += length_deliminator.size();
+		size_t cmd_len = cmd_end_pos - str_pos;
+		if (cmd_len > size_of_command_field)  // Sanity check - command name too long
+			return false;
+		const DTECommandMap *cmd_ref = lookup_command(std::string(str.substr(str_pos, cmd_len)), is_req);
+		str_pos = cmd_end_pos + length_deliminator.size();
+		command = cmd_ref->command;
 
 		// Extract the length field //
 

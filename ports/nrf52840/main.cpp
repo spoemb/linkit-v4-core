@@ -139,7 +139,7 @@ FSM_INITIAL_STATE(GenTracker, BootState)
 #define OTA_UPDATE_RESERVED_BLOCKS ((1024 * 1024) / IS25_BLOCK_SIZE)
 
 // Reed switch debouncing time (ms) - increased from 25ms to filter noise from VSENSORS switching
-#define REED_SWITCH_DEBOUNCE_TIME_MS    100
+#define REED_SWITCH_DEBOUNCE_TIME_MS    250
 
 
 extern "C" void HardFault_Handler() {

@@ -131,6 +131,9 @@ private:
 	void enter_shutdown();
 	void exit_shutdown();
 	void check_for_power_off();
+#ifdef GPS_FAKE_POSITION
+	void generate_fake_fix();
+#endif
 
 	// Events
 	void react(const UBXCommsEventSendComplete&) override;

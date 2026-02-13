@@ -78,7 +78,16 @@ void M10QAsyncReceiver::power_on(const GPSNavSettings& nav_settings) {
         // Copy navigation settings to be used for this session
         m_nav_settings = nav_settings;
         m_num_consecutive_fixes = m_nav_settings.num_consecutive_fixes;
+#ifdef GPS_FAKE_POSITION
+        // Fake GPS mode: simulate a fix after 2s delay
+        DEBUG_WARN("M10QAsyncReceiver: FAKE GPS MODE - will simulate fix at Saint-Paul, Reunion");
+        m_fix_was_found = false;
+        notify<GPSEventPowerOn>({});
+        m_state_machine_handle = system_scheduler->post_task_prio(
+            [this]() { generate_fake_fix(); }, "FakeGPSFix", 2000);
+#else
         STATE_CHANGE(idle, poweron);
+#endif
     }
 }
 
@@ -120,12 +129,49 @@ void M10QAsyncReceiver::check_for_power_off() {
 	}
 }
 
+#ifdef GPS_FAKE_POSITION
+void M10QAsyncReceiver::generate_fake_fix() {
+	DEBUG_INFO("M10QAsyncReceiver: Generating FAKE GPS fix");
+	std::time_t now = rtc->gettime();
+	struct tm *t = gmtime(&now);
+
+	GNSSData gnss_data = {};
+	gnss_data.fixType = 3;           // 3D fix
+	gnss_data.valid   = 0x07;        // validDate | validTime | fullyResolved
+	gnss_data.numSV   = 8;
+	gnss_data.lat     = -21.0097;    // Saint-Paul de la Reunion
+	gnss_data.lon     = 55.2707;
+	gnss_data.height  = 10000;       // 10m (mm)
+	gnss_data.hMSL    = 10000;
+	gnss_data.hAcc    = 2500;        // 2.5m (mm)
+	gnss_data.vAcc    = 3500;        // 3.5m (mm)
+	gnss_data.pDOP    = 1.5f;
+	gnss_data.hDOP    = 1.0f;
+	gnss_data.vDOP    = 1.2f;
+	gnss_data.ttff    = 2000;        // 2s simulated TTFF
+	gnss_data.year    = (uint16_t)(t->tm_year + 1900);
+	gnss_data.month   = (uint8_t)(t->tm_mon + 1);
+	gnss_data.day     = (uint8_t)t->tm_mday;
+	gnss_data.hour    = (uint8_t)t->tm_hour;
+	gnss_data.min     = (uint8_t)t->tm_min;
+	gnss_data.sec     = (uint8_t)t->tm_sec;
+
+	m_fix_was_found = true;
+	notify(GPSEventPVT(gnss_data));
+}
+#endif
+
 void M10QAsyncReceiver::power_off() {
 	DEBUG_INFO("M10QAsyncReceiver::power_off");
     // Just decrement the number of users
     if (m_num_power_on)
         m_num_power_on--;
+#ifdef GPS_FAKE_POSITION
+    system_scheduler->cancel_task(m_state_machine_handle);
+    notify(GPSEventPowerOff(m_fix_was_found));
+#else
     check_for_power_off();
+#endif
 }
 
 void M10QAsyncReceiver::enter_shutdown() {
@@ -133,7 +179,10 @@ void M10QAsyncReceiver::enter_shutdown() {
 
     // Disable the power supply for the GPS
     GPIOPins::clear(BSP::GPIO::GPIO_GPS_PWR_EN);
-    GPIOPins::clear(BSP::GPIO::GPIO_GPS_RST);
+    GPIOPins::release_to_highz(BSP::GPIO::GPIO_GPS_RST);  // Disconnect (ext pull-up)
+
+    // Release VSENSORS - GPS requires VSENSORS rail to be stable
+    GPIOPins::release_sensors_pwr();
 }
 
 void M10QAsyncReceiver::exit_shutdown() {
@@ -142,7 +191,11 @@ void M10QAsyncReceiver::exit_shutdown() {
     m_ubx_comms.subscribe(*this);
     m_ubx_comms.set_debug_enable(m_nav_settings.debug_enable);
 
-    // Enable the power supply for the GPS
+    // Acquire VSENSORS before GPS power-on to ensure stable power rail
+    GPIOPins::acquire_sensors_pwr();
+
+    // Reconfigure RST pin as output (was disconnected in shutdown) and enable power
+    GPIOPins::init_pin(BSP::GPIO::GPIO_GPS_RST);
     GPIOPins::set(BSP::GPIO::GPIO_GPS_RST);
     PMU::delay_ms(10);
     GPIOPins::set(BSP::GPIO::GPIO_GPS_PWR_EN);

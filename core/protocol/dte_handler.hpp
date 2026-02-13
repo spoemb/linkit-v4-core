@@ -9,6 +9,10 @@
 #include "memory_access.hpp"
 #include "timeutils.hpp"
 #include "calibration.hpp"
+#include "sensor.hpp"
+#include "battery.hpp"
+#include "gpio.hpp"
+#include "bsp.hpp"
 
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 #include "smd_sat.hpp"
@@ -17,6 +21,8 @@ extern SmdSat *smd_sat_instance;
 
 using namespace std::literals::string_literals;
 
+// External sensor access for SENSR command
+extern BatteryMonitor *battery_monitor;
 
 // This governs the maximum number of log entries we can read out in a single request
 #define DTE_HANDLER_MAX_LOG_DUMP_ENTRIES          8U
@@ -31,19 +37,27 @@ enum class DTEAction {
 };
 
 enum class DTEError {
-	OK,
-	INCORRECT_COMMAND,
-	NO_LENGTH_DELIMITER,
-	NO_DATA_DELIMITER,
-	DATA_LENGTH_MISMATCH,
-	INCORRECT_DATA
+	OK = 0,
+	INCORRECT_COMMAND = 1,
+	NO_LENGTH_DELIMITER = 2,
+	NO_DATA_DELIMITER = 3,
+	DATA_LENGTH_MISMATCH = 4,
+	INCORRECT_DATA = 5,
+	// Extended error codes for better diagnostics
+	PARAM_KEY_UNRECOGNISED = 6,
+	VALUE_OUT_OF_RANGE = 7,
+	MISSING_ARGUMENT = 8,
+	BAD_FORMAT = 9,
+	MESSAGE_TOO_LARGE = 10,
+	UNEXPECTED_ARGUMENT = 11,
+	INVALID_ACCESS_CODE = 12
 };
 
 // The DTEHandler requires access to the following system objects that are extern declared
 extern ConfigurationStore *configuration_store;
 extern MemoryAccess *memory_access;
 
-class DTEHandler {
+class DTEHandler : public KineisEventListener {
 private:
 	// Tables
 	static inline std::map<unsigned int, std::string> m_logger_dump = {
@@ -81,11 +95,15 @@ private:
 	};
 	unsigned int m_dumpd_NNN;
 	unsigned int m_dumpd_mmm;
+	unsigned int m_dumpd_d_type;  // Track current dump type to detect mid-stream changes
+	bool m_sat_device_active;
 
 public:
 	DTEHandler() {
 		m_dumpd_NNN = 0;
 		m_dumpd_mmm = 0;
+		m_dumpd_d_type = 0xFFFFFFFF;  // Invalid initial value
+		m_sat_device_active = false;
 	}
 	virtual ~DTEHandler() {}
 
@@ -205,12 +223,32 @@ public:
 	}
 
 	static std::string SECUR_REQ(int error_code, std::vector<BaseType>& arg_list) {
+		// Default access code - can be changed or made configurable
+		// Using ARGOS ID as access code for device-specific security
+		static constexpr unsigned int SECUR_ACCESS_CODE = 0x12345678;
 
-		// TODO: the accesscode parameter is presently ignored
-		(void)arg_list;
+		if (error_code) {
+			return DTEEncoder::encode(DTECommand::SECUR_RESP, error_code);
+		}
 
-		return DTEEncoder::encode(DTECommand::SECUR_RESP, error_code);
+		// Validate access code
+		if (arg_list.empty()) {
+			return DTEEncoder::encode(DTECommand::SECUR_RESP, (int)DTEError::MISSING_ARGUMENT);
+		}
 
+		unsigned int provided_code = std::get<unsigned int>(arg_list[0]);
+
+		// Read device ARGOS ID to use as dynamic access code
+		unsigned int device_argos_id = configuration_store->read_param<unsigned int>(ParamID::ARGOS_DECID);
+
+		// Accept either the static code or the device's ARGOS ID as valid access codes
+		if (provided_code != SECUR_ACCESS_CODE && provided_code != device_argos_id) {
+			DEBUG_WARN("DTEHandler::SECUR_REQ: Invalid access code provided (0x%08X)", provided_code);
+			return DTEEncoder::encode(DTECommand::SECUR_RESP, (int)DTEError::INVALID_ACCESS_CODE);
+		}
+
+		DEBUG_INFO("DTEHandler::SECUR_REQ: Access granted");
+		return DTEEncoder::encode(DTECommand::SECUR_RESP, (int)DTEError::OK);
 	}
 
 	static std::string RSTVW_REQ(int error_code, std::vector<BaseType>& arg_list) {
@@ -342,6 +380,7 @@ public:
 			// Reset state variables back to zero if an error arises
 			m_dumpd_NNN = 0;
 			m_dumpd_mmm = 0;
+			m_dumpd_d_type = 0xFFFFFFFF;
 			return DTEEncoder::encode(DTECommand::DUMPD_RESP, error_code);
 		}
 
@@ -349,6 +388,13 @@ public:
 
 		// Extract the d_type parameter from arg_list to determine which log file to use
 		unsigned int d_type = std::get<unsigned int>(arg_list[0]);
+
+		// Reset state if dump type changed mid-stream (prevents state leak)
+		if (d_type != m_dumpd_d_type) {
+			m_dumpd_NNN = 0;
+			m_dumpd_mmm = 0;
+			m_dumpd_d_type = d_type;
+		}
 
 		try {
 			logger = LoggerManager::find_by_name(m_logger_dump.at(d_type).c_str());
@@ -397,7 +443,10 @@ public:
 
 		m_dumpd_mmm++; // Increment in readiness for next iteration
 		if (m_dumpd_mmm == m_dumpd_NNN) {
-			m_dumpd_NNN = 0; // Marks the sequence as complete
+			// Sequence complete - reset all state
+			m_dumpd_NNN = 0;
+			m_dumpd_mmm = 0;
+			m_dumpd_d_type = 0xFFFFFFFF;
 		} else {
 			action = DTEAction::AGAIN;  // Inform caller that we need another iteration
 		}
@@ -580,28 +629,325 @@ public:
 			break;
 
 		case SmdDfuAction::UPDATE:
-			// Firmware update requires data in arg_list[1]
-			if (arg_list.size() < 2) {
-				return DTEEncoder::encode(DTECommand::SMDDFU_RESP, (int)DTEError::INCORRECT_DATA);
-			}
-			// Note: Actual update is handled via OTA file transfer mechanism
+			// Firmware update is handled via OTA file transfer, not this command
+			// This action just triggers the update process using previously uploaded firmware
 			status = 1;
-			info = "Use OTA transfer for update";
+			info = "Use OTA to upload firmware first";
 			break;
 
 		default:
 			return DTEEncoder::encode(DTECommand::SMDDFU_RESP, (int)DTEError::INCORRECT_DATA);
 		}
 
-		return DTEEncoder::encode(DTECommand::SMDDFU_RESP, status, dfu_mode, progress, info);
+		return DTEEncoder::encode(DTECommand::SMDDFU_RESP, (unsigned int)0, status, dfu_mode, progress, info);
+	}
+
+	static std::string SMDTST_REQ(int error_code, std::vector<BaseType>& arg_list) {
+		(void)arg_list;
+		if (error_code) {
+			return DTEEncoder::encode(DTECommand::SMDTST_RESP, error_code);
+		}
+
+		if (!smd_sat_instance) {
+			DEBUG_ERROR("DTEHandler::SMDTST_REQ: SMD satellite instance not available");
+			return DTEEncoder::encode(DTECommand::SMDTST_RESP, (int)DTEError::INCORRECT_DATA);
+		}
+
+		std::string test_result = smd_sat_instance->smd_spi_test();
+		if (test_result.empty()) {
+			return DTEEncoder::encode(DTECommand::SMDTST_RESP, (int)DTEError::INCORRECT_DATA);
+		}
+
+		return DTEEncoder::encode(DTECommand::SMDTST_RESP, (unsigned int)0, test_result);
+	}
+
+	std::string SMDCD_REQ(int error_code, std::vector<BaseType>& arg_list) {
+
+		if (error_code) {
+			return DTEEncoder::encode(DTECommand::SMDCD_RESP, error_code);
+		}
+
+		// Extract the Argos SMD ID
+		unsigned int dec_id = std::get<unsigned int>(arg_list[0]);
+		// Extract the Argos SMD ADDR
+		unsigned int address = std::get<unsigned int>(arg_list[1]);
+		// Extract the Argos SMD Sec key
+		std::string seckey = std::get<std::string>(arg_list[2]);
+		// Extract the Argos SMD radio conf
+		std::string radioconf = std::get<std::string>(arg_list[3]);
+
+		try {
+			DEBUG_TRACE("SMDCD_REQ...");
+
+			if (!smd_sat_instance) {
+				DEBUG_ERROR("DTEHandler::SMDCD_REQ: SMD satellite instance not available");
+				return DTEEncoder::encode(DTECommand::SMDCD_RESP, (int)DTEError::INCORRECT_DATA);
+			}
+
+			// If not already active then subscribe to events and setup a sufficiently
+			// long idle period before the driver shuts off argos power
+			if (!m_sat_device_active) {
+				smd_sat_instance->subscribe(*this);
+				smd_sat_instance->set_idle_timeout(30000);
+				m_sat_device_active = true;
+			}
+
+			// Write credentials to SMD
+			smd_sat_instance->set_credentials(dec_id, address, seckey, radioconf);
+
+			// Read back credentials from SMD to confirm
+			smd_sat_instance->read_credentials(&dec_id, &address, &seckey, &radioconf);
+
+			// Update configuration store with confirmed values
+			configuration_store->write_param(ParamID::ARGOS_DECID, dec_id);
+			configuration_store->write_param(ParamID::ARGOS_HEXID, address);
+			configuration_store->write_param(ParamID::ARGOS_SECKEY, seckey);
+			configuration_store->write_param(ParamID::ARGOS_RADIOCONF, radioconf);
+			configuration_store->save_params();
+		} catch (...) {
+			error_code = (int)DTEError::INCORRECT_DATA;
+		}
+
+		return DTEEncoder::encode(DTECommand::SMDCD_RESP, error_code);
 	}
 #endif
 
+	std::string ARGOSTX_REQ(int error_code, std::vector<BaseType>& arg_list) {
+		if (error_code) {
+			return DTEEncoder::encode(DTECommand::ARGOSTX_RESP, error_code);
+		}
+
+		if (arg_list.size() < 4) {
+			return DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::MISSING_ARGUMENT);
+		}
+
+		// Extract the argos modulation (0=>LDK, 1=>LDA2, 2=>VLDA4)
+		KineisModulation modulation = (KineisModulation)std::get<unsigned int>(arg_list[0]);
+
+		// Extract the argos power level in mW
+		unsigned int power = std::get<unsigned int>(arg_list[1]);
+
+		// Extract the argos frequency (double)
+		double freq = std::get<double>(arg_list[2]);
+
+		// Extract the payload size in bytes
+		unsigned int num_bytes = std::get<unsigned int>(arg_list[3]);
+
+		// Extract the TCXO warmup time in seconds (optional)
+		unsigned int tcxo_time = arg_list.size() > 4 ? std::get<unsigned int>(arg_list[4]) : 0;
+
+		DEBUG_INFO("DTEHandler::ARGOSTX_REQ: modulation=%u power=%u freq=%.6f size=%u tcxo=%u",
+			(unsigned int)modulation, power, freq, num_bytes, tcxo_time);
+
+		try {
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+			if (!smd_sat_instance) {
+				DEBUG_ERROR("DTEHandler::ARGOSTX_REQ: SMD satellite instance not available");
+				return DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::INCORRECT_DATA);
+			}
+
+			// If not already active then subscribe to events and setup a sufficiently
+			// long idle period before the driver shuts off argos power
+			if (!m_sat_device_active) {
+				smd_sat_instance->subscribe(*this);
+				smd_sat_instance->set_idle_timeout(30000);
+				m_sat_device_active = true;
+			}
+
+			// Configure and transmit
+			smd_sat_instance->set_tx_power(power);
+			smd_sat_instance->set_tcxo_warmup_time(tcxo_time);
+			smd_sat_instance->set_frequency(freq);
+			KineisPacket packet(num_bytes, 0xFF);
+			smd_sat_instance->send(modulation, packet, 8 * num_bytes);
+#else
+			DEBUG_WARN("DTEHandler::ARGOSTX_REQ: No satellite device available");
+			return DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::INCORRECT_DATA);
+#endif
+		} catch (...) {
+			error_code = (int)DTEError::INCORRECT_DATA;
+		}
+
+		return DTEEncoder::encode(DTECommand::ARGOSTX_RESP, error_code);
+	}
+
+
+	static std::string SENSR_REQ(int error_code, std::vector<BaseType>& arg_list) {
+		// Response values (initialized to defaults/invalid)
+		unsigned int batt_mv = 0;
+		unsigned int batt_soc = 0;
+		double pressure = 0.0;
+		double temperature = 0.0;
+		double lat = 0.0;
+		double lon = 0.0;
+		double hdop = 99.9;
+		unsigned int num_sv = 0;
+		double accel_x = 0.0;
+		double accel_y = 0.0;
+		double accel_z = 0.0;
+		double accel_temp = 0.0;
+		unsigned int activity = 0;
+
+		if (error_code) {
+			return DTEEncoder::encode(DTECommand::SENSR_RESP, error_code,
+				batt_mv, batt_soc, pressure, temperature, lat, lon, hdop, num_sv,
+				accel_x, accel_y, accel_z, accel_temp, activity);
+		}
+
+		// Parse parameters
+		if (arg_list.size() < 2) {
+			return DTEEncoder::encode(DTECommand::SENSR_RESP, (int)DTEError::MISSING_ARGUMENT,
+				batt_mv, batt_soc, pressure, temperature, lat, lon, hdop, num_sv,
+				accel_x, accel_y, accel_z, accel_temp, activity);
+		}
+
+		unsigned int sensors_mask = std::get<unsigned int>(arg_list[0]);
+		unsigned int timeout_s = std::get<unsigned int>(arg_list[1]);
+		(void)timeout_s;  // Currently unused - for future GNSS acquisition
+
+		DEBUG_INFO("DTEHandler::SENSR_REQ: sensors_mask=0x%02X timeout=%us", sensors_mask, timeout_s);
+
+		// Read battery (SensrType::BATTERY = 0x01)
+		if (sensors_mask & 0x01) {
+			if (battery_monitor) {
+				battery_monitor->update();  // Refresh readings
+				batt_mv = battery_monitor->get_voltage();
+				batt_soc = battery_monitor->get_level();
+				DEBUG_TRACE("SENSR: Battery %umV, %u%%", batt_mv, batt_soc);
+			} else {
+				DEBUG_WARN("SENSR: Battery monitor not available");
+			}
+		}
+
+		// Read pressure sensor (SensrType::PRESSURE = 0x02)
+		if (sensors_mask & 0x02) {
+			try {
+				Sensor& prs = SensorManager::find_by_name("PRS");
+				pressure = prs.read(0);      // Channel 0 = pressure (mbar)
+				temperature = prs.read(1);   // Channel 1 = temperature (C)
+				DEBUG_TRACE("SENSR: Pressure %.2f mbar, Temp %.2f C", pressure, temperature);
+			} catch (...) {
+				DEBUG_WARN("SENSR: Pressure sensor not available");
+				// Leave pressure/temperature at defaults (0.0)
+			}
+		}
+
+		// Read GNSS (SensrType::GNSS = 0x04)
+		// Note: Currently returns cached last known position, not live acquisition
+		if (sensors_mask & 0x04) {
+			const GPSLogEntry& gps_entry = configuration_store->get_last_gps_entry();
+			if (gps_entry.info.valid) {
+				lat = gps_entry.info.lat;
+				lon = gps_entry.info.lon;
+				hdop = gps_entry.info.hDOP;
+				num_sv = gps_entry.info.numSV;
+				DEBUG_TRACE("SENSR: GNSS lat=%.6f lon=%.6f hdop=%.1f numSV=%u",
+					lat, lon, hdop, num_sv);
+			} else {
+				DEBUG_WARN("SENSR: No valid GNSS fix available (returning cached/invalid)");
+				// Leave at defaults - hdop=99.9 indicates no fix
+			}
+		}
+
+		// Read accelerometer (SensrType::ACCEL = 0x08)
+#if ENABLE_AXL_SENSOR
+		if (sensors_mask & 0x08) {
+			try {
+				Sensor& axl = SensorManager::find_by_name("AXL");
+				// Channel 1 triggers read_xyz and returns X
+				accel_x = axl.read(1);  // X axis (g-force)
+				accel_y = axl.read(2);  // Y axis (g-force, cached)
+				accel_z = axl.read(3);  // Z axis (g-force, cached)
+				accel_temp = axl.read(0);  // Temperature (°C, already converted by BMA400)
+				activity = (unsigned int)axl.read(4);  // Activity level (0-255)
+				DEBUG_TRACE("SENSR: Accel X=%.3f Y=%.3f Z=%.3f T=%.1f C activity=%u",
+					accel_x, accel_y, accel_z, accel_temp, activity);
+			} catch (...) {
+				DEBUG_WARN("SENSR: Accelerometer not available");
+				// Leave accel values at defaults (0.0)
+			}
+		}
+#else
+		(void)(sensors_mask & 0x08);  // Suppress unused warning
+#endif
+
+		return DTEEncoder::encode(DTECommand::SENSR_RESP, (int)DTEError::OK,
+			batt_mv, batt_soc, pressure, temperature, lat, lon, hdop, num_sv,
+			accel_x, accel_y, accel_z, accel_temp, activity);
+	}
+
+	// PWRON handler - Power on/off components
+	static std::string PWRON_REQ(int error_code, std::vector<BaseType>& arg_list) {
+		if (error_code) {
+			return DTEEncoder::encode(DTECommand::PWRON_RESP, error_code);
+		}
+
+		// Parse component parameter
+		if (arg_list.size() < 1) {
+			return DTEEncoder::encode(DTECommand::PWRON_RESP, (int)DTEError::MISSING_ARGUMENT);
+		}
+
+		unsigned int component = std::get<unsigned int>(arg_list[0]);
+		DEBUG_INFO("DTEHandler::PWRON_REQ: component=%u", component);
+
+		switch ((ComponentPower)component) {
+		case ComponentPower::ALL:
+			// Power on all components
+			DEBUG_TRACE("PWRON: Powering ON all components");
+			GPIOPins::clear(GPS_RST);
+			GPIOPins::set(GPS_POWER);
+			GPIOPins::acquire_sensors_pwr();
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+			GPIOPins::set(SAT_PWR_EN);
+#endif
+			break;
+
+		case ComponentPower::GNSS:
+			// Power on GNSS (requires VSENSORS for stable power rail)
+			DEBUG_TRACE("PWRON: Powering ON GNSS");
+			GPIOPins::acquire_sensors_pwr();
+			GPIOPins::clear(GPS_RST);
+			GPIOPins::set(GPS_POWER);
+			break;
+
+		case ComponentPower::SENSORS:
+			// Power on sensors
+			DEBUG_TRACE("PWRON: Powering ON sensors");
+			GPIOPins::acquire_sensors_pwr();
+			break;
+
+		case ComponentPower::SATELLITE:
+			// Power on satellite module (requires VSENSORS for stable power rail)
+			DEBUG_TRACE("PWRON: Powering ON satellite module");
+			GPIOPins::acquire_sensors_pwr();
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+			GPIOPins::set(SAT_PWR_EN);
+#endif
+			break;
+
+		case ComponentPower::OFF:
+			// Power off all components
+			DEBUG_TRACE("PWRON: Powering OFF all components");
+			GPIOPins::set(GPS_RST);
+			GPIOPins::clear(GPS_POWER);
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+			GPIOPins::clear(SAT_PWR_EN);
+#endif
+			GPIOPins::release_sensors_pwr();
+			break;
+
+		default:
+			return DTEEncoder::encode(DTECommand::PWRON_RESP, (int)DTEError::VALUE_OUT_OF_RANGE);
+		}
+
+		return DTEEncoder::encode(DTECommand::PWRON_RESP, (int)DTEError::OK);
+	}
 
 public:
 	void reset_state() {
 		m_dumpd_NNN = 0;
 		m_dumpd_mmm = 0;
+		m_dumpd_d_type = 0xFFFFFFFF;
 	}
 
 	DTEAction handle_dte_message(const std::string& req, std::string& resp) {
@@ -622,12 +968,22 @@ public:
 
 			switch (e) {
 			case ErrorCode::DTE_PROTOCOL_MESSAGE_TOO_LARGE:
+				error_code = (unsigned int)DTEError::MESSAGE_TOO_LARGE;
+				break;
 			case ErrorCode::DTE_PROTOCOL_PARAM_KEY_UNRECOGNISED:
+				error_code = (unsigned int)DTEError::PARAM_KEY_UNRECOGNISED;
+				break;
 			case ErrorCode::DTE_PROTOCOL_UNEXPECTED_ARG:
+				error_code = (unsigned int)DTEError::UNEXPECTED_ARGUMENT;
+				break;
 			case ErrorCode::DTE_PROTOCOL_VALUE_OUT_OF_RANGE:
+				error_code = (unsigned int)DTEError::VALUE_OUT_OF_RANGE;
+				break;
 			case ErrorCode::DTE_PROTOCOL_MISSING_ARG:
+				error_code = (unsigned int)DTEError::MISSING_ARGUMENT;
+				break;
 			case ErrorCode::DTE_PROTOCOL_BAD_FORMAT:
-				error_code = (unsigned int)DTEError::INCORRECT_DATA;
+				error_code = (unsigned int)DTEError::BAD_FORMAT;
 				break;
 			case ErrorCode::DTE_PROTOCOL_PAYLOAD_LENGTH_MISMATCH:
 				error_code = (unsigned int)DTEError::DATA_LENGTH_MISMATCH;
@@ -693,9 +1049,24 @@ public:
 		case DTECommand::SCALR_REQ:
 			resp = SCALR_REQ(error_code, arg_list);
 			break;
+		case DTECommand::ARGOSTX_REQ:
+			resp = ARGOSTX_REQ(error_code, arg_list);
+			break;
+		case DTECommand::SENSR_REQ:
+			resp = SENSR_REQ(error_code, arg_list);
+			break;
+		case DTECommand::PWRON_REQ:
+			resp = PWRON_REQ(error_code, arg_list);
+			break;
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 		case DTECommand::SMDDFU_REQ:
 			resp = SMDDFU_REQ(error_code, arg_list);
+			break;
+		case DTECommand::SMDTST_REQ:
+			resp = SMDTST_REQ(error_code, arg_list);
+			break;
+		case DTECommand::SMDCD_REQ:
+			resp = SMDCD_REQ(error_code, arg_list);
 			break;
 #endif
 		default:
@@ -707,4 +1078,14 @@ public:
 
 #pragma GCC diagnostic pop
 
+	// KineisEventListener: handle power off to release subscription
+	void react(KineisEventPowerOff const& ) override {
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+		if (m_sat_device_active) {
+			m_sat_device_active = false;
+			smd_sat_instance->set_idle_timeout(3000);
+			smd_sat_instance->unsubscribe(*this);
+		}
+#endif
+	}
 };

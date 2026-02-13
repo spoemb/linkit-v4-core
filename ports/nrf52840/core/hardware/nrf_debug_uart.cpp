@@ -19,7 +19,7 @@ void NrfDebugUart::init(uint32_t tx_pin)
     config.pselcts = NRF_UARTE_PSEL_DISCONNECTED;
     config.pselrts = NRF_UARTE_PSEL_DISCONNECTED;
     config.p_context = NULL;
-    config.baudrate = NRF_UARTE_BAUDRATE_115200;
+    config.baudrate = NRF_UARTE_BAUDRATE_460800;
     config.interrupt_priority = NRFX_UARTE_DEFAULT_CONFIG_IRQ_PRIORITY;
     config.hwfc = NRF_UARTE_HWFC_DISABLED;
     config.parity = NRF_UARTE_PARITY_EXCLUDED;

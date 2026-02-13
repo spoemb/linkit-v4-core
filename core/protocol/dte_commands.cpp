@@ -330,10 +330,63 @@ const DTECommandMap command_map[] = {
 			}
 		}
 	},
+	// SENSR - Sensor/GNSS read command
+	// Usage: $SENSR,<sensors_bitmask>,<gnss_timeout_s>*<checksum>\r\n
+	// sensors_bitmask: 1=battery, 2=pressure, 4=GNSS, 8=accel, 15=all
+	// Response: $SENSR,<status>,<batt_mv>,<batt_soc>,<pressure_mbar>,<temp_c>,<lat>,<lon>,<hdop>,<num_sv>,<accel_x>,<accel_y>,<accel_z>,<accel_temp>*<checksum>\r\n
+	{
+		.name = "SENSR",
+		.command = DTECommand::SENSR_REQ,
+		.prototype =
+		{
+			{
+				.name = "sensors",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 1U,
+				.max_value = 15U,  // Bitmask: 1=battery, 2=pressure, 4=GNSS, 8=accel
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "timeout",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 5U,
+				.max_value = 300U,  // GNSS timeout in seconds (5-300s)
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	},
+	// PWRON - Power on/off components command
+	// Usage: $PWRON#001;<component>\r
+	// Components: 0=all, 1=gnss, 2=sensors, 3=satellite, 4=off
+	// Response: $O;PWRON#000;\r or $N;PWRON#00x;<error>\r
+	{
+		.name = "PWRON",
+		.command = DTECommand::PWRON_REQ,
+		.prototype =
+		{
+			{
+				.name = "component",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 4U,  // 0=all, 1=gnss, 2=sensors, 3=satellite, 4=off
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	},
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	// SMD DFU command - allows firmware update of SMD satellite module
-	// Usage: $SMDDFU,<action>[,<firmware_data_base64>]*<checksum>\r\n
+	// Usage: $SMDDFU#001;<action>\r
 	// Actions: 0=enter, 1=exit, 2=status, 3=update, 4=info, 5=version
+	// Note: Firmware data is sent via OTA file transfer, not in this command
 	{
 		.name = "SMDDFU",
 		.command = DTECommand::SMDDFU_REQ,
@@ -348,24 +401,68 @@ const DTECommandMap command_map[] = {
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false
+			}
+		}
+	},
+	// SMD SPI applicative test - tests all A+ protocol read commands
+	// Usage: $SMDTST#000;\r
+	{
+		.name = "SMDTST",
+		.command = DTECommand::SMDTST_REQ,
+		.prototype = {}
+	},
+	{
+		.name = "SMDCD",
+		.command = DTECommand::SMDCD_REQ,
+		.prototype =
+		{
+			{
+				.name = "id",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 999999U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
 			},
 			{
-				.name = "firmware",
+				.name = "addr",
 				.key = "",
-				.encoding = BaseEncoding::BASE64,  // Optional: firmware binary in base64
-				.min_value = 0,
-				.max_value = 0,
+				.encoding = BaseEncoding::HEXADECIMAL,
+				.min_value = 0U,
+				.max_value = 0xFFFFFFFFU,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "seckey",
+				.key = "",
+				.encoding = BaseEncoding::TEXT,
+				.min_value = "",
+				.max_value = "",
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "radioconf",
+				.key = "",
+				.encoding = BaseEncoding::TEXT,
+				.min_value = "",
+				.max_value = "",
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false
 			}
 		}
-	},
+	}, 
 #endif
 	{
 		.name = "PARML",
 		.command = DTECommand::PARML_RESP,
-		.prototype = 
+		.prototype =
 		{
 			{
 				.name = "keys",
@@ -571,6 +668,150 @@ const DTECommandMap command_map[] = {
 			}
 		}
 	},
+	// SENSR response - sensor readings
+	{
+		.name = "SENSR",
+		.command = DTECommand::SENSR_RESP,
+		.prototype =
+		{
+			{
+				.name = "batt_mv",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 0U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "batt_soc",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 100U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "pressure",
+				.key = "",
+				.encoding = BaseEncoding::FLOAT,
+				.min_value = 0.0,
+				.max_value = 0.0,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "temperature",
+				.key = "",
+				.encoding = BaseEncoding::FLOAT,
+				.min_value = 0.0,
+				.max_value = 0.0,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "lat",
+				.key = "",
+				.encoding = BaseEncoding::FLOAT,
+				.min_value = 0.0,
+				.max_value = 0.0,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "lon",
+				.key = "",
+				.encoding = BaseEncoding::FLOAT,
+				.min_value = 0.0,
+				.max_value = 0.0,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "hdop",
+				.key = "",
+				.encoding = BaseEncoding::FLOAT,
+				.min_value = 0.0,
+				.max_value = 0.0,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "num_sv",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 0U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "accel_x",
+				.key = "",
+				.encoding = BaseEncoding::FLOAT,
+				.min_value = 0.0,
+				.max_value = 0.0,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "accel_y",
+				.key = "",
+				.encoding = BaseEncoding::FLOAT,
+				.min_value = 0.0,
+				.max_value = 0.0,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "accel_z",
+				.key = "",
+				.encoding = BaseEncoding::FLOAT,
+				.min_value = 0.0,
+				.max_value = 0.0,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "accel_temp",
+				.key = "",
+				.encoding = BaseEncoding::FLOAT,
+				.min_value = 0.0,
+				.max_value = 0.0,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "activity",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 255U,  // Activity level 0-255
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	},
+	// PWRON response - simple acknowledgement
+	{
+		.name = "PWRON",
+		.command = DTECommand::PWRON_RESP,
+		.prototype = {}
+	},
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	// SMD DFU response
 	// Response: $SMDDFU,<status>,<dfu_mode>,<progress>[,<info>]*<checksum>\r\n
@@ -619,6 +860,31 @@ const DTECommandMap command_map[] = {
 				.is_implemented = false,
 				.is_writable = false
 			}
+		}
+	},
+	// SMDTST response - applicative SPI test results
+	{
+		.name = "SMDTST",
+		.command = DTECommand::SMDTST_RESP,
+		.prototype =
+		{
+			{
+				.name = "info",
+				.key = "",
+				.encoding = BaseEncoding::TEXT,
+				.min_value = "",
+				.max_value = "",
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	},	
+	{
+		.name = "SMDCD",
+		.command = DTECommand::SMDCD_RESP,
+		.prototype =
+		{
 		}
 	},
 #endif

@@ -23,8 +23,12 @@ enum class DTECommand {
 	SCALW_REQ,
 	ARGOSTX_REQ,
 	SCALR_REQ,
+	SENSR_REQ,     // Sensor/GNSS read command with timeout
+	PWRON_REQ,     // Power on/off components
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	SMDDFU_REQ,    // SMD satellite module DFU command
+	SMDTST_REQ,    // SMD satellite module SPI applicative test
+	SMDCD_REQ,
 #endif
 	__NUM_REQ,
 	PARML_RESP = RESP_CMD_BASE,
@@ -44,10 +48,32 @@ enum class DTECommand {
 	SCALW_RESP,
 	ARGOSTX_RESP,
 	SCALR_RESP,
+	SENSR_RESP,    // Sensor/GNSS read response
+	PWRON_RESP,    // Power on/off response
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	SMDDFU_RESP,   // SMD satellite module DFU response
+	SMDTST_RESP,   // SMD satellite module SPI applicative test response
+	SMDCD_RESP,
 #endif
 	__NUM_RESP
+};
+
+// Sensor types for SENSR command (bitmask)
+enum class SensrType : unsigned int {
+	BATTERY = 0x01,    // Read battery voltage and SOC
+	PRESSURE = 0x02,   // Read pressure sensor
+	GNSS = 0x04,       // Trigger GNSS acquisition with timeout
+	ACCEL = 0x08,      // Read accelerometer (BMA400)
+	ALL = 0x0F         // Read all sensors
+};
+
+// Component power types (for PWRON command)
+enum class ComponentPower {
+	ALL = 0,       // All components
+	GNSS = 1,      // GNSS module
+	SENSORS = 2,   // Sensors power
+	SATELLITE = 3, // Satellite module
+	OFF = 4        // Power off all components
 };
 
 // SMD DFU action types (for SMDDFU command)

@@ -14,6 +14,7 @@ extern "C" {
 #include "gpio.hpp"  // For SensorsPowerGuard (VSENSORS management - needed for I2C bus stability)
 #include "nrf_gpio.h"
 #include "nrf_i2c.hpp"
+#include "timer.hpp"
 
 #ifndef CPPUTEST
 #include "crc16.h"
@@ -25,10 +26,15 @@ extern "C" {
 #define CRITICIAL_V_THRESHOLD_MV	250
 #define LOW_BATT_THRESHOLD			5
 
+// Cache TTL: skip I2C read if last measurement was less than this ago
+#define STC3117_CACHE_TTL_MS        30000
+
 // Power optimization: minimal startup wait time
 #define STC3117_STARTUP_WAIT_MS     50
 #define STC3117_COUNTER_CHECK_MS    50
 #define STC3117_MAX_STARTUP_CHECKS  10
+
+extern Timer *system_timer;
 
 static void GasGauge_DefaultInit(GasGauge_DataTypeDef * GG_struct);
 
@@ -165,6 +171,13 @@ int GaugeBatteryMonitor::check_i2c_device() {
 }
 
 void GaugeBatteryMonitor::internal_update() {
+    // Cache: skip I2C read if last measurement is still fresh
+    static uint64_t last_read_time = 0;
+    uint64_t now = system_timer->get_counter();
+    if (last_read_time > 0 && (now - last_read_time) < STC3117_CACHE_TTL_MS) {
+        return;  // Use cached values
+    }
+
     // Acquire VSENSORS for I2C bus stability (other sensors on same bus)
     SensorsPowerGuard power_guard;
 
@@ -208,6 +221,9 @@ void GaugeBatteryMonitor::internal_update() {
 
     // 3. Shutdown immediately for power saving
     this->shutdown();
+
+    // Update cache timestamp
+    last_read_time = system_timer->get_counter();
 
     // 4. Apply filtering to prevent value bouncing
     uint16_t crc = crc16_compute((const uint8_t *)m_filtered_values, sizeof(m_filtered_values), nullptr);

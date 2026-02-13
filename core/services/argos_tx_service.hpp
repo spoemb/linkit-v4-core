@@ -182,6 +182,7 @@ public:
 			ServiceSensorData *ph_sensor,
 			ServiceSensorData *pressure_sensor,
 			ServiceSensorData *sea_temp_sensor,
+			ServiceSensorData *axl_sensor,
 			bool is_out_of_zone, bool is_low_battery,
 			unsigned int& size_bits
 			);
@@ -242,6 +243,9 @@ public:
 		m_ph_depth_pile.clear();
 		m_pressure_depth_pile.clear();
 		m_sea_temp_depth_pile.clear();
+#if ENABLE_AXL_SENSOR
+		m_axl_depth_pile.clear();
+#endif
 	}
 	bool eligible() {
 		return m_gps_depth_pile.eligible();
@@ -275,6 +279,10 @@ public:
 				return m_sea_temp_depth_pile.retrieve(depth_pile, 1).at(0);
 			} else if (service == ServiceIdentifier::THERMISTOR_SENSOR) {
 				return m_sea_temp_depth_pile.retrieve(depth_pile, 1).at(0);
+#if ENABLE_AXL_SENSOR
+			} else if (service == ServiceIdentifier::AXL_SENSOR) {
+				return m_axl_depth_pile.retrieve(depth_pile, 1).at(0);
+#endif
 			} else
 				throw ErrorCode::RESOURCE_NOT_AVAILABLE;
 		} catch (const std::out_of_range& e) {
@@ -296,6 +304,10 @@ private:
 	ServiceSensorData m_ph_cache;
 	ArgosDepthPile<ServiceSensorData> m_sea_temp_depth_pile;
 	ServiceSensorData m_sea_temp_cache;
+#if ENABLE_AXL_SENSOR
+	ArgosDepthPile<ServiceSensorData> m_axl_depth_pile;
+	ServiceSensorData m_axl_cache;
+#endif
 
 	void update_depth_pile();
 };

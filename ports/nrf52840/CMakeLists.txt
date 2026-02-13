@@ -95,8 +95,10 @@ else()
     message(FATAL_ERROR "MODEL must be one of {SB, CORE, UW}")
 endif()
 
-# Board configuration
-set(GPS_MODEL M10Q)
+# Fake GPS position for indoor testing (simulates fix at Saint-Paul, Reunion)
+if(NOT DEFINED GPS_FAKE_POSITION)
+    set(GPS_FAKE_POSITION 0)
+endif()
 
 if(${BOARD} MATCHES RSPB)
     set(TARGET_NAME ${PROJECT_NAME}_RSPB_${MODEL}_board)
@@ -451,7 +453,7 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     MODEL_SB=${MODEL_SB}
     MODEL_UW=${MODEL_UW}
     MODEL_CORE=${MODEL_CORE}
-    GPS_${GPS_MODEL}
+    $<$<BOOL:${GPS_FAKE_POSITION}>:GPS_FAKE_POSITION>
     ENABLE_CAM_SENSOR=${ENABLE_CAM_SENSOR}
     ENABLE_BUZZER=${ENABLE_BUZZER}
     ENABLE_PH_SENSOR=${ENABLE_PH_SENSOR}

@@ -4,6 +4,7 @@
 #include "bsp.hpp"
 #include "debug.hpp"
 #include "nrf_delay.h"
+#include "nrf_i2c.hpp"
 
 // Static member initialization
 uint8_t GPIOPins::m_sensors_pwr_refcount = 0;
@@ -26,13 +27,16 @@ void GPIOPins::initialise()
 #endif
 
 	// Ensure power off state for everything controlling power
-	set(GPS_RST);
 	clear(GPS_POWER);
+	release_to_highz(GPS_RST);  // Disconnect (ext pull-up, GPS off)
 
 	// SMD satellite module - keep powered OFF at init
-	// SMD driver (smd_sat.cpp) will power it on when needed
 	clear(SAT_PWR_EN);
-	release_to_highz(SAT_RESET);
+	release_to_highz(SAT_RESET);  // Disconnect (ext pull-up, SMD off)
+#ifdef SMD_VPA_PIN
+	// Drive VPA LOW at boot to prevent floating regulator enable
+	drive_low(SMD_VPA_PIN);
+#endif
 
 	clear(SWS_ENABLE_PIN);
 #ifdef GPIO_AG_PWR_PIN
@@ -41,6 +45,9 @@ void GPIOPins::initialise()
 #ifdef SENSORS_PWR_PIN
 	// VSENSORS starts OFF - sensors will acquire/release power as needed
 	clear(SENSORS_PWR_PIN);
+	// Disconnect all sensor-related pins while VSENSORS is off
+	// to prevent floating inputs and backfeed current through ESD diodes
+	disconnect_sensor_pins();
 #endif
 #ifdef ADC_ENABLE
 	set(ADC_ENABLE);		// Enable ADC to avoid leakage current (I2C pull up)
@@ -68,9 +75,52 @@ void GPIOPins::initialise()
 #endif
 }
 
+void GPIOPins::init_pin(uint32_t pin)
+{
+	nrf_gpio_cfg(BSP::GPIO_Inits[pin].pin_number,
+				 BSP::GPIO_Inits[pin].dir, BSP::GPIO_Inits[pin].input, BSP::GPIO_Inits[pin].pull,
+				 BSP::GPIO_Inits[pin].drive, BSP::GPIO_Inits[pin].sense);
+}
+
 void GPIOPins::set(uint32_t pin)
 {
 	nrf_gpio_pin_set(BSP::GPIO_Inits[pin].pin_number);
+}
+
+// Disconnect all sensor-related pins to prevent floating inputs and
+// backfeed current through sensor ESD diodes when VSENSORS is off.
+// This includes I2C bus pins, sensor interrupt pins, and analog pins.
+void GPIOPins::disconnect_sensor_pins()
+{
+#ifdef SENSORS_PWR_PIN
+	// I2C pins - explicitly disconnect (workaround for nRF52840 TWIM pin release errata)
+#ifdef ONBOARD_I2C_BUS
+	nrf_gpio_cfg_default(BSP::I2C_Inits[ONBOARD_I2C_BUS].twim_config.scl);
+	nrf_gpio_cfg_default(BSP::I2C_Inits[ONBOARD_I2C_BUS].twim_config.sda);
+#endif
+	// Sensor interrupt pins - disconnect input to prevent floating and spurious GPIOTE
+#ifdef BMA400_WAKEUP_PIN
+	disable(BMA400_WAKEUP_PIN);
+#endif
+#ifdef PRESSURE_WAKEUP_PIN
+	disable(PRESSURE_WAKEUP_PIN);
+#endif
+#endif
+}
+
+// Reconnect all sensor-related pins after VSENSORS is powered on.
+// Restores BSP GPIO configuration for interrupt pins.
+// I2C pins are handled by NrfI2C::init().
+void GPIOPins::reconnect_sensor_pins()
+{
+#ifdef SENSORS_PWR_PIN
+#ifdef BMA400_WAKEUP_PIN
+	enable(BMA400_WAKEUP_PIN);
+#endif
+#ifdef PRESSURE_WAKEUP_PIN
+	enable(PRESSURE_WAKEUP_PIN);
+#endif
+#endif
 }
 
 void GPIOPins::acquire_sensors_pwr()
@@ -80,7 +130,13 @@ void GPIOPins::acquire_sensors_pwr()
 	{
 		DEBUG_TRACE("GPIOPins::acquire_sensors_pwr: Powering ON VSENSORS (refcount 0->1)");
 		set(SENSORS_PWR_PIN);
-		nrf_delay_ms(50);  // 50ms delay for sensors to power up (BMA400 needs ~2ms, LPS28DFW needs ~10ms, extra margin for I2C stability)
+		nrf_delay_ms(50);  // 50ms for sensor power-up stabilization
+		// Reconnect sensor interrupt pins now that VSENSORS is on
+		reconnect_sensor_pins();
+		// Reinit I2C bus (was disabled when VSENSORS went off)
+		if (!NrfI2C::is_enabled(0)) {
+			NrfI2C::init();
+		}
 	}
 	else
 	{
@@ -102,8 +158,14 @@ void GPIOPins::release_sensors_pwr()
 	if (m_sensors_pwr_refcount == 0)
 	{
 		DEBUG_TRACE("GPIOPins::release_sensors_pwr: Powering OFF VSENSORS (refcount 1->0)");
+		// 1. Uninit I2C bus BEFORE cutting power
+		NrfI2C::uninit();
+		// 2. Disconnect ALL sensor-related pins to prevent backfeed current
+		//    through ESD diodes and floating interrupt pins
+		disconnect_sensor_pins();
+		// 3. Cut VSENSORS power
 		clear(SENSORS_PWR_PIN);
-		nrf_delay_ms(50);  // Power supply stabilization delay to avoid reboot when other rails power up
+		nrf_delay_ms(50);  // Power supply stabilization delay
 	}
 	else
 	{

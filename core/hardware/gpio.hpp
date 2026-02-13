@@ -6,6 +6,7 @@
 class GPIOPins {
 public:
 	static void initialise();
+	static void init_pin(uint32_t pin);
 	static void set(uint32_t pin);
 	static void clear(uint32_t pin);
 	static void toggle(uint32_t pin);
@@ -33,6 +34,10 @@ public:
 	static void release_to_highz(uint32_t pin);
 private:
 	static uint8_t m_sensors_pwr_refcount;
+	// Disconnect/reconnect sensor pins when VSENSORS is powered off/on
+	// Prevents backfeed through ESD diodes and floating interrupt pins
+	static void disconnect_sensor_pins();
+	static void reconnect_sensor_pins();
 };
 
 // RAII guard for VSENSORS power - automatically releases on scope exit

@@ -359,6 +359,10 @@ protected:
 		/* CAM_PERIOD_OFF */ 5U * 60U,
 		/* LB_CAM_EN */ (bool)false,
 #endif
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+		/* ARGOS_SECKEY */ ""s,
+		/* ARGOS_RADIOCONF */ ""s,
+#endif
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,
@@ -447,6 +451,12 @@ public:
 				b_is_valid = true;
 			} else if (param_id == ParamID::ARGOS_HEXID) {
 				b_is_valid = true;
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+			} else if (param_id == ParamID::ARGOS_SECKEY) {
+				b_is_valid = true;
+			} else if (param_id == ParamID::ARGOS_RADIOCONF) {
+				b_is_valid = true;
+#endif
 			} else if (param_id == ParamID::DEVICE_MODEL) {
 				m_params.at((unsigned)param_id) = DEVICE_MODEL_NAME;
 				b_is_valid = true;
@@ -565,6 +575,10 @@ public:
 
 	void notify_gps_location(GPSLogEntry& gps_location) {
 		m_last_gps_log_entry = gps_location;
+	}
+
+	const GPSLogEntry& get_last_gps_entry() const {
+		return m_last_gps_log_entry;
 	}
 
 	bool is_zone_exclusion(void) {
@@ -698,7 +712,7 @@ public:
 
 		if (lb_en && m_is_battery_level_low) {
 			argos_config.is_lb = true;
-			argos_config.gnss_en = read_param<bool>(ParamID::GNSS_EN);
+			argos_config.gnss_en = read_param<bool>(ParamID::LB_GNSS_EN);
 			argos_config.last_aop_update = read_param<std::time_t>(ParamID::ARGOS_AOP_DATE);
 			argos_config.argos_rx_aop_update_period = read_param<unsigned int>(ParamID::ARGOS_RX_AOP_UPDATE_PERIOD);
 			argos_config.argos_rx_max_window = read_param<unsigned int>(ParamID::ARGOS_RX_MAX_WINDOW);

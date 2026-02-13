@@ -321,6 +321,11 @@ void BMA400LL::read_xyz(double& x, double& y, double& z, int16_t& temperature)
 	DEBUG_INFO("BMA400::read_xyz: raw(%d,%d,%d) raw_g(%.2f,%.2f,%.2f) cal_g(%.2f,%.2f,%.2f)",
 	           data.x, data.y, data.z, x_raw, y_raw, z_raw, x, y, z);
 
+	// Read temperature while sensor is still in active mode
+	// Temperature sensor only works correctly in NORMAL or LOW_POWER mode, not SLEEP
+	bma400_get_temperature_data(&temperature, &m_bma400_dev);
+	DEBUG_TRACE("BMA400::read_xyz: temperature = %d (x0.1 C)", temperature);
+
 	// Return to sleep mode
 	setup_sleep_mode();
 }
@@ -614,10 +619,12 @@ void BMA400::load_calibration()
 double BMA400::read(unsigned int offset)
 {
 	switch (offset) {
-		case 0: // Temperature
-			return static_cast<double>(m_bma400.read_temperature()) / 10.0;
+		case 0: // Temperature (cached from last read_xyz call)
+			// Note: Temperature is read during read_xyz() while sensor is in active mode
+			// Calling read_temperature() separately would fail as sensor is in SLEEP mode
+			return static_cast<double>(m_last_temperature) / 10.0;
 
-		case 1: // X (triggers new reading)
+		case 1: // X (triggers new reading including temperature)
 			m_bma400.read_xyz(m_last_x, m_last_y, m_last_z, m_last_temperature);
 			return m_last_x;
 

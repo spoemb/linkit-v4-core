@@ -4,6 +4,10 @@
 #include "debug.hpp"
 #include "pmu.hpp"
 
+// LED feedback for DFU progress
+#include "rgb_led.hpp"
+extern RGBLed *status_led;
+
 // SMD DFU support (only when SMD satellite module is enabled)
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 #include "smd_sat.hpp"
@@ -261,47 +265,35 @@ void OTAFlashFileUpdater::apply_file_update() {
 			return;
 		}
 
-		// Allocate buffer for firmware
-		uint8_t *fw_buffer = new uint8_t[fw_size];
-		if (!fw_buffer) {
-			DEBUG_ERROR("OTAFlashFileUpdater: Failed to allocate SMD firmware buffer");
-			m_file_size = 0;
-			return;
-		}
-
-		// Read firmware data
-		fw_file.read(fw_buffer, fw_size);
-
 		// Check if SMD instance is available
 		if (!smd_sat_instance) {
 			DEBUG_ERROR("OTAFlashFileUpdater: SMD satellite instance not available");
-			delete[] fw_buffer;
 			m_file_size = 0;
 			return;
 		}
 
-		// Ensure SMD is in a clean stopped state before DFU
-		// This guarantees dfu_enter() will perform the proper power-on sequence
-		DEBUG_INFO("OTAFlashFileUpdater: Stopping SMD for clean DFU state...");
-		smd_sat_instance->power_off_immediate();
+		// Keep SMD running — dfu_enter() sends CMD 0x3F to the running app
+		// which triggers a software reset into bootloader mode.
+		// No hardware power-off/reset needed for DFU.
+		DEBUG_INFO("OTAFlashFileUpdater: Starting SMD DFU (streamed, SMD stays running)...");
 
-		// Perform firmware update via SPI (both modes use SPI now, UART is deprecated)
-		DEBUG_INFO("OTAFlashFileUpdater: Starting SMD DFU...");
+		// LED feedback: flash BLUE during DFU
+		if (status_led) status_led->flash(RGBLedColor::BLUE, 250);
 
-		SmdDfuResponse result = smd_sat_instance->firmware_update(fw_buffer, fw_size,
+		SmdDfuResponse result = smd_sat_instance->firmware_update(&fw_file, fw_size, stm32_crc32,
 			[](uint8_t percent) {
 				DEBUG_INFO("SMD DFU progress: %u%%", percent);
 				PMU::kick_watchdog();
 			});
 
-		delete[] fw_buffer;
-
 		if (result == DFU_RSP_OK) {
 			DEBUG_INFO("OTAFlashFileUpdater: SMD DFU completed successfully");
+			if (status_led) status_led->set(RGBLedColor::GREEN);
 			// Remove firmware file after successful update
 			m_filesystem->remove("smd_firmware.dat");
 		} else {
 			DEBUG_ERROR("OTAFlashFileUpdater: SMD DFU failed with error %d", result);
+			if (status_led) status_led->set(RGBLedColor::RED);
 		}
 	}
 #endif

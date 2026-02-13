@@ -60,7 +60,6 @@ NrfSwitch::NrfSwitch(int pin, unsigned int hysteresis_time_ms, bool active_state
 	if (!nrfx_gpiote_is_init())
 		nrfx_gpiote_init();
 	m_is_paused = true;
-	m_current_state = -1; // Unknown state to start with (will force a trigger on any event)
 }
 
 NrfSwitch::~NrfSwitch() {
@@ -118,6 +117,8 @@ void NrfSwitch::resume() {
 	if (NRFX_SUCCESS != nrfx_gpiote_in_init(BSP::GPIO_Inits[m_pin].pin_number, &BSP::GPIO_Inits[m_pin].gpiote_in_config, nrfx_gpiote_in_event_handler)) {
 		throw ErrorCode::RESOURCE_NOT_AVAILABLE;
 	}
+	// Read actual pin state BEFORE enabling events to suppress spurious initial event
+	m_current_state = (GPIOPins::value(m_pin) == m_active_state) ? 1 : 0;
 	nrfx_gpiote_in_event_enable(BSP::GPIO_Inits[m_pin].pin_number, true);
 	m_is_paused = false;
 }

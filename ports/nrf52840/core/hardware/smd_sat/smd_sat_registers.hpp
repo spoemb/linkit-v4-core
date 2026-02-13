@@ -149,15 +149,16 @@ typedef enum {
 } SmdArgosModulation;
 
 typedef enum {
-    MAC_OK            = 0x01,
-    MAC_TX_DONE       = 0x02,
-    MAC_TX_SIZE_ERROR = 0x03,
-    MAC_TXACK_DONE    = 0x04,
-    MAC_TX_TIMEOUT    = 0x05,
-    MAC_TXACK_TIMEOUT = 0x06,
-    MAC_RX_ERROR      = 0x07,
-    MAC_RX_TIMEOUT    = 0x08,
-    MAC_ERROR         = 0x09
+    MAC_OK             = 0x01,
+    MAC_TX_DONE        = 0x02,
+    MAC_TX_SIZE_ERROR  = 0x03,
+    MAC_TXACK_DONE     = 0x04,
+    MAC_TX_TIMEOUT     = 0x05,
+    MAC_TXACK_TIMEOUT  = 0x06,
+    MAC_RX_ERROR       = 0x07,
+    MAC_RX_TIMEOUT     = 0x08,
+    MAC_ERROR          = 0x09,
+    MAC_TX_IN_PROGRESS = 0x0A
 } SMDSAT_MACSTATUS;
 
 typedef enum {
@@ -275,10 +276,11 @@ typedef enum {
 #define SMDSAT_DFU_FLASH_USER_ADDR      0x0803B000  // User flash (preserved)
 #define SMDSAT_DFU_FLASH_END_ADDR       0x08040000  // End of flash
 
-// DFU Bootloader info structure
+// DFU Bootloader info structure (matches Zephyr argos_bl_info)
 struct SmdDfuInfo {
 	uint8_t  version_major;
 	uint8_t  version_minor;
+	uint8_t  version_patch;
 	uint32_t app_start_addr;
 	uint32_t app_max_size;
 	uint32_t flash_page_size;

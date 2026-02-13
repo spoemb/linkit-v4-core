@@ -61,6 +61,19 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 
 	DEBUG_TRACE("ArgosTxService::service_next_schedule_in_ms");
 
+	// Critical battery check: immediate powerdown, no transmission
+	if (argos_config.is_lb) {
+		service_update_battery();
+		double critical_thresh = configuration_store->read_param<double>(ParamID::LB_CRITICAL_THRESH);
+		double current_voltage = (double)service_get_voltage() / 1000.0;
+		if (current_voltage > 0 && current_voltage < critical_thresh) {
+			DEBUG_INFO("ArgosTxService: CRITICAL battery %.2fV < %.2fV - immediate powerdown",
+			           current_voltage, critical_thresh);
+			PMU::powerdown();
+			return Service::SCHEDULE_DISABLED;
+		}
+	}
+
 	// if (argos_config.cert_tx_enable) {
 	// 	m_scheduled_task = [this]() { process_certification_burst(); };
 	// 	unsigned int delta = m_is_first_tx ? 0 : argos_config.cert_tx_repetition * 1000;
@@ -69,6 +82,10 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 	// } else {
 		if (argos_config.mode == BaseArgosMode::OFF) {
 			return Service::SCHEDULE_DISABLED;
+		} else if (argos_config.mode == BaseArgosMode::DOPPLER) {
+			m_scheduled_task = [this]() { process_doppler_burst(); };
+			m_scheduled_mode = KineisModulation::LDA2;
+			return m_sched.schedule_legacy(argos_config, now);
 		} else {
 			if (!argos_config.gnss_en) {
 				m_scheduled_task = [this]() { process_doppler_burst(); };
@@ -197,6 +214,10 @@ void ArgosTxService::process_certification_burst() {
 	KineisPacket packet = ArgosPacketBuilder::build_certification_packet(argos_config.cert_tx_payload, size_bits);
 	DEBUG_INFO("ArgosTxService::process_certification_burst: mode=%s data=%s sz=%u power=%u mW", argos_modulation_to_string(argos_config.cert_tx_modulation), Binascii::hexlify(packet).c_str(), size_bits,
 			argos_power_to_integer(argos_config.power));
+#if ARGOS_SMD
+	m_kineis.set_tx_power(argos_power_to_integer(argos_config.power));
+#endif
+	m_kineis.send((KineisModulation)argos_config.cert_tx_modulation, packet, size_bits);
 }
 
 void ArgosTxService::process_time_sync_burst() {
@@ -238,8 +259,13 @@ void ArgosTxService::process_sensor_burst() {
 #else
 				m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::SEA_TEMP_SENSOR),
 #endif
-				argos_config.is_lb,
+#if ENABLE_AXL_SENSOR
+				m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::AXL_SENSOR),
+#else
+				nullptr,
+#endif
 				argos_config.is_out_of_zone,
+				argos_config.is_lb,
 				size_bits);
 		DEBUG_INFO("ArgosTxService::process_sensor_burst: mode=%s data=%s sz=%u power=%u mW", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits,
 				argos_power_to_integer(argos_config.power));
@@ -599,6 +625,7 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 		ServiceSensorData *ph_sensor,
 		ServiceSensorData *pressure_sensor,
 		ServiceSensorData *sea_temp_sensor,
+		ServiceSensorData *axl_sensor,
 		bool is_out_of_zone, bool is_low_battery,
 		unsigned int& size_bits) {
 
@@ -610,8 +637,10 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 	packet.assign(SENSOR_PACKET_BYTES, 0);
 
 	// Payload bytes
-	PACK_BITS(SENSOR_PACKET_HEADER, packet, base_pos, 3);  // Zero CRC field (computed later)
-
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+#else
+	PACK_BITS(0, packet, base_pos, 8);  // Zero CRC field (computed later)
+#endif
 	// Use scheduled GPS time as day/hour/min
 	uint16_t year;
 	uint8_t month, day, hour, min, sec;
@@ -680,6 +709,22 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: sea_temp=%06X", (unsigned int)sea_temp_sensor->port[0]);
 		PACK_BITS((unsigned int)sea_temp_sensor->port[0], packet, base_pos, 21);
 #endif
+	}
+
+	// Add AXL (accelerometer) sensor data
+	// port[0] = temperature (14 bits), port[1-3] = X/Y/Z (15 bits each), port[4] = activity (8 bits)
+	if (axl_sensor != nullptr) {
+		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: axl_temp=%04X X=%04X Y=%04X Z=%04X activity=%02X",
+				(unsigned int)axl_sensor->port[0],
+				(unsigned int)axl_sensor->port[1],
+				(unsigned int)axl_sensor->port[2],
+				(unsigned int)axl_sensor->port[3],
+				(unsigned int)axl_sensor->port[4]);
+		PACK_BITS((unsigned int)axl_sensor->port[0], packet, base_pos, 14);  // Temperature
+		PACK_BITS((unsigned int)axl_sensor->port[1], packet, base_pos, 15);  // X
+		PACK_BITS((unsigned int)axl_sensor->port[2], packet, base_pos, 15);  // Y
+		PACK_BITS((unsigned int)axl_sensor->port[3], packet, base_pos, 15);  // Z
+		PACK_BITS((unsigned int)axl_sensor->port[4], packet, base_pos, 8);   // Activity
 	}
 
 	size_bits = base_pos;
@@ -1000,6 +1045,18 @@ void ArgosDepthPileManager::notify_peer_event(ServiceEvent& e) {
 		m_sea_temp_cache.port[0] = (unsigned int)((entry.port[0] + 40.0) * 100U);
 		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::THERMISTOR_SENSOR);
 #endif
+#if ENABLE_AXL_SENSOR
+	} else if (e.event_source == ServiceIdentifier::AXL_SENSOR &&
+			e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+		DEBUG_TRACE("ArgosDepthPileManager::notify_peer_event: AXL cache set");
+		ServiceSensorData& entry = std::get<ServiceSensorData>(e.event_data);
+		m_axl_cache.port[0] = (unsigned int)((entry.port[0] + 40.0) * 100U);    // Temperature (-40 to 85°C)
+		m_axl_cache.port[1] = (unsigned int)((entry.port[1] + 16.0) * 1000U);   // X axis (-16g to +16g)
+		m_axl_cache.port[2] = (unsigned int)((entry.port[2] + 16.0) * 1000U);   // Y axis (-16g to +16g)
+		m_axl_cache.port[3] = (unsigned int)((entry.port[3] + 16.0) * 1000U);   // Z axis (-16g to +16g)
+		m_axl_cache.port[4] = (unsigned int)(entry.port[4]);                     // Activity (0-255)
+		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::AXL_SENSOR);
+#endif
 	} else if (e.event_source == ServiceIdentifier::GNSS_SENSOR &&
 			e.event_type == ServiceEventType::SERVICE_INACTIVE) {
 
@@ -1030,6 +1087,16 @@ void ArgosDepthPileManager::notify_peer_event(ServiceEvent& e) {
 						((1 << (int)ServiceIdentifier::THERMISTOR_SENSOR) & m_sensor_tx_current) == 0) {
 					m_sea_temp_cache.port[0] = 0xFFFFFFFF;
 					m_sensor_tx_current |= (1 << (int)ServiceIdentifier::THERMISTOR_SENSOR);
+#endif
+#if ENABLE_AXL_SENSOR
+				} else if (((1 << (int)ServiceIdentifier::AXL_SENSOR) & m_sensor_tx_enable) &&
+						((1 << (int)ServiceIdentifier::AXL_SENSOR) & m_sensor_tx_current) == 0) {
+					m_axl_cache.port[0] = 0xFFFFFFFF;
+					m_axl_cache.port[1] = 0xFFFFFFFF;
+					m_axl_cache.port[2] = 0xFFFFFFFF;
+					m_axl_cache.port[3] = 0xFFFFFFFF;
+					m_axl_cache.port[4] = 0xFF;
+					m_sensor_tx_current |= (1 << (int)ServiceIdentifier::AXL_SENSOR);
 #endif
 				}
 				update_depth_pile();
@@ -1079,6 +1146,12 @@ void ArgosDepthPileManager::update_depth_pile() {
 		if (m_sensor_tx_current & (1 << (int)ServiceIdentifier::THERMISTOR_SENSOR)) {
 			// Thermistor uses the sea_temp depth pile slot
 			m_sea_temp_depth_pile.store(m_sea_temp_cache, burst_counter);
+		}
+#endif
+#if ENABLE_AXL_SENSOR
+		if (m_sensor_tx_current & (1 << (int)ServiceIdentifier::AXL_SENSOR)) {
+			// Store the AXL entry into the depth pile
+			m_axl_depth_pile.store(m_axl_cache, burst_counter);
 		}
 #endif
 		m_sensor_tx_current = 0;

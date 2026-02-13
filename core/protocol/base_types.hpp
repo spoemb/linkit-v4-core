@@ -256,6 +256,10 @@ enum class ParamID {
 	CAM_PERIOD_OFF,
 	LB_CAM_EN,
 #endif
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	ARGOS_SECKEY,
+	ARGOS_RADIOCONF,
+#endif
 	__PARAM_SIZE,
 	__NULL_PARAM = 0xFFFF
 };
@@ -343,7 +347,8 @@ enum class BaseArgosMode {
 	OFF,
 	PASS_PREDICTION,
 	LEGACY,
-	DUTY_CYCLE
+	DUTY_CYCLE,
+	DOPPLER
 };
 
 enum class BaseArgosPower {

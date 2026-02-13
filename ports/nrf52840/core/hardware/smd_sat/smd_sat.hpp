@@ -6,6 +6,7 @@
 #include "smd_sat_registers.hpp"
 #include "kineis_device.hpp"
 #include "scheduler.hpp"
+#include "filesystem.hpp"
 
 // ============================================================================
 // Protocol A+ Response Structure
@@ -84,28 +85,26 @@ private:
 	bool m_dfu_mode;           // True when in bootloader DFU mode
 	SmdDfuInfo m_dfu_info;     // Bootloader info (cached after DFU_GET_INFO)
 
-	// Support functionality
+	// Legacy SPI support (kept for raw byte transfer)
 	void read_byte(uint8_t *byte_read);
 	void send_command(uint8_t command);
 	void send_command(const uint8_t *tx_data, uint8_t *rx_data, uint16_t size);
+
+	// SPI status queries (A+ protocol)
 	void get_spi_status(uint8_t *status);
 	void get_kmac_status(uint8_t *status);
 
-	// Protocol A+ support
-	bool detect_protocol();
+	// Protocol A+ core (based on Zephyr argos-smd-driver)
 	uint16_t build_aplus_frame(uint8_t *frame, uint8_t cmd, const uint8_t *data, uint16_t data_len);
 	bool parse_aplus_response(const uint8_t *rx_buffer, uint16_t rx_len, SpiAplusResponse *response);
 	bool send_command_aplus(uint8_t command, const uint8_t *tx_data, uint16_t tx_len,
 	                        SpiAplusResponse *response);
 	bool send_command_auto(uint8_t command, const uint8_t *tx_data = nullptr, uint16_t tx_len = 0,
-	                       uint8_t *rx_data = nullptr, uint16_t rx_len = 0);
+	                       uint8_t *rx_data = nullptr, uint16_t *rx_len = nullptr);
+	bool send_command_2phase(uint8_t req_cmd, uint8_t write_cmd,
+	                         const uint8_t *data, uint16_t len);
 
-	// Robust SPI communication helpers
-	bool wait_for_spi_ready(uint32_t timeout_ms = SMDSAT_SPI_READY_TIMEOUT_MS);
-	bool send_command_with_retry(uint8_t command, uint8_t max_retries = SMDSAT_SPI_MAX_RETRIES);
-	bool send_command_with_retry(const uint8_t *tx_data, uint8_t *rx_data, uint16_t size, uint8_t max_retries = SMDSAT_SPI_MAX_RETRIES);
-	bool is_spi_ready();
-	bool is_spi_error();
+	// High-level SPI commands (all use A+ protocol)
 	void set_radio_conf(smd_uint8_array_t *radio_conf);
 	void read_radio_conf(SmdArgosModulation *modulation);
 	bool save_radio_conf();
@@ -255,6 +254,17 @@ public:
 	                               void (*progress_callback)(uint8_t percent) = nullptr);
 
 	/**
+	 * @brief Perform firmware update streaming from a File (no large heap allocation)
+	 * @param file Open file positioned at start of firmware data
+	 * @param size Size of firmware data in bytes
+	 * @param stm32_crc32 Pre-computed STM32 CRC32-MPEG2 from firmware header
+	 * @param progress_callback Optional callback for progress reporting (0-100%)
+	 * @return DFU_RSP_OK on success, error code otherwise
+	 */
+	SmdDfuResponse firmware_update(File *file, size_t size, uint32_t stm32_crc32,
+	                               void (*progress_callback)(uint8_t percent) = nullptr);
+
+	/**
 	 * @brief Perform firmware update from file
 	 * @param filepath Path to firmware binary file
 	 * @param progress_callback Optional callback for progress reporting (0-100%)
@@ -269,4 +279,10 @@ public:
 	 * @note This requires the SMD to be powered on
 	 */
 	std::string get_firmware_version();
+
+	/**
+	 * @brief Debug: test all SPI A+ commands and report results
+	 * @return Multi-line string with pass/fail for each command
+	 */
+	std::string smd_spi_test();
 };

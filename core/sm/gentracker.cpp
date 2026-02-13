@@ -300,7 +300,7 @@ void ConfigurationState::entry() {
 
 #ifdef USB_DTE_ENABLED
 	// Start USB DTE polling (runs in parallel with BLE)
-	DEBUG_TRACE("ConfigurationState: Starting USB DTE polling");
+	DEBUG_TRACE("ConfigurationState: Starting DTE polling");
 	schedule_usb_poll();
 #endif
 }
