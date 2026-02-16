@@ -72,10 +72,7 @@ void UBXComms::expect(UBX::MessageClass resp_cls, uint8_t resp_msg_id) {
 }
 
 void UBXComms::send_with_expect(uint8_t *buffer, unsigned int sz, UBX::MessageClass resp_cls, uint8_t resp_msg_id) {
-	if (m_is_send_busy) {
-		DEBUG_TRACE("UBXComms: send is busy...");
-		while(m_is_send_busy);
-	}
+	wait_tx_idle();
 	// Setup expect filter
 	HeaderAndPayloadCRC *msg = (HeaderAndPayloadCRC *)buffer;
 	m_expect.req_cls = (uint8_t)msg->msgClass;
@@ -87,10 +84,7 @@ void UBXComms::send_with_expect(uint8_t *buffer, unsigned int sz, UBX::MessageCl
 }
 
 void UBXComms::send(uint8_t *buffer, unsigned int sz, bool notify_sent, bool use_ext_buffer) {
-	if (m_is_send_busy) {
-		DEBUG_TRACE("UBXComms: send is busy...");
-		while(m_is_send_busy);
-	}
+	wait_tx_idle();
 
 	if (m_debug_enable) {
 	    DEBUG_TRACE("UBXComms->GNSS: buffer=%s", Binascii::hexlify(std::string((char *)buffer, sz)).c_str());
@@ -98,6 +92,10 @@ void UBXComms::send(uint8_t *buffer, unsigned int sz, bool notify_sent, bool use
 
 	// Check for non-local buffer
 	if (!use_ext_buffer && buffer != m_tx_buffer) {
+		if (sz > sizeof(m_tx_buffer)) {
+			DEBUG_ERROR("UBXComms::send: buffer too large sz=%u max=%u", sz, (unsigned int)sizeof(m_tx_buffer));
+			return;
+		}
 		// Copy buffer locally since we are sending asynchronously
 		std::memcpy(m_tx_buffer, buffer, sz);
 		buffer = m_tx_buffer;
@@ -108,7 +106,7 @@ void UBXComms::send(uint8_t *buffer, unsigned int sz, bool notify_sent, bool use
 	m_notify_sent = notify_sent;
 	ret_code_t ret;
 	if ((ret = nrf_libuarte_async_tx(BSP::UARTAsync_Inits[m_instance].uart,
-			buffer, sz) != NRF_SUCCESS)) {
+			buffer, sz)) != NRF_SUCCESS) {
 		m_is_send_busy = false;  // Send failed so clear busy flag
 		DEBUG_ERROR("UBXComms::send: failed to send ret=%08x", (unsigned int)ret);
 	}
@@ -324,17 +322,20 @@ void UBXComms::run_nav_filter(const UBX::HeaderAndPayloadCRC * const msg) {
 
 	// Update navigation report
 	if (msg->msgId == NAV::ID_PVT) {
+		if (msg->msgLength < sizeof(m_nav_report.pvt)) return;
 		std::memcpy(&m_nav_report.pvt, msg->payload, sizeof(m_nav_report.pvt));
 		//DEBUG_TRACE("PVT: itow=%u valid=%u fix=%u", m_nav_report.pvt.iTow, (unsigned int)m_nav_report.pvt.valid,
 		//		(unsigned int)m_nav_report.pvt.fixType);
 		if (m_nav_report.pvt.iTow != m_nav_report_iTOW)
 			m_nav_report_iTOW = m_nav_report.pvt.iTow;
 	} else if (msg->msgId == NAV::ID_DOP) {
+		if (msg->msgLength < sizeof(m_nav_report.dop)) return;
 		std::memcpy(&m_nav_report.dop, msg->payload, sizeof(m_nav_report.dop));
 		//DEBUG_TRACE("DOP: itow=%u", m_nav_report.dop.iTow);
 		if (m_nav_report.dop.iTow != m_nav_report_iTOW)
 			m_nav_report_iTOW = m_nav_report.dop.iTow;
 	} else if (msg->msgId == NAV::ID_STATUS) {
+		if (msg->msgLength < sizeof(m_nav_report.status)) return;
 		std::memcpy(&m_nav_report.status, msg->payload, sizeof(m_nav_report.status));
 		//DEBUG_TRACE("STATUS: itow=%u", m_nav_report.status.iTow);
 		if (m_nav_report.status.iTow != m_nav_report_iTOW)

@@ -11,6 +11,7 @@
 #include "rtc.hpp"
 #include "timeutils.hpp"
 #include "binascii.hpp"
+#include "interrupt_lock.hpp"
 
 using namespace UBX;
 
@@ -44,11 +45,21 @@ extern FileSystem *main_filesystem;
 M10QAsyncReceiver::M10QAsyncReceiver() {
 	STATE_CHANGE(idle, idle);
 	m_ana_database_len = 0;
-    m_ano_database_len = 0;
+	m_ano_database_len = 0;
 	m_ano_start_pos = 0;
 	m_timeout.running = false;
 	m_num_power_on = 0;
 	m_powering_off = false;
+	m_num_nav_samples = 0;
+	m_num_sat_samples = 0;
+	m_fix_was_found = false;
+	m_unrecoverable_error = false;
+	m_database_overflow = false;
+	m_uart_error_count = 0;
+	m_expected_dbd_messages = 0;
+	m_mga_ack_count = 0;
+	m_step = 0;
+	m_retries = 0;
 }
 
 M10QAsyncReceiver::~M10QAsyncReceiver() {
@@ -338,9 +349,12 @@ void M10QAsyncReceiver::react(const UBXCommsEventCfgValget& valget) {
 
 void M10QAsyncReceiver::react(const UBXCommsEventSatReport& s) {
     if (m_nav_settings.sat_tracking) {
-    	static UBXCommsEventSatReport sat;
-    	std::memcpy(&sat, &s, sizeof(sat));
+    	{ InterruptLock lock; std::memcpy(&m_pending_sat, &s, sizeof(s)); }
         system_scheduler->post_task_prio([this]() {
+        	// Copy under InterruptLock to prevent ISR overwriting mid-read
+        	UBXCommsEventSatReport sat;
+        	{ InterruptLock lock; std::memcpy(&sat, &m_pending_sat, sizeof(sat)); }
+
         	if (m_nav_settings.debug_enable) {
         		DEBUG_TRACE("UBXCommsEventSatReport: numSvs=%u", (unsigned int)sat.sat.numSvs);
         	}
@@ -369,9 +383,12 @@ void M10QAsyncReceiver::react(const UBXCommsEventSatReport& s) {
 }
 
 void M10QAsyncReceiver::react(const UBXCommsEventNavReport& n) {
-    static UBXCommsEventNavReport nav;
-    std::memcpy(&nav, &n, sizeof(nav));
+    { InterruptLock lock; std::memcpy(&m_pending_nav, &n, sizeof(n)); }
     system_scheduler->post_task_prio([this]() {
+        // Copy under InterruptLock to prevent ISR overwriting mid-read
+        UBXCommsEventNavReport nav;
+        { InterruptLock lock; std::memcpy(&nav, &m_pending_nav, sizeof(nav)); }
+
         while (STATE_EQUAL(receive)) {
 
             // Increment number of nav samples received
@@ -454,7 +471,7 @@ void M10QAsyncReceiver::react(const UBXCommsEventNavReport& n) {
         }
 
         // Check if max number of samples has been reached
-        if (m_nav_settings.max_nav_samples && m_num_nav_samples >= m_nav_settings.max_nav_samples) {
+        if (STATE_EQUAL(receive) && m_nav_settings.max_nav_samples && m_num_nav_samples >= m_nav_settings.max_nav_samples) {
             m_nav_settings.max_nav_samples = 0;
             notify<GPSEventMaxNavSamples>({});
         }
@@ -483,8 +500,13 @@ void M10QAsyncReceiver::react(const UBXCommsEventMgaDBD& dbd) {
 }
 
 void M10QAsyncReceiver::react(const UBXCommsEventDebug& e) {
-    system_scheduler->post_task_prio([e]() {
-        DEBUG_TRACE("UBXComms<-GNSS: buffer=%s", Binascii::hexlify(std::string((char *)e.buffer, e.length)).c_str());
+    // Capture header + length by value to avoid dangling pointer to DMA buffer.
+    // The full hex dump is not possible here due to inplace_function size constraints.
+    uint32_t hdr = 0;
+    unsigned int len = e.length;
+    if (len >= 4) std::memcpy(&hdr, e.buffer, 4);
+    system_scheduler->post_task_prio([hdr, len]() {
+        DEBUG_TRACE("UBXComms<-GNSS: len=%u hdr=%08X", len, hdr);
     }, "Debug");
 }
 

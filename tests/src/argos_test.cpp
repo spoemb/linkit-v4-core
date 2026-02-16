@@ -101,7 +101,7 @@ TEST(ArgosScheduler, LegacyModeSchedulingShortPacket)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -197,7 +197,7 @@ TEST(ArgosScheduler, DutyCycleModeSchedulingShortPacket)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -294,7 +294,7 @@ TEST(ArgosScheduler, SchedulingLongPacket)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -442,7 +442,7 @@ TEST(ArgosScheduler, PrepassSchedulingShortPacket)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -562,7 +562,7 @@ TEST(ArgosScheduler, PrepassSchedulingLongPacket)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -751,7 +751,7 @@ TEST(ArgosScheduler, DutyCycleModeManyShortPackets)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -828,7 +828,7 @@ TEST(ArgosScheduler, DutyCycleWithSaltwaterSwitchEvents)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -1012,7 +1012,7 @@ TEST(ArgosScheduler, PrepassWithSaltwaterSwitchEvents)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -1170,7 +1170,7 @@ TEST(ArgosScheduler, SchedulingShortPacketWithNonZeroAltitude)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -1260,7 +1260,7 @@ TEST(ArgosScheduler, SchedulingShortPacketWithMaxTruncatedAltitude)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -1351,7 +1351,7 @@ TEST(ArgosScheduler, SchedulingShortPacketWithMinTruncatedAltitude)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -1440,7 +1440,7 @@ TEST(ArgosScheduler, SchedulingCheckGpsBurstCountInfiniteInDutyCycleMode)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, dloc_arg_nom);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
@@ -1588,7 +1588,7 @@ TEST(ArgosScheduler, SchedulingCheckGpsBurstCountInfiniteInLegacyMode)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, dloc_arg_nom);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
@@ -1741,7 +1741,7 @@ TEST(ArgosScheduler, SchedulingLongPacketLowBatteryFlag)
 	fake_config_store->write_param(ParamID::TR_LB, tr_nom);
 	fake_config_store->write_param(ParamID::LB_ARGOS_MODE, mode);
 	fake_config_store->write_param(ParamID::LB_ARGOS_DUTY_CYCLE, duty_cycle);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -1893,7 +1893,7 @@ TEST(ArgosScheduler, SchedulingShortPacketLowBatteryFlag)
 	fake_config_store->write_param(ParamID::TR_LB, tr_nom);
 	fake_config_store->write_param(ParamID::LB_ARGOS_MODE, mode);
 	fake_config_store->write_param(ParamID::LB_ARGOS_DUTY_CYCLE, duty_cycle);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, dloc_arg_nom);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
@@ -1981,7 +1981,7 @@ TEST(ArgosScheduler, SchedulingShortPacketOutOfZoneFlag)
 	fake_config_store->write_param(ParamID::TR_LB, tr_nom);
 	fake_config_store->write_param(ParamID::LB_ARGOS_MODE, mode);
 	fake_config_store->write_param(ParamID::LB_ARGOS_DUTY_CYCLE, duty_cycle);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, dloc_arg_nom);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
@@ -2101,7 +2101,7 @@ TEST(ArgosScheduler, SchedulingLongPacketOutOfZoneFlag)
 	fake_config_store->write_param(ParamID::TR_LB, tr_nom);
 	fake_config_store->write_param(ParamID::LB_ARGOS_MODE, mode);
 	fake_config_store->write_param(ParamID::LB_ARGOS_DUTY_CYCLE, duty_cycle);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, dloc_arg_nom);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
@@ -2286,7 +2286,7 @@ TEST(ArgosScheduler, TimeSyncBurstTransmissionIsSent)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -2365,7 +2365,7 @@ TEST(ArgosScheduler, LegacyModeSchedulingShortPacketInfiniteBurst)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -2442,7 +2442,7 @@ TEST(ArgosScheduler, LegacyModeSchedulingShortPacketInfiniteBurstWithTimeSyncro)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -2543,7 +2543,7 @@ TEST(ArgosScheduler, SchedulingNonPrepassTxJitter)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -2621,7 +2621,7 @@ TEST(ArgosScheduler, PrepassSchedulingShortPacketTXJitter)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -2788,7 +2788,7 @@ TEST(ArgosScheduler, OutOfZoneModeChangeLegacy)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -2951,7 +2951,7 @@ TEST(ArgosScheduler, OutOfZoneModeChangePrepass)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -3066,7 +3066,7 @@ TEST(ArgosScheduler, LegacyModeSchedulingShortPacketInfiniteBurstWithNonZeroSens
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -3156,7 +3156,7 @@ TEST(ArgosScheduler, LegacyModeSchedulingShortPacketInfiniteBurstConfirmDepthPil
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -3264,7 +3264,7 @@ TEST(ArgosScheduler, TestDownlinkReceive)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -3424,7 +3424,7 @@ TEST(ArgosScheduler, TestDownlinkWithAOPUpdatePeriod)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -3687,7 +3687,7 @@ TEST(ArgosScheduler, GNSSOffLegacySchedulingDopplerPacket)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -3766,7 +3766,7 @@ TEST(ArgosScheduler, GNSSOffDutyCycleSchedulingDopplerPacket)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
@@ -3851,7 +3851,7 @@ TEST(ArgosScheduler, TestAOPUpdateWithOutOfServiceSatellite)
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);

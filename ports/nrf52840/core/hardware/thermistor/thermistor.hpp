@@ -7,8 +7,8 @@
 class Thermistor : public Sensor {
 	Calibration m_cal;
 	uint8_t m_adc_channel;
-	bool m_is_init;
-	double m_last_temperature;
+	bool m_is_init = false;
+	double m_last_temperature = 0.0;
 	double offset_temp = 0;
 
 	void adc_calibration();

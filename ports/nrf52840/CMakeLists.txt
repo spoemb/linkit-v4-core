@@ -334,6 +334,7 @@ target_sources(${TARGET_NAME} PRIVATE
     ${CORE_DIR}/filesystem/ota_flash_file_updater.cpp
     ${CORE_DIR}/protocol/dte_commands.cpp
     ${CORE_DIR}/protocol/dte_params.cpp
+    ${CORE_DIR}/protocol/dte_handler.cpp
     ${CORE_DIR}/configuration/calibration.cpp
     ${BOARD_DIR}/bsp.cpp
     ${PROJ_DIR}/core/filesystem/is25_flash.cpp
@@ -528,7 +529,7 @@ target_compile_options(${TARGET_NAME} PRIVATE
     -Wodr
 
     # C Only Warnings
-    $<$<COMPILE_LANGUAGE:C>:${-Wjump-misses-init}>
+    $<$<COMPILE_LANGUAGE:C>:-Wjump-misses-init>
 
     # Disabled Warnings
     -Wno-unused-parameter

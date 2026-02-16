@@ -61,7 +61,7 @@ public:
 	}
 };
 
-struct GPSNavSettings {
+struct GPSNavSettingsLegacy {
 	BaseGNSSFixMode  fix_mode;
 	BaseGNSSDynModel dyn_model;
 	bool			 assistnow_enable;
@@ -149,7 +149,7 @@ private:
 	
 	// These methods are specific to the chipset and should be implemented by device-specific subclass
 	virtual void power_off() = 0;
-	virtual void power_on(const GPSNavSettings& nav_settings,
+	virtual void power_on(const GPSNavSettingsLegacy& nav_settings,
 						  std::function<void(GNSSData data)> data_notification_callback = nullptr) = 0;
 };
 

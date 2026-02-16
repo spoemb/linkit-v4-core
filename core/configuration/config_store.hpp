@@ -87,7 +87,7 @@ enum class ConfigMode {
 class ConfigurationStore {
 
 protected:
-	static inline const unsigned int m_config_version_code = 0x1c07e800 | 0x13;
+	static inline const unsigned int m_config_version_code = 0x1c07e800 | 0x14;
 	static inline const unsigned int m_config_version_code_aop = 0x1c07e800 | 0x03;
 	static inline const std::array<BaseType,MAX_CONFIG_ITEMS> default_params { {
 		/* ARGOS_DECID */ 0U,
@@ -99,7 +99,7 @@ protected:
 		/* BATT_SOC */ 0U,
 		/* LAST_FULL_CHARGE_DATE */ static_cast<std::time_t>(0U),
 		/* PROFILE_NAME */ "FACTORY"s,
-		/* AOP_STATUS */ 0U,
+		/* _RESERVED_9 */ 0U,
 		/* ARGOS_AOP_DATE */ static_cast<std::time_t>(1633646474U),
 		/* ARGOS_FREQ */ 401.65,
 		/* ARGOS_POWER */ BaseArgosPower::POWER_350_MW,
@@ -129,7 +129,7 @@ protected:
 #else
 		/* ARGOS_DEPTH_PILE */ BaseArgosDepthPile::DEPTH_PILE_16,
 #endif
-		/* GPS_CONST_SELECT */ 0U, // Not implemented
+		/* _RESERVED_20 */ 0U,
 		/* GLONASS_CONST_SELECT */ 0U, // Not implemented
 		/* GNSS_HDOPFILT_EN */ (bool)true,
 		/* GNSS_HDOPFILT_THR */ 2U,
@@ -147,7 +147,7 @@ protected:
 		/* DRY_TIME_BEFORE_TX */ 1U,
 		/* SAMPLING_UNDER_FREQ */ 60U,
 		/* LB_EN */ (bool)false,
-		/* LB_TRESHOLD */ 10U,
+		/* LB_THRESHOLD */ 10U,
 		/* LB_ARGOS_POWER */ BaseArgosPower::POWER_350_MW,
 		/* TR_LB */ 240U,
 		/* LB_ARGOS_MODE */ BaseArgosMode::LEGACY,
@@ -221,13 +221,11 @@ protected:
 		/* CERT_TX_REPETITION */ 60U,
 		/* HW_VERSION */ ""s,
 		/* BATT_VOLTAGE */ (double)0,
-#ifdef EXTERNAL_WAKEUP
-		/* SHUTDOWN_TIMER */ 0U,          // Time in seconds before powerdown (0 = disabled)
-		/* BOOT_COUNTER */ 0U,            // Counter incremented on each boot
-		/* BOOT_COUNTER_MODULO */ 2U,     // Modulo for boot counter check (default 2 = every 2nd boot)
-		/* WAKEUP_PERIOD */ 6300U,        // TPL5111 wakeup period in seconds (default 1H45 = 6300s)
-#endif
-		/* ARGOS_TCXO_WARMUP_TIME */ 5U,
+		/* [88] SHUTDOWN_TIMER */ 0U,
+		/* [89] BOOT_COUNTER */ 0U,
+		/* [90] BOOT_COUNTER_MODULO */ 2U,
+		/* [91] WAKEUP_PERIOD */ 6300U,
+		/* [92] ARGOS_TCXO_WARMUP_TIME */ 5U,
 		/* DEVICE_DECID */ 0U,
 		/* GNSS_TRIGGER_ON_SURFACED */ (bool)true,
 		/* GNSS_TRIGGER_ON_AXL_WAKEUP */ (bool)false,
@@ -236,49 +234,35 @@ protected:
 #else
 		/* UNDERWATER_DETECT_SOURCE */ BaseUnderwaterDetectSource::SWS,
 #endif
-		/* UNDERWATER_DETECT_THRESH */ (double)1.1,
-#if ENABLE_PH_SENSOR
-		/* PH_SENSOR_ENABLE */ (bool)false,
-		/* PH_SENSOR_PERIODIC */ 0U,
-		/* PH_SENSOR_VALUE */ (double)0.0,
-#endif
-#if ENABLE_SEA_TEMP_SENSOR
-		/* SEA_TEMP_SENSOR_ENABLE */ (bool)false,
-		/* SEA_TEMP_SENSOR_PERIODIC */ 0U,
-		/* SEA_TEMP_SENSOR_VALUE */ (double)0.0,
-#endif
-#if ENABLE_ALS_SENSOR
-		/* ALS_SENSOR_ENABLE */ (bool)false,
-		/* ALS_SENSOR_PERIODIC */ 0U,
-		/* ALS_SENSOR_VALUE */ (double)0.0,
-#endif
-#if ENABLE_CDT_SENSOR
-		/* CDT_SENSOR_ENABLE */ (bool)false,
-		/* CDT_SENSOR_PERIODIC */ 0U,
-		/* CDT_SENSOR_CONDUCTIVITY */ (double)0.0,
-		/* CDT_SENSOR_DEPTH */ (double)0.0,
-		/* CDT_SENSOR_TEMPERATURE */ (double)0.0,
-#endif
-#if ENABLE_THERMISTOR_SENSOR
-		/* THERMISTOR_SENSOR_ENABLE */ (bool)false,
-		/* THERMISTOR_SENSOR_PERIODIC */ 0U,
-		/* THERMISTOR_SENSOR_VALUE */ (double)0.0,
-		/* THERMISTOR_SENSOR_WAKEUP_THRESH */ (double)0.0,
-		/* THERMISTOR_SENSOR_WAKEUP_SAMPLES */ 0U,
-#endif
-		/* EXT_LED_MODE */ BaseLEDMode::ALWAYS,
-#if ENABLE_AXL_SENSOR
-		/* AXL_SENSOR_ENABLE */ (bool)false,
-		/* AXL_SENSOR_PERIODIC */ 0U,
-		/* AXL_SENSOR_WAKEUP_THRESHOLD */ (double)0.0,
-		/* AXL_SENSOR_WAKEUP_SAMPLES */ 5U,
-		/* AXL_SENSOR_MEASUREMENT_RANGE */ 0U,
-		/* AXL_SENSOR_POWER_MODE */ 0U,
-#endif
-#if ENABLE_PRESSURE_SENSOR
-		/* PRESSURE_SENSOR_ENABLE */ (bool)false,
-		/* PRESSURE_SENSOR_PERIODIC */ 0U,
-#endif
+		/* [97] UNDERWATER_DETECT_THRESH */ (double)1.1,
+		/* [98] PH_SENSOR_ENABLE */ (bool)false,
+		/* [99] PH_SENSOR_PERIODIC */ 0U,
+		/* [100] PH_SENSOR_VALUE */ (double)0.0,
+		/* [101] SEA_TEMP_SENSOR_ENABLE */ (bool)false,
+		/* [102] SEA_TEMP_SENSOR_PERIODIC */ 0U,
+		/* [103] SEA_TEMP_SENSOR_VALUE */ (double)0.0,
+		/* [104] ALS_SENSOR_ENABLE */ (bool)false,
+		/* [105] ALS_SENSOR_PERIODIC */ 0U,
+		/* [106] ALS_SENSOR_VALUE */ (double)0.0,
+		/* [107] CDT_SENSOR_ENABLE */ (bool)false,
+		/* [108] CDT_SENSOR_PERIODIC */ 0U,
+		/* [109] CDT_SENSOR_CONDUCTIVITY */ (double)0.0,
+		/* [110] CDT_SENSOR_DEPTH */ (double)0.0,
+		/* [111] CDT_SENSOR_TEMPERATURE */ (double)0.0,
+		/* [112] THERMISTOR_SENSOR_ENABLE */ (bool)false,
+		/* [113] THERMISTOR_SENSOR_PERIODIC */ 0U,
+		/* [114] THERMISTOR_SENSOR_VALUE */ (double)0.0,
+		/* [115] THERMISTOR_SENSOR_WAKEUP_THRESH */ (double)0.0,
+		/* [116] THERMISTOR_SENSOR_WAKEUP_SAMPLES */ 0U,
+		/* [117] EXT_LED_MODE */ BaseLEDMode::ALWAYS,
+		/* [118] AXL_SENSOR_ENABLE */ (bool)false,
+		/* [119] AXL_SENSOR_PERIODIC */ 0U,
+		/* [120] AXL_SENSOR_WAKEUP_THRESHOLD */ (double)0.0,
+		/* [121] AXL_SENSOR_WAKEUP_SAMPLES */ 5U,
+		/* [122] AXL_SENSOR_MEASUREMENT_RANGE */ 0U,
+		/* [123] AXL_SENSOR_POWER_MODE */ 0U,
+		/* [124] PRESSURE_SENSOR_ENABLE */ (bool)false,
+		/* [125] PRESSURE_SENSOR_PERIODIC */ 0U,
 		/* DEBUG_OUTPUT_MODE */ BaseDebugMode::USB_CDC,  // Default: USB CDC (was UART on Linkit V3)
 		/* GNSS_ASSISTNOW_OFFLINE_EN */ (bool)false,
 #if MODEL_UW
@@ -314,55 +298,35 @@ protected:
 #else
 		/* UW_GNSS_DETECT_THRESH */ 1U,
 #endif
-		/* LB_CRITICAL_THRESH */ 2.8,
-#if ENABLE_PRESSURE_SENSOR
-		/* PRESSURE_SENSOR_LOGGING_MODE */ BasePressureSensorLoggingMode::ALWAYS,
-#endif
-		/* GNSS_TRIGGER_COLD_START_ON_SURFACED */ (bool)false,
-
-#if ENABLE_SEA_TEMP_SENSOR
-		/* SEA_TEMP_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
-		/* SEA_TEMP_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
-		/* SEA_TEMP_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
-#endif
-#if ENABLE_PH_SENSOR
-		/* PH_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
-		/* PH_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
-		/* PH_SENSOR_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
-#endif
-#if ENABLE_ALS_SENSOR
-		/* ALS_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
-		/* ALS_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
-		/* ALS_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
-#endif
-#if ENABLE_PRESSURE_SENSOR
-		/* PRESSURE_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
-		/* PRESSURE_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
-		/* PRESSURE_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
-#endif
-#if ENABLE_AXL_SENSOR
-		/* AXL_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
-		/* AXL_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
-		/* AXL_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
-#endif
-#if ENABLE_THERMISTOR_SENSOR
-		/* THERMISTOR_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
-		/* THERMISTOR_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
-		/* THERMISTOR_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
-#endif
-
-#if ENABLE_CAM_SENSOR
-		/* CAM_ENABLE */ (bool)false,
-		/* CAM_TRIGGER_ON_SURFACED */ (bool)false,
-		/* CAM_TRIGGER_ON_AXL_WAKEUP */ (bool)false,
-		/* CAM_PERIOD_ON */ 1U * 60U,
-		/* CAM_PERIOD_OFF */ 5U * 60U,
-		/* LB_CAM_EN */ (bool)false,
-#endif
-#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
-		/* ARGOS_SECKEY */ ""s,
-		/* ARGOS_RADIOCONF */ ""s,
-#endif
+		/* [145] LB_CRITICAL_THRESH */ 2.8,
+		/* [146] PRESSURE_SENSOR_LOGGING_MODE */ BasePressureSensorLoggingMode::ALWAYS,
+		/* [147] GNSS_TRIGGER_COLD_START_ON_SURFACED */ (bool)false,
+		/* [148] SEA_TEMP_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
+		/* [149] SEA_TEMP_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
+		/* [150] SEA_TEMP_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
+		/* [151] PH_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
+		/* [152] PH_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
+		/* [153] PH_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
+		/* [154] ALS_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
+		/* [155] ALS_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
+		/* [156] ALS_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
+		/* [157] PRESSURE_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
+		/* [158] PRESSURE_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
+		/* [159] PRESSURE_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
+		/* [160] AXL_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
+		/* [161] AXL_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
+		/* [162] AXL_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
+		/* [163] THERMISTOR_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,
+		/* [164] THERMISTOR_SENSOR_ENABLE_TX_MAX_SAMPLES */ 1U,
+		/* [165] THERMISTOR_SENSOR_ENABLE_TX_SAMPLE_PERIOD */ 1000U,
+		/* [166] CAM_ENABLE */ (bool)false,
+		/* [167] CAM_TRIGGER_ON_SURFACED */ (bool)false,
+		/* [168] CAM_TRIGGER_ON_AXL_WAKEUP */ (bool)false,
+		/* [169] CAM_PERIOD_ON */ 1U * 60U,
+		/* [170] CAM_PERIOD_OFF */ 5U * 60U,
+		/* [171] LB_CAM_EN */ (bool)false,
+		/* [172] ARGOS_SECKEY */ ""s,
+		/* [173] ARGOS_RADIOCONF */ ""s,
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,
@@ -380,9 +344,9 @@ protected:
 	};
 
 	std::array<BaseType, MAX_CONFIG_ITEMS> m_params;
-	uint8_t m_battery_level;
-	uint16_t m_battery_voltage;
-	bool     m_is_battery_level_low;
+	uint8_t m_battery_level = 0;
+	uint16_t m_battery_voltage = 0;
+	bool     m_is_battery_level_low = false;
 	GPSLogEntry m_last_gps_log_entry;
 	ConfigMode  m_last_config_mode;
 	virtual void serialize_config() = 0;

@@ -20,6 +20,8 @@ public:
 	virtual int set_attr(const char *path, unsigned int &attr) = 0;
 	virtual int get_attr(const char *path, unsigned int &attr) = 0;
 	virtual void *get_private_data() = 0;
+	virtual void power_up() {}
+	virtual void power_down() {}
 };
 
 class FlashInterface {
@@ -39,6 +41,8 @@ public:
 	virtual int prog(lfs_block_t block, lfs_off_t off, const void *buffer, lfs_size_t size) = 0;
 	virtual int erase(lfs_block_t block) = 0;
 	virtual int sync() = 0;
+	virtual void power_up() {}
+	virtual void power_down() {}
 };
 
 
@@ -146,6 +150,9 @@ public:
 	void *get_private_data() override {
 		return &m_lfs;
 	}
+
+	void power_up() override { m_flash_if->power_up(); }
+	void power_down() override { m_flash_if->power_down(); }
 };
 
 

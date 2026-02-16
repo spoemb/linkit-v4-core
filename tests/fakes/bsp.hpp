@@ -10,6 +10,8 @@
 #define SWS_SAMPLE_PIN BSP::GPIO::GPIO_SLOW_SWS_RX
 #define SWS_ADC        BSP::ADC::ADC_CHANNEL_1
 #define BATTERY_ADC    BSP::ADC::ADC_CHANNEL_0
+#define GPS_POWER      BSP::GPIO::GPIO_GPS_PWR_EN
+#define GPS_RST        BSP::GPIO::GPIO_GPS_RST
 
 #define ADC_GAIN              (1.0f/6.0f)  // 1/6 gain
 #define V_DIV_GAIN            2.0f

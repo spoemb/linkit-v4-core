@@ -86,10 +86,7 @@ public:
 			content_size = sizeof(content) + dynamic_size;
 		}
 
-		if (m_is_send_busy) {
-			DEBUG_TRACE("UBXComms: send is busy...");
-			while (m_is_send_busy);
-		}
+		wait_tx_idle();
 
 		UBX::HeaderAndPayloadCRC *msg = (UBX::HeaderAndPayloadCRC *)m_tx_buffer;
 		msg->syncChars[0] = UBX::SYNC_CHAR1;
@@ -109,10 +106,7 @@ public:
 	template <typename T>
 	void send_packet(UBX::MessageClass cls, uint8_t id, T content) {
 
-		if (m_is_send_busy) {
-			DEBUG_TRACE("UBXComms: send is busy...");
-			while(m_is_send_busy);
-		}
+		wait_tx_idle();
 
 		unsigned int content_size;
 		if constexpr (std::is_same<T, UBX::Empty>::value) {
@@ -136,7 +130,7 @@ public:
 	void expect(UBX::MessageClass resp_cls, uint8_t resp_msg_id);
 	void send_with_expect(uint8_t *buffer, unsigned int sz, UBX::MessageClass resp_cls = UBX::MessageClass::MSG_CLASS_ACK, uint8_t resp_msg_id = UBX::ACK::ID_ACK);
 	void send(uint8_t *buffer, unsigned int sz, bool notify_sent = false, bool use_ext_buffer = false);
-	void wait_send() { while (m_is_send_busy); }
+	void wait_send() { wait_tx_idle(); }
 	void set_baudrate(unsigned int baudrate);
 	void start_dbd_filter();
 	void stop_dbd_filter();
@@ -170,6 +164,18 @@ private:
     uint8_t m_rx_buffer[1024];
     unsigned int m_rx_buffer_offset;
 	bool m_is_init;
+
+	// Bounded wait for previous TX to complete (~500ms at 64MHz)
+	static constexpr unsigned int SEND_BUSY_TIMEOUT = 10000000;
+	void wait_tx_idle() {
+		if (!m_is_send_busy) return;
+		DEBUG_TRACE("UBXComms: send is busy...");
+		for (unsigned int i = SEND_BUSY_TIMEOUT; i && m_is_send_busy; --i);
+		if (m_is_send_busy) {
+			DEBUG_ERROR("UBXComms: TX busy timeout - forcing clear");
+			m_is_send_busy = false;
+		}
+	}
 
 	void handle_error(unsigned int);
 	void handle_tx_done();

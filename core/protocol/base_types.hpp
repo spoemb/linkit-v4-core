@@ -52,216 +52,232 @@ extern "C" {
 #define ARGOS_FREQUENCY_MULT	10000U
 
 enum class ParamID {
-	ARGOS_DECID,
-	ARGOS_HEXID,
-	DEVICE_MODEL,
-	FW_APP_VERSION,
-	LAST_TX,
-	TX_COUNTER,
-	BATT_SOC,
-	LAST_FULL_CHARGE_DATE,
-	PROFILE_NAME,
-	AOP_STATUS,
-	ARGOS_AOP_DATE,
-	ARGOS_FREQ,
-	ARGOS_POWER,
-	TR_NOM,
-	ARGOS_MODE,
-	NTRY_PER_MESSAGE,
-	DUTY_CYCLE,
-	GNSS_EN,
-	DLOC_ARG_NOM,
-	ARGOS_DEPTH_PILE,
-	GPS_CONST_SELECT,
-	GLONASS_CONST_SELECT,
-	GNSS_HDOPFILT_EN,
-	GNSS_HDOPFILT_THR,
-	GNSS_ACQ_TIMEOUT,
-	GNSS_NTRY,
-	UNDERWATER_EN,
-	DRY_TIME_BEFORE_TX,
-	SAMPLING_UNDER_FREQ,
-	LB_EN,
-	LB_TRESHOLD,
-	LB_ARGOS_POWER,
-	TR_LB,
-	LB_ARGOS_MODE,
-	LB_ARGOS_DUTY_CYCLE,
-	LB_GNSS_EN,
-	DLOC_ARG_LB,
-	LB_GNSS_HDOPFILT_THR,
-	LB_ARGOS_DEPTH_PILE,
-	LB_GNSS_ACQ_TIMEOUT,
-	SAMPLING_SURF_FREQ,
-	PP_MIN_ELEVATION,
-	PP_MAX_ELEVATION,
-	PP_MIN_DURATION,
-	PP_MAX_PASSES,
-	PP_LINEAR_MARGIN,
-	PP_COMP_STEP,
-	GNSS_COLD_ACQ_TIMEOUT,
-	GNSS_FIX_MODE,
-	GNSS_DYN_MODEL,
-	GNSS_HACCFILT_EN,
-	GNSS_HACCFILT_THR,
-	GNSS_MIN_NUM_FIXES,
-	GNSS_COLD_START_RETRY_PERIOD,
-	ARGOS_TIME_SYNC_BURST_EN,
-	LED_MODE,
-	ARGOS_TX_JITTER_EN,
-	ARGOS_RX_EN,
-	ARGOS_RX_MAX_WINDOW,
-	ARGOS_RX_AOP_UPDATE_PERIOD,
-	ARGOS_RX_COUNTER,
-	ARGOS_RX_TIME,
-	GNSS_ASSISTNOW_EN,
-	LB_GNSS_HACCFILT_THR,
-	LB_NTRY_PER_MESSAGE,
-	ZONE_TYPE,
-	ZONE_ENABLE_OUT_OF_ZONE_DETECTION_MODE,
-	ZONE_ENABLE_ACTIVATION_DATE,
-	ZONE_ACTIVATION_DATE,
-	ZONE_ARGOS_DEPTH_PILE,
-	ZONE_ARGOS_POWER,
-	ZONE_ARGOS_REPETITION_SECONDS,
-	ZONE_ARGOS_MODE,
-	ZONE_ARGOS_DUTY_CYCLE,
-	ZONE_ARGOS_NTRY_PER_MESSAGE,
-	ZONE_GNSS_DELTA_ARG_LOC_ARGOS_SECONDS,
-	ZONE_GNSS_HDOPFILT_THR,
-	ZONE_GNSS_HACCFILT_THR,
-	ZONE_GNSS_ACQ_TIMEOUT,
-	ZONE_CENTER_LONGITUDE,
-	ZONE_CENTER_LATITUDE,
-	ZONE_RADIUS,
-	CERT_TX_ENABLE,
-	CERT_TX_PAYLOAD,
-	CERT_TX_MODULATION,
-	CERT_TX_REPETITION,
-	HW_VERSION,
-	BATT_VOLTAGE,
+	// === Core params (always present) ===
+	ARGOS_DECID                              = 0,
+	ARGOS_HEXID                              = 1,
+	DEVICE_MODEL                             = 2,
+	FW_APP_VERSION                           = 3,
+	LAST_TX                                  = 4,
+	TX_COUNTER                               = 5,
+	BATT_SOC                                 = 6,
+	LAST_FULL_CHARGE_DATE                    = 7,
+	PROFILE_NAME                             = 8,
+	_RESERVED_9                              = 9,  // Was AOP_STATUS — status is in PASPW allcast data
+	ARGOS_AOP_DATE                           = 10,
+	ARGOS_FREQ                               = 11,
+	ARGOS_POWER                              = 12,
+	TR_NOM                                   = 13,
+	ARGOS_MODE                               = 14,
+	NTRY_PER_MESSAGE                         = 15,
+	DUTY_CYCLE                               = 16,
+	GNSS_EN                                  = 17,
+	DLOC_ARG_NOM                             = 18,
+	ARGOS_DEPTH_PILE                         = 19,
+	_RESERVED_20                             = 20, // Was GPS_CONST_SELECT — never implemented
+	GLONASS_CONST_SELECT                     = 21,
+	GNSS_HDOPFILT_EN                         = 22,
+	GNSS_HDOPFILT_THR                        = 23,
+	GNSS_ACQ_TIMEOUT                         = 24,
+	GNSS_NTRY                                = 25,
+	UNDERWATER_EN                            = 26,
+	DRY_TIME_BEFORE_TX                       = 27,
+	SAMPLING_UNDER_FREQ                      = 28,
+	LB_EN                                    = 29,
+	LB_THRESHOLD                              = 30,
+	LB_ARGOS_POWER                           = 31,
+	TR_LB                                    = 32,
+	LB_ARGOS_MODE                            = 33,
+	LB_ARGOS_DUTY_CYCLE                      = 34,
+	LB_GNSS_EN                               = 35,
+	DLOC_ARG_LB                              = 36,
+	LB_GNSS_HDOPFILT_THR                     = 37,
+	LB_ARGOS_DEPTH_PILE                      = 38,
+	LB_GNSS_ACQ_TIMEOUT                      = 39,
+	SAMPLING_SURF_FREQ                       = 40,
+	PP_MIN_ELEVATION                         = 41,
+	PP_MAX_ELEVATION                         = 42,
+	PP_MIN_DURATION                          = 43,
+	PP_MAX_PASSES                            = 44,
+	PP_LINEAR_MARGIN                         = 45,
+	PP_COMP_STEP                             = 46,
+	GNSS_COLD_ACQ_TIMEOUT                    = 47,
+	GNSS_FIX_MODE                            = 48,
+	GNSS_DYN_MODEL                           = 49,
+	GNSS_HACCFILT_EN                         = 50,
+	GNSS_HACCFILT_THR                        = 51,
+	GNSS_MIN_NUM_FIXES                       = 52,
+	GNSS_COLD_START_RETRY_PERIOD             = 53,
+	ARGOS_TIME_SYNC_BURST_EN                 = 54,
+	LED_MODE                                 = 55,
+	ARGOS_TX_JITTER_EN                       = 56,
+	ARGOS_RX_EN                              = 57,
+	ARGOS_RX_MAX_WINDOW                      = 58,
+	ARGOS_RX_AOP_UPDATE_PERIOD               = 59,
+	ARGOS_RX_COUNTER                         = 60,
+	ARGOS_RX_TIME                            = 61,
+	GNSS_ASSISTNOW_EN                        = 62,
+	LB_GNSS_HACCFILT_THR                     = 63,
+	LB_NTRY_PER_MESSAGE                      = 64,
+	ZONE_TYPE                                = 65,
+	ZONE_ENABLE_OUT_OF_ZONE_DETECTION_MODE   = 66,
+	ZONE_ENABLE_ACTIVATION_DATE              = 67,
+	ZONE_ACTIVATION_DATE                     = 68,
+	ZONE_ARGOS_DEPTH_PILE                    = 69,
+	ZONE_ARGOS_POWER                         = 70,
+	ZONE_ARGOS_REPETITION_SECONDS            = 71,
+	ZONE_ARGOS_MODE                          = 72,
+	ZONE_ARGOS_DUTY_CYCLE                    = 73,
+	ZONE_ARGOS_NTRY_PER_MESSAGE              = 74,
+	ZONE_GNSS_DELTA_ARG_LOC_ARGOS_SECONDS    = 75,
+	ZONE_GNSS_HDOPFILT_THR                   = 76,
+	ZONE_GNSS_HACCFILT_THR                   = 77,
+	ZONE_GNSS_ACQ_TIMEOUT                    = 78,
+	ZONE_CENTER_LONGITUDE                    = 79,
+	ZONE_CENTER_LATITUDE                     = 80,
+	ZONE_RADIUS                              = 81,
+	CERT_TX_ENABLE                           = 82,
+	CERT_TX_PAYLOAD                          = 83,
+	CERT_TX_MODULATION                       = 84,
+	CERT_TX_REPETITION                       = 85,
+	HW_VERSION                               = 86,
+	BATT_VOLTAGE                             = 87,
+	// === External wakeup / TPL5111 (slots 88-91 always reserved) ===
 #ifdef EXTERNAL_WAKEUP
-	SHUTDOWN_TIMER,
-	BOOT_COUNTER,
-	BOOT_COUNTER_MODULO,
-	WAKEUP_PERIOD,
+	SHUTDOWN_TIMER                           = 88,
+	BOOT_COUNTER                             = 89,
+	BOOT_COUNTER_MODULO                      = 90,
+	WAKEUP_PERIOD                            = 91,
 #endif
-	ARGOS_TCXO_WARMUP_TIME,
-	DEVICE_DECID,
-	GNSS_TRIGGER_ON_SURFACED,
-	GNSS_TRIGGER_ON_AXL_WAKEUP,
-	UNDERWATER_DETECT_SOURCE,
-	UNDERWATER_DETECT_THRESH,
+	// === Post-wakeup params ===
+	ARGOS_TCXO_WARMUP_TIME                   = 92,
+	DEVICE_DECID                             = 93,
+	GNSS_TRIGGER_ON_SURFACED                 = 94,
+	GNSS_TRIGGER_ON_AXL_WAKEUP              = 95,
+	UNDERWATER_DETECT_SOURCE                 = 96,
+	UNDERWATER_DETECT_THRESH                 = 97,
+	// === pH sensor (slots 98-100 always reserved) ===
 #if ENABLE_PH_SENSOR
-	PH_SENSOR_ENABLE,
-	PH_SENSOR_PERIODIC,
-	PH_SENSOR_VALUE,
+	PH_SENSOR_ENABLE                         = 98,
+	PH_SENSOR_PERIODIC                       = 99,
+	PH_SENSOR_VALUE                          = 100,
 #endif
+	// === Sea temperature sensor (slots 101-103 always reserved) ===
 #if ENABLE_SEA_TEMP_SENSOR
-	SEA_TEMP_SENSOR_ENABLE,
-	SEA_TEMP_SENSOR_PERIODIC,
-	SEA_TEMP_SENSOR_VALUE,
+	SEA_TEMP_SENSOR_ENABLE                   = 101,
+	SEA_TEMP_SENSOR_PERIODIC                 = 102,
+	SEA_TEMP_SENSOR_VALUE                    = 103,
 #endif
+	// === ALS sensor (slots 104-106 always reserved) ===
 #if ENABLE_ALS_SENSOR
-	ALS_SENSOR_ENABLE,
-	ALS_SENSOR_PERIODIC,
-	ALS_SENSOR_VALUE,
+	ALS_SENSOR_ENABLE                        = 104,
+	ALS_SENSOR_PERIODIC                      = 105,
+	ALS_SENSOR_VALUE                         = 106,
 #endif
+	// === CDT sensor (slots 107-111 always reserved) ===
 #if ENABLE_CDT_SENSOR
-	CDT_SENSOR_ENABLE,
-	CDT_SENSOR_PERIODIC,
-	CDT_SENSOR_CONDUCTIVITY_VALUE,
-	CDT_SENSOR_DEPTH_VALUE,
-	CDT_SENSOR_TEMPERATURE_VALUE,
+	CDT_SENSOR_ENABLE                        = 107,
+	CDT_SENSOR_PERIODIC                      = 108,
+	CDT_SENSOR_CONDUCTIVITY_VALUE            = 109,
+	CDT_SENSOR_DEPTH_VALUE                   = 110,
+	CDT_SENSOR_TEMPERATURE_VALUE             = 111,
 #endif
+	// === Thermistor sensor (slots 112-116 always reserved) ===
 #if ENABLE_THERMISTOR_SENSOR
-	THERMISTOR_SENSOR_ENABLE,
-	THERMISTOR_SENSOR_PERIODIC,
-	THERMISTOR_SENSOR_VALUE,
-	THERMISTOR_SENSOR_WAKEUP_THRESH,
-	THERMISTOR_SENSOR_WAKEUP_SAMPLES,
+	THERMISTOR_SENSOR_ENABLE                 = 112,
+	THERMISTOR_SENSOR_PERIODIC               = 113,
+	THERMISTOR_SENSOR_VALUE                  = 114,
+	THERMISTOR_SENSOR_WAKEUP_THRESH          = 115,
+	THERMISTOR_SENSOR_WAKEUP_SAMPLES         = 116,
 #endif
-	EXT_LED_MODE,
+	EXT_LED_MODE                             = 117,
+	// === Accelerometer sensor (slots 118-123 always reserved) ===
 #if ENABLE_AXL_SENSOR
-	AXL_SENSOR_ENABLE,
-	AXL_SENSOR_PERIODIC,
-	AXL_SENSOR_WAKEUP_THRESH,
-	AXL_SENSOR_WAKEUP_SAMPLES,
-	AXL_SENSOR_MEASUREMENT_RANGE,
-	AXL_SENSOR_POWER_MODE,
+	AXL_SENSOR_ENABLE                        = 118,
+	AXL_SENSOR_PERIODIC                      = 119,
+	AXL_SENSOR_WAKEUP_THRESH                = 120,
+	AXL_SENSOR_WAKEUP_SAMPLES               = 121,
+	AXL_SENSOR_MEASUREMENT_RANGE             = 122,
+	AXL_SENSOR_POWER_MODE                    = 123,
 #endif
+	// === Pressure sensor (slots 124-125 always reserved) ===
 #if ENABLE_PRESSURE_SENSOR
-	PRESSURE_SENSOR_ENABLE,
-	PRESSURE_SENSOR_PERIODIC,
+	PRESSURE_SENSOR_ENABLE                   = 124,
+	PRESSURE_SENSOR_PERIODIC                 = 125,
 #endif
-	DEBUG_OUTPUT_MODE,
-	GNSS_ASSISTNOW_OFFLINE_EN,
-	UW_MAX_SAMPLES,
-	UW_MIN_DRY_SAMPLES,
-	UW_SAMPLE_GAP,
-	UW_PIN_SAMPLE_DELAY,
-	SWS_ANALOG_THRESHOLD_MIN,
-	SWS_ANALOG_THRESHOLD_MAX,
-	SWS_ANALOG_HYSTERESIS,
-	SWS_ANALOG_CALIB_INTERVAL,
-	UW_MAX_DIVE_TIME,
-	UW_MIN_SURFACE_TIME,
-	UW_DIVE_MODE_ENABLE,
-	UW_DIVE_MODE_START_TIME,
-	UW_GNSS_DRY_SAMPLING,
-	UW_GNSS_WET_SAMPLING,
-	UW_GNSS_MAX_SAMPLES,
-	UW_GNSS_MIN_DRY_SAMPLES,
-	UW_GNSS_DETECT_THRESH,
-	LB_CRITICAL_THRESH,
+	// === Misc params ===
+	DEBUG_OUTPUT_MODE                        = 126,
+	GNSS_ASSISTNOW_OFFLINE_EN               = 127,
+	UW_MAX_SAMPLES                           = 128,
+	UW_MIN_DRY_SAMPLES                      = 129,
+	UW_SAMPLE_GAP                            = 130,
+	UW_PIN_SAMPLE_DELAY                      = 131,
+	SWS_ANALOG_THRESHOLD_MIN                 = 132,
+	SWS_ANALOG_THRESHOLD_MAX                 = 133,
+	SWS_ANALOG_HYSTERESIS                    = 134,
+	SWS_ANALOG_CALIB_INTERVAL                = 135,
+	UW_MAX_DIVE_TIME                         = 136,
+	UW_MIN_SURFACE_TIME                      = 137,
+	UW_DIVE_MODE_ENABLE                      = 138,
+	UW_DIVE_MODE_START_TIME                  = 139,
+	UW_GNSS_DRY_SAMPLING                     = 140,
+	UW_GNSS_WET_SAMPLING                     = 141,
+	UW_GNSS_MAX_SAMPLES                      = 142,
+	UW_GNSS_MIN_DRY_SAMPLES                 = 143,
+	UW_GNSS_DETECT_THRESH                    = 144,
+	LB_CRITICAL_THRESH                       = 145,
+	// === Pressure sensor logging (slot 146 always reserved) ===
 #if ENABLE_PRESSURE_SENSOR
-	PRESSURE_SENSOR_LOGGING_MODE,
+	PRESSURE_SENSOR_LOGGING_MODE             = 146,
 #endif
-	GNSS_TRIGGER_COLD_START_ON_SURFACED,
+	GNSS_TRIGGER_COLD_START_ON_SURFACED      = 147,
+	// === Sensor TX mode params (slots always reserved) ===
 #if ENABLE_SEA_TEMP_SENSOR
-	SEA_TEMP_SENSOR_ENABLE_TX_MODE,
-	SEA_TEMP_SENSOR_ENABLE_TX_MAX_SAMPLES,
-	SEA_TEMP_SENSOR_ENABLE_TX_SAMPLE_PERIOD,
+	SEA_TEMP_SENSOR_ENABLE_TX_MODE           = 148,
+	SEA_TEMP_SENSOR_ENABLE_TX_MAX_SAMPLES    = 149,
+	SEA_TEMP_SENSOR_ENABLE_TX_SAMPLE_PERIOD  = 150,
 #endif
 #if ENABLE_PH_SENSOR
-	PH_SENSOR_ENABLE_TX_MODE,
-	PH_SENSOR_ENABLE_TX_MAX_SAMPLES,
-	PH_SENSOR_ENABLE_TX_SAMPLE_PERIOD,
+	PH_SENSOR_ENABLE_TX_MODE                 = 151,
+	PH_SENSOR_ENABLE_TX_MAX_SAMPLES          = 152,
+	PH_SENSOR_ENABLE_TX_SAMPLE_PERIOD        = 153,
 #endif
 #if ENABLE_ALS_SENSOR
-	ALS_SENSOR_ENABLE_TX_MODE,
-	ALS_SENSOR_ENABLE_TX_MAX_SAMPLES,
-	ALS_SENSOR_ENABLE_TX_SAMPLE_PERIOD,
+	ALS_SENSOR_ENABLE_TX_MODE                = 154,
+	ALS_SENSOR_ENABLE_TX_MAX_SAMPLES         = 155,
+	ALS_SENSOR_ENABLE_TX_SAMPLE_PERIOD       = 156,
 #endif
 #if ENABLE_PRESSURE_SENSOR
-	PRESSURE_SENSOR_ENABLE_TX_MODE,
-	PRESSURE_SENSOR_ENABLE_TX_MAX_SAMPLES,
-	PRESSURE_SENSOR_ENABLE_TX_SAMPLE_PERIOD,
+	PRESSURE_SENSOR_ENABLE_TX_MODE           = 157,
+	PRESSURE_SENSOR_ENABLE_TX_MAX_SAMPLES    = 158,
+	PRESSURE_SENSOR_ENABLE_TX_SAMPLE_PERIOD  = 159,
 #endif
 #if ENABLE_AXL_SENSOR
-	AXL_SENSOR_ENABLE_TX_MODE,
-	AXL_SENSOR_ENABLE_TX_MAX_SAMPLES,
-	AXL_SENSOR_ENABLE_TX_SAMPLE_PERIOD,
+	AXL_SENSOR_ENABLE_TX_MODE                = 160,
+	AXL_SENSOR_ENABLE_TX_MAX_SAMPLES         = 161,
+	AXL_SENSOR_ENABLE_TX_SAMPLE_PERIOD       = 162,
 #endif
 #if ENABLE_THERMISTOR_SENSOR
-	THERMISTOR_SENSOR_ENABLE_TX_MODE,
-	THERMISTOR_SENSOR_ENABLE_TX_MAX_SAMPLES,
-	THERMISTOR_SENSOR_ENABLE_TX_SAMPLE_PERIOD,
+	THERMISTOR_SENSOR_ENABLE_TX_MODE         = 163,
+	THERMISTOR_SENSOR_ENABLE_TX_MAX_SAMPLES  = 164,
+	THERMISTOR_SENSOR_ENABLE_TX_SAMPLE_PERIOD = 165,
 #endif
+	// === Camera sensor (slots 166-171 always reserved) ===
 #if ENABLE_CAM_SENSOR
-	CAM_ENABLE,
-	CAM_TRIGGER_ON_SURFACED,
-	CAM_TRIGGER_ON_AXL_WAKEUP,
-	CAM_PERIOD_ON,
-	CAM_PERIOD_OFF,
-	LB_CAM_EN,
+	CAM_ENABLE                               = 166,
+	CAM_TRIGGER_ON_SURFACED                  = 167,
+	CAM_TRIGGER_ON_AXL_WAKEUP               = 168,
+	CAM_PERIOD_ON                            = 169,
+	CAM_PERIOD_OFF                           = 170,
+	LB_CAM_EN                               = 171,
 #endif
+	// === SMD credentials (slots 172-173 always reserved) ===
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
-	ARGOS_SECKEY,
-	ARGOS_RADIOCONF,
+	ARGOS_SECKEY                             = 172,
+	ARGOS_RADIOCONF                          = 173,
 #endif
-	__PARAM_SIZE,
-	__NULL_PARAM = 0xFFFF
+	// === Sentinel (fixed regardless of #ifdef combinations) ===
+	__PARAM_SIZE                             = 174,
+	__NULL_PARAM                             = 0xFFFF
 };
 
 enum class BaseEncoding {
@@ -364,7 +380,7 @@ enum class BaseArgosPower {
 	POWER_1500_MW
 };
 
-static inline const char *argos_power_to_string(BaseArgosPower power) {
+inline const char *argos_power_to_string(BaseArgosPower power) {
 	if (power == BaseArgosPower::POWER_3_MW)
 		return "3 mW";
 	if (power == BaseArgosPower::POWER_40_MW)
@@ -389,7 +405,7 @@ static inline const char *argos_power_to_string(BaseArgosPower power) {
 }
 
 
-static BaseArgosPower argos_integer_to_power(unsigned int power) {
+inline BaseArgosPower argos_integer_to_power(unsigned int power) {
 	if (power == 3)
 		return  BaseArgosPower::POWER_3_MW;
 	if (power == 40)
@@ -413,7 +429,7 @@ static BaseArgosPower argos_integer_to_power(unsigned int power) {
 	return BaseArgosPower::POWER_3_MW;
 }
 
-static unsigned int argos_power_to_integer(BaseArgosPower power) {
+inline unsigned int argos_power_to_integer(BaseArgosPower power) {
 	switch (power) {
 	case BaseArgosPower::POWER_40_MW:
 		return 40;
@@ -525,7 +541,7 @@ enum class BaseArgosModulation {
 	A4
 };
 
-static const char *argos_modulation_to_string(BaseArgosModulation m) {
+inline const char *argos_modulation_to_string(BaseArgosModulation m) {
 	switch (m) {
 	case BaseArgosModulation::A2:
 		return "LDA2";
@@ -544,18 +560,7 @@ static const char *argos_modulation_to_string(BaseArgosModulation m) {
 
 #define MAX_AOP_SATELLITE_ENTRIES		40
 
-struct BasePassPredict {
-	unsigned int	   version_code;
-	uint8_t num_records;
-	AopSatelliteEntry_t records[MAX_AOP_SATELLITE_ENTRIES];
-};
-
-static bool operator==(const BasePassPredict& lhs, const BasePassPredict& rhs)
-{
-    return std::memcmp( &lhs, &rhs, sizeof(BasePassPredict) );
-}
-
-static bool operator==(const AopSatelliteEntry_t& lhs, const AopSatelliteEntry_t& rhs)
+inline bool operator==(const AopSatelliteEntry_t& lhs, const AopSatelliteEntry_t& rhs)
 {
 	return lhs.ascNodeDriftDeg == rhs.ascNodeDriftDeg &&
 			lhs.ascNodeLongitudeDeg == rhs.ascNodeLongitudeDeg &&
@@ -574,9 +579,26 @@ static bool operator==(const AopSatelliteEntry_t& lhs, const AopSatelliteEntry_t
 			lhs.uplinkStatus == rhs.uplinkStatus;
 }
 
-static bool operator!=(const AopSatelliteEntry_t& lhs, const AopSatelliteEntry_t& rhs)
+inline bool operator!=(const AopSatelliteEntry_t& lhs, const AopSatelliteEntry_t& rhs)
 {
     return !(lhs == rhs);
+}
+
+struct BasePassPredict {
+	unsigned int	   version_code;
+	uint8_t num_records;
+	AopSatelliteEntry_t records[MAX_AOP_SATELLITE_ENTRIES];
+};
+
+inline bool operator==(const BasePassPredict& lhs, const BasePassPredict& rhs)
+{
+    if (lhs.version_code != rhs.version_code || lhs.num_records != rhs.num_records)
+        return false;
+    for (uint8_t i = 0; i < lhs.num_records && i < MAX_AOP_SATELLITE_ENTRIES; i++) {
+        if (!(lhs.records[i] == rhs.records[i]))
+            return false;
+    }
+    return true;
 }
 
 struct BaseRawData {

@@ -16,8 +16,6 @@
 #include "bitpack.hpp"
 #include "timeutils.hpp"
 
-using namespace std::literals::string_literals;
-
 
 class PassPredictCodec {
 private:
@@ -406,6 +404,10 @@ protected:
 	static inline void encode(std::string& output, const std::time_t& value) {
 		char buff[256];
 		auto time = std::gmtime(&value);
+		if (!time) {
+			output.append("00/00/0000 00:00:00");
+			return;
+		}
 		int written = std::strftime(buff, sizeof(buff), "%d/%m/%Y %H:%M:%S", time);
 
 		if (written == 0)
@@ -620,6 +622,9 @@ protected:
 	static void validate(const BaseMap &, const BasePressureSensorLoggingMode&) {
 	}
 public:
+	// FIXME: Using C variadic args with non-POD types (std::string, BaseRawData) is
+	// undefined behavior in C++. Works on GCC 10.3 ARM but may break with compiler
+	// updates. Should be refactored to use variadic templates or typed overloads.
 	static std::string encode(DTECommand command, ...) {
 		unsigned int error_code = 0;
 		std::string buffer;
@@ -996,9 +1001,11 @@ private:
 
 	static BaseDebugMode decode_debug_mode(const std::string& s) {
 		if (s == "0") {
-			return BaseDebugMode::USB_CDC;  // 0 = USB CDC debug output
+			return BaseDebugMode::UART;     // 0 = UART debug output
 		} else if (s == "1") {
-			return BaseDebugMode::BLE_NUS;  // 1 = Bluetooth UART Service
+			return BaseDebugMode::USB_CDC;  // 1 = USB CDC debug output
+		} else if (s == "2") {
+			return BaseDebugMode::BLE_NUS;  // 2 = Bluetooth UART Service
 		} else {
 			DEBUG_ERROR("DTE_PROTOCOL_VALUE_OUT_OF_RANGE in %s(%s)", __FUNCTION__, s.c_str());
 			throw DTE_PROTOCOL_VALUE_OUT_OF_RANGE;
@@ -1521,7 +1528,7 @@ public:
 		// If this is a NOK message, retrieve the error code //
 		if (cmd_nok)
 		{
-			sscanf(&str[str_pos], "%1ud", &error_code);
+			sscanf(&str[str_pos], "%1u", &error_code);
 			str_pos += 1;
 		}
 

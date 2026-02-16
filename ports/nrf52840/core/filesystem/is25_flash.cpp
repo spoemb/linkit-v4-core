@@ -77,7 +77,8 @@ void Is25Flash::init()
     }
 	while (status & IS25LP128F::STATUS_WIP);
 
-	power_down();
+	// init() manages QSPI directly, use hardware-level power down
+	_power_down_hw();
 
 	m_is_init = true;
 }
@@ -276,7 +277,7 @@ int Is25Flash::prog_fast(lfs_block_t block, lfs_off_t off, const void *buffer, l
 	return _prog_fast(block, off, buffer, size);
 }
 
-void Is25Flash::power_up()
+void Is25Flash::_power_up_hw()
 {
 	nrfx_qspi_init(&BSP::QSPI_Inits[BSP::QSPI_0].config, nullptr, nullptr);
 
@@ -295,7 +296,7 @@ void Is25Flash::power_up()
 	nrf_delay_us(5);
 }
 
-void Is25Flash::power_down()
+void Is25Flash::_power_down_hw()
 {
 	// Wait for any writes/erases to complete before sleeping
 	_sync();
@@ -323,4 +324,18 @@ void Is25Flash::power_down()
 	nrf_gpio_cfg_input(BSP::QSPI_Inits[BSP::QSPI_0].config.pins.io1_pin, NRF_GPIO_PIN_PULLDOWN);
 	nrf_gpio_cfg_input(BSP::QSPI_Inits[BSP::QSPI_0].config.pins.io2_pin, NRF_GPIO_PIN_PULLDOWN);
 	nrf_gpio_cfg_input(BSP::QSPI_Inits[BSP::QSPI_0].config.pins.io3_pin, NRF_GPIO_PIN_PULLDOWN);
+}
+
+void Is25Flash::power_up()
+{
+	if (m_power_ref_count++ == 0)
+		_power_up_hw();
+}
+
+void Is25Flash::power_down()
+{
+	if (m_power_ref_count == 0)
+		return;
+	if (--m_power_ref_count == 0)
+		_power_down_hw();
 }

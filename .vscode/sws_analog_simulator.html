@@ -1261,11 +1261,13 @@
                     biofouling: 0,             // 0-100 (algae, biofilm coverage)
                     residualConductivity: 0,   // ADC offset due to salt/biofilm buildup on surface
                     dryingInertia: 1,          // Time constant for surface drying (seconds)
-                    // Internal state for inertia simulation
-                    currentAdcValue: 0,        // Current ADC with inertia (slow drying)
-                    targetAdcValue: 0,         // Instant target ADC (what it would be without inertia)
+                    // Internal state for physics simulation
+                    currentAdcValue: 0,        // Current ADC value
+                    targetAdcValue: 0,         // Target ADC value
                     surfaceWetness: 0,         // 0-100% surface wetness level
-                    exposureTime: 0            // Total time spent underwater (accumulates)
+                    exposureTime: 0,           // Total time spent underwater (accumulates)
+                    _wasInWater: false,        // Previous water state for transition detection
+                    _transitionTime: 0         // Time since last transition
                 };
 
                 // Simulation control
@@ -1314,7 +1316,11 @@
                 );
             }
 
-            // Simulate ADC reading with biofouling and salt deposit effects
+            // Simulate ADC reading with REALISTIC PHYSICS model
+            // Models the actual physical behavior of the SWS electrode system:
+            // - Instant conductivity change when entering/leaving water
+            // - Slow drying phase with contamination effects
+            // - Biofouling and salt deposit residual conductivity
             readAnalogSWS() {
                 // ========== 1. BASE ADC VALUE (ideal, clean sensor) ==========
                 let idealValue = 0;
@@ -1341,96 +1347,99 @@
                 }
 
                 // ========== 2. SURFACE CONTAMINATION EFFECTS ==========
-                // Salt crystals and biofouling on the tracker surface create
-                // a permanent conductive layer between electrodes
-
-                // Combined contamination factor (salt + biofouling)
-                const saltContrib = this.environment.saltDeposit / 100;      // 0-1
-                const bioContrib = this.environment.biofouling / 100;        // 0-1
+                const saltContrib = this.environment.saltDeposit / 100;
+                const bioContrib = this.environment.biofouling / 100;
                 const contaminationLevel = Math.min(1, saltContrib * 0.6 + bioContrib * 0.4);
 
-                // Residual conductivity: the ADC floor when "dry"
-                // After heavy contamination, even in air the surface conducts
+                // Residual conductivity floor (when completely dry)
                 const baseResidual = this.environment.residualConductivity;
-
-                // Dynamic residual: increases with contamination
-                // Salt crystals are hygroscopic - they absorb moisture from air
                 const dynamicResidual = baseResidual + contaminationLevel * 400;
 
-                // ========== 3. SURFACE WETNESS STATE ==========
-                // Track how wet the surface is (0-100%)
-                // This determines how much the contaminants are conducting
+                // ========== 3. TWO-PHASE TRANSITION MODEL ==========
+                // REAL PHYSICS: When a turtle surfaces, there are TWO distinct phases:
+                //
+                // Phase 1 - INSTANT STEP (< 100ms): Electrode leaves water contact.
+                //   The conductivity path through bulk water is broken immediately.
+                //   ADC drops by 40-70% in the FIRST sample (depending on biofouling).
+                //   Clean sensor: drops from ~3000 to ~200 (93% drop)
+                //   Biofouled: drops from ~3000 to ~1200-1800 (40-60% drop)
+                //   because salt deposits maintain a residual conductive film.
+                //
+                // Phase 2 - SLOW DRYING (seconds to minutes): Surface moisture evaporates.
+                //   The remaining wet salt/biofilm layer slowly loses moisture.
+                //   ADC gradually decreases toward the dry residual baseline.
+                //   Clean: already at baseline after phase 1
+                //   Biofouled: exponential decay over dryingInertia seconds
 
                 const isInWater = ['freshwater', 'brackish', 'saltwater', 'deadsea'].includes(this.environment.type);
+                const wasInWater = this.environment._wasInWater || false;
 
-                if (isInWater) {
-                    // Surface gets wet quickly
-                    this.environment.surfaceWetness = Math.min(100,
-                        this.environment.surfaceWetness + 20);
-                } else {
-                    // Surface dries slowly based on inertia
-                    // More contamination = slower drying (salt retains moisture)
-                    const baseDryRate = 1 / this.environment.dryingInertia;
-                    const contaminationSlowdown = 1 + contaminationLevel * 3; // Up to 4x slower
+                // Detect transition events
+                if (isInWater && !wasInWater) {
+                    // ENTERING WATER: instant wetting
+                    this.environment.surfaceWetness = 100;
+                    this.environment._transitionTime = 0;
+                } else if (!isInWater && wasInWater) {
+                    // LEAVING WATER: Phase 1 - instant step change
+                    // Electrode loses bulk water contact immediately
+                    // Wetness drops to a level determined by contamination
+                    // Clean sensor: wetness drops to ~10% (thin film evaporates fast)
+                    // Biofouled: wetness drops to ~50-70% (salt retains moisture)
+                    const immediateWetness = 10 + contaminationLevel * 60; // 10% to 70%
+                    this.environment.surfaceWetness = immediateWetness;
+                    this.environment._transitionTime = 0;
+                } else if (!isInWater) {
+                    // Phase 2 - SLOW DRYING (exponential decay)
+                    this.environment._transitionTime = (this.environment._transitionTime || 0) + 1;
+                    const baseDryRate = 1 / Math.max(1, this.environment.dryingInertia);
+                    const contaminationSlowdown = 1 + contaminationLevel * 3;
                     const effectiveDryRate = baseDryRate / contaminationSlowdown;
-
                     this.environment.surfaceWetness = Math.max(0,
-                        this.environment.surfaceWetness - effectiveDryRate * 2);
+                        this.environment.surfaceWetness * (1 - effectiveDryRate * 0.1));
+                } else {
+                    // Staying in water
+                    this.environment.surfaceWetness = 100;
                 }
+                this.environment._wasInWater = isInWater;
 
                 // ========== 4. COMPUTE ACTUAL ADC VALUE ==========
-
-                // Target value depends on surface wetness and contamination
                 const wetnessFactor = this.environment.surfaceWetness / 100;
 
-                let targetValue;
+                let adcValue;
                 if (isInWater) {
-                    // In water: normal reading, slightly reduced by deposits
-                    targetValue = idealValue * (1 - contaminationLevel * 0.15);
+                    // In water: full conductivity, slightly reduced by deposits
+                    adcValue = idealValue * (1 - contaminationLevel * 0.15);
                 } else {
-                    // In air: value depends on surface wetness and residual conductivity
-                    // When surface is wet, we still read high values
-                    // As it dries, we approach the residual floor (not zero!)
-                    const dryValue = dynamicResidual; // Floor value when "dry"
-                    const wetValue = idealValue * 0.4 + 800; // Wet surface still conducts
-                    targetValue = dryValue + (wetValue - dryValue) * wetnessFactor;
+                    // In air: ADC determined by remaining surface wetness
+                    // High wetness → high ADC (still conductive from residual water)
+                    // Low wetness → approach residual floor
+                    const dryFloor = dynamicResidual;
+                    // Wet value represents the ADC just after leaving water with residual film
+                    const wetCeiling = idealValue * (0.3 + contaminationLevel * 0.3);
+                    adcValue = dryFloor + (wetCeiling - dryFloor) * wetnessFactor;
+                    // Ensure we don't go below residual floor
+                    adcValue = Math.max(dryFloor, adcValue);
                 }
 
-                // Store target for display
-                this.environment.targetAdcValue = Math.round(targetValue);
+                // Store for display
+                this.environment.targetAdcValue = Math.round(adcValue);
+                this.environment.currentAdcValue = adcValue;
 
-                // ========== 5. APPLY INERTIA (SMOOTH TRANSITIONS) ==========
-                // ADC doesn't jump instantly - physical process of drying/wetting
-
-                const currentAdc = this.environment.currentAdcValue || targetValue;
-
-                if (targetValue < currentAdc) {
-                    // Going down (drying) - SLOW transition
-                    // Contaminated surfaces hold moisture longer
-                    const tau = this.environment.dryingInertia * (1 + contaminationLevel * 2);
-                    const alpha = 1 - Math.exp(-0.1 / tau);
-                    this.environment.currentAdcValue = currentAdc - (currentAdc - targetValue) * alpha;
-                } else {
-                    // Going up (wetting) - FAST transition
-                    const wetAlpha = 0.4;
-                    this.environment.currentAdcValue = currentAdc + (targetValue - currentAdc) * wetAlpha;
-                }
-
-                let finalValue = this.environment.currentAdcValue;
-
-                // ========== 6. ELECTRODE HEALTH EFFECTS ==========
+                // ========== 5. ELECTRODE HEALTH EFFECTS ==========
                 const healthFactor = (this.environment.electrodeHealth[0] +
                                      this.environment.electrodeHealth[1]) / 200;
-                finalValue *= healthFactor;
+                adcValue *= healthFactor;
 
-                // ========== 7. NOISE ==========
+                // ========== 6. NOISE ==========
                 // More noise with contamination (unstable surface layer)
-                const noiseFactor = 1 + contaminationLevel * 1.5;
+                // Also more noise during drying transition (surface is unstable)
+                const transitionNoise = (!isInWater && wetnessFactor > 0.2) ? 1.5 : 1.0;
+                const noiseFactor = (1 + contaminationLevel * 1.5) * transitionNoise;
                 const noise = (Math.random() - 0.5) * 2 * this.environment.noise * noiseFactor;
-                finalValue += noise;
+                adcValue += noise;
 
                 // Clamp to ADC range (14-bit)
-                return Math.max(0, Math.min(16383, Math.round(finalValue)));
+                return Math.max(0, Math.min(16383, Math.round(adcValue)));
             }
 
             // Moving average filter
@@ -1660,35 +1669,64 @@
                 // 5. State decision with hysteresis
                 let newState = this.state.currentState;
 
-                // === FAST DROP DETECTION (immediate surface on rapid ADC decrease) ===
-                // If ADC drops significantly in a short time, bypass all delays
+                // === RAPID TRANSITION DETECTION ===
+                // When a turtle surfaces, the electrode loses water contact instantly.
+                // Even with heavy biofouling, the RELATIVE drop is always large.
+                // Three tiers of detection for <2s surface detection in ALL conditions.
+                const RAPID_T1_PCT = 25;    // Single massive drop
+                const RAPID_T1_ABS = 300;
+                const RAPID_T2_PCT = 12;    // Confirmed moderate drop (2 samples)
+                const RAPID_T2_ABS = 150;
+                const RAPID_T3_PCT = 8;     // Sustained trend drop
+                const RAPID_T3_ABS = 100;
+                const BIOFOULING_MIN_TIME = 3; // Reduced from 15s
+
                 let fastDropDetected = false;
-                if (this.state.currentState === 1 && this.state.trendBuffer.length >= 3 && this.state.timeInCurrentState > 3) {
-                    // Find max ADC in trend buffer (last 3-4 samples)
-                    const recentMax = Math.max(...this.state.trendBuffer.slice(-4));
-                    if (recentMax > 0 && filtered < recentMax) {
-                        const fastDropPercent = Math.round((recentMax - filtered) * 100 / recentMax);
-                        // If >8% drop in ~3s AND below true seawater range → immediate surface
-                        if (fastDropPercent >= 8 && filtered < ABSOLUTE_MIN_WATER) {
-                            fastDropDetected = true;
-                            this.log('info', `FAST DROP: ${fastDropPercent}% (max=${recentMax} curr=${filtered}) → SURFACE`);
-                        }
+                if (this.state.currentState === 1 && prevTrendValue > 0 && filtered < prevTrendValue) {
+                    const dropPercent = Math.round((prevTrendValue - filtered) * 100 / prevTrendValue);
+                    const absoluteDrop = prevTrendValue - filtered;
+                    const belowWaterBaseline = filtered < this.calibration.thresholdWater * 0.85;
+
+                    // TIER 1: Massive single-sample drop → immediate surface (1s)
+                    if (dropPercent >= RAPID_T1_PCT && absoluteDrop >= RAPID_T1_ABS && belowWaterBaseline) {
+                        fastDropDetected = true;
+                        this.log('info', `RAPID T1! ${dropPercent}% drop (${prevTrendValue}→${filtered}) SURFACE`);
+                    }
+                    // TIER 2: Moderate drop confirmed over 2 consecutive samples (2s)
+                    else if (dropPercent >= RAPID_T2_PCT && absoluteDrop >= RAPID_T2_ABS &&
+                             this.state.decreasingTrendCount >= 1 && belowWaterBaseline) {
+                        fastDropDetected = true;
+                        this.log('info', `RAPID T2! ${dropPercent}% x2 (${prevTrendValue}→${filtered}) SURFACE`);
+                    }
+                    // TIER 3: Small sustained drop with trend
+                    else if (dropPercent >= RAPID_T3_PCT && absoluteDrop >= RAPID_T3_ABS &&
+                             this.state.decreasingTrendCount >= 2) {
+                        fastDropDetected = true;
+                        this.log('info', `RAPID T3! ${dropPercent}% trend=${this.state.decreasingTrendCount} SURFACE`);
                     }
                 }
-                this.state.fastDropDetected = fastDropDetected;  // Store for UI
+                this.state.fastDropDetected = fastDropDetected;
 
-                // === TREND/VARIANCE BASED SURFACE DETECTION (Biofouling override) ===
-                // Even if ADC is above threshold, detect surface if:
-                // 1. We're currently "underwater" and (been there > 15s OR fast drop detected)
-                // 2. ADC shows consistent decreasing trend (drying) OR high variance OR fast drop
-                // 3. ADC is below true seawater range (< 2000)
+                // === BIOFOULING SURFACE OVERRIDE ===
                 let biofoulingSurfaceOverride = false;
-                if (this.state.currentState === 1 && (this.state.timeInCurrentState > 15 || fastDropDetected)) {
-                    if ((trendSuggestsSurface || varianceSuggestsSurface || fastDropDetected) && filtered < ABSOLUTE_MIN_WATER) {
+                if (this.state.currentState === 1 && (this.state.timeInCurrentState > BIOFOULING_MIN_TIME || fastDropDetected)) {
+                    if (fastDropDetected) {
+                        // Rapid transition: the rate of change IS the evidence
                         biofoulingSurfaceOverride = true;
-                        this.log('info', `Surface override: trend=${trendSuggestsSurface} var=${varianceSuggestsSurface} fast=${fastDropDetected} ADC=${filtered}`);
+                        this.log('info', `RAPID surface override (ADC=${filtered})`);
 
-                        // Recalibrate air baseline to trend minimum
+                        // Recalibrate air baseline for biofouling
+                        if (filtered > this.calibration.thresholdAir) {
+                            const oldAir = this.calibration.thresholdAir;
+                            this.calibration.thresholdAir = Math.round(filtered * 0.8);
+                            this.updateDynamicThreshold();
+                            this.log('info', `Air recalib after rapid: ${oldAir} → ${this.calibration.thresholdAir}`);
+                        }
+                    } else if ((trendSuggestsSurface || varianceSuggestsSurface) && filtered < ABSOLUTE_MIN_WATER) {
+                        // Trend/variance based: still requires absolute check
+                        biofoulingSurfaceOverride = true;
+                        this.log('info', `Trend/var surface override (trend=${trendSuggestsSurface} var=${varianceSuggestsSurface} ADC=${filtered})`);
+
                         if (trendMin > this.calibration.thresholdAir && trendMin < ABSOLUTE_MIN_WATER) {
                             const oldAir = this.calibration.thresholdAir;
                             this.calibration.thresholdAir = Math.round(trendMin * 0.9);
@@ -1697,7 +1735,7 @@
                         }
                     }
                 }
-                this.state.biofoulingSurfaceOverride = biofoulingSurfaceOverride;  // Store for UI
+                this.state.biofoulingSurfaceOverride = biofoulingSurfaceOverride;
 
                 if (biofoulingSurfaceOverride) {
                     // Force surface detection based on trend/variance
@@ -2347,7 +2385,9 @@
                     currentAdcValue: 0,
                     targetAdcValue: 0,
                     surfaceWetness: 0,
-                    exposureTime: 0
+                    exposureTime: 0,
+                    _wasInWater: false,
+                    _transitionTime: 0
                 };
 
                 // Reset biofouling UI sliders to default
@@ -3001,12 +3041,47 @@
                         surfaceReadings = [];  // Reset when underwater
                     }
 
+                    // === RAPID TRANSITION DETECTION (in optimizer) ===
+                    // Must match firmware: detect large ADC drops for fast surface detection
+                    let fastDrop = false;
+                    const prevFiltered = state.prevFiltered || filtered;
+                    if (state.current === 1 && prevFiltered > 0 && filtered < prevFiltered) {
+                        const dropPct = Math.round((prevFiltered - filtered) * 100 / prevFiltered);
+                        const absDrop = prevFiltered - filtered;
+                        const belowWater = filtered < calib.water * 0.85;
+
+                        // TIER 1: massive drop
+                        if (dropPct >= 25 && absDrop >= 300 && belowWater) fastDrop = true;
+                        // TIER 2: moderate confirmed
+                        else if (dropPct >= 12 && absDrop >= 150 && state.decTrend >= 1 && belowWater) fastDrop = true;
+                        // TIER 3: sustained trend
+                        else if (dropPct >= 8 && absDrop >= 100 && state.decTrend >= 2) fastDrop = true;
+                    }
+
+                    // Track decreasing trend
+                    if (filtered < prevFiltered - 8) {
+                        state.decTrend = (state.decTrend || 0) + 1;
+                    } else {
+                        state.decTrend = Math.max(0, (state.decTrend || 0) - 1);
+                    }
+                    state.prevFiltered = filtered;
+
                     // Detection
                     const threshHigh = calib.threshold + calib.hyst;
                     const threshLow = calib.threshold - calib.hyst;
                     let newState = state.current;
 
-                    if (filtered > threshHigh) {
+                    // Fast drop overrides everything
+                    if (fastDrop) {
+                        newState = 0;
+                        state.consecutive = 0;
+                        // Recalibrate air baseline
+                        if (filtered > calib.air) {
+                            calib.air = filtered * 0.8;
+                            calib.threshold = calib.air + ratio * (calib.water - calib.air);
+                            calib.hyst = calib.threshold * (params.hysteresis / 100);
+                        }
+                    } else if (filtered > threshHigh) {
                         state.consecutive++;
                         if (state.consecutive >= params.maxSamples) {
                             newState = 1;

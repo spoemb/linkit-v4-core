@@ -123,7 +123,7 @@ void GPSScheduler::task_acquisition_period() {
     	m_wakeup_time = system_timer->get_counter();
     	m_num_consecutive_fixes = m_gnss_config.min_num_fixes;
 
-    	GPSNavSettings nav_settings = {
+    	GPSNavSettingsLegacy nav_settings = {
         	m_gnss_config.fix_mode,
     		m_gnss_config.dyn_model,
 			m_gnss_config.assistnow_enable
@@ -295,11 +295,10 @@ void GPSScheduler::gnss_data_callback(GNSSData data) {
     // If we haven't finished processing our last data then ignore this one
     if (m_gnss_data.pending_data_logging || m_gnss_data.pending_rtc_set)
         return;
-    
-    m_gnss_data.data = data;
 
-    // Update our time based off this data, schedule this as high priority
+    // Set guard flag BEFORE writing data to prevent re-entrant overwrites
     m_gnss_data.pending_rtc_set = true;
+    m_gnss_data.data = data;
     m_task_update_rtc = system_scheduler->post_task_prio([this]() {
     	task_update_rtc();
     }, "GPSSchedulerUpdateRTC", Scheduler::HIGHEST_PRIORITY);

@@ -9,7 +9,7 @@ public:
         m_listeners[&m] = true;
     }
     void unsubscribe(T& m) {
-        m_listeners[&m] = false;
+        m_listeners.erase(&m);
     }
 
 protected:

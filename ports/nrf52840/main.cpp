@@ -35,7 +35,6 @@
 #include "config_store_fs.hpp"
 #include "debug.hpp"
 #include "console_log.hpp"
-#include "debug.hpp"
 #include "bsp.hpp"
 #include "gentracker.hpp"
 #include "nrf_timer.hpp"
@@ -539,7 +538,7 @@ int main()
 
 	DEBUG_TRACE("Battery monitor...");
 	double critical_batt_voltage = configuration_store->read_param<double>(ParamID::LB_CRITICAL_THRESH);
-	unsigned int low_batt_level = configuration_store->read_param<unsigned int>(ParamID::LB_TRESHOLD);
+	unsigned int low_batt_level = configuration_store->read_param<unsigned int>(ParamID::LB_THRESHOLD);
 
 #if defined(BATTERY_MONITOR_ANALOG)
     #ifdef BATTERY_ADC
@@ -683,7 +682,7 @@ int main()
 
 #if ENABLE_PRESSURE_SENSOR || ENABLE_CDT_SENSOR
 	DEBUG_TRACE("Pressure Sensor...");
-	PressureSensorDevice *pressure_sensor_devices[BSP::I2C_TOTAL_NUMBER];
+	PressureSensorDevice *pressure_sensor_devices[BSP::I2C_TOTAL_NUMBER] = {nullptr};
 #ifndef DUMMY_PRESSURE_SENSOR
 	for (unsigned int i = 0; i < BSP::I2C_TOTAL_NUMBER; i++) {
 		// Sensor detection order - LPS28DFW is default for RSPB board

@@ -37,8 +37,7 @@ void LPS28DFW::read(double& temperature, double& pressure) {
     SensorsPowerGuard power_guard;  // Acquire VSENSORS power for I2C access
     if (lps28dfw_trigger_sw(&m_ctx, &m_mode) != 0) {
         DEBUG_ERROR("LPS28DFW::read - trigger_sw failed");
-        temperature = pressure = 0;
-        return;
+        throw ErrorCode::I2C_COMMS_ERROR;
     }
 
     PMU::delay_ms(10); // allow sensor to complete conversion
@@ -46,8 +45,7 @@ void LPS28DFW::read(double& temperature, double& pressure) {
     lps28dfw_data_t data;
     if (lps28dfw_data_get(&m_ctx, &m_mode, &data) != 0) {
         DEBUG_ERROR("LPS28DFW::read - data_get failed");
-        temperature = pressure = 0;
-        return;
+        throw ErrorCode::I2C_COMMS_ERROR;
     }
 
     temperature = static_cast<double>(data.heat.deg_c);
@@ -74,7 +72,11 @@ int32_t LPS28DFW::platform_write(void* handle, uint8_t reg, const uint8_t* bufp,
     buffer[0] = reg;
     memcpy(&buffer[1], bufp, len);
 
-    NrfI2C::write(self->m_bus, self->m_addr, buffer, len + 1, false);
+    try {
+        NrfI2C::write(self->m_bus, self->m_addr, buffer, len + 1, false);
+    } catch (...) {
+        return -1;
+    }
     return 0;
 
 }
@@ -83,8 +85,12 @@ int32_t LPS28DFW::platform_read(void* handle, uint8_t reg, uint8_t* bufp, uint16
     auto* self = static_cast<LPS28DFW*>(handle);
 
     uint8_t reg_addr = reg;
-    NrfI2C::write(self->m_bus, self->m_addr, &reg_addr, sizeof(reg_addr), true);  // No stop condition
-    NrfI2C::read(self->m_bus, self->m_addr, bufp, len);
+    try {
+        NrfI2C::write(self->m_bus, self->m_addr, &reg_addr, sizeof(reg_addr), true);  // No stop condition
+        NrfI2C::read(self->m_bus, self->m_addr, bufp, len);
+    } catch (...) {
+        return -1;
+    }
 
     return 0;
 }

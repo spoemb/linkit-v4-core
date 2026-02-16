@@ -15,17 +15,17 @@ public:
 
 private:
 	GPSDevice& m_device;
-	int m_current_state;
-	unsigned int m_period_underwater_ms;
-	unsigned int m_period_surface_ms;
-	unsigned int m_min_num_dry_samples;
-	unsigned int m_num_dry_samples;
-	unsigned int m_dry_wet_threshold;
-	bool m_gnss_only_detect_surfacing;
+	int m_current_state = -1;
+	unsigned int m_period_underwater_ms = 0;
+	unsigned int m_period_surface_ms = 0;
+	unsigned int m_min_num_dry_samples = 0;
+	unsigned int m_num_dry_samples = 0;
+	unsigned int m_dry_wet_threshold = 0;
+	bool m_gnss_only_detect_surfacing = false;
 
 	void notify_update(bool state) {
 		if ((m_gnss_only_detect_surfacing && !state && (m_current_state == -1 || m_current_state == 1)) ||
-		    (!m_gnss_only_detect_surfacing && (state != m_current_state))) {
+		    (!m_gnss_only_detect_surfacing && (static_cast<int>(state) != m_current_state))) {
 			DEBUG_INFO("GNSSDetectorService: notify_update: new_state=%u", state);
 			m_current_state = state;
 			ServiceEventData event = state;

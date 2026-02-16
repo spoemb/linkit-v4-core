@@ -97,7 +97,7 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 
 // Command timing delays
 #define SMDSAT_TIMING_STANDARD_MS       30     // Standard commands
-#define SMDSAT_TIMING_WRITE_MS          200    // Flash/NVM write (matches Zephyr ARGOS_SPI_FLASH_DELAY_MS)
+#define SMDSAT_TIMING_WRITE_MS          100    // Flash/NVM write (matches Zephyr ARGOS_TIMING_WRITE_MS)
 #define SMDSAT_TIMING_ERASE_MS          3000   // Flash erase (critical!)
 #define SMDSAT_TIMING_RESET_MS          100    // Reset/jump commands
 #define SMDSAT_TIMING_POLL_MS           500    // TX polling interval

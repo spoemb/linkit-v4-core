@@ -121,6 +121,11 @@ void OTAFlashFileUpdater::start_file_transfer(OTAFileIdentifier file_id, lfs_siz
 			m_file->write(header, 8);
 		}
 		break;
+#else
+	case OTAFileIdentifier::SMD_FIRMWARE_UART:
+	case OTAFileIdentifier::SMD_FIRMWARE_SPI:
+		throw ErrorCode::OTA_TRANSFER_INVALID_FILE_ID;
+		break;
 #endif
 	default:
 		throw ErrorCode::OTA_TRANSFER_INVALID_FILE_ID;

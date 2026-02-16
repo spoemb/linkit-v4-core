@@ -682,18 +682,18 @@ TEST(Encoder, PARAM_LB_EN)
 	STRCMP_EQUAL("$O;PARMR#007;LBP01=0\r", s.c_str());
 }
 
-TEST(Encoder, PARAM_LB_TRESHOLD)
+TEST(Encoder, PARAM_LB_THRESHOLD)
 {
 	std::string s;
-	ParamValue p = { ParamID::LB_TRESHOLD, 10U };
+	ParamValue p = { ParamID::LB_THRESHOLD, 10U };
 	std::vector<ParamValue> v = { p };
 	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
 	STRCMP_EQUAL("$O;PARMR#008;LBP02=10\r", s.c_str());
 }
 
-TEST(Encoder, PARAM_LB_TRESHOLD_OutOfRangeCheck)
+TEST(Encoder, PARAM_LB_THRESHOLD_OutOfRangeCheck)
 {
-	ParamValue p = { ParamID::LB_TRESHOLD, 101U };
+	ParamValue p = { ParamID::LB_THRESHOLD, 101U };
 	std::vector<ParamValue> v = { p };
 	CHECK_THROWS(ErrorCode, DTEEncoder::encode(DTECommand::PARMR_RESP, v));
 }

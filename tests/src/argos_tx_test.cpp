@@ -95,7 +95,7 @@ TEST_GROUP(ArgosTxService)
 
 	void inject_gps_inactive() {
 		ServiceEvent e;
-		e.event_type = ServiceEventType::SERVICE_ACTIVE;
+		e.event_type = ServiceEventType::SERVICE_INACTIVE;
 		e.event_source = ServiceIdentifier::GNSS_SENSOR;
 		e.event_originator_unique_id = 0x12345678;
 		ServiceManager::notify_peer_event(e);
@@ -555,7 +555,7 @@ TEST(ArgosTxService, TimeSyncBurstPosFix)
 	fake_config_store->write_param(ParamID::ARGOS_MODE, mode);
 	fake_config_store->write_param(ParamID::ARGOS_HEXID, argos_hexid);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 
@@ -607,7 +607,7 @@ TEST(ArgosTxService, TimeSyncBurstNoPosFix)
 	fake_config_store->write_param(ParamID::ARGOS_MODE, mode);
 	fake_config_store->write_param(ParamID::ARGOS_HEXID, argos_hexid);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 
@@ -654,7 +654,7 @@ TEST(ArgosTxService, TimeSyncBurstNoPosOrTimeFix)
 	fake_config_store->write_param(ParamID::ARGOS_MODE, mode);
 	fake_config_store->write_param(ParamID::ARGOS_HEXID, argos_hexid);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 
@@ -687,7 +687,7 @@ TEST(ArgosTxService, LegacyTxServiceInv)
 	fake_config_store->write_param(ParamID::ARGOS_MODE, mode);
 	fake_config_store->write_param(ParamID::ARGOS_HEXID, argos_hexid);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
@@ -740,7 +740,7 @@ TEST(ArgosTxService, LegacyTxLowBattery)
 	fake_config_store->write_param(ParamID::ARGOS_MODE, mode);
 	fake_config_store->write_param(ParamID::ARGOS_HEXID, argos_hexid);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
@@ -798,7 +798,7 @@ TEST(ArgosTxService, LegacyTxOutOfZone)
 	fake_config_store->write_param(ParamID::ARGOS_MODE, mode);
 	fake_config_store->write_param(ParamID::ARGOS_HEXID, argos_hexid);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
@@ -851,7 +851,7 @@ TEST(ArgosTxService, TxServiceCancelledByUnderwaterBeforeTx)
 	fake_config_store->write_param(ParamID::ARGOS_MODE, mode);
 	fake_config_store->write_param(ParamID::ARGOS_HEXID, argos_hexid);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
@@ -915,7 +915,7 @@ TEST(ArgosTxService, TxServiceCancelledDuringTx)
 	fake_config_store->write_param(ParamID::ARGOS_MODE, mode);
 	fake_config_store->write_param(ParamID::ARGOS_HEXID, argos_hexid);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
@@ -984,7 +984,7 @@ TEST(ArgosTxService, LegacyTxServiceDepthPile1)
 	fake_config_store->write_param(ParamID::ARGOS_MODE, mode);
 	fake_config_store->write_param(ParamID::ARGOS_HEXID, argos_hexid);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
@@ -1036,7 +1036,7 @@ TEST(ArgosTxService, UnderwaterFor24HoursBeforeTx)
 	fake_config_store->write_param(ParamID::ARGOS_MODE, mode);
 	fake_config_store->write_param(ParamID::ARGOS_HEXID, argos_hexid);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
@@ -1101,7 +1101,7 @@ IGNORE_TEST(ArgosTxService, PassPredictTogglingLowBattery)
 	fake_config_store->write_param(ParamID::ARGOS_MODE, mode);
 	fake_config_store->write_param(ParamID::ARGOS_HEXID, argos_hexid);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
@@ -1180,7 +1180,7 @@ IGNORE_TEST(ArgosTxService, DepthPileNoEligibleEntries)
 	fake_config_store->write_param(ParamID::ARGOS_MODE, mode);
 	fake_config_store->write_param(ParamID::ARGOS_HEXID, argos_hexid);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::NTRY_PER_MESSAGE, n_try);
@@ -1257,7 +1257,7 @@ TEST(ArgosTxService, LastTxIsUpdated)
 	fake_config_store->write_param(ParamID::ARGOS_MODE, mode);
 	fake_config_store->write_param(ParamID::ARGOS_HEXID, argos_hexid);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 
@@ -1323,7 +1323,7 @@ TEST(ArgosTxService, UnderwaterFor24HoursDryTimeZero)
 	fake_config_store->write_param(ParamID::ARGOS_MODE, mode);
 	fake_config_store->write_param(ParamID::ARGOS_HEXID, argos_hexid);
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
 	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
@@ -1532,22 +1532,22 @@ TEST(ArgosTxService, BuildSensorPacketAll) {
 	pressure.port[1] = 4000; // 0C
 	sea_temp.port[0] = 126000; // 0C
 
-	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, nullptr, false, false, size_bits);
+	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, nullptr, nullptr, false, false, size_bits);
 	CHECK_EQUAL("297166C6600781E00258"s, Binascii::hexlify(x));
 	CHECK_EQUAL(78, size_bits);
-	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, &pressure, &sea_temp, false, false, size_bits);
+	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, &pressure, &sea_temp, nullptr, false, false, size_bits);
 	CHECK_EQUAL("297166C6600781E002584E20DAC03E8300000000"s, Binascii::hexlify(x));
 	CHECK_EQUAL(159, size_bits);
-	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, &ph, &pressure, &sea_temp, false, false, size_bits);
+	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, &ph, &pressure, &sea_temp, nullptr, false, false, size_bits);
 	CHECK_EQUAL("297166C6600781E00259B5807D07D0070000"s, Binascii::hexlify(x));
 	CHECK_EQUAL(142, size_bits);
-	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, nullptr, &pressure, &sea_temp, false, false, size_bits);
+	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, nullptr, &pressure, &sea_temp, nullptr, false, false, size_bits);
 	CHECK_EQUAL("297166C6600781E002584E200FA0FA00000000"s, Binascii::hexlify(x));
 	CHECK_EQUAL(145, size_bits);
-	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, nullptr, &sea_temp, false, false, size_bits);
+	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, nullptr, &sea_temp, nullptr, false, false, size_bits);
 	CHECK_EQUAL("297166C6600781E002584E20DAC07B0C00"s, Binascii::hexlify(x));
 	CHECK_EQUAL(130, size_bits);
-	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, &pressure, nullptr, false, false, size_bits);
+	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, &pressure, nullptr, nullptr, false, false, size_bits);
 	CHECK_EQUAL("297166C6600781E002584E20DAC03E830000"s, Binascii::hexlify(x));
 	CHECK_EQUAL(138, size_bits);
 }
@@ -1560,7 +1560,7 @@ TEST(ArgosTxService, BuildSensorPacketSeaTemp) {
 
 	sea_temp.port[0] = 147100; // 21.1C
 
-	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, &sea_temp, false, false, size_bits);
+	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, &sea_temp, nullptr, false, false, size_bits);
 	CHECK_EQUAL("297166C6600781E0025847D380"s, Binascii::hexlify(x));
 	CHECK_EQUAL(99, size_bits);
 }

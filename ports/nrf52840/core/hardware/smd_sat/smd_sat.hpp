@@ -119,7 +119,7 @@ private:
 	void read_serial(smd_uint8_array_t *serial);
 	void read_lpm(uint8_t *lpm_mode);
 	void write_lpm(uint8_t *lpm_mode);
-	void read_tcxo_warmup(uint8_t *time_ms);
+	void read_tcxo_warmup(uint32_t *time_ms);
 	void write_tcxo_warmup(uint32_t time_ms);
 
 	void load_kmac_profil(uint8_t profile);
@@ -148,6 +148,8 @@ private:
 	// DFU low-level operations (private)
 	SmdDfuResponse dfu_send_command(uint8_t cmd, const uint8_t *data = nullptr, uint16_t data_len = 0,
 	                                uint8_t *response_data = nullptr, uint16_t *response_len = nullptr);
+	SmdDfuResponse dfu_send_with_retry(uint8_t cmd, const uint8_t *data = nullptr, uint16_t data_len = 0,
+	                                   uint8_t *response_data = nullptr, uint16_t *response_len = nullptr);
 	SmdDfuResponse dfu_ping();
 	SmdDfuResponse dfu_get_info(SmdDfuInfo *info);
 	SmdDfuResponse dfu_erase();

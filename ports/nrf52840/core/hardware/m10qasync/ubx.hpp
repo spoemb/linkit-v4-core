@@ -173,6 +173,7 @@ namespace UBX
                 BBR           = 1 << 0,
                 FLASH         = 1 << 1
             };
+            // FIXME: Same flexible array member UB as MSG_VALSET (see comment there).
             struct __attribute__((__packed__)) MSG_VALDEL
             {
                 uint8_t  version;
@@ -183,7 +184,7 @@ namespace UBX
                 MSG_VALDEL(uint8_t version_, uint8_t layers_, const std::vector<uint32_t>& key_ids)
                     : version(version_), layers(layers_), reserved0(0) {
                     // Allocate memory for keys dynamically after creating MSG_RST instance
-                    uint32_t* key_ptr = reinterpret_cast<uint32_t*>(this + 1); 
+                    uint32_t* key_ptr = reinterpret_cast<uint32_t*>(this + 1);
                     std::copy(key_ids.begin(), key_ids.end(), key_ptr);
                 }
             };
@@ -228,6 +229,11 @@ namespace UBX
                 FLASH = 1 << 2   // Update in Flash layer
             };
 
+            // FIXME: Flexible array member with C++ constructor is UB. The constructor
+            // writes past the struct via reinterpret_cast<uint8_t*>(this + 1), which
+            // corrupts the stack when constructed as a local variable. Works on GCC 10.3
+            // ARM by luck. Should use placement new into a properly-sized buffer (see
+            // MSG_VALGET usage at m10qasync.cpp:1228 for the correct pattern).
             struct __attribute__((__packed__)) MSG_VALSET {
                 uint8_t version;        // Message version (0x00)
                 uint8_t layers;         // Bitfield for layer selection (e.g., RAM, BBR, FLASH)
@@ -846,7 +852,7 @@ namespace UBX
             enum FixType : uint8_t
             {
                 FIXTYPE_NO = 0,
-                FIXTYPE_DEAD_RECKONING_ONLY = 0,
+                FIXTYPE_DEAD_RECKONING_ONLY = 1,
                 FIXTYPE_2D = 2,
                 FIXTYPE_3D = 3,
                 FIXTYPE_GNSS_AND_DEAD_RECKONING = 4,

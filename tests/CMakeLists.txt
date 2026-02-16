@@ -18,6 +18,9 @@ FetchContent_Declare(
 )
 # Set this to ON if you want to have the CppUTests in your project as well.
 set(TESTS OFF CACHE BOOL "Switch off CppUTest Test build")
+# Disable memory leak detection to prevent CppUTest's #define new from breaking
+# standard library headers (placement new in <variant>, <functional>, etc.)
+set(CPPUTEST_MEM_LEAK_DETECTION_DISABLED ON CACHE BOOL "Disable CppUTest memory leak detection" FORCE)
 FetchContent_MakeAvailable(CppUTest)
 target_compile_definitions(CppUTest PUBLIC CPPUTEST_MEM_LEAK_DETECTION_DISABLED)
 target_compile_definitions(CppUTestExt PUBLIC CPPUTEST_MEM_LEAK_DETECTION_DISABLED)
@@ -64,12 +67,13 @@ target_compile_options(${PROJECT_NAME} PRIVATE
     -Wodr
 
     # C Only Warnings
-    $<$<COMPILE_LANGUAGE:C>:${-Wjump-misses-init}>
+    $<$<COMPILE_LANGUAGE:C>:-Wjump-misses-init>
 
     # Disabled Warnings
     -Wno-expansion-to-defined # The NRFX library requires this
     -Wno-maybe-uninitialized
     -Wno-unused-function
+    -Wno-unused-parameter  # Required for GCC 13+ with ETL/inplace_function templates
     -Wno-format
     
     # Compile prepass library for embedded systems
@@ -104,7 +108,11 @@ target_compile_options(${PROJECT_NAME} PRIVATE
 )
 
 # Test related includes
+# NOTE: mocks and fakes must come BEFORE NRF_DIR paths to ensure test fakes
+# take priority over hardware-specific fakes (e.g., fake_battery_mon.hpp)
 target_include_directories(${PROJECT_NAME} PRIVATE
+    "mocks"
+    "fakes"
     "${ROOT_DIR}/libraries/etl-20.27.3/include"
     "${ROOT_DIR}/libraries/inplace_function"
     "${ROOT_DIR}/libraries/littlefs"
@@ -127,8 +135,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     "${NRF_DIR}/core/hardware/pressure_sensor"
     "${NRF_DIR}/core/hardware/cdt"
     "${NRF_DIR}/core/memmang"
-    "mocks"
-    "fakes"
 )
 
 target_sources(${PROJECT_NAME} PRIVATE
@@ -144,10 +150,12 @@ target_sources(${PROJECT_NAME} PRIVATE
     "${ROOT_DIR}/core/services/service.cpp"
     "${ROOT_DIR}/core/filesystem/ota_flash_file_updater.cpp"
     "${ROOT_DIR}/core/services/uwdetector_service.cpp"
+    "${ROOT_DIR}/core/services/sws_analog_service.cpp"
     "${ROOT_DIR}/core/hardware/reed.cpp"
     "${ROOT_DIR}/core/hardware/sensor.cpp"
     "${ROOT_DIR}/core/protocol/dte_commands.cpp"
     "${ROOT_DIR}/core/protocol/dte_params.cpp"
+    "${ROOT_DIR}/core/protocol/dte_handler.cpp"
     "${ROOT_DIR}/core/configuration/calibration.cpp"
     "${ROOT_DIR}/core/sm/buzzm.cpp"
     "${ROOT_DIR}/core/sm/gentracker.cpp"
@@ -175,6 +183,7 @@ target_sources(${PROJECT_NAME} PRIVATE
     "src/crc32_test.cpp"
     "src/previpass_test.cpp"
     "src/sws_test.cpp"
+    "src/sws_analog_test.cpp"
     "src/logger_test.cpp"
     "src/nrf_switch_test.cpp"
     "src/nrf_battery_test.cpp"
@@ -237,7 +246,7 @@ target_compile_options(${TURTLE_SIM_NAME} PRIVATE
     -Wswitch-default
     -Winvalid-pch
     -Wodr
-    $<$<COMPILE_LANGUAGE:C>:${-Wjump-misses-init}>
+    $<$<COMPILE_LANGUAGE:C>:-Wjump-misses-init>
     -Wno-expansion-to-defined
     -Wno-maybe-uninitialized
     -Wno-unused-function
@@ -258,6 +267,8 @@ target_compile_options(${TURTLE_SIM_NAME} PRIVATE
 )
 
 target_include_directories(${TURTLE_SIM_NAME} PRIVATE
+    "mocks"
+    "fakes"
     "${ROOT_DIR}/libraries/etl-20.27.3/include"
     "${ROOT_DIR}/libraries/inplace_function"
     "${ROOT_DIR}/libraries/littlefs"
@@ -280,8 +291,6 @@ target_include_directories(${TURTLE_SIM_NAME} PRIVATE
     "${NRF_DIR}/core/hardware/pressure_sensor"
     "${NRF_DIR}/core/hardware/cdt"
     "${NRF_DIR}/core/memmang"
-    "mocks"
-    "fakes"
 )
 
 target_sources(${TURTLE_SIM_NAME} PRIVATE
@@ -301,6 +310,7 @@ target_sources(${TURTLE_SIM_NAME} PRIVATE
     "${ROOT_DIR}/core/hardware/sensor.cpp"
     "${ROOT_DIR}/core/protocol/dte_commands.cpp"
     "${ROOT_DIR}/core/protocol/dte_params.cpp"
+    "${ROOT_DIR}/core/protocol/dte_handler.cpp"
     "${ROOT_DIR}/core/configuration/calibration.cpp"
     "${ROOT_DIR}/core/sm/buzzm.cpp"
     "${ROOT_DIR}/core/sm/gentracker.cpp"

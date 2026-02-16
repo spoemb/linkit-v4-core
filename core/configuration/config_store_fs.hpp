@@ -263,6 +263,10 @@ protected:
 
 		for (unsigned int i = 0; i < MAX_CONFIG_ITEMS; i++) {
 
+			// Skip non-implemented/disabled parameters (reserved slots, disabled sensors)
+			if (!param_map[i].is_implemented)
+				continue;
+
 			if (!deserialize_config_entry(f, i)) {
 				DEBUG_WARN("deserialize_config: unable to deserialize param %s - resetting...", param_map[i].name.c_str());
 				// Reset parameter to factory default
@@ -289,13 +293,20 @@ protected:
 
 	void serialize_config() override {
 		DEBUG_TRACE("ConfigurationStoreLFS::serialize_config");
+		m_filesystem.power_up();
 		LFSFile f(&m_filesystem, "config.dat", LFS_O_WRONLY | LFS_O_CREAT | LFS_O_TRUNC);
 
 		// Write configuration version field
-		if (f.write((void *)&m_config_version_code, sizeof(m_config_version_code)) != sizeof(m_config_version_code))
+		if (f.write((void *)&m_config_version_code, sizeof(m_config_version_code)) != sizeof(m_config_version_code)) {
+			m_filesystem.power_down();
 			throw CONFIG_STORE_CORRUPTED;
+		}
 
 		for (unsigned int i = 0; i < MAX_CONFIG_ITEMS; i++) {
+
+			// Skip non-implemented/disabled parameters (reserved slots, disabled sensors)
+			if (!param_map[i].is_implemented)
+				continue;
 
 			// Check variant index (type) matches default parameter
 			if (m_params.at(i).index() != default_params.at(i).index()) {
@@ -309,11 +320,13 @@ protected:
 
 			if (!serialize_config_entry(f, i)) {
 				DEBUG_ERROR("serialize_config: failed to serialize param %u", i);
+				m_filesystem.power_down();
 				throw CONFIG_STORE_CORRUPTED;
 			}
 		}
 
 		m_is_config_valid = true;
+		m_filesystem.power_down();
 
 		DEBUG_TRACE("ConfigurationStoreLFS::serialize_config: saved new file config.data");
 	}
@@ -403,6 +416,9 @@ public:
 		// Copy default params so we have an initial working set
 		m_params = default_params;
 
+		// Keep flash powered during entire init sequence to avoid per-I/O power cycling
+		m_filesystem.power_up();
+
 		// Read in configuration file or create new one if it doesn't not exist
 		try {
 			deserialize_config();
@@ -414,8 +430,10 @@ public:
 		if (m_requires_serialization)
 			serialize_config();
 
-		if (!m_is_config_valid)
+		if (!m_is_config_valid) {
+			m_filesystem.power_down();
 			throw CONFIG_STORE_CORRUPTED; // This is a non-recoverable error
+		}
 
 		// Read in prepass file
 		try {
@@ -424,6 +442,8 @@ public:
 			DEBUG_WARN("AOP file does not exist or is corrupted - resetting AOP file");
 			create_default_prepass();
 		}
+
+		m_filesystem.power_down();
 	}
 
 	bool is_valid() override {
@@ -431,6 +451,7 @@ public:
 	}
 
 	void factory_reset() override {
+		m_filesystem.power_up();
 		m_filesystem.umount();
 		m_filesystem.format();
 		m_filesystem.mount();
@@ -438,6 +459,7 @@ public:
 		save_calibration_data();
 		m_is_config_valid = false;
 		m_is_pass_predict_valid = false;
+		m_filesystem.power_down();
 	}
 
 	BasePassPredict& read_pass_predict() override {
@@ -448,7 +470,9 @@ public:
 	}
 
 	void write_pass_predict(BasePassPredict& value) override {
+		m_filesystem.power_up();
 		m_pass_predict = value;
 		serialize_pass_predict();
+		m_filesystem.power_down();
 	}
 };

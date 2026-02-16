@@ -71,26 +71,33 @@ protected:
 			}
 		} catch (ErrorCode e) {
 			DEBUG_ERROR("SensorService: %s: Failed to read sensor [%04X]", get_name(), (unsigned int)e);
-			if (!m_sensor_background_active)
+			if (!m_sensor_background_active) {
 				service_complete(nullptr, nullptr, reschedule);
+			} else {
+				m_sensor_background_active = false;
+				service_complete(nullptr, nullptr, reschedule);
+			}
 		}
 	}
 
 private:
 	static constexpr unsigned int MAX_SENSOR_CHANNELS = 6;
 	std::vector<double> m_samples[MAX_SENSOR_CHANNELS];
-	unsigned int m_sample_number;
-	bool m_sensor_background_active;
+	unsigned int m_sample_number = 0;
+	bool m_sensor_background_active = false;
 
 	double compute_mean_samples(std::vector<double>& v) {
+		if (v.empty()) return 0.0;
 		return std::reduce(v.begin(), v.end()) / v.size();
 	}
 	double compute_median_samples(std::vector<double>& v) {
+		if (v.empty()) return 0.0;
 		int middle = v.size() / 2;
 		std::sort(v.begin(), v.end());
 		return v.at(middle);
 	}
 	double compute_oneshot_samples(std::vector<double>& v) {
+		if (v.empty()) return 0.0;
 		return v.at(0);
 	}
 

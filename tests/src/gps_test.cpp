@@ -58,6 +58,7 @@ TEST_GROUP(GPSService)
 		delete fake_timer;
 		delete fake_rtc;
 		delete fake_config_store;
+		delete fake_battery_mon;
 		delete mock_m10q;
 		delete fake_log;
 	}
@@ -113,7 +114,7 @@ TEST(GPSService, GNSSDisabled)
 	bool underwater_en = false;
 
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::GNSS_EN, gnss_en);
 	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, dloc_arg_nom);
 	fake_config_store->write_param(ParamID::GNSS_ACQ_TIMEOUT, gnss_acq_timeout);
@@ -145,7 +146,7 @@ TEST(GPSService, GNSSEnabled10MinutesDloc)
 	bool underwater_en = false;
 
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::GNSS_EN, gnss_en);
 	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, dloc_arg_nom);
 	fake_config_store->write_param(ParamID::GNSS_ACQ_TIMEOUT, gnss_acq_timeout);
@@ -195,7 +196,7 @@ TEST(GPSService, GNSSEnabled15MinutesDloc)
 	bool underwater_en = false;
 
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::GNSS_EN, gnss_en);
 	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, dloc_arg_nom);
 	fake_config_store->write_param(ParamID::GNSS_ACQ_TIMEOUT, gnss_acq_timeout);
@@ -245,7 +246,7 @@ TEST(GPSService, GNSSEnabled30MinutesDloc)
 	bool underwater_en = false;
 
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::GNSS_EN, gnss_en);
 	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, dloc_arg_nom);
 	fake_config_store->write_param(ParamID::GNSS_ACQ_TIMEOUT, gnss_acq_timeout);
@@ -295,7 +296,7 @@ TEST(GPSService, GNSSEnabled60MinutesDloc)
 	bool underwater_en = false;
 
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::GNSS_EN, gnss_en);
 	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, dloc_arg_nom);
 	fake_config_store->write_param(ParamID::GNSS_ACQ_TIMEOUT, gnss_acq_timeout);
@@ -345,7 +346,7 @@ TEST(GPSService, GNSSEnabled120MinutesDloc)
 	bool underwater_en = false;
 
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::GNSS_EN, gnss_en);
 	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, dloc_arg_nom);
 	fake_config_store->write_param(ParamID::GNSS_ACQ_TIMEOUT, gnss_acq_timeout);
@@ -396,7 +397,7 @@ TEST(GPSService, GNSSEnabledColdStartTimeoutAndRetryCheck)
 	bool underwater_en = false;
 
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::GNSS_EN, gnss_en);
 	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, dloc_arg_nom);
 	fake_config_store->write_param(ParamID::GNSS_ACQ_TIMEOUT, gnss_acq_timeout);
@@ -450,7 +451,7 @@ TEST(GPSService, GNSSEnabledNominalTimeoutAfterFirstFix)
 	bool underwater_en = false;
 
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::GNSS_EN, gnss_en);
 	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, dloc_arg_nom);
 	fake_config_store->write_param(ParamID::GNSS_ACQ_TIMEOUT, gnss_acq_timeout);
@@ -506,7 +507,7 @@ TEST(GPSService, GNSSInterruptedByUnderwaterEvent)
 	bool underwater_en = true;
 
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::GNSS_EN, gnss_en);
 	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, dloc_arg_nom);
 	fake_config_store->write_param(ParamID::GNSS_ACQ_TIMEOUT, gnss_acq_timeout);
@@ -548,7 +549,7 @@ TEST(GPSService, GNSSIgnoredAfterUnderwaterEvent)
 	bool underwater_en = true;
 
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::GNSS_EN, gnss_en);
 	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, dloc_arg_nom);
 	fake_config_store->write_param(ParamID::GNSS_ACQ_TIMEOUT, gnss_acq_timeout);
@@ -600,7 +601,7 @@ TEST(GPSService, GNSSNoPeriodicTriggerOnSurfaceEvent)
 	bool trigger_surface_en = true;
 
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::GNSS_EN, gnss_en);
 	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, dloc_arg_nom);
 	fake_config_store->write_param(ParamID::GNSS_ACQ_TIMEOUT, gnss_acq_timeout);
@@ -650,7 +651,7 @@ TEST(GPSService, GNSSNoPeriodicTriggerOnAXLWakeupEvent)
 	bool trigger_axl_en = true;
 
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::GNSS_EN, gnss_en);
 	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, dloc_arg_nom);
 	fake_config_store->write_param(ParamID::GNSS_ACQ_TIMEOUT, gnss_acq_timeout);
@@ -706,7 +707,7 @@ TEST(GPSService, GNSSInterruptedByErrorEvent)
 	bool underwater_en = true;
 
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::GNSS_EN, gnss_en);
 	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, dloc_arg_nom);
 	fake_config_store->write_param(ParamID::GNSS_ACQ_TIMEOUT, gnss_acq_timeout);
@@ -750,7 +751,7 @@ TEST(GPSService, GNSSNoPeriodicColdStartOnSurfaceEvent)
 	bool trigger_surface_en = true;
 
 	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_TRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
 	fake_config_store->write_param(ParamID::GNSS_EN, gnss_en);
 	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, dloc_arg_nom);
 	fake_config_store->write_param(ParamID::GNSS_ACQ_TIMEOUT, gnss_acq_timeout);

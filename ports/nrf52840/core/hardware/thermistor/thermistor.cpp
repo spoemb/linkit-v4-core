@@ -6,7 +6,7 @@
 #include "error.hpp"
 #include "debug.hpp"
 #include "nrf_delay.h"
-#include <math.h>
+#include <cmath>
 
 // ADC constants
 #define ADC_MAX_VALUE (16384)      // 2^14
@@ -77,6 +77,13 @@ double Thermistor::convert_temp(float adc)
 	// Convert ADC value (mV) to Voltage (V)
 	double v = static_cast<double>(adc) / 1000.0;
 
+	// Guard against invalid ADC readings
+	if (v < 0.001) {
+		DEBUG_ERROR("Thermistor: ADC voltage near 0");
+		return NAN;
+	}
+	if (v > 3.3) v = 3.3;
+
 	// Voltage divider: NTC thermistor on top, 10k fixed resistor on bottom
 	constexpr double R_BOTTOM = 10000.0;  // 10k fixed resistor
 	double r_therm = R_BOTTOM * ((3.3 / v) - 1.0);
@@ -123,7 +130,7 @@ double Thermistor::find_calibration_point(double target_value) {
 	}
 
 	double average_temperature = total_temperature / num_samples;
-	double difference = abs(average_temperature - target_value);
+	double difference = std::fabs(average_temperature - target_value);
 	if (average_temperature > target_value) {
 		difference = -difference;
 	}

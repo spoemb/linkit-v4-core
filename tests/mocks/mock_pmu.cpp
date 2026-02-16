@@ -1,5 +1,6 @@
 #include "pmu.hpp"
 
+#include <chrono>
 #include "CppUTestExt/MockSupport.h"
 
 
@@ -40,4 +41,10 @@ const std::string PMU::hardware_version() {
 
 uint32_t PMU::device_identifier() {
 	return 0x12345678;
+}
+
+uint64_t PMU::get_timestamp_ms() {
+	static auto start = std::chrono::steady_clock::now();
+	auto now = std::chrono::steady_clock::now();
+	return std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
 }

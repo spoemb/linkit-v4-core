@@ -18,10 +18,14 @@ public:
 protected:
 	double m_activation_threshold;
 	unsigned int m_enable_sample_delay;
+	bool m_current_state;
+
+	virtual bool detector_state() { return false; };
+	virtual bool service_is_enabled() = 0;
+	void service_init() override;
 
 private:
 	bool m_is_first_time;
-	bool m_current_state;
 	bool m_pending_state;
 	unsigned int m_period_underwater_ms;
 	unsigned int m_period_surface_ms;
@@ -31,9 +35,6 @@ private:
 	unsigned int m_min_dry_samples;
 	unsigned int m_dry_count;
 
-	virtual bool detector_state() { return false; };
-	virtual bool service_is_enabled() = 0;
-	void service_init() override;
 	void service_term() override;
 	unsigned int service_next_schedule_in_ms() override;
 	void service_initiate() override;

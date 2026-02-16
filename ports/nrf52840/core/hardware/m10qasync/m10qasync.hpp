@@ -32,6 +32,11 @@ private:
 	bool m_fix_was_found;
 	bool m_unrecoverable_error;
 	bool m_database_overflow;
+
+	// ISR-to-scheduler data buffers (replaces static locals to avoid data races)
+	UBXCommsEventNavReport m_pending_nav;
+	UBXCommsEventSatReport m_pending_sat;
+
 	struct Timeout {
 		Scheduler::TaskHandle handle;
 		bool     running;

@@ -217,6 +217,7 @@ void GPSService::react(const GPSEventError&) {
 	if (!m_is_active)
 		return;
     DEBUG_TRACE("GPSService::react(GPSEventError)");
+    m_is_active = false;
     m_device.power_off();
     GPSLogEntry log_entry = invalid_log_entry();
     ServiceEventData event_data = log_entry;
