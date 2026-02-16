@@ -12,7 +12,7 @@
     // =========================================================================
     "options": {
         "env": {
-            "PATH": "/home/schade/tools/gcc-arm-none-eabi-10.3-2021.10/bin:/usr/bin:/home/schade/.local/bin:${env:PATH}"
+            "PATH": "/usr/bin:${env:PATH}"
         }
     },
     "tasks": [

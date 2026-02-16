@@ -1,8 +1,8 @@
 #include "dte_params.hpp"
 
 const BaseMap param_map[] = {
-	{ "ARGOS_DECID", "IDP12", BaseEncoding::UINT, 0U, 0xFFFFFFFU, {}, true, true },
-	{ "ARGOS_HEXID", "IDT06", BaseEncoding::HEXADECIMAL, 0U, 0xFFFFFFFU, {}, true, true },
+	{ "ARGOS_DECID", "IDP12", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true },
+	{ "ARGOS_HEXID", "IDT06", BaseEncoding::HEXADECIMAL, 0U, 0xFFFFFFFFU, {}, true, true },
 	{ "DEVICE_MODEL", "IDT02", BaseEncoding::TEXT, "", "", {}, true, true },
 	{ "FW_APP_VERSION", "IDT03", BaseEncoding::TEXT, "", "", {}, true, false },
 	{ "LAST_TX", "ART01", BaseEncoding::DATESTRING, 0, 0, {}, true, false },

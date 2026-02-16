@@ -97,7 +97,7 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 
 // Command timing delays
 #define SMDSAT_TIMING_STANDARD_MS       30     // Standard commands
-#define SMDSAT_TIMING_WRITE_MS          100    // Flash write (50ms + margin)
+#define SMDSAT_TIMING_WRITE_MS          200    // Flash/NVM write (matches Zephyr ARGOS_SPI_FLASH_DELAY_MS)
 #define SMDSAT_TIMING_ERASE_MS          3000   // Flash erase (critical!)
 #define SMDSAT_TIMING_RESET_MS          100    // Reset/jump commands
 #define SMDSAT_TIMING_POLL_MS           500    // TX polling interval
@@ -121,7 +121,7 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 #define SMDSAT_SPI_MAX_RETRIES          (3)
 #define SMDSAT_SPI_READY_TIMEOUT_MS     (100)
 #define SMDSAT_SPI_BUSY_MAX_RETRIES     (10)   // Max retries on BUSY pattern
-#define SMDSAT_SPI_BUSY_RETRY_DELAY_MS  (20)   // Delay between BUSY retries
+#define SMDSAT_SPI_BUSY_RETRY_DELAY_MS  (50)   // Delay between BUSY retries (matches Zephyr FLASH_WRITE_RETRY_DELAY_MS)
 #define TX_FREQUENCY_ARGOS_2_3_BAND_START		401.62
 
 #define SMDSAT_CMD_WRITERCONF_LEN 33
@@ -140,6 +140,9 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 #define SMDSAT_CMD_WRITE_ADDR_LEN (SMDSAT_CMD_READ_ADDR_LEN+1)
 #define SMDSAT_CMD_READ_SECKEY_LEN 16
 #define SMDSAT_CMD_WRITE_SECKEY_LEN (SMDSAT_CMD_READ_SECKEY_LEN+1)
+#define SMDSAT_CMD_READ_RCONF_RAW_LEN 16
+#define SMDSAT_CMD_READ_SPIMAC_STATE_LEN 2
+#define SMDSAT_CMD_READ_KMAC_LEN 2
 
 typedef enum {
     ARGOS_MOD_LDA2,
@@ -149,6 +152,7 @@ typedef enum {
 } SmdArgosModulation;
 
 typedef enum {
+    MAC_UNKNOWN        = 0x00,
     MAC_OK             = 0x01,
     MAC_TX_DONE        = 0x02,
     MAC_TX_SIZE_ERROR  = 0x03,
@@ -158,7 +162,11 @@ typedef enum {
     MAC_RX_ERROR       = 0x07,
     MAC_RX_TIMEOUT     = 0x08,
     MAC_ERROR          = 0x09,
-    MAC_TX_IN_PROGRESS = 0x0A
+    MAC_TX_IN_PROGRESS = 0x0A,
+    MAC_RX_RECEIVED    = 0x0B,
+    MAC_SAT_DETECTED   = 0x0C,
+    MAC_SAT_LOST       = 0x0D,
+    MAC_RF_ABORTED     = 0x0E
 } SMDSAT_MACSTATUS;
 
 typedef enum {
@@ -216,7 +224,8 @@ typedef enum {
 	SMDSAT_CMD_READ_TCXO  	         = 0x28,
     SMDSAT_CMD_WRITE_TCXO_REQ        = 0x29,
     SMDSAT_CMD_WRITE_TCXO            = 0x2A,
-	SMDSAT_SPICMD_MAX_COUNT          = 0x2B,
+	SMDSAT_CMD_READ_RCONF_RAW        = 0x2B,  // Raw radio config (16 bytes from flash)
+	SMDSAT_SPICMD_MAX_COUNT          = 0x2C,
 
 	// ========================================================================
 	// DFU Bootloader Commands (0x30-0x3F)

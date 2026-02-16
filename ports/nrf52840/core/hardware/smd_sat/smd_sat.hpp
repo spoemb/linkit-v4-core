@@ -123,6 +123,24 @@ private:
 	void write_tcxo_warmup(uint32_t time_ms);
 
 	void load_kmac_profil(uint8_t profile);
+	void read_kmac(uint8_t *profile);
+	void read_rconf_raw(uint8_t *rconf_raw, uint16_t *len);
+	void read_spimac_state(uint8_t *spi_state, uint8_t *mac_state);
+	void read_firmware_info(uint8_t *info, uint16_t *len);
+
+	// CW (Continuous Wave) commands
+	void read_cw(uint8_t *cw_data, uint16_t *len);
+	void write_cw(const uint8_t *cw_data, uint16_t len);
+
+	// Prepass commands
+	void read_prepassen(uint8_t *prepass_data, uint16_t *len);
+	void write_prepassen(const uint8_t *prepass_data, uint16_t len);
+
+	// UTC date commands
+	void read_udate(uint8_t *udate_data, uint16_t *len);
+	void write_udate(const uint8_t *udate_data, uint16_t len);
+
+	void spi_sync();
 	void set_tcxo_warmup_internal(uint32_t time_s);
 	void set_tcxo_control(bool state);
 	bool smd_ping();

@@ -217,6 +217,13 @@ static uint32_t get_command_delay(uint8_t cmd) {
         case SMDSAT_CMD_WRITE_KMAC:
         case SMDSAT_CMD_WRITE_SECKEY:
         case SMDSAT_CMD_SAVE_RCONF:
+        case SMDSAT_CMD_WRITE_ID:
+        case SMDSAT_CMD_WRITE_ADDR:
+        case SMDSAT_CMD_WRITE_LPM:
+        case SMDSAT_CMD_WRITE_TCXO:
+        case SMDSAT_CMD_WRITE_CW:
+        case SMDSAT_CMD_WRITE_PREPASSEN:
+        case SMDSAT_CMD_WRITE_UDATE:
             return SMDSAT_TIMING_WRITE_MS;
         case SMDSAT_CMD_DFU_RESET:
         case SMDSAT_CMD_DFU_JUMP:
@@ -272,7 +279,6 @@ bool SmdSat::send_command_aplus(uint8_t command, const uint8_t *tx_data, uint16_
 
     bool is_flash_op = (cmd_delay >= SMDSAT_TIMING_WRITE_MS);
     uint8_t max_retries = is_flash_op ? SMDSAT_SPI_BUSY_MAX_RETRIES : 3;
-    uint8_t retry_delay_ms = is_flash_op ? 50 : SMDSAT_SPI_BUSY_RETRY_DELAY_MS;
 
     for (uint8_t retry = 0; retry <= max_retries; retry++) {
         build_aplus_frame(nop_frame, SMDSAT_CMD_NONE, nullptr, 0);
@@ -288,7 +294,7 @@ bool SmdSat::send_command_aplus(uint8_t command, const uint8_t *tx_data, uint16_
         if (is_slave_not_ready(response_frame, 8) && retry < max_retries) {
             DEBUG_TRACE("SmdSat::%s: Slave not ready (0x%02X), retry %u/%u",
                         __func__, response_frame[0], retry + 1, max_retries);
-            nrf_delay_ms(retry_delay_ms);
+            nrf_delay_ms(SMDSAT_SPI_BUSY_RETRY_DELAY_MS);
             m_sequence_number++;
             continue;
         }
@@ -376,6 +382,151 @@ void SmdSat::load_kmac_profil(uint8_t profile)
 		DEBUG_ERROR("SmdSat::%s: Failed to load KMAC profile", __func__);
 		throw ErrorCode::SPI_COMMS_ERROR;
 	}
+}
+
+void SmdSat::read_kmac(uint8_t *profile) {
+	uint8_t rx[4] = {0};
+	uint16_t rx_len = sizeof(rx);
+	if (!send_command_auto(SMDSAT_CMD_READ_KMAC, nullptr, 0, rx, &rx_len)) {
+		DEBUG_ERROR("SmdSat::%s: Failed to read KMAC profile", __func__);
+		throw ErrorCode::SPI_COMMS_ERROR;
+	}
+	*profile = rx[0];
+	DEBUG_TRACE("SmdSat::%s: KMAC profile=%u", __func__, *profile);
+}
+
+void SmdSat::read_rconf_raw(uint8_t *rconf_raw, uint16_t *len) {
+	uint16_t rx_len = SMDSAT_CMD_READ_RCONF_RAW_LEN;
+	if (!send_command_auto(SMDSAT_CMD_READ_RCONF_RAW, nullptr, 0, rconf_raw, &rx_len)) {
+		DEBUG_ERROR("SmdSat::%s: Failed to read raw radio config", __func__);
+		throw ErrorCode::SPI_COMMS_ERROR;
+	}
+	if (len) *len = rx_len;
+	DEBUG_TRACE("SmdSat::%s: RCONF_RAW len=%u", __func__, rx_len);
+}
+
+void SmdSat::read_spimac_state(uint8_t *spi_state, uint8_t *mac_state) {
+	uint8_t rx[4] = {0};
+	uint16_t rx_len = sizeof(rx);
+	if (!send_command_auto(SMDSAT_CMD_READ_SPIMAC_STATE, nullptr, 0, rx, &rx_len)) {
+		DEBUG_ERROR("SmdSat::%s: Failed to read SPI MAC state", __func__);
+		throw ErrorCode::SPI_COMMS_ERROR;
+	}
+	if (spi_state) *spi_state = rx[0];
+	if (mac_state) *mac_state = rx[1];
+	DEBUG_TRACE("SmdSat::%s: SPI state=%u, MAC state=%u", __func__, rx[0], rx[1]);
+}
+
+void SmdSat::read_firmware_info(uint8_t *info, uint16_t *len) {
+	uint16_t rx_len = SMDSAT_CMD_READ_FIRMWARE_LEN;
+	if (!send_command_auto(SMDSAT_CMD_READ_FIRMWARE, nullptr, 0, info, &rx_len)) {
+		DEBUG_ERROR("SmdSat::%s: Failed to read firmware info", __func__);
+		throw ErrorCode::SPI_COMMS_ERROR;
+	}
+	if (len) *len = rx_len;
+	DEBUG_TRACE("SmdSat::%s: firmware info len=%u", __func__, rx_len);
+}
+
+// CW (Continuous Wave) commands
+void SmdSat::read_cw(uint8_t *cw_data, uint16_t *len) {
+	uint16_t rx_len = (len && *len > 0) ? *len : 32;
+	if (!send_command_auto(SMDSAT_CMD_READ_CW, nullptr, 0, cw_data, &rx_len)) {
+		DEBUG_ERROR("SmdSat::%s: Failed to read CW", __func__);
+		throw ErrorCode::SPI_COMMS_ERROR;
+	}
+	if (len) *len = rx_len;
+	DEBUG_TRACE("SmdSat::%s: CW data len=%u", __func__, rx_len);
+}
+
+void SmdSat::write_cw(const uint8_t *cw_data, uint16_t len) {
+	DEBUG_TRACE("SmdSat::%s: len=%u", __func__, len);
+	if (!send_command_2phase(SMDSAT_CMD_WRITE_CW_REQ, SMDSAT_CMD_WRITE_CW, cw_data, len)) {
+		DEBUG_ERROR("SmdSat::%s: Failed to write CW", __func__);
+		throw ErrorCode::SPI_COMMS_ERROR;
+	}
+}
+
+// Prepass commands
+void SmdSat::read_prepassen(uint8_t *prepass_data, uint16_t *len) {
+	uint16_t rx_len = (len && *len > 0) ? *len : 32;
+	if (!send_command_auto(SMDSAT_CMD_READ_PREPASSEN, nullptr, 0, prepass_data, &rx_len)) {
+		DEBUG_ERROR("SmdSat::%s: Failed to read prepass", __func__);
+		throw ErrorCode::SPI_COMMS_ERROR;
+	}
+	if (len) *len = rx_len;
+	DEBUG_TRACE("SmdSat::%s: prepass data len=%u", __func__, rx_len);
+}
+
+void SmdSat::write_prepassen(const uint8_t *prepass_data, uint16_t len) {
+	DEBUG_TRACE("SmdSat::%s: len=%u", __func__, len);
+	if (!send_command_2phase(SMDSAT_CMD_WRITE_PREPASSEN_REQ, SMDSAT_CMD_WRITE_PREPASSEN, prepass_data, len)) {
+		DEBUG_ERROR("SmdSat::%s: Failed to write prepass", __func__);
+		throw ErrorCode::SPI_COMMS_ERROR;
+	}
+}
+
+// UTC date commands
+void SmdSat::read_udate(uint8_t *udate_data, uint16_t *len) {
+	uint16_t rx_len = (len && *len > 0) ? *len : 32;
+	if (!send_command_auto(SMDSAT_CMD_READ_UDATE, nullptr, 0, udate_data, &rx_len)) {
+		DEBUG_ERROR("SmdSat::%s: Failed to read UTC date", __func__);
+		throw ErrorCode::SPI_COMMS_ERROR;
+	}
+	if (len) *len = rx_len;
+	DEBUG_TRACE("SmdSat::%s: udate data len=%u", __func__, rx_len);
+}
+
+void SmdSat::write_udate(const uint8_t *udate_data, uint16_t len) {
+	DEBUG_TRACE("SmdSat::%s: len=%u", __func__, len);
+	if (!send_command_2phase(SMDSAT_CMD_WRITE_UDATE_REQ, SMDSAT_CMD_WRITE_UDATE, udate_data, len)) {
+		DEBUG_ERROR("SmdSat::%s: Failed to write UTC date", __func__);
+		throw ErrorCode::SPI_COMMS_ERROR;
+	}
+}
+
+// SPI protocol synchronization (matches Zephyr argos_spi_sync)
+void SmdSat::spi_sync() {
+	DEBUG_INFO("SmdSat::%s: Synchronizing SPI protocol...", __func__);
+
+	m_sequence_number = 0;
+
+	uint8_t tx_buf[SPI_PROTOCOL_APLUS_FRAME_SIZE];
+	uint8_t rx_buf[SPI_PROTOCOL_APLUS_FRAME_SIZE];
+	int sync_count = 0;
+
+	for (int i = 0; i < 5; i++) {
+		memset(tx_buf, 0xFF, sizeof(tx_buf));
+		memset(rx_buf, 0, sizeof(rx_buf));
+
+		int ret = m_nrf_spim->transfer(tx_buf, rx_buf, SPI_PROTOCOL_APLUS_FRAME_SIZE);
+		if (ret) {
+			DEBUG_WARN("SmdSat::%s: Sync transaction %d failed: %d", __func__, i, ret);
+			continue;
+		}
+
+		// Check if we're getting consistent idle pattern (0xAA)
+		bool all_idle = true;
+		for (int j = 0; j < 8; j++) {
+			if (rx_buf[j] != SPI_PROTOCOL_APLUS_IDLE_PATTERN) {
+				all_idle = false;
+				break;
+			}
+		}
+
+		if (all_idle) {
+			sync_count++;
+			if (sync_count >= 2) {
+				DEBUG_INFO("SmdSat::%s: SPI synchronized after %d transactions", __func__, i + 1);
+				return;
+			}
+		} else {
+			sync_count = 0;
+		}
+
+		nrf_delay_ms(SMDSAT_SPI_DETECT_TIMEOUT_MS);
+	}
+
+	DEBUG_WARN("SmdSat::%s: SPI sync incomplete, proceeding anyway", __func__);
 }
 
 void SmdSat::get_spi_status(uint8_t *status) {
@@ -1296,7 +1447,27 @@ void SmdSat::set_credentials(unsigned int dec_id, unsigned int address, const st
 		}
 	}
 
-	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+	wait_between_commands();
+
+	// Read back raw radio config to validate what was written
+	{
+		uint8_t rconf_raw[SMDSAT_CMD_READ_RCONF_RAW_LEN] = {0};
+		uint16_t rconf_raw_len = 0;
+		try {
+			read_rconf_raw(rconf_raw, &rconf_raw_len);
+			char hex[SMDSAT_CMD_READ_RCONF_RAW_LEN * 2 + 1] = {0};
+			for (uint16_t i = 0; i < rconf_raw_len && i < SMDSAT_CMD_READ_RCONF_RAW_LEN; i++) {
+				uint8_t hi = rconf_raw[i] >> 4;
+				uint8_t lo = rconf_raw[i] & 0x0F;
+				hex[i * 2]     = hi < 10 ? ('0' + hi) : ('a' + hi - 10);
+				hex[i * 2 + 1] = lo < 10 ? ('0' + lo) : ('a' + lo - 10);
+			}
+			DEBUG_INFO("SmdSat::%s: RCONF_RAW readback OK: %s", __func__, hex);
+		} catch (...) {
+			DEBUG_WARN("SmdSat::%s: Failed to read back raw radio config", __func__);
+		}
+	}
+
 	DEBUG_INFO("SmdSat::%s: Credentials set successfully", __func__);
 
 cleanup:
@@ -1363,10 +1534,15 @@ void SmdSat::read_credentials(unsigned int *dec_id, unsigned int *address, std::
         *seckey = Binascii::hexlify(std::string(reinterpret_cast<char *>(seckey_data), SMDSAT_CMD_READ_SECKEY_LEN));
     }
 
-	SmdArgosModulation modulation_dev;
-	read_radio_conf(&modulation_dev);
-	nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
-	(void)radioconf;
+	if (radioconf) {
+		uint8_t rconf_raw[SMDSAT_CMD_READ_RCONF_RAW_LEN] = {0};
+		uint16_t rconf_raw_len = 0;
+		read_rconf_raw(rconf_raw, &rconf_raw_len);
+		nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
+		*radioconf = Binascii::hexlify(std::string(reinterpret_cast<char *>(rconf_raw),
+		                               rconf_raw_len > 0 ? rconf_raw_len : SMDSAT_CMD_READ_RCONF_RAW_LEN));
+		DEBUG_INFO("SmdSat::%s: RCONF_RAW: %s", __func__, radioconf->c_str());
+	}
 
 	if(stop_spi) {
 		delete m_nrf_spim;
@@ -1844,60 +2020,91 @@ bool SmdSat::dfu_enter() {
 	// Reset DFU sequence number (matches Zephyr data->dfu_seq_num = 0)
 	m_sequence_number = 0;
 
-	// ═══ STEP 4: WAIT 2s FOR STM32 RESET (matches Zephyr spi_dfu_test STEP 4) ═══
-	DEBUG_INFO("SmdSat::%s: STEP 4 - Waiting 2s for STM32 reset...", __func__);
+	// ═══ STEP 4: DIAGNOSTIC — check if STM32 entered bootloader or stayed in APP ═══
+	// Wait 2s for STM32 to reset, then try BOTH app ping and DFU ping
+	DEBUG_INFO("SmdSat::%s: STEP 4 - Wait 2s then diagnose...", __func__);
 	for (int i = 0; i < 4; i++) {
 		PMU::kick_watchdog();
 		nrf_delay_ms(500);
 	}
 
-	// ═══ STEP 5: SYNC WITH BOOTLOADER (matches Zephyr spi_dfu_test STEP 5) ═══
-	DEBUG_INFO("SmdSat::%s: STEP 5 - SPI sync with bootloader...", __func__);
+	// 4a: Try APP PING (0x02) — if this works, DFU_ENTER didn't take effect
+	DEBUG_INFO("SmdSat::%s: 4a - Try APP PING (0x02) to check if app still running...", __func__);
+	m_sequence_number = 0;
 	{
-		uint8_t sync_tx[SPI_PROTOCOL_APLUS_FRAME_SIZE];
-		uint8_t sync_rx[SPI_PROTOCOL_APLUS_FRAME_SIZE];
-		memset(sync_tx, 0xFF, sizeof(sync_tx));
-
-		for (int i = 0; i < 5; i++) {
-			PMU::kick_watchdog();
-			memset(sync_rx, 0, sizeof(sync_rx));
-			m_nrf_spim->transfer(sync_tx, sync_rx, SPI_PROTOCOL_APLUS_FRAME_SIZE);
-			nrf_delay_ms(SMDSAT_SPI_DETECT_TIMEOUT_MS);
-
-			DEBUG_TRACE("SmdSat::%s: BL Sync %d RX: %02X %02X %02X %02X %02X %02X %02X %02X",
-			            __func__, i, sync_rx[0], sync_rx[1], sync_rx[2], sync_rx[3],
-			            sync_rx[4], sync_rx[5], sync_rx[6], sync_rx[7]);
+		SpiAplusResponse app_response;
+		bool app_ok = send_command_aplus(SMDSAT_CMD_PING, nullptr, 0, &app_response);
+		if (app_ok && app_response.status == SPI_APLUS_STATUS_OK) {
+			DEBUG_WARN("SmdSat::%s: 4a APP STILL RUNNING! DFU_ENTER (0x3F) did NOT reset to bootloader!", __func__);
+		} else {
+			DEBUG_INFO("SmdSat::%s: 4a APP not responding (expected if in bootloader)", __func__);
 		}
 	}
 	PMU::kick_watchdog();
-	nrf_delay_ms(200);
 
-	// Reset sequence number for bootloader session
+	// 4b: Try DFU PING (0x30)
+	DEBUG_INFO("SmdSat::%s: 4b - Try DFU PING (0x30)...", __func__);
 	m_sequence_number = 0;
+	{
+		SmdDfuResponse bl_ping = dfu_ping();
+		if (bl_ping == DFU_RSP_OK) {
+			DEBUG_INFO("SmdSat::%s: 4b BOOTLOADER PING OK!", __func__);
+			m_dfu_mode = true;
+			return true;
+		}
+		DEBUG_INFO("SmdSat::%s: 4b DFU ping failed", __func__);
+	}
+	PMU::kick_watchdog();
 
-	// ═══ STEP 6: PING BOOTLOADER (matches Zephyr spi_dfu_test STEP 6) ═══
-	DEBUG_INFO("SmdSat::%s: STEP 6 - Ping bootloader (cmd 0x30)...", __func__);
-	SmdDfuResponse ping_result = dfu_ping();
-	if (ping_result == DFU_RSP_OK) {
-		m_dfu_mode = true;
-		DEBUG_INFO("SmdSat::%s: BOOTLOADER PING OK! DFU mode entered.", __func__);
-		return true;
+	// 4c: Raw SPI — send idle frames and log what MISO returns
+	DEBUG_INFO("SmdSat::%s: 4c - Raw SPI idle frames...", __func__);
+	{
+		uint8_t tx_buf[SPI_PROTOCOL_APLUS_FRAME_SIZE];
+		uint8_t rx_buf[SPI_PROTOCOL_APLUS_FRAME_SIZE];
+		memset(tx_buf, 0xFF, sizeof(tx_buf));
+		for (int i = 0; i < 3; i++) {
+			memset(rx_buf, 0, sizeof(rx_buf));
+			m_nrf_spim->transfer(tx_buf, rx_buf, SPI_PROTOCOL_APLUS_FRAME_SIZE);
+			DEBUG_INFO("SmdSat::%s: 4c raw %d RX: %02X %02X %02X %02X %02X %02X %02X %02X",
+			           __func__, i, rx_buf[0], rx_buf[1], rx_buf[2], rx_buf[3],
+			           rx_buf[4], rx_buf[5], rx_buf[6], rx_buf[7]);
+			nrf_delay_ms(30);
+		}
+	}
+	PMU::kick_watchdog();
+
+	// 4d: Wait more and try again (total ~7s since DFU_ENTER)
+	DEBUG_INFO("SmdSat::%s: 4d - Wait 3s more, then retry both pings...", __func__);
+	for (int i = 0; i < 6; i++) {
+		PMU::kick_watchdog();
+		nrf_delay_ms(500);
 	}
 
-	// If first ping fails, retry a few more times (matches Zephyr argos_dfu_wait_ready)
-	DEBUG_WARN("SmdSat::%s: First bootloader ping failed, retrying...", __func__);
-	for (uint8_t ping_retry = 0; ping_retry < 20; ping_retry++) {
-		PMU::kick_watchdog();
-		nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
-		ping_result = dfu_ping();
-		if (ping_result == DFU_RSP_OK) {
-			m_dfu_mode = true;
-			DEBUG_INFO("SmdSat::%s: BOOTLOADER PING OK (retry %u)! DFU mode entered.", __func__, ping_retry + 1);
-			return true;
+	// 4e: Retry APP PING
+	m_sequence_number = 0;
+	{
+		SpiAplusResponse app_response;
+		bool app_ok = send_command_aplus(SMDSAT_CMD_PING, nullptr, 0, &app_response);
+		if (app_ok && app_response.status == SPI_APLUS_STATUS_OK) {
+			DEBUG_WARN("SmdSat::%s: 4e APP PING OK after 7s — app restarted, DFU_ENTER not working!", __func__);
+		} else {
+			DEBUG_INFO("SmdSat::%s: 4e APP still not responding", __func__);
 		}
 	}
 
-	DEBUG_ERROR("SmdSat::%s: Bootloader not responding after DFU_ENTER", __func__);
+	// 4f: Retry DFU PING
+	m_sequence_number = 0;
+	{
+		SmdDfuResponse bl_ping = dfu_ping();
+		if (bl_ping == DFU_RSP_OK) {
+			DEBUG_INFO("SmdSat::%s: 4f BOOTLOADER PING OK after 7s!", __func__);
+			m_dfu_mode = true;
+			return true;
+		}
+		DEBUG_INFO("SmdSat::%s: 4f DFU ping still failing", __func__);
+	}
+
+	DEBUG_ERROR("SmdSat::%s: Neither APP nor BOOTLOADER responding after DFU_ENTER", __func__);
 
 	// Cleanup on failure
 	if (stop_spi) {
@@ -2349,11 +2556,15 @@ std::string SmdSat::smd_spi_test() {
 		{ SMDSAT_CMD_READ_ADDR,        "READ_ADDR",        SMDSAT_CMD_READ_ADDR_LEN },
 		{ SMDSAT_CMD_READ_SN,          "READ_SN",          SMDSAT_CMD_READ_SERIAL_LEN },
 		{ SMDSAT_CMD_READ_RCONF,       "READ_RCONF",       SMDSAT_CMD_READCONF_LEN },
-		{ SMDSAT_CMD_READ_KMAC,        "READ_KMAC",        2 },
+		{ SMDSAT_CMD_READ_KMAC,        "READ_KMAC",        SMDSAT_CMD_READ_KMAC_LEN },
 		{ SMDSAT_CMD_READ_LPM,         "READ_LPM",         1 },
 		{ SMDSAT_CMD_READ_SECKEY,      "READ_SECKEY",      SMDSAT_CMD_READ_SECKEY_LEN },
+		{ SMDSAT_CMD_READ_CW,          "READ_CW",          1 },
+		{ SMDSAT_CMD_READ_PREPASSEN,   "READ_PREPASSEN",   1 },
+		{ SMDSAT_CMD_READ_UDATE,       "READ_UDATE",       1 },
 		{ SMDSAT_CMD_READ_TCXO,        "READ_TCXO",        4 },
-		{ SMDSAT_CMD_READ_SPIMAC_STATE,"READ_SPIMAC_STATE",2 },
+		{ SMDSAT_CMD_READ_SPIMAC_STATE,"READ_SPIMAC_STATE",SMDSAT_CMD_READ_SPIMAC_STATE_LEN },
+		{ SMDSAT_CMD_READ_RCONF_RAW,   "READ_RCONF_RAW",   SMDSAT_CMD_READ_RCONF_RAW_LEN },
 	};
 
 	uint8_t pass_count = 0;
