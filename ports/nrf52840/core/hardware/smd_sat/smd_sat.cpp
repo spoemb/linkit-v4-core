@@ -83,9 +83,11 @@ void SmdSat::send_command(const uint8_t *tx_data, uint8_t *rx_data, uint16_t siz
 // ============================================================================
 
 uint16_t SmdSat::build_aplus_frame(uint8_t *frame, uint8_t cmd, const uint8_t *data, uint16_t data_len) {
-    // Validate data length
-    if (data_len > SPI_PROTOCOL_APLUS_MAX_DATA_LEN) {
-        DEBUG_ERROR("SmdSat::%s: Data too long (%u > %u)", __func__, data_len, SPI_PROTOCOL_APLUS_MAX_DATA_LEN);
+    // Max data that fits in a single 64-byte frame: 64 - 4(header) - 1(CRC) = 59
+    constexpr uint16_t single_frame_capacity = SPI_PROTOCOL_APLUS_FRAME_SIZE
+        - SPI_PROTOCOL_APLUS_HEADER_LEN - SPI_PROTOCOL_APLUS_CRC_LEN;
+    if (data_len > single_frame_capacity) {
+        DEBUG_ERROR("SmdSat::%s: Data too long for single frame (%u > %u)", __func__, data_len, single_frame_capacity);
         return 0;
     }
 
@@ -225,6 +227,8 @@ static uint32_t get_command_delay(uint8_t cmd) {
         case SMDSAT_CMD_WRITE_PREPASSEN:
         case SMDSAT_CMD_WRITE_UDATE:
             return SMDSAT_TIMING_WRITE_MS;
+        case SMDSAT_CMD_WRITE_TX:
+            return SMDSAT_SPI_POST_TX_DELAY_MS;   // 100ms async processing after TX data
         case SMDSAT_CMD_DFU_RESET:
         case SMDSAT_CMD_DFU_JUMP:
             return SMDSAT_TIMING_RESET_MS;
@@ -277,8 +281,11 @@ bool SmdSat::send_command_aplus(uint8_t command, const uint8_t *tx_data, uint16_
     uint8_t nop_frame[SPI_PROTOCOL_APLUS_FRAME_SIZE];
     uint8_t response_frame[SPI_PROTOCOL_APLUS_FRAME_SIZE];
 
+    // Zephyr behavior: only retry NOP polling for flash/NVM write operations.
+    // For standard commands, send ONE NOP and accept whatever comes back.
+    // Retrying NOPs for non-flash commands causes sequence number desync with STM32.
     bool is_flash_op = (cmd_delay >= SMDSAT_TIMING_WRITE_MS);
-    uint8_t max_retries = is_flash_op ? SMDSAT_SPI_BUSY_MAX_RETRIES : 3;
+    uint8_t max_retries = is_flash_op ? SMDSAT_SPI_BUSY_MAX_RETRIES : 0;
 
     for (uint8_t retry = 0; retry <= max_retries; retry++) {
         build_aplus_frame(nop_frame, SMDSAT_CMD_NONE, nullptr, 0);
@@ -290,8 +297,8 @@ bool SmdSat::send_command_aplus(uint8_t command, const uint8_t *tx_data, uint16_
             throw ErrorCode::SPI_COMMS_ERROR;
         }
 
-        // Check for BUSY or IDLE or all-zero pattern (slave not ready) — check 8 bytes like Zephyr
-        if (is_slave_not_ready(response_frame, 8) && retry < max_retries) {
+        // For flash ops: check for BUSY/IDLE pattern and retry
+        if (is_flash_op && is_slave_not_ready(response_frame, 8) && retry < max_retries) {
             DEBUG_TRACE("SmdSat::%s: Slave not ready (0x%02X), retry %u/%u",
                         __func__, response_frame[0], retry + 1, max_retries);
             nrf_delay_ms(SMDSAT_SPI_BUSY_RETRY_DELAY_MS);
@@ -1178,6 +1185,7 @@ void SmdSat::state_transmitting() {
 	if (is_tx_finished()) {
         if (m_tx_buffer.size()) {
         	m_tx_buffer.clear();
+        	DEBUG_INFO("SmdSat::%s: notify KineisEventTxComplete", __func__);
         	notify(KineisEventTxComplete({}));
         }
         SMD_STATE_CHANGE(transmitting, stopped);
@@ -1236,9 +1244,19 @@ void SmdSat::initiate_tx() {
 	}
 
 	// Step 3: WRITE_TX (0x16) - Send actual payload data
-	if (!send_command_auto(SMDSAT_CMD_WRITE_TX, reinterpret_cast<const uint8_t*>(m_tx_buffer.data()), size)) {
-		DEBUG_ERROR("SmdSat::%s: TX DATA failed", __func__);
-		return;
+	// Use send_command_aplus directly (no retry). Matches Zephyr argos_spi_write_tx:
+	// WRITE_TX is fire-and-forget — the STM32 queues data to MAC and starts RF TX
+	// asynchronously. An IDLE response means "data received, processing" not "error".
+	// Retrying would re-send the TX data causing duplicate transmissions.
+	{
+		SpiAplusResponse response = {};
+		send_command_aplus(SMDSAT_CMD_WRITE_TX,
+		                   reinterpret_cast<const uint8_t*>(m_tx_buffer.data()), size,
+		                   &response);
+		if (response.status != SPI_APLUS_STATUS_OK && response.valid) {
+			DEBUG_WARN("SmdSat::%s: TX DATA status=%u (non-fatal, data may be queued)",
+			           __func__, (unsigned)response.status);
+		}
 	}
 
 	// Post-TX delay for STM32 async processing (matches Zephyr ARGOS_SPI_POST_TX_DELAY_MS)
@@ -1253,7 +1271,6 @@ void SmdSat::send(const KineisModulation mode, const KineisPacket& user_payload,
     unsigned int max_payload_size = 0;
     switch(m_modulation) {
         case ARGOS_MOD_LDA2:
-        case ARGOS_MOD_LDA2L:
             max_payload_size = ARGOS_TX_LDA2_PAYLOAD_BYTE_SIZE;
             break;
         case ARGOS_MOD_LDK:
@@ -1275,7 +1292,20 @@ void SmdSat::send(const KineisModulation mode, const KineisPacket& user_payload,
         effective_payload_length = max_payload_size;
     }
 
-    m_packet_buffer.assign(max_payload_size, 0);
+    // Determine padded buffer size based on modulation
+    unsigned int padded_size = max_payload_size;
+    if (m_modulation == ARGOS_MOD_LDA2) {
+        // LDA2 valid byte sizes: 4, 8, 12, 16, 20, 24 (multiples of ARGOS_TX_LDA2_SIZE_STEP)
+        padded_size = ((effective_payload_length + ARGOS_TX_LDA2_SIZE_STEP - 1) /
+                        ARGOS_TX_LDA2_SIZE_STEP) * ARGOS_TX_LDA2_SIZE_STEP;
+        if (padded_size < ARGOS_TX_LDA2_MIN_BYTE_SIZE)
+            padded_size = ARGOS_TX_LDA2_MIN_BYTE_SIZE;
+        if (padded_size > max_payload_size)
+            padded_size = max_payload_size;
+        DEBUG_TRACE("SmdSat::%s: LDA2 padded %u -> %u bytes", __func__, effective_payload_length, padded_size);
+    }
+
+    m_packet_buffer.assign(padded_size, 0);
     std::copy(user_payload.begin(), user_payload.begin() + effective_payload_length, m_packet_buffer.begin());
 
     DEBUG_TRACE("SmdSat::%s: raw data[%u]=%s", __func__,
@@ -1564,9 +1594,10 @@ uint32_t SmdSat::calculate_crc32(const uint8_t *data, size_t len) {
 	return spi_crc32_mpeg2(data, len);
 }
 
-// DFU-specific send command — matches Zephyr dfu_send_cmd exactly:
-// 1. Build proper A+ CMD frame
-// 2. Send CMD frame (ignore RX — it's previous response)
+// DFU-specific send command — based on Zephyr dfu_send_cmd:
+// 1. Build A+ CMD frame with first 59 bytes of payload
+// 2a. Send CMD frame (ignore RX — it's previous response)
+// 2b. If payload > 59 bytes, send remaining data in raw 64-byte continuation frames
 // 3. Wait command-specific delay
 // 4. Send raw 0xAA idle bytes to read response (NOT a proper A+ NOP frame!)
 // 5. Re-poll with 0xAA if no valid response (0x55) in first 8 bytes
@@ -1577,6 +1608,8 @@ uint32_t SmdSat::calculate_crc32(const uint8_t *data, size_t len) {
 // - NOP frame is raw 0xAA idle bytes, not a valid A+ frame
 // - Sequence number increments only once per command
 // - Response retry checks for ANY non-0x55 (not just IDLE/BUSY patterns)
+// - Large payloads (DFU chunks=248, header=256) are fragmented across
+//   multiple 64-byte SPI transactions
 SmdDfuResponse SmdSat::dfu_send_command(uint8_t cmd, const uint8_t *data, uint16_t data_len,
                                         uint8_t *response_data, uint16_t *response_len) {
 	DEBUG_TRACE("SmdSat::%s: cmd=0x%02X, data_len=%u, seq=%u", __func__, cmd, data_len, m_sequence_number);
@@ -1585,16 +1618,31 @@ SmdDfuResponse SmdSat::dfu_send_command(uint8_t cmd, const uint8_t *data, uint16
 	uint8_t rx_buf[SPI_PROTOCOL_APLUS_FRAME_SIZE];
 
 	// ═══ Step 1: Build Protocol A+ request frame ═══
-	// [0xAA][SEQ][CMD][LEN][DATA...][CRC8][padding 0xAA]
-	// Note: Zephyr DFU pads with DFU_IDLE_PATTERN (0xAA), not 0xFF
+	// Max data in first frame: 64 - 4(header) - 1(CRC) = 59 bytes.
+	// For payloads > 59 bytes (DFU chunks=248, header=256), the remaining
+	// data is sent in continuation frames (raw 64-byte SPI transactions).
+	// The STM32 slave uses the LEN field + command context to determine
+	// total expected bytes and reads additional frames accordingly.
+	constexpr uint16_t DFU_FIRST_FRAME_CAPACITY = SPI_PROTOCOL_APLUS_FRAME_SIZE
+		- SPI_PROTOCOL_APLUS_HEADER_LEN - SPI_PROTOCOL_APLUS_CRC_LEN;
+
+	uint16_t first_chunk = 0;
+	if (data != nullptr && data_len > 0) {
+		first_chunk = (data_len > DFU_FIRST_FRAME_CAPACITY)
+			? DFU_FIRST_FRAME_CAPACITY : data_len;
+	}
+
+	// Build first frame: [MAGIC][SEQ][CMD][LEN][DATA_0..first_chunk][CRC8][pad 0xAA]
+	// Note: LEN = data_len truncated to uint8_t. For payloads > 255 (e.g.
+	// SET_HEADER=256), the slave infers total size from the command ID.
 	uint16_t idx = 0;
 	tx_buf[idx++] = SPI_PROTOCOL_APLUS_MAGIC_REQUEST;
 	tx_buf[idx++] = m_sequence_number;
 	tx_buf[idx++] = cmd;
 	tx_buf[idx++] = static_cast<uint8_t>(data_len);
-	if (data != nullptr && data_len > 0) {
-		memcpy(&tx_buf[idx], data, data_len);
-		idx += data_len;
+	if (first_chunk > 0) {
+		memcpy(&tx_buf[idx], data, first_chunk);
+		idx += first_chunk;
 	}
 	tx_buf[idx] = spi_crc8_ccitt(tx_buf, idx);
 	idx++;
@@ -1606,7 +1654,7 @@ SmdDfuResponse SmdSat::dfu_send_command(uint8_t cmd, const uint8_t *data, uint16
 	// Inter-transaction delay
 	nrf_delay_ms(SMDSAT_SPI_INTER_TX_DELAY_MS);
 
-	// ═══ Step 2: Transaction 1 — Send command (RX is old data, ignore) ═══
+	// ═══ Step 2a: Transaction 1 — Send command frame (RX is old data, ignore) ═══
 	memset(rx_buf, 0, sizeof(rx_buf));
 	int ret = m_nrf_spim->transfer(tx_buf, rx_buf, SPI_PROTOCOL_APLUS_FRAME_SIZE);
 	if (ret) {
@@ -1616,6 +1664,32 @@ SmdDfuResponse SmdSat::dfu_send_command(uint8_t cmd, const uint8_t *data, uint16
 
 	DEBUG_TRACE("SmdSat::%s: RX1 (ignore): %02X %02X %02X %02X",
 	            __func__, rx_buf[0], rx_buf[1], rx_buf[2], rx_buf[3]);
+
+	// ═══ Step 2b: Send continuation frames for remaining data ═══
+	// Each continuation frame is a raw 64-byte SPI transaction containing
+	// the next chunk of payload data, padded with 0xAA.
+	uint16_t offset = first_chunk;
+	while (data != nullptr && offset < data_len) {
+		uint16_t remaining = data_len - offset;
+		uint16_t chunk = (remaining > SPI_PROTOCOL_APLUS_FRAME_SIZE)
+			? SPI_PROTOCOL_APLUS_FRAME_SIZE : remaining;
+
+		memset(tx_buf, SPI_PROTOCOL_APLUS_IDLE_PATTERN, SPI_PROTOCOL_APLUS_FRAME_SIZE);
+		memcpy(tx_buf, &data[offset], chunk);
+
+		nrf_delay_ms(SMDSAT_SPI_INTER_TX_DELAY_MS);
+		memset(rx_buf, 0, sizeof(rx_buf));
+		ret = m_nrf_spim->transfer(tx_buf, rx_buf, SPI_PROTOCOL_APLUS_FRAME_SIZE);
+		if (ret) {
+			DEBUG_ERROR("SmdSat::%s: SPI continuation failed at offset %u/%u",
+			            __func__, offset, data_len);
+			return DFU_RSP_ERROR;
+		}
+
+		DEBUG_TRACE("SmdSat::%s: continuation frame %u/%u (%u bytes)",
+		            __func__, offset, data_len, chunk);
+		offset += chunk;
+	}
 
 	// ═══ Step 3: Wait for slave to process command ═══
 	uint32_t cmd_delay = get_command_delay(cmd);

@@ -131,7 +131,13 @@ public:
 #endif
 
 	static inline const unsigned int SENSOR_PACKET_HEADER 		 = 0b001;
-	static inline const unsigned int SENSOR_PACKET_BYTES		 = 16;
+	// Internal buffer allocation: must cover worst-case packing before truncation
+	// GPS(75) + ALS(17) + PH(14) + pressure(29) + thermistor(14) + AXL(67) = 216 bits = 27 bytes
+	// Non-SMD adds 8-bit CRC field = 224 bits = 28 bytes
+	static inline const unsigned int SENSOR_PACKET_BYTES		 = 28;
+	// Max transmittable sensor packet size (LDA2 constraint)
+	static inline const unsigned int SENSOR_PACKET_MAX_TX_BYTES  = 24;
+	static inline const unsigned int SENSOR_PACKET_MAX_TX_BITS   = SENSOR_PACKET_MAX_TX_BYTES * 8;
 
 	static inline const unsigned int DOPPLER_PACKET_BITS   		 = 24;
 	static inline const unsigned int DOPPLER_PACKET_PAYLOAD_BITS = 24;
@@ -326,6 +332,7 @@ protected:
 	unsigned int service_next_schedule_in_ms() override;
 	void service_initiate() override;
 	bool service_cancel() override;
+	unsigned int service_next_timeout() override;
 	bool service_is_triggered_on_surfaced(bool &immediate) override;
 	bool service_is_active_on_initiate() override;
 

@@ -6,8 +6,10 @@
 #include "timeutils.hpp"
 #include "bitpack.hpp"
 #include "debug.hpp"
+#if !defined(ARGOS_SMD) || (ARGOS_SMD != 1)
 #include "crc8.hpp"
 #include "bch.hpp"
+#endif
 #include "binascii.hpp"
 
 
@@ -163,6 +165,13 @@ bool ArgosTxService::service_cancel() {
 	m_is_tx_pending = false;
 	m_kineis.stop_send();
 	return is_pending;
+}
+
+unsigned int ArgosTxService::service_next_timeout() {
+	// Safety timeout: if KineisEventTxComplete/DeviceError never arrives,
+	// the service framework will cancel and reschedule.
+	// Budget: power-on(2s) + KMAC(1s) + TX setup(1s) + TCXO warmup(5s) + TX(3s) + margin(18s) = 30s
+	return 30000;
 }
 
 bool ArgosTxService::service_is_triggered_on_surfaced(bool &immediate) {
@@ -467,7 +476,9 @@ KineisPacket ArgosPacketBuilder::build_long_packet(std::vector<GPSLogEntry*> &gp
 	packet.assign(LONG_PACKET_BYTES, 0);
 
 	// Payload bytes
+#if !defined(ARGOS_SMD) || (ARGOS_SMD != 1)
 	PACK_BITS(0, packet, base_pos, 8);  // Zero CRC field (computed later)
+#endif
 
 	// This will set the log time for the GPS entry based on when it was scheduled
 	uint16_t year;
@@ -531,6 +542,7 @@ KineisPacket ArgosPacketBuilder::build_long_packet(std::vector<GPSLogEntry*> &gp
 		}
 	}
 
+#if !defined(ARGOS_SMD) || (ARGOS_SMD != 1)
 	// Calculate CRC8
 	unsigned char crc8 = CRC8::checksum(packet.substr(1), LONG_PACKET_PAYLOAD_BITS - 8);
 	unsigned int crc_offset = 0;
@@ -546,6 +558,7 @@ KineisPacket ArgosPacketBuilder::build_long_packet(std::vector<GPSLogEntry*> &gp
 
 	// Append BCH code
 	PACK_BITS(code_word, packet, base_pos, BCHEncoder::B255_223_4_CODE_LEN);
+#endif
 
 	return packet;
 }
@@ -595,7 +608,9 @@ KineisPacket ArgosPacketBuilder::build_doppler_packet(unsigned int batt_voltage,
 	packet.assign(DOPPLER_PACKET_BYTES, 0);
 
 	// Payload bytes
+#if !defined(ARGOS_SMD) || (ARGOS_SMD != 1)
 	PACK_BITS(0, packet, base_pos, 8);  // Zero CRC field (computed later)
+#endif
 
 	unsigned int last_known_pos = 0;
 	PACK_BITS(last_known_pos, packet, base_pos, 8);
@@ -609,11 +624,13 @@ KineisPacket ArgosPacketBuilder::build_doppler_packet(unsigned int batt_voltage,
 	PACK_BITS(is_low_battery, packet, base_pos, 1);
 	DEBUG_TRACE("ArgosPacketBuilder::build_short_packet: is_lb=%u", (unsigned int)is_low_battery);
 
+#if !defined(ARGOS_SMD) || (ARGOS_SMD != 1)
 	// Calculate CRC8
 	unsigned char crc8 = CRC8::checksum(packet.substr(1), DOPPLER_PACKET_PAYLOAD_BITS - 8);
 	unsigned int crc_offset = 0;
 	PACK_BITS(crc8, packet, crc_offset, 8);
 	DEBUG_TRACE("ArgosPacketBuilder::build_short_packet: crc8=%02x", crc8);
+#endif
 
 	size_bits = DOPPLER_PACKET_BITS;
 
@@ -728,6 +745,12 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 	}
 
 	size_bits = base_pos;
+
+	if (size_bits > SENSOR_PACKET_MAX_TX_BITS) {
+		DEBUG_WARN("ArgosPacketBuilder::build_sensor_packet: packet %u bits exceeds max %u bits (%u bytes) — sensor TX config has too many sensors enabled, truncating",
+				size_bits, SENSOR_PACKET_MAX_TX_BITS, SENSOR_PACKET_MAX_TX_BYTES);
+		size_bits = SENSOR_PACKET_MAX_TX_BITS;
+	}
 
 	packet.resize((size_bits+7)/8);
 

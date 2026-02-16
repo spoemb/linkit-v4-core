@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstdint>
 #include <vector>
 
 #include "sensor.hpp"
@@ -18,7 +19,7 @@ protected:
 		try {
 			if (m_sensor_background_active) {
 				m_sample_number++;
-				for (unsigned int chan = 0; chan < sensor_num_channels(); chan++) {
+				for (unsigned int chan = 0; chan < safe_num_channels(); chan++) {
 					m_samples[chan].push_back(m_sensor.read(chan));
 				}
 				if (service_is_scheduled()) {
@@ -31,7 +32,7 @@ protected:
 				if (gnss_shutdown || m_sample_number >= sensor_max_samples()) {
 					DEBUG_TRACE("SensorService: %s: terminal state reached", get_name());
 					ServiceSensorData sensor;
-					for (unsigned int chan = 0; chan < sensor_num_channels(); chan++) {
+					for (unsigned int chan = 0; chan < safe_num_channels(); chan++) {
 						switch (sensor_enable_tx_mode()) {
 						case BaseSensorEnableTxMode::ONESHOT:
 							sensor.port[chan] = compute_oneshot_samples(m_samples[chan]);
@@ -58,7 +59,7 @@ protected:
 				}
 			} else if (sensor_enable_tx_mode() == BaseSensorEnableTxMode::OFF) {
 				ServiceSensorData sensor;
-				for (unsigned int chan = 0; chan < sensor_num_channels(); chan++)
+				for (unsigned int chan = 0; chan < safe_num_channels(); chan++)
 					sensor.port[chan] = m_sensor.read(chan);
 				LogEntry e;
 				ServiceEventData data = sensor;
@@ -76,7 +77,8 @@ protected:
 	}
 
 private:
-	std::vector<double> m_samples[5];
+	static constexpr unsigned int MAX_SENSOR_CHANNELS = 6;
+	std::vector<double> m_samples[MAX_SENSOR_CHANNELS];
 	unsigned int m_sample_number;
 	bool m_sensor_background_active;
 
@@ -135,6 +137,10 @@ private:
 	}
 
 	void service_init() override {
+		if (sensor_num_channels() > MAX_SENSOR_CHANNELS) {
+			DEBUG_ERROR("SensorService: %s: num_channels %u exceeds MAX_SENSOR_CHANNELS %u",
+				get_name(), sensor_num_channels(), MAX_SENSOR_CHANNELS);
+		}
 		m_sensor_background_active = false;
 		m_sample_number = 0;
 		reset_samples();
@@ -142,7 +148,7 @@ private:
 	}
 
 	void reset_samples() {
-		for (unsigned int chan = 0; chan < sensor_num_channels(); chan++)
+		for (unsigned int chan = 0; chan < safe_num_channels(); chan++)
 			m_samples[chan].clear();
 	}
 
@@ -162,5 +168,11 @@ private:
 	virtual unsigned int sensor_tx_periodic() { return 1000U; }
 	virtual unsigned int sensor_max_samples() { return 1U; }
 	virtual unsigned int sensor_num_channels() { return 1U; }
+
+	// Bounded channel count to prevent out-of-bounds access on m_samples[]
+	unsigned int safe_num_channels() {
+		unsigned int n = sensor_num_channels();
+		return (n > MAX_SENSOR_CHANNELS) ? MAX_SENSOR_CHANNELS : n;
+	}
 	virtual bool sensor_is_usable_underwater() { return true; }
 };

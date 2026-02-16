@@ -145,10 +145,9 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 #define SMDSAT_CMD_READ_KMAC_LEN 2
 
 typedef enum {
-    ARGOS_MOD_LDA2,
-    ARGOS_MOD_LDA2L,
-    ARGOS_MOD_LDK,
-    ARGOS_MOD_VLDA4
+    ARGOS_MOD_LDA2,     // 0
+    ARGOS_MOD_LDK,      // 1
+    ARGOS_MOD_VLDA4     // 2
 } SmdArgosModulation;
 
 typedef enum {
@@ -295,9 +294,26 @@ struct SmdDfuInfo {
 	uint32_t flash_page_size;
 };
 
-#define ARGOS_TX_LDA2_PAYLOAD_BYTE_SIZE 24
-#define ARGOS_TX_VLDA4_PAYLOAD_BYTE_SIZE 3
-#define ARGOS_TX_LDK_PAYLOAD_BYTE_SIZE 19
+// Max TX payload sizes per modulation (in bytes)
+#define ARGOS_TX_LDA2_PAYLOAD_BYTE_SIZE  24
+#define ARGOS_TX_LDK_PAYLOAD_BYTE_SIZE   16
+#define ARGOS_TX_VLDA4_PAYLOAD_BYTE_SIZE  3
+
+// LDA2 valid message lengths in bits: 36, 68, 100, 132, 164, 196
+// Corresponding byte sizes: 4, 8, 12, 16, 20, 24 (multiples of 4)
+#define ARGOS_TX_LDA2_SIZE_STEP          4
+#define ARGOS_TX_LDA2_MIN_BYTE_SIZE      4
+
+// Default radio configurations per modulation (stored in SMD flash via SMDCD command).
+// These are NOT used at runtime — the user's radio conf is used instead.
+// Kept here as reference if a factory reset of the radio conf is needed.
+// Format: freq_min, freq_max, rf_level, modulation (16 bytes each)
+//   LDA2:  401620000-401680000, 27dBm, max payload 24 bytes
+#define SMDSAT_DEFAULT_RCONF_LDA2   "3d678af16b5a572078f3dbc95a1104e7"
+//   LDK:   402895000-402990000, 27dBm, max payload 16 bytes
+#define SMDSAT_DEFAULT_RCONF_LDK    "03921fb104b92859209b18abd009de96"
+//   VLDA4: 401625000-401635000, 27dBm, max payload 3 bytes
+#define SMDSAT_DEFAULT_RCONF_VLDA4  "82d07f9d9ce081ee4492983672d75493"
 
 // Local helper type for SPI data transfers
 struct smd_uint8_array_t {

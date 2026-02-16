@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <functional>
 #include <string>
 #include <map>
 
@@ -97,6 +98,7 @@ private:
 	unsigned int m_dumpd_mmm;
 	unsigned int m_dumpd_d_type;  // Track current dump type to detect mid-stream changes
 	bool m_sat_device_active;
+	std::function<void(const std::string&)> m_async_write;
 
 public:
 	DTEHandler() {
@@ -106,6 +108,8 @@ public:
 		m_sat_device_active = false;
 	}
 	virtual ~DTEHandler() {}
+
+	void set_async_write(std::function<void(const std::string&)> fn) { m_async_write = fn; }
 
 	static std::string PARML_REQ(int error_code) {
 
@@ -760,6 +764,10 @@ public:
 			smd_sat_instance->set_frequency(freq);
 			KineisPacket packet(num_bytes, 0xFF);
 			smd_sat_instance->send(modulation, packet, 8 * num_bytes);
+
+			// No immediate response — wait for KineisEventTxComplete/DeviceError
+			// which will send the async response via react() callbacks
+			return {};
 #else
 			DEBUG_WARN("DTEHandler::ARGOSTX_REQ: No satellite device available");
 			return DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::INCORRECT_DATA);
@@ -1077,6 +1085,25 @@ public:
 	}
 
 #pragma GCC diagnostic pop
+
+	// KineisEventListener: async TX result notification
+	void react(KineisEventTxComplete const& ) override {
+		DEBUG_INFO("DTEHandler::react: KineisEventTxComplete");
+		if (m_async_write) {
+			std::string resp = DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::OK);
+			DEBUG_TRACE("DTEHandler::react: async responding: %s", resp.c_str());
+			m_async_write(resp);
+		}
+	}
+
+	void react(KineisEventDeviceError const& ) override {
+		DEBUG_WARN("DTEHandler::react: KineisEventDeviceError");
+		if (m_async_write) {
+			std::string resp = DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::INCORRECT_DATA);
+			DEBUG_TRACE("DTEHandler::react: async responding: %s", resp.c_str());
+			m_async_write(resp);
+		}
+	}
 
 	// KineisEventListener: handle power off to release subscription
 	void react(KineisEventPowerOff const& ) override {

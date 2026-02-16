@@ -331,6 +331,9 @@ int ConfigurationState::on_ble_event(BLEServiceEvent& event) {
 		DEBUG_TRACE("ConfigurationState::on_ble_event: CONNECTED");
 		// Indicate DTE connection is made
 		dte_handler->reset_state();
+		dte_handler->set_async_write([](const std::string& msg) {
+			if (ble_service) ble_service->write(msg);
+		});
 		led_handle::dispatch<SetLEDConfigConnected>({});
 		restart_inactivity_timeout();
 		break;
