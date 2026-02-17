@@ -7,6 +7,7 @@
 #include "CppUTest/TestHarness.h"
 #include "CppUTestExt/MockSupport.h"
 
+using namespace std::string_literals;
 
 #define BLOCK_COUNT   (256)
 #define BLOCK_SIZE    (64*1024)
@@ -176,7 +177,7 @@ TEST(ConfigStore, CheckFullyCorruptedConfigurationStore)
 	{
 		// Overwrite first 1024 bytes (configuration version)
 		LFSFile f(main_filesystem, "config.dat", LFS_O_WRONLY);
-		uint8_t clobber[1024];
+		uint8_t clobber[1024] = {};
 		f.write(clobber, sizeof(clobber));
 	}
 
@@ -353,7 +354,7 @@ TEST(ConfigStore, CheckPassPredictVersionCodeMismatch)
 	{
 		// Overwrite first 4 bytes (configuration version)
 		LFSFile f(main_filesystem, "pass_predict.dat", LFS_O_WRONLY);
-		uint8_t clobber[4];
+		uint8_t clobber[4] = {};
 		f.write(clobber, sizeof(clobber));
 	}
 

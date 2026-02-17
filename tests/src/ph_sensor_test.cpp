@@ -313,8 +313,8 @@ TEST(PHSensor, SchedulingTxEnableMedian)
 	CHECK_EQUAL(1, logger->num_entries());
 	PHLogEntry e;
 	logger->read(&e, 0);
-	CHECK_EQUAL((double)50, e.ph);
-	CHECK_EQUAL((double)50, sensorData.port[0]);
+	CHECK_EQUAL((double)49.5, e.ph);
+	CHECK_EQUAL((double)49.5, sensorData.port[0]);
 
 	s.stop();
 }
@@ -365,8 +365,8 @@ TEST(PHSensor, SchedulingTxEnableMaxSamplesTerminates)
 	CHECK_EQUAL(1, logger->num_entries());
 	PHLogEntry e;
 	logger->read(&e, 0);
-	CHECK_EQUAL((double)50, e.ph);
-	CHECK_EQUAL((double)50, sensorData.port[0]);
+	CHECK_EQUAL((double)49.5, e.ph);
+	CHECK_EQUAL((double)49.5, sensorData.port[0]);
 
 	s.stop();
 }

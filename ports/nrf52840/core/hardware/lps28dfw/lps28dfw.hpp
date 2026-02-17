@@ -8,11 +8,13 @@ class LPS28DFW : public PressureSensorDevice {
 public:
     LPS28DFW(unsigned int bus, unsigned char address = 0x5C);
     bool init();
+    bool is_initialized() const { return m_initialized; }
     void read(double& temperature, double& pressure) override;
 
 private:
     unsigned int m_bus;
     unsigned char m_addr;
+    bool m_initialized = false;
 
     stmdev_ctx_t m_ctx;
     lps28dfw_md_t m_mode;

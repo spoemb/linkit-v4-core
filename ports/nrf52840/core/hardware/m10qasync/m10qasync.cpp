@@ -47,7 +47,7 @@ M10QAsyncReceiver::M10QAsyncReceiver() {
 	m_ana_database_len = 0;
 	m_ano_database_len = 0;
 	m_ano_start_pos = 0;
-	m_timeout.running = false;
+	m_timeout.handle = {};
 	m_num_power_on = 0;
 	m_powering_off = false;
 	m_num_nav_samples = 0;
@@ -573,10 +573,6 @@ void M10QAsyncReceiver::state_poweron() {
 			if (m_step == 0) {
 				sync_baud_rate(9600);
 				break;
-			// }
-			// else if (m_step == 1) {
-			// 	sync_baud_rate(MAX_BAUDRATE);
-			// 	break;
 			} else {
 				DEBUG_ERROR("M10QAsyncReceiver: failed to sync comms");
 				m_unrecoverable_error = true;
@@ -1089,14 +1085,6 @@ void M10QAsyncReceiver::state_sendofflinedatabase() {
 		} else if (m_op_state == OpState::ERROR) {
 			STATE_CHANGE(sendofflinedatabase, startreceive);
 			break;
-		} else {
-			DEBUG_WARN("M10QAsyncReceiver::state_sendofflinedatabase: failed");
-            if (m_op_state == OpState::ERROR) {
-                // Restart receiver on comms error
-                m_ubx_comms.set_baudrate(MAX_BAUDRATE);
-            }
-			STATE_CHANGE(sendofflinedatabase, startreceive);
-			break;
 		}
 	}
 }
@@ -1224,33 +1212,6 @@ void M10QAsyncReceiver::setup_uart_port() {
     m_ubx_comms.send_packet_with_expect(MessageClass::MSG_CLASS_CFG, CFG::ID_VALSET, uart1_valset_msg, 
                                             MessageClass::MSG_CLASS_ACK, ACK::ID_ACK, cfgDataSize);
     m_ubx_comms.wait_send();
-}
-
-
-void M10QAsyncReceiver::read_uart_port() {
-    DEBUG_TRACE("M10QAsyncReceiver::read_uart_port: Reading back UART1 baud rate with VALGET ->");
-
-    // Define the parameter key directly, using the key ID defined in CFG::UART1
-    std::vector<uint32_t> uart1_baudrate_key = { CFG::UART1::BAUDRATE.key };
-    constexpr size_t MAX_KEYS = 4;  // Maximum number of keys we'll query
-    size_t valGetDataSize = uart1_baudrate_key.size() * sizeof(uint32_t);
-
-    // Validate that the key count does not exceed buffer capacity
-    if (uart1_baudrate_key.size() > MAX_KEYS)
-        throw ErrorCode::INVALID_PARAM;
-
-    // Allocate buffer with enough space for the flexible array member (fixed size)
-    alignas(CFG::VALGET::MSG_VALGET) uint8_t buffer[sizeof(CFG::VALGET::MSG_VALGET) + MAX_KEYS * sizeof(uint32_t)];
-
-    // Construct the VALGET message using placement new
-    auto* uart1_valget_msg = new (buffer) CFG::VALGET::MSG_VALGET(0x00, CFG::VALGET::LAYERS::RAM, 0, uart1_baudrate_key);
-
-    // Send the VALGET message and expect a response for the UART1 baud rate
-    m_ubx_comms.send_packet_with_expect(MessageClass::MSG_CLASS_CFG, CFG::ID_VALGET, *uart1_valget_msg,
-                                        MessageClass::MSG_CLASS_CFG, CFG::ID_VALGET, valGetDataSize);
-
-    m_ubx_comms.wait_send();
-
 }
 
 void M10QAsyncReceiver::setup_power_management() {
@@ -1683,9 +1644,6 @@ void M10QAsyncReceiver::fetch_navigation_database() {
 	UBX::Empty msg_dbd = {};
     initiate_timeout();
     m_ubx_comms.send_packet(MessageClass::MSG_CLASS_MGA, MGA::ID_DBD, msg_dbd);
-}
-
-void M10QAsyncReceiver::send_offline_database() {
 }
 
 void M10QAsyncReceiver::dump_navigation_database(unsigned int len) {

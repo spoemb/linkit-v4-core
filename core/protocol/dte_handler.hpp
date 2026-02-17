@@ -15,6 +15,7 @@
 #include "gpio.hpp"
 #include "bsp.hpp"
 #include "kineis_device.hpp"
+#include "sws_analog_service.hpp"
 
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 #include "smd_sat.hpp"
@@ -133,6 +134,7 @@ public:
 	std::string ARGOSTX_REQ(int error_code, std::vector<BaseType>& arg_list);
 	static std::string SENSR_REQ(int error_code, std::vector<BaseType>& arg_list);
 	static std::string PWRON_REQ(int error_code, std::vector<BaseType>& arg_list);
+	static std::string SWSST_REQ(int error_code);
 
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	static std::string SMDDFU_REQ(int error_code, std::vector<BaseType>& arg_list);

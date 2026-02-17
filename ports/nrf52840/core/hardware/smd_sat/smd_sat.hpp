@@ -84,6 +84,7 @@ private:
 	// DFU state
 	bool m_dfu_mode;           // True when in bootloader DFU mode
 	SmdDfuInfo m_dfu_info;     // Bootloader info (cached after DFU_GET_INFO)
+	std::string m_new_firmware_version;  // Version read after last successful DFU
 
 	// Legacy SPI support (kept for raw byte transfer)
 	void read_byte(uint8_t *byte_read);
@@ -165,8 +166,6 @@ private:
 
 	bool is_tx_finished();
 	bool is_tx_in_progress();
-	bool is_command_accepted();
-	bool is_firmware_ready();
 	void power_off();
 	void power_on();
 
@@ -299,6 +298,12 @@ public:
 	 * @note This requires the SMD to be powered on
 	 */
 	std::string get_firmware_version();
+
+	/**
+	 * @brief Get firmware version read after last DFU update
+	 * @return Version string, or empty if not available
+	 */
+	std::string get_new_firmware_version() const { return m_new_firmware_version; }
 
 	/**
 	 * @brief Debug: test all SPI A+ commands and report results

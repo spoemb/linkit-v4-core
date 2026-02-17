@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <numeric>
 #include <vector>
 
 #include "sensor.hpp"
@@ -92,9 +93,14 @@ private:
 	}
 	double compute_median_samples(std::vector<double>& v) {
 		if (v.empty()) return 0.0;
-		int middle = v.size() / 2;
-		std::sort(v.begin(), v.end());
-		return v.at(middle);
+		size_t n = v.size();
+		auto mid = v.begin() + n / 2;
+		std::nth_element(v.begin(), mid, v.end());
+		if (n % 2 == 0) {
+			auto lower = std::max_element(v.begin(), mid);
+			return (*mid + *lower) / 2.0;
+		}
+		return *mid;
 	}
 	double compute_oneshot_samples(std::vector<double>& v) {
 		if (v.empty()) return 0.0;

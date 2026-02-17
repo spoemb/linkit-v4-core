@@ -1,5 +1,4 @@
-#ifndef __GPS_SCHEDULER_HPP_
-#define __GPS_SCHEDULER_HPP_
+#pragma once
 
 #include <functional>
 #include <atomic>
@@ -17,14 +16,14 @@ public:
 		char entry[512], d1[128], d2[128];
 		const GPSLogEntry *gps = (const GPSLogEntry *)&e;
 		std::time_t t;
-		std::tm *tm;
+		std::tm tm_buf;
 
 		t = convert_epochtime(gps->header.year, gps->header.month, gps->header.day, gps->header.hours, gps->header.minutes, gps->header.seconds);
-		tm = std::gmtime(&t);
-		std::strftime(d1, sizeof(d1), "%d/%m/%Y %H:%M:%S", tm);
+		gmtime_r(&t, &tm_buf);
+		std::strftime(d1, sizeof(d1), "%d/%m/%Y %H:%M:%S", &tm_buf);
 		t = convert_epochtime(gps->info.year, gps->info.month, gps->info.day, gps->info.hour, gps->info.min, gps->info.sec);
-		tm = std::gmtime(&t);
-		std::strftime(d2, sizeof(d2), "%d/%m/%Y %H:%M:%S", tm);
+		gmtime_r(&t, &tm_buf);
+		std::strftime(d2, sizeof(d2), "%d/%m/%Y %H:%M:%S", &tm_buf);
 
 		// Convert to CSV
 		snprintf(entry, sizeof(entry), "%s,%f,%u,%s,%u,%u,%u,%u,%u,%u,%u,%u,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\r\n",
@@ -145,12 +144,9 @@ private:
 	void log_invalid_gps_entry();
 
 	void gnss_data_callback(GNSSData data);
-	void populate_gnss_data_and_callback();
-	
+
 	// These methods are specific to the chipset and should be implemented by device-specific subclass
 	virtual void power_off() = 0;
 	virtual void power_on(const GPSNavSettingsLegacy& nav_settings,
 						  std::function<void(GNSSData data)> data_notification_callback = nullptr) = 0;
 };
-
-#endif // __GPS_SCHEDULER_HPP_

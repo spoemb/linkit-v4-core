@@ -1,8 +1,6 @@
-#include <ios>
-#include <iomanip>
 #include <ctime>
 #include <time.h>
-#include <stdarg.h>
+#include <cstdarg>
 #include <algorithm>
 #include <map>
 
@@ -246,7 +244,6 @@ private:
 		default:
 			DEBUG_ERROR("allcast_packet_decode: unrecognised allcast packet ID (%08x)", addressee_identification);
 			throw DTE_PROTOCOL_VALUE_OUT_OF_RANGE;
-			break;
 		}
 
 		uint16_t fcs;
@@ -508,7 +505,6 @@ protected:
 				break;
 			default:
 				throw DTE_PROTOCOL_VALUE_OUT_OF_RANGE;
-				break;
 		}
 		encode(output, x);
 	}

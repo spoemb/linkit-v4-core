@@ -314,8 +314,8 @@ TEST(ALSSensor, SchedulingTxEnableMedian)
 	CHECK_EQUAL(1, logger->num_entries());
 	ALSLogEntry e;
 	logger->read(&e, 0);
-	CHECK_EQUAL((double)50, e.lumens);
-	CHECK_EQUAL((double)50, sensorData.port[0]);
+	CHECK_EQUAL((double)49.5, e.lumens);
+	CHECK_EQUAL((double)49.5, sensorData.port[0]);
 
 	s.stop();
 }
@@ -365,8 +365,8 @@ TEST(ALSSensor, SchedulingTxEnableMaxSamplesTerminates)
 	CHECK_EQUAL(1, logger->num_entries());
 	ALSLogEntry e;
 	logger->read(&e, 0);
-	CHECK_EQUAL((double)50, e.lumens);
-	CHECK_EQUAL((double)50, sensorData.port[0]);
+	CHECK_EQUAL((double)49.5, e.lumens);
+	CHECK_EQUAL((double)49.5, sensorData.port[0]);
 
 	s.stop();
 }

@@ -1,854 +1,616 @@
-# Documentation SWS Analog - Détection de Surface avec Threshold Dynamique
+# SWS Analog - Surface/Underwater Detection Algorithm with Biofouling
 
-## 📋 Table des Matières
+## Table of Contents
 
-1. [Vue d'ensemble](#vue-densemble)
-2. [Problématique résolue](#problématique-résolue)
-3. [Architecture technique](#architecture-technique)
-4. [Algorithme de détection](#algorithme-de-détection)
-5. [Configuration matérielle](#configuration-matérielle)
-6. [Paramètres de configuration](#paramètres-de-configuration)
-7. [Utilisation](#utilisation)
-8. [Tests unitaires](#tests-unitaires)
-9. [Migration depuis l'ancienne version](#migration-depuis-lancienne-version)
-10. [Validation et tuning](#validation-et-tuning)
-
----
-
-## 📖 Vue d'ensemble
-
-### ⚠️ Notes Importantes
-
-**Résolution ADC** : Cette implémentation utilise une résolution ADC de **14-bit (0-16383)** sur le nRF52840, garantissant une précision maximale pour la détection.
-
-**Configuration hardware (Gentracker V1.0)** :
-| Caractéristique | Valeur |
-|----------------|--------|
-| SWS_RECEIVER (ADC) | P0.02 (AIN0) |
-| SWS_SENDER (GPIO) | P0.10 |
-| Résolution ADC | 14-bit |
-
-### Contexte
-
-Le tracker Linkit V4 est utilisé pour le suivi long terme de tortues et autres espèces marines. La détection fiable de la position (surface vs sous l'eau) est **critique** pour :
-- Optimiser la consommation énergétique (désactiver GNSS sous l'eau)
-- Déclencher les transmissions Argos uniquement en surface
-- Logger correctement les comportements de plongée
-
-### Solution Implémentée
-
-Le nouveau service **SWSAnalogService** remplace la détection digitale (ON/OFF) par une **détection analogique continue** avec :
-- ✅ **Auto-calibration** : Le système apprend automatiquement les niveaux "air" et "eau"
-- ✅ **Threshold dynamique** : S'adapte aux changements de salinité dans le temps
-- ✅ **Hystérésis** : Évite les oscillations et faux positifs
-- ✅ **Sécurités intégrées** : Timeouts et validation des mesures
-- ✅ **Persistance** : Calibration sauvegardée en RAM (survit aux resets)
+1. [Context and Problem Statement](#context-and-problem-statement)
+2. [Parent-Child Architecture](#parent-child-architecture)
+3. [Detection Algorithm](#detection-algorithm)
+4. [Rapid Transition Detection (3 Tiers)](#rapid-transition-detection-3-tiers)
+5. [Dynamic Biofouling Adaptation](#dynamic-biofouling-adaptation)
+6. [Safeties and Timeouts](#safeties-and-timeouts)
+7. [Parameters and Constants](#parameters-and-constants)
+8. [Unit Tests](#unit-tests)
+9. [Lifecycle Performance](#lifecycle-performance)
 
 ---
 
-## 🎯 Problématique Résolue
+## Context and Problem Statement
 
-### Ancien Système (Digital)
+### SWS Function
 
-**Problème** : Détection binaire (pin HIGH/LOW) via conductivité de l'eau
-```
-Électrode 1 ----[eau salée]---- Électrode 2
-         ↓                              ↓
-     SWS_SENDER                    SWS_RECEIVER
-```
-
-**Limitations identifiées** :
-1. ❌ **Dérive après 24h** : Dépôt de sel sur les électrodes → conductivité change
-2. ❌ **Seuil fixe** : Ne s'adapte pas aux changements de salinité (0.5% → 3.5%)
-3. ❌ **Faux positifs** : Éclaboussures, vagues, pluie peuvent déclencher
-4. ❌ **Pas de validation** : Aucune vérification de cohérence temporelle
-
-### Nouveau Système (Analog)
-
-**Principe** : Mesure ADC analogique de la conductivité avec threshold adaptatif
+The Salt Water Switch (SWS) detects whether a sea turtle tracker is underwater or at the surface.
+Two electrodes measure the conductivity of the medium via a 14-bit ADC (0-16383) on nRF52840.
 
 ```
-┌─────────────────────────────────────┐
-│  Auto-Calibration                   │
-│  ─────────────────                  │
-│  Air (sec)      : ADC = 200         │
-│  Eau (salée)    : ADC = 2500        │
-│  Threshold      : 200 + 40%(2500-200) = 1120 │
-│  Hystérésis ±10%: [1008 - 1232]     │
-└─────────────────────────────────────┘
-          ↓
-┌─────────────────────────────────────┐
-│  Détection Continue                 │
-│  ─────────────────                  │
-│  Lecture ADC → Filtrage → Décision  │
-│  avec adaptation continue du seuil  │
-└─────────────────────────────────────┘
+     VDD
+      |
+   [Electrode TX] ---> [salt water = conductor] ---> [Electrode RX]
+                                                          |
+                                                       ADC 14-bit
+                                                     (0 = air, ~3000 = water)
 ```
 
-**Avantages** :
-1. ✅ **Robuste au drift** : Recalibration automatique continue
-2. ✅ **Adaptatif** : Apprend les nouveaux niveaux de salinité
-3. ✅ **Filtré** : Moyenne mobile + confirmation temporelle
-4. ✅ **Sécurisé** : Timeouts et validation des plages
+- **Dry air**: ADC ~ 100-300 (low conductivity)
+- **Salt water**: ADC ~ 2500-4000 (high conductivity)
+
+### The Problem: Biofouling
+
+After months of deployment at sea, salt and biofilm accumulate on the electrodes:
+
+```
+Month 0  (clean)    : Air = 200,  Water = 3000  → gap = 2800  (93% drop)
+Month 3  (light)    : Air = 600,  Water = 2800  → gap = 2200  (78% drop)
+Month 6  (moderate) : Air = 1000, Water = 2500  → gap = 1500  (60% drop)
+Month 9  (heavy)    : Air = 1400, Water = 2300  → gap = 900   (39% drop)
+Month 12 (severe)   : Air = 1700, Water = 2100  → gap = 400   (19% drop)
+```
+
+A fixed threshold inevitably fails. The algorithm must be **adaptive** and detect the surface
+**in under 2 seconds** even with extreme biofouling.
+
+### Fundamental Insight
+
+Even with extreme biofouling, when the turtle exits the water, the electrode **loses contact
+with the water immediately**. The salt/biofilm layer remains conductive, but the break in the
+conductivity path through the water always causes a **significant relative drop** in the ADC.
+
+It is this **rate of change** (not the absolute value) that the algorithm exploits.
 
 ---
 
-## 🏗️ Architecture Technique
+## Parent-Child Architecture
 
-### Structure des Classes
+### Class Hierarchy
 
 ```
-UWDetectorService (classe de base)
-        ↑
-        │
-        │ hérite
-        │
-SWSAnalogService
-  │
-  ├─ Calibration automatique
-  ├─ Lecture ADC + filtrage
-  ├─ Threshold dynamique + hystérésis
-  ├─ Sécurités (timeouts)
-  └─ Persistance (noinit RAM)
+UWDetectorService (parent)
+        |
+        |  inherits
+        v
+SWSAnalogService (child)
 ```
 
-### Fichiers du Projet
+**Files**:
+- `core/services/uwdetector_service.hpp/.cpp` - Batch management and scheduling
+- `core/services/sws_analog_service.hpp/.cpp` - Detection algorithm
 
-| Fichier | Description | Lignes |
-|---------|-------------|--------|
-| `core/services/sws_analog_service.hpp` | Header avec documentation | 130 |
-| `core/services/sws_analog_service.cpp` | Implémentation de l'algorithme | 360 |
-| `tests/src/sws_analog_test.cpp` | 7 tests unitaires complets | 450 |
+### Batch Operation
 
-### Modifications Existantes
+The parent (`UWDetectorService`) manages a batch system:
 
-| Fichier | Modification | Impact |
-|---------|--------------|--------|
-| `core/protocol/base_types.hpp` | +6 nouveaux ParamID | Configuration |
-| `core/protocol/dte_params.cpp` | Définitions UNP20-UNP25 | DTE protocol |
-| `core/configuration/config_store.hpp` | Valeurs par défaut | Init config |
-| `ports/nrf52840/bsp/gentracker_v1.0/bsp.hpp` | +ADC_CHANNEL_1 | Hardware |
-| `ports/nrf52840/bsp/gentracker_v1.0/bsp.cpp` | Config ADC AIN0 (14-bit) | ADC setup |
-| `tests/fakes/bsp.hpp` | Support 2 canaux ADC | Tests |
+```
+                    Batch (3 samples)
+         ┌─────────────┼──────────────┐
+         v             v              v
+    detector_state() detector_state() detector_state()
+         |             |              |
+         v             v              v
+    sample 1        sample 2       sample 3
+         |             |              |
+         └─────────────┼──────────────┘
+                       v
+              m_current_state updated
+              (ONLY time state changes)
+```
+
+**Critical detail**: `m_current_state` is updated **only at the end of the batch**.
+During a batch, `detector_state()` is called 3 times (`UW_MAX_SAMPLES`), but all
+3 calls see the SAME `m_current_state` (the value from the end of the previous batch).
+
+This has a major consequence for rapid detection: if the first call detects
+the surface (rapid drop), the next two calls still see `m_current_state = true`
+(underwater). Without special handling, they could return `true` (underwater)
+and cancel the rapid detection.
+
+**Implemented solution**: the `m_rapid_surface_confirmed` flag (see next section).
 
 ---
 
-## 🔬 Algorithme de Détection
+## Detection Algorithm
 
-### Phase 1 : Calibration Initiale (Air)
+### Overview
 
-Au démarrage, le service effectue une calibration baseline :
+Each call to `detector_state()` executes these steps in order:
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ 1. ADC READ                                              │
+│    raw_value = read_analog_sws()                         │
+│    Validation: 50 <= raw <= threshold_max                │
+├──────────────────────────────────────────────────────────┤
+│ 2. FILTERING                                             │
+│    filtered_value = moving_average(raw, history_size=2)  │
+├──────────────────────────────────────────────────────────┤
+│ 3. TREND DETECTION                                       │
+│    - Circular buffer (8 samples)                         │
+│    - Consecutive decrease counter                        │
+│    - Total drop calculation (max - min of buffer)        │
+│    - Cumulative drop calculation (from peak underwater)  │
+├──────────────────────────────────────────────────────────┤
+│ 4. VARIANCE DETECTION                                    │
+│    - Mean and sum of squared deviations                  │
+│    - High variance = surface (unstable drying)           │
+│    - Low variance = underwater (stable)                  │
+├──────────────────────────────────────────────────────────┤
+│ 5. ADAPTIVE AIR RECALIBRATION (if at surface > 10s)      │
+│    - Surface readings buffer (10 samples)                │
+│    - If mean > 1.3x air_baseline → recalibrate           │
+│    - Gradual adaptation (10% per update)                 │
+├──────────────────────────────────────────────────────────┤
+│ 6. RAPID TRANSITION DETECTION (TIER 1/2/3)               │
+│    - Drop % calculated on raw_value (not filtered!)      │
+│    - 3 sensitivity levels (see next section)             │
+├──────────────────────────────────────────────────────────┤
+│ 7. BIOFOULING SURFACE OVERRIDE                           │
+│    - If rapid drop OR (trend + variance) → force surface │
+│    - Reset ADC buffer after rapid detection              │
+│    - Automatic air baseline recalibration                │
+├──────────────────────────────────────────────────────────┤
+│ 8. HYSTERESIS DECISION                                   │
+│    - If biofouling_override → surface                    │
+│    - If rapid_surface_confirmed → surface (bypass)       │
+│    - If filtered > threshold_high → underwater           │
+│    - If filtered < threshold_low → surface               │
+│    - Otherwise → maintain previous state                 │
+├──────────────────────────────────────────────────────────┤
+│ 9. SAFETIES                                              │
+│    - Max dive time → force surface                       │
+│    - Surface lockout → prevent re-submersion             │
+│    - Extended dive recalibration → adjust baselines      │
+└──────────────────────────────────────────────────────────┘
+```
+
+### Dynamic Threshold
+
+The threshold is positioned between the air baseline and the water baseline:
+
+```
+ADC
+ ^
+ |
+ |  ┌─── threshold_water (EMA, alpha=0.19)
+ |  |
+ |  |  ──── threshold_high = threshold_current + hysteresis
+ |  |
+ |  |  ──── threshold_current = air + ratio% × (water - air)
+ |  |                           ratio = 35%
+ |  |  ──── threshold_low  = threshold_current - hysteresis
+ |  |                         hysteresis = 10% of threshold
+ |  |
+ |  └─── threshold_air (calibrated in air, adapts to biofouling)
+ |
+ 0 ──────────────────────────────────────────> time
+```
+
+The 35% ratio places the threshold closer to air than to water.
+This favors **rapid surface detection** at the expense of slightly slower
+submersion detection (acceptable for the turtle use case).
+
+---
+
+## Rapid Transition Detection (3 Tiers)
+
+### Principle
+
+Instead of waiting for the filtered ADC to drop below the threshold (slow with biofouling),
+we detect the **instantaneous rate of change** of the raw ADC (unfiltered).
+
+```
+ADC
+ ^
+ |  3000 ●─────────── underwater ────────────────●
+ |                                             │
+ |                                             │ DROP 60%
+ |                                             │ (1 sample)
+ |                                             │
+ |  1200                                       ●─── surface (biofouling)
+ |
+ |   200 ─────────── threshold (with high biofouling)
+ |
+ 0 ──────────────────────────────────────────> time
+          ^                                ^
+          |        classic detection       |
+          |        would take 15+ sec      |
+          |                                |
+          |   RAPID T1 detects in 1 sample |
+```
+
+### The 3 Tiers
+
+The algorithm uses the **raw_value** (not filtered) to calculate the drop:
+
+```
+drop_percent = (prev_trend_value - raw_value) * 100 / prev_trend_value
+absolute_drop = prev_trend_value - raw_value
+```
+
+| Tier | Min drop % | Min abs drop | Additional condition | Latency |
+|------|-----------|-------------|-------------------------|---------|
+| **T1** | >= 25% | >= 300 | None | **1 sample** |
+| **T2** | >= 12% | >= 150 | trend_count >= 1 AND below_water_baseline | **2 samples** |
+| **T3** | >= 8% | >= 100 | trend_count >= 2 | **3+ samples** |
+
+**Conditions for rapid detection to activate**:
+- `m_current_state == true` (currently "underwater")
+- `prev_trend_value > 0` (we have a previous sample)
+- `raw_value < prev_trend_value` (ADC has decreased)
+
+### Post-Detection: ADC Buffer Reset
+
+After rapid detection, the ADC history buffer is **reset** with
+the current raw_value:
 
 ```cpp
-void calibrate_air_baseline() {
-    // Prendre 10 échantillons en air sec
-    for (int i = 0; i < 10; i++) {
-        uint16_t value = read_analog_sws();
-        sum += value;
-        delay(100ms);
-    }
-
-    threshold_air = sum / 10;  // Moyenne
-
-    // Initialiser threshold_water à 3× threshold_air (estimation)
-    threshold_water = threshold_air × 3;
-
-    // Calculer le threshold actif
-    update_dynamic_threshold();
-
-    // Sauvegarder en noinit RAM avec CRC
-    save_calibration_with_crc();
+// CRITICAL: without this reset, the moving average filter retains
+// the old underwater values, producing a high filtered_value
+// on the next call. Since m_current_state is not yet updated
+// (end of batch), the next detector_state() would see
+// filtered > threshold → return "underwater", cancelling the detection.
+for (int i = 0; i < ADC_HISTORY_SIZE; i++) {
+    m_adc_history[i] = raw_value;
 }
 ```
 
-**Exemple** :
-```
-Échantillons air : [195, 203, 198, 201, 200, 197, 202, 199, 204, 201]
-→ threshold_air = 200
-→ threshold_water = 600 (estimation initiale)
-→ threshold_current = 200 + 40% × (600-200) = 360
-```
+### Post-Detection: `m_rapid_surface_confirmed` Flag
 
-### Phase 2 : Détection avec Threshold Dynamique
+When the biofouling_surface_override triggers, the `m_rapid_surface_confirmed`
+flag is set to `true`. Subsequent calls to `detector_state()` within the SAME batch
+check this flag:
 
 ```cpp
-bool detector_state() {
-    // 1. Lecture ADC
-    uint16_t raw = read_analog_sws();
-
-    // 2. Validation
-    if (raw < 50 || raw > 16300) {
-        return previous_state;  // Valeur invalide, garder état
-    }
-
-    // 3. Filtrage (moyenne mobile sur 5 échantillons)
-    uint16_t filtered = moving_average(raw);
-
-    // 4. Calcul des seuils avec hystérésis
-    uint16_t threshold_high = threshold_current + hysteresis;
-    uint16_t threshold_low = threshold_current - hysteresis;
-
-    // 5. Décision avec hystérésis
-    if (filtered > threshold_high) {
-        new_state = UNDERWATER;
-        calibrate_water_baseline(filtered);  // Mise à jour continue
-    } else if (filtered < threshold_low) {
-        new_state = SURFACE;
-    } else {
-        new_state = previous_state;  // Zone d'hystérésis
-    }
-
-    // 6. Vérification sécurités
-    if (check_safety_timeouts(new_state)) {
-        new_state = SURFACE;  // Force surface si timeout
-    }
-
-    return new_state;
+if (biofouling_surface_override) {
+    new_state = false;                    // Surface!
+    m_rapid_surface_confirmed = true;     // Flag for remaining batch samples
+} else if (m_rapid_surface_confirmed && filtered_value < threshold_high) {
+    new_state = false;                    // Confirm surface without re-verification
+} else if (filtered_value > threshold_high) {
+    m_rapid_surface_confirmed = false;    // Clear if back underwater
+    // ... classic detection
 }
 ```
 
-### Phase 3 : Adaptation Continue (Eau)
-
-Lorsque l'animal plonge, le système met à jour progressivement le threshold eau :
-
-```cpp
-void calibrate_water_baseline(uint16_t value) {
-    // Moyenne mobile exponentielle (α = 0.1)
-    const float ALPHA = 0.1f;
-
-    // Seulement si valeur significativement > air
-    if (value > threshold_air × 1.5) {
-        threshold_water = ALPHA × value + (1-ALPHA) × threshold_water;
-        update_dynamic_threshold();
-        save_calibration_with_crc();
-    }
-}
-```
-
-**Exemple d'adaptation** :
-```
-Première plongée (eau douce, 0.5% salinité) :
-  ADC = 1500 → threshold_water converge vers 1500
-
-Deuxième plongée (eau salée, 3.5% salinité) :
-  ADC = 2800 → threshold_water converge vers 2800
-
-Le système détecte correctement les deux cas !
-```
-
-### Diagramme d'État
-
-```
-┌──────────────┐
-│   INIT       │
-│ (Calibration)│
-└──────┬───────┘
-       │
-       ↓
-┌──────────────┐    ADC < threshold_low    ┌──────────────┐
-│   SURFACE    │◄──────────────────────────┤  UNDERWATER  │
-│ (ADC faible) │                           │ (ADC élevé)  │
-└──────┬───────┘                           └──────┬───────┘
-       │                                          │
-       └─────────► ADC > threshold_high ◄─────────┘
-
-       Zone d'hystérésis : Maintien état précédent
-       [threshold_low ← threshold_current → threshold_high]
-```
+This mechanism solves the batch problem:
+1. Batch sample 1: rapid drop detected → `m_rapid_surface_confirmed = true`, returns `false`
+2. Batch sample 2: `m_current_state` is still `true` (not yet updated), but the flag
+   bypasses verification → returns `false`
+3. Batch sample 3: same
+4. End of batch: parent sees 3x `false` → `m_current_state = false`
 
 ---
 
-## ⚙️ Configuration Matérielle
+## Dynamic Biofouling Adaptation
 
-### Connexions Hardware
+### 5 Adaptation Mechanisms
 
-Le système SWS analog est supporté sur les deux variantes de boards du Linkit V4, toutes deux basées sur le nRF52840.
+The algorithm has 5 mechanisms that progressively adapt to biofouling:
 
-**Linkit V4 - Gentracker V1.0** (board principale pour Linkit) :
+#### 1. EMA Water Baseline (continuous)
 
-| Signal | Pin nRF52840 | ADC | Description |
-|--------|-------------|-----|-------------|
-| **SWS_RECEIVER** | P0.02 | AIN0 | Mesure analogique de conductivité |
-| **SWS_SENDER** | P0.10 | - | Génération du signal (GPIO output) |
-
-**Configuration ADC** :
-
-```cpp
-// Dans bsp.hpp (gentracker_v1.0)
-#define SWS_ADC        BSP::ADC::ADC_CHANNEL_1
-
-// Dans bsp.cpp - Configuration globale
-.config = {
-    .resolution = NRF_SAADC_RESOLUTION_14BIT,  // 14-bit pour les deux boards
-    .oversample = NRF_SAADC_OVERSAMPLE_DISABLED,
-    .interrupt_priority = INTERRUPT_PRIORITY_ADC,
-    .low_power_mode = false
-}
-
-// Dans bsp.cpp - ADC_CHANNEL_1 configuration (identique pour les deux boards)
-{
-    .resistor_p = NRF_SAADC_RESISTOR_DISABLED,
-    .resistor_n = NRF_SAADC_RESISTOR_DISABLED,
-    .gain = NRF_SAADC_GAIN1_4,           // Gain 1/4
-    .reference = NRF_SAADC_REFERENCE_INTERNAL,  // 0.6V
-    .acq_time = NRF_SAADC_ACQTIME_10US,  // 10µs pour stabilisation
-    .mode = NRF_SAADC_MODE_SINGLE_ENDED,
-    .burst = NRF_SAADC_BURST_DISABLED,
-    .pin_p = NRF_SAADC_INPUT_AIN0,       // P0.02
-    .pin_n = NRF_SAADC_INPUT_DISABLED
-}
-```
-
-**Plage de mesure (14-bit sur les deux boards)** :
-```
-Gain 1/4 × Référence 0.6V × 4 = 2.4V max
-Résolution 14-bit = 0 - 16383
-→ Résolution théorique : 2400mV / 16384 = 0.146 mV/count
-→ Plage dynamique : ~84 dB
-```
-
-### Schéma de Fonctionnement
+The water baseline adapts continuously via an exponential moving average:
 
 ```
-         VDD (3.3V)
-            │
-            │
-       ┌────┴────┐
-       │  MCU    │
-       │         │
-       │ P0.12───┼──────┐
-       │ (EN)    │      │    R1
-       │         │      ├────[10kΩ]────┐
-       │ P0.02───┼──┐   │               │
-       │ (AIN0)  │  │   │    Électrode  │  Eau salée  Électrode
-       └─────────┘  │   └───────┤├──────[conductivité]───┤├─────┐
-                    │                                              │
-                    └──────────────────────────────────────────────┘
-                                       ADC measure
+threshold_water = alpha * value + (1 - alpha) * threshold_water
+alpha = 0.19 (19%)
 ```
+
+**Strict conditions** to avoid corruption by biofouling:
+- Value > threshold_current + hysteresis (clearly underwater)
+- Value >= 2000 (absolute minimum for sea water)
+- Value >= 5 x air_baseline (minimum water/air ratio)
+- Value within expected range (+-15% of water_baseline)
+
+#### 2. Adaptive Air Recalibration (at surface > 10s)
+
+When at the surface for > 10 seconds, ADC readings are stored in a buffer.
+If the average exceeds 1.3x the current air baseline → biofouling detected:
+
+```
+new_air = 0.9 * old_air + 0.1 * avg_surface_reading
+```
+
+Gradual adaptation (10% per update) to avoid false adjustments.
+
+#### 3. Extended Dive Recalibration (underwater > 60s)
+
+Every 30 seconds after 60s underwater, checks whether minimum readings
+suggest biofouling (air baseline too low for reality):
+
+```
+Condition: min_adc_during_dive > 3 * air_baseline
+           AND min_adc < 0.7 * water_baseline
+           AND shift > 50%
+
+Action: air_baseline = min_adc * 0.85
+```
+
+#### 4. Rapid Detection Air Recalibration (immediate)
+
+When a rapid drop is detected and the raw_value is above the air baseline:
+
+```
+air_baseline = raw_value * 0.8
+```
+
+This allows the threshold to adapt immediately after the first rapid detection.
+
+#### 5. Max Dive Timeout Recalibration (safety)
+
+If max dive time is reached, it's likely a biofouling issue.
+Forces recalibration:
+
+```
+Condition: min_adc_during_dive > 2 * air_baseline
+Action: air_baseline = min_adc * 0.8
+```
+
+### Threshold Evolution Over 12 Months
+
+With adaptive mechanisms active, here is the measured evolution from tests:
+
+```
+Stage              | air_baseline | water_baseline | threshold | detection
+───────────────────┼──────────────┼────────────────┼───────────┼──────────
+Month 0  (clean)   |     200      |     3000       |    499    | T1, 1 sample
+Month 3  (light)   |     480*     |     2800       |    628    | T1, 1 sample
+Month 6  (moderate)|     800*     |     2500       |    733    | T1, 1 sample
+Month 9  (heavy)   |    1120*     |     2300       |   1077    | T1, 1 sample
+Month 12 (severe)  |    1360*     |     2100       |   1617    | T2, 2 samples
+```
+
+(*) Baselines automatically recalibrated by adaptive mechanisms.
 
 ---
 
-## 📊 Paramètres de Configuration
+## Safeties and Timeouts
 
-### Nouveaux Paramètres Ajoutés
+### Max Dive Time (default: 7200s = 2h)
 
-| ParamID | Code DTE | Type | Min | Max | Défaut | Description |
-|---------|----------|------|-----|-----|--------|-------------|
-| `SWS_ANALOG_THRESHOLD_MIN` | UNP20 | UINT | 50 | 16383 | 100 | ADC minimum valide (anti-saturation) |
-| `SWS_ANALOG_THRESHOLD_MAX` | UNP21 | UINT | 50 | 16383 | 3000 | ADC maximum valide (limite eau) |
-| `SWS_ANALOG_HYSTERESIS` | UNP22 | UINT | 0 | 50 | 10 | Hystérésis en % (anti-oscillation) |
-| `SWS_ANALOG_CALIB_INTERVAL` | UNP23 | UINT | 60 | ∞ | 3600 | Intervalle recalibration (sec) |
-| `UW_MAX_DIVE_TIME` | UNP24 | UINT | 0 | ∞ | 7200 | Temps max plongée (sec, 0=désactivé) |
-| `UW_MIN_SURFACE_TIME` | UNP25 | UINT | 0 | ∞ | 10 | Temps min surface (sec, anti-splash) |
+If the tracker stays "underwater" longer than `UW_MAX_DIVE_TIME`:
+1. Forces surface state
+2. Recalibrates air baseline (biofouling suspected)
+3. Activates a **surface lockout** of 30s (prevents immediate return to underwater)
 
-**Note** : Les paramètres THRESHOLD_MIN/MAX acceptent des valeurs jusqu'à 16383 (14-bit).
+### Min Surface Time (default: 10s)
 
-### Paramètres Existants Réutilisés
+Prevents false returns to underwater if just surfaced.
 
-| ParamID | Utilisation | Défaut |
-|---------|-------------|--------|
-| `UNDERWATER_EN` | Activer/désactiver détection | true |
-| `UNDERWATER_DETECT_SOURCE` | Source (SWS ou SWS_GNSS) | SWS |
-| `SAMPLING_UNDER_FREQ` | Période échantillonnage sous eau (sec) | Variable |
-| `SAMPLING_SURF_FREQ` | Période échantillonnage surface (sec) | Variable |
-| `UW_MAX_SAMPLES` | Nombre max échantillons pour confirmation | 5 |
-| `UW_MIN_DRY_SAMPLES` | Nombre min échantillons "sec" pour surface | 3 |
-| `UW_SAMPLE_GAP` | Délai entre échantillons (ms) | 1000 |
-| `UW_PIN_SAMPLE_DELAY` | Délai stabilisation avant lecture ADC (ms) | 10 |
+### Surface Lockout (30s after max dive timeout)
 
-### Configuration Recommandée
+After a force-surface by timeout, prevents underwater re-detection for 30s.
+Gives the electrodes time to stabilize at the surface.
 
-**Configuration par défaut (déjà dans config_store.hpp)** :
-```cpp
-SWS_ANALOG_THRESHOLD_MIN:   100    // Évite bruit bas
-SWS_ANALOG_THRESHOLD_MAX:   3000   // Plage normale eau salée
-SWS_ANALOG_HYSTERESIS:      10     // 10% = ±40 counts (si range=400)
-SWS_ANALOG_CALIB_INTERVAL:  3600   // Recalibration toutes les heures
-UW_MAX_DIVE_TIME:           7200   // 2h max plongée (sécurité)
-UW_MIN_SURFACE_TIME:        10     // 10s min surface (anti-splash)
-```
+### Hysteresis Stuck Recalibration (30s in hysteresis zone)
 
-**Pour environnement spécifique** :
+If the ADC stays in the hysteresis zone for > 30s, progressively recalibrates
+the air baseline toward the current value.
 
-| Environnement | THRESHOLD_MIN | THRESHOLD_MAX | HYSTERESIS |
-|---------------|---------------|---------------|------------|
-| Eau douce (faible salinité) | 100 | 1500 | 15% |
-| Eau salée (océan normal) | 100 | 3000 | 10% |
-| Eau très salée (mer morte) | 100 | 4000 | 8% |
+### ADC Validation
+
+Every ADC reading is validated:
+- `value >= 50` (not zero/noise)
+- `value <= threshold_max` (not saturated)
+
+If invalid, the previous state is maintained.
 
 ---
 
-## 🚀 Utilisation
+## Parameters and Constants
 
-### Intégration dans le Code Principal
+### Configurable Parameters (DTE / Config Store)
 
-**Option 1 : Remplacement direct de SWSService**
+| Parameter | ParamID | Default | Description |
+|-----------|---------|---------|-------------|
+| `SWS_ANALOG_THRESHOLD_MIN` | UNP20 | 100 | Minimum valid ADC |
+| `SWS_ANALOG_THRESHOLD_MAX` | UNP21 | 3000 | Maximum valid ADC |
+| `SWS_ANALOG_HYSTERESIS` | UNP22 | 10% | Hysteresis in % |
+| `SWS_ANALOG_CALIB_INTERVAL` | UNP23 | 3600s | Recalibration interval |
+| `UW_MAX_DIVE_TIME` | UNP24 | 7200s | Max dive time (0=disabled) |
+| `UW_MIN_SURFACE_TIME` | UNP25 | 10s | Min surface time |
 
-Dans votre fichier principal (ex: `main.cpp` ou `gentracker.cpp`) :
+### Internal Constants (defined in sws_analog_service.cpp)
 
-```cpp
-// Ancien
-// #include "sws_service.hpp"
-// SWSService sws_detector;
+#### Detection
 
-// Nouveau
-#include "sws_analog_service.hpp"
-SWSAnalogService sws_detector;
+| Constant | Value | Role |
+|----------|-------|------|
+| `ADC_HISTORY_SIZE` | 2 | Moving average buffer size (small = fast) |
+| `DEFAULT_THRESHOLD_RATIO_PERCENT` | 35% | Threshold position between air and water |
+| `DEFAULT_ALPHA_PERCENT` | 19% | EMA water baseline adaptation speed |
+| `DEFAULT_MAX_SAMPLES` | 1 | Submersion confirmation (1 = immediate) |
+| `DEFAULT_MIN_DRY_SAMPLES` | 2 | Surface confirmation (2 samples) |
 
-// Le reste du code reste identique !
-sws_detector.start([](ServiceEvent &event) {
-    if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
-        bool is_underwater = std::get<bool>(event.event_data);
+#### Rapid Transition
 
-        if (is_underwater) {
-            // Actions en plongée
-            gnss_disable();
-            argos_disable();
-        } else {
-            // Actions en surface
-            gnss_enable();
-            argos_enable();
-        }
-    }
-});
-```
+| Constant | Value | Role |
+|----------|-------|------|
+| `RAPID_DROP_TIER1_PERCENT` | 25% | T1 threshold: single-sample drop |
+| `RAPID_DROP_TIER1_ABSOLUTE` | 300 | T1: minimum absolute drop |
+| `RAPID_DROP_TIER2_PERCENT` | 12% | T2 threshold: 2x confirmed drop |
+| `RAPID_DROP_TIER2_ABSOLUTE` | 150 | T2: minimum absolute drop |
+| `RAPID_DROP_TIER3_PERCENT` | 8% | T3 threshold: trend-supported drop |
+| `RAPID_DROP_TIER3_ABSOLUTE` | 100 | T3: minimum absolute drop |
+| `BIOFOULING_OVERRIDE_MIN_TIME_SEC` | 3s | Min time underwater before override |
 
-**Option 2 : Sélection dynamique (coexistence)**
+#### Biofouling Adaptation
 
-```cpp
-#include "sws_service.hpp"
-#include "sws_analog_service.hpp"
+| Constant | Value | Role |
+|----------|-------|------|
+| `ABSOLUTE_MIN_WATER_ADC` | 2000 | Absolute minimum for sea water |
+| `MIN_WATER_AIR_RATIO` | 5 | Minimum water/air ratio |
+| `SURFACE_ADAPT_THRESHOLD` | 1.3 | Air recalibration trigger threshold at surface |
+| `MIN_SURFACE_TIME_FOR_ADAPT` | 10s | Min surface time before adaptation |
+| `EXTENDED_DIVE_RECALIB_START_SEC` | 60s | Start biofouling check underwater |
+| `EXTENDED_DIVE_RECALIB_INTERVAL_SEC` | 30s | Biofouling check frequency |
 
-UWDetectorService *sws_detector;
+#### Trend and Variance
 
-// Sélection selon configuration ou hardware
-if (use_analog_sws) {
-    sws_detector = new SWSAnalogService();
-} else {
-    sws_detector = new SWSService();
-}
+| Constant | Value | Role |
+|----------|-------|------|
+| `TREND_BUFFER_SIZE` | 8 | Trend buffer size |
+| `TREND_DECREASE_THRESHOLD_PERCENT` | 2% | Threshold to count a decrease |
+| `TREND_DECREASE_ABSOLUTE_MIN` | 8 | Absolute minimum to count decrease |
+| `TREND_CONSECUTIVE_DECREASE_MIN` | 3 | Consecutive decreases for trend |
+| `TREND_TOTAL_DROP_PERCENT` | 10% | Min total drop for surface trend |
+| `CUMULATIVE_DROP_PERCENT` | 15% | Cumulative drop for surface |
+| `VARIANCE_HIGH_THRESHOLD` | 10000 | High variance = surface |
 
-sws_detector->start(callback);
-```
+---
 
-### Configuration du Device
+## Unit Tests
 
-**Via commandes DTE** :
+### Test Suite (14/14 passing)
+
+**File**: `tests/src/sws_analog_test.cpp`
+
+#### Basic Functional Tests
+
+| # | Test | ADC | Validation |
+|---|------|-----|------------|
+| 1 | `InitialAirCalibration` | 200 (air) | Initial calibration correct |
+| 2 | `SurfaceDetection` | 150 (surface) | Surface detection OK |
+| 3 | `UnderwaterDetection` | 200→2500 | Submersion detection OK |
+| 4 | `HysteresisPreventOscillation` | 260 (hysteresis zone) | No oscillation |
+| 5 | `SalinityAdaptation` | 2500→2800 | Salinity adaptation OK |
+| 6 | `MaxDiveTimeSafety` | 2500 for >5s | Force surface after timeout |
+| 7 | `InvalidADCValuesHandling` | 3500 (invalid) | Out-of-range value rejected |
+
+#### Rapid Detection Tests
+
+| # | Test | ADC water→air | Drop | Tier | Samples |
+|---|------|-------------|------|------|---------|
+| 8 | `RapidSurfaceDetection_CleanSensor` | 3000→150 | 95% | T1 | <= 3 |
+| 9 | `RapidSurfaceDetection_ModerateBiofouling` | 3000→1200 | 60% | T1 | <= 3 |
+| 10 | `RapidSurfaceDetection_HeavyBiofouling` | 2800→1800 | 35% | T1 | <= 3 |
+
+#### False Positive Prevention Tests
+
+| # | Test | Scenario | Validation |
+|---|------|----------|------------|
+| 11 | `NoFalsePositive_UnderwaterFluctuation` | ADC +-10% underwater | Stays underwater |
+| 12 | `NoFalsePositive_GradualSalinityChange` | 3000→2500 gradual | Stays underwater |
+
+#### Progressive Degradation Tests
+
+| # | Test | Scenario | Validation |
+|---|------|----------|------------|
+| 13 | `ProgressiveBiofouling_MultiCycleDegradation` | 5 biofouling stages | Detection <= 3 samples at EVERY stage |
+| 14 | `ExtremeBiofouling_SmallGap` | 1800→1500 (16% drop) | Detection <= 5 samples |
+
+### Execution
 
 ```bash
-# Activer détection SWS analog
-AT+UNP01=1              # UNDERWATER_EN = true
-AT+UNP10=0              # UNDERWATER_DETECT_SOURCE = SWS
+cd tests/build
+cmake .. -DFETCHCONTENT_SOURCE_DIR_CPPUTEST=/tmp/cpputest_cache
+make -j$(nproc)
 
-# Configurer thresholds (optionnel, défauts OK)
-AT+UNP20=100            # SWS_ANALOG_THRESHOLD_MIN
-AT+UNP21=3000           # SWS_ANALOG_THRESHOLD_MAX
-AT+UNP22=10             # SWS_ANALOG_HYSTERESIS (10%)
+# All SWS tests
+./CLSGenTrackerTests -g SWSAnalog
 
-# Configurer sécurités
-AT+UNP24=7200           # UW_MAX_DIVE_TIME (2h)
-AT+UNP25=10             # UW_MIN_SURFACE_TIME (10s)
-```
-
-**Via code** :
-
-```cpp
-configuration_store->write_param(ParamID::UNDERWATER_EN, true);
-configuration_store->write_param(ParamID::UNDERWATER_DETECT_SOURCE,
-                                  BaseUnderwaterDetectSource::SWS);
-configuration_store->write_param(ParamID::SWS_ANALOG_THRESHOLD_MAX, 3000U);
-configuration_store->write_param(ParamID::UW_MAX_DIVE_TIME, 7200U);
-```
-
-### Logs et Monitoring
-
-**Niveaux de logs disponibles** :
-
-```cpp
-// À l'initialisation
-[INFO]  SWSAnalog: Initialized - min=100 max=3000 hyst=10% calib_int=3600s
-[INFO]  SWSAnalog: Air calibration complete - air=200 water=600 thresh=360
-
-// Pendant le fonctionnement
-[TRACE] SWSAnalog: raw=2450 filtered=2380 thresh=360 hyst=40
-[INFO]  SWSAnalog: State change detected - new_state=1 value=2380
-[TRACE] SWSAnalog: Updating water baseline 2000 -> 2100
-
-// Recalibration périodique
-[INFO]  SWSAnalog: Periodic recalibration triggered
-
-// Warnings/Erreurs
-[WARN]  SWSAnalog: Invalid ADC reading 16350, using previous state
-[WARN]  SWSAnalog: Max dive time exceeded (7300s), forcing surface detection
-[ERROR] SWSAnalog: ADC conversion failed with error 3
+# A specific test
+./CLSGenTrackerTests -g SWSAnalog -n ProgressiveBiofouling_MultiCycleDegradation -v
 ```
 
 ---
 
-## 🧪 Tests Unitaires
+## Lifecycle Performance
 
-### Suite de Tests Complète
-
-**Fichier** : `tests/src/sws_analog_test.cpp`
-
-| # | Test | Description | Validation |
-|---|------|-------------|------------|
-| 1 | `InitialAirCalibration` | Calibration au démarrage | 10 échantillons moyennés |
-| 2 | `SurfaceDetection` | Détection surface (ADC bas) | ADC < threshold_low |
-| 3 | `UnderwaterDetection` | Détection plongée (ADC haut) | ADC > threshold_high |
-| 4 | `HysteresisPreventOscillation` | Anti-oscillation | Maintien état dans zone |
-| 5 | `SalinityAdaptation` | Adaptation salinité variable | Détection avec 1500 puis 2800 |
-| 6 | `MaxDiveTimeSafety` | Timeout sécurité plongée | Force surface après 5s |
-| 7 | `InvalidADCValuesHandling` | Gestion valeurs invalides | Rejet saturation |
-
-### Exécution des Tests
-
-```bash
-# Compiler les tests
-cd /home/fourn/linkit-v4/linkit-v4-core/tests
-make
-
-# Exécuter tous les tests SWS Analog
-./build/linkit_tests -g SWSAnalog
-
-# Exécuter un test spécifique
-./build/linkit_tests -n SurfaceDetection
-
-# Exécuter avec verbose
-./build/linkit_tests -g SWSAnalog -v
-```
-
-**Sortie attendue** :
+### Test Results (actual measurements)
 
 ```
-TEST(SWSAnalog, InitialAirCalibration) - 12 ms
-TEST(SWSAnalog, SurfaceDetection) - 8 ms
-TEST(SWSAnalog, UnderwaterDetection) - 9 ms
-TEST(SWSAnalog, HysteresisPreventOscillation) - 15 ms
-TEST(SWSAnalog, SalinityAdaptation) - 22 ms
-TEST(SWSAnalog, MaxDiveTimeSafety) - 11 ms
-TEST(SWSAnalog, InvalidADCValuesHandling) - 7 ms
+Output from ProgressiveBiofouling_MultiCycleDegradation test:
 
-OK (7 tests, 7 ran, 15 checks, 0 ignored, 0 filtered out, 84 ms)
+Stage              | water→air   | Drop % | Tier | Latency  | Adapted threshold
+───────────────────┼─────────────┼────────┼──────┼──────────┼──────────────────
+Month 0  (clean)   | 3000→200    |  93%   | T1   | 1 sample | 499 → 628
+Month 3  (light)   | 2800→600    |  78%   | T1   | 1 sample | 1083 → 1286
+Month 6  (moderate)| 2500→1000   |  60%   | T1   | 1 sample | 1267 → 1409
+Month 9  (heavy)   | 2300→1400   |  39%   | T1   | 1 sample | 1409 → 1617
+Month 12 (severe)  | 2100→1700   |  19%   | T2   | 2 samples| 1617 → 1773
+
+Output from ExtremeBiofouling_SmallGap test:
+Extreme            | 1800→1500   |  16%   | T2   | 2 samples| 1573
 ```
 
----
+### Theoretical Limits
 
-## 🔄 Migration depuis l'Ancienne Version
+| Drop % | Abs drop | Tier | Latency | Equivalent biofouling |
+|--------|----------|------|---------|-----------------------|
+| >= 25% | >= 300 | T1 | 1s | Up to ~9 months |
+| >= 12% | >= 150 | T2 | 2s | Up to ~15 months |
+| >= 8% | >= 100 | T3 | 3s+ | Extreme case |
+| < 8% | < 100 | Trend/timeout | 15-30s | Nearly dead electrodes |
 
-### Étape 1 : Vérification Matérielle
+Beyond 15 months (drop < 8%), the algorithm falls back to:
+- Decreasing trend detection (TREND_CONSECUTIVE_DECREASE_MIN = 3)
+- Variance detection (VARIANCE_HIGH_THRESHOLD = 10000)
+- Max dive timeout as last resort (default 2h)
 
-✅ **Vérifier la board utilisée et les pins correspondants** :
-
-**Pour Gentracker V1.0** (board principale Linkit) :
-```cpp
-// Dans bsp.hpp gentracker_v1.0
-#define SWS_SAMPLE_PIN BSP::GPIO::GPIO_SWS        // P0.02 (AIN0) ✓
-#define SWS_ENABLE_PIN BSP::GPIO::GPIO_SLOW_SWS_SEND  // P0.10 ✓
-```
-
-
-Si GPIO_SWS n'est pas sur P0.02, il faudra :
-- Soit modifier le PCB
-- Soit changer `NRF_SAADC_INPUT_AIN0` dans bsp.cpp vers le bon canal ADC disponible
-
-### Étape 2 : Compilation
-
-**CMakeLists.txt** : Ajouter les nouveaux fichiers
-
-```cmake
-# Dans core/services/CMakeLists.txt ou équivalent
-set(SOURCES
-    ...
-    sws_service.cpp          # Ancienne version (garder pour compatibilité)
-    sws_analog_service.cpp   # Nouvelle version
-    ...
-)
-```
-
-**Compiler** :
-
-```bash
-cd /home/fourn/linkit-v4/linkit-v4-core
-mkdir -p build
-cd build
-cmake ..
-make -j4
-```
-
-### Étape 3 : Migration du Code
-
-**Changement minimal** :
-
-```cpp
-// Avant
-#include "sws_service.hpp"
-SWSService underwater_detector;
-
-// Après
-#include "sws_analog_service.hpp"
-SWSAnalogService underwater_detector;
-
-// Reste identique (même interface)
-underwater_detector.start(callback);
-```
-
-### Étape 4 : Configuration Initiale
-
-**Sur le premier déploiement** :
-
-```bash
-# 1. Flash le nouveau firmware
-nrfjprog --program build/linkit_v4.hex --chiperase
-
-# 2. Configurer via DTE (si nécessaire)
-AT+UNP10=0    # Source = SWS (pas SWS_GNSS)
-AT+UNP20=100  # Threshold min
-AT+UNP21=3000 # Threshold max
-
-# 3. Laisser le device se calibrer en air pendant ~2 minutes
-#    (éviter de le plonger immédiatement)
-```
-
-### Étape 5 : Validation
-
-**Test de fumée** :
-
-1. **En air sec** :
-   - Observer logs : `[INFO] SWSAnalog: Air calibration complete - air=XXX`
-   - Vérifier que ADC ~200 (dépend de votre hardware)
-
-2. **Première immersion** :
-   - Tremper dans eau salée
-   - Observer transition : `[INFO] State change detected - new_state=1`
-   - Vérifier ADC > 1000
-
-3. **Retour surface** :
-   - Sortir de l'eau, sécher
-   - Observer transition : `[INFO] State change detected - new_state=0`
-
----
-
-## 🎛️ Validation et Tuning
-
-### Phase 1 : Mesures ADC Baseline
-
-**Objectif** : Déterminer les valeurs ADC réelles de votre hardware
-
-**Procédure** :
-
-```cpp
-// Code de debug à ajouter temporairement dans detector_state()
-DEBUG_INFO("SWS_ADC: raw=%u filtered=%u thresh=%u air=%u water=%u",
-           raw_value, filtered_value, m_calib.threshold_current,
-           m_calib.threshold_air, m_calib.threshold_water);
-```
-
-**Mesures à effectuer** :
-
-| Condition | Procédure | ADC attendu (14-bit) |
-|-----------|-----------|----------------------|
-| **Air sec** | Électrodes sèches, en extérieur | 100-500 |
-| **Air humide** | Électrodes humides (brouillard) | 300-800 |
-| **Eau douce** | Électrodes dans eau robinet | 1000-2500 |
-| **Eau salée 1%** | 10g sel / 1L eau | 2500-4000 |
-| **Eau salée 3.5%** | 35g sel / 1L eau (océan) | 4000-8000 |
-
-**Note** : Les valeurs attendues sont pour une résolution ADC de 14-bit (0-16383), utilisée sur les deux boards.
-
-**Si les valeurs diffèrent significativement** :
-
-```cpp
-// Ajuster dans config_store.hpp
-SWS_ANALOG_THRESHOLD_MIN: <votre_ADC_air_min>
-SWS_ANALOG_THRESHOLD_MAX: <votre_ADC_eau_max>
-```
-
-### Phase 2 : Tuning de l'Hystérésis
-
-**Test de stabilité** :
-
-1. Placer le device à la limite air/eau (interface)
-2. Observer le nombre de transitions pendant 5 minutes
-3. Ajuster `SWS_ANALOG_HYSTERESIS` :
-
-| Transitions | Action |
-|-------------|--------|
-| > 10 / min | ⬆️ Augmenter hystérésis (+5%) |
-| 0-2 / min | ✅ Optimal |
-| 0 (bloqué) | ⬇️ Réduire hystérésis (-5%) |
-
-### Phase 3 : Validation Long Terme
-
-**Déploiement test (7 jours)** :
+### Complete Decision Diagram
 
 ```
-Jour 1-2  : Test intensif (immersions multiples)
-Jour 3-5  : Observation comportement normal
-Jour 6-7  : Validation recalibration automatique
-```
-
-**Métriques à surveiller** :
-
-| Métrique | Cible | Alarme si |
-|----------|-------|-----------|
-| Taux détection correcte | > 99% | < 95% |
-| Faux positifs (splash) | < 1/jour | > 5/jour |
-| Faux négatifs (rate plongée) | 0 | > 0 |
-| Drift threshold_air | < ±10% / jour | > ±20% / jour |
-| Drift threshold_water | < ±15% / jour | > ±30% / jour |
-
-### Phase 4 : Optimisation Consommation
-
-**Mesure courant de veille** :
-
-```cpp
-// Vérifier que ADC est bien uninit entre mesures
-nrfx_saadc_uninit();  // Doit être appelé après chaque lecture
-```
-
-**Tuning fréquence d'échantillonnage** :
-
-| Scénario | SAMPLING_SURF_FREQ | SAMPLING_UNDER_FREQ |
-|----------|-------------------|---------------------|
-| Économie max | 60s | 300s (5min) |
-| Équilibré | 30s | 120s (2min) |
-| Réactivité max | 10s | 60s (1min) |
-
-### Cas Particuliers
-
-**Si l'animal reste longtemps en surface sans bouger** :
-```cpp
-// Augmenter CALIB_INTERVAL pour éviter recalibrations inutiles
-SWS_ANALOG_CALIB_INTERVAL: 7200  // 2h au lieu de 1h
-```
-
-**Si l'animal fait des plongées très courtes (< 10s)** :
-```cpp
-// Réduire MIN_SURFACE_TIME
-UW_MIN_SURFACE_TIME: 3  // 3s au lieu de 10s
-```
-
-**Si l'animal fait des plongées extrêmement longues (> 2h)** :
-```cpp
-// Augmenter ou désactiver MAX_DIVE_TIME
-UW_MAX_DIVE_TIME: 14400  // 4h
-// ou
-UW_MAX_DIVE_TIME: 0      // Désactivé (attention !)
+                    detector_state() called
+                           |
+                    ┌──────┴──────┐
+                    │ Read ADC    │
+                    │ raw_value   │
+                    └──────┬──────┘
+                           |
+                    ┌──────┴──────┐
+                    │ Valid?      │──── No ──→ return m_current_state
+                    └──────┬──────┘
+                           | Yes
+                    ┌──────┴──────┐
+                    │ Filter      │
+                    │ (MA size=2) │
+                    └──────┬──────┘
+                           |
+                    ┌──────┴──────┐
+                    │ Trend +     │
+                    │ Variance    │
+                    └──────┬──────┘
+                           |
+              ┌────────────┴────────────┐
+              │ Currently underwater    │
+              │ (m_current_state=true)  │
+              └────────────┬────────────┘
+                      Yes  |  No
+                    ┌──────┴──────┐      ┌──────────────┐
+                    │ RAW drop?   │      │ Adaptation   │
+                    └──┬──────┬───┘      │ air baseline │
+                 Yes   |      | No       └──────┬───────┘
+           ┌───────────┘      └──────┐          |
+    ┌──────┴──────┐          ┌───────┴────┐     |
+    │ T1/T2/T3?   │          │ Trend/Var? │     |
+    └──────┬──────┘          └───────┬────┘     |
+           | Yes                     | Yes      |
+    ┌──────┴──────────┐      ┌───────┴────┐     |
+    │ RAPID OVERRIDE  │      │ BIOFOULING │     |
+    │ Reset ADC buf   │      │ OVERRIDE   │     |
+    │ Recalib air     │      └───────┬────┘     |
+    │ Set flag        │              |           |
+    └──────┬──────────┘              |           |
+           └──────────┬──────────────┘           |
+                      v                          |
+              ┌───────────────┐                  |
+              │ new_state =   │                  |
+              │ false (SURFACE)│                 |
+              └───────┬───────┘                  |
+                      |                          |
+                      └──────────┬───────────────┘
+                                 v
+                      ┌──────────────────┐
+                      │ Hysteresis check │
+                      │ + Safety timeout │
+                      └────────┬─────────┘
+                               v
+                        return new_state
 ```
 
 ---
 
-## 📈 Monitoring et Debug
+*Source files*:
+- `core/services/sws_analog_service.hpp` - Header (187 lines)
+- `core/services/sws_analog_service.cpp` - Implementation (826 lines)
+- `tests/src/sws_analog_test.cpp` - Unit tests (746 lines, 14 tests)
 
-### Ajout de Logs Custom
-
-Pour debug avancé, ajouter dans `detector_state()` :
-
-```cpp
-// Après chaque lecture ADC
-DEBUG_INFO("SWS: raw=%u filt=%u th=%u hyst=%u state=%u time=%llu",
-           raw_value, filtered_value,
-           m_calib.threshold_current, m_calib.hysteresis_value,
-           new_state, m_time_in_current_state);
-```
-
-### Export des Données
-
-Pour analyse post-déploiement :
-
-```cpp
-// Créer un log détaillé dans la flash
-struct SWSLogEntry {
-    uint64_t timestamp;
-    uint16_t adc_raw;
-    uint16_t adc_filtered;
-    uint16_t threshold;
-    bool state;
-};
-
-// Logger à chaque transition + toutes les 10 mesures
-```
-
----
-
-## 🔍 Troubleshooting
-
-### Problème 1 : ADC toujours saturé (16383)
-
-**Cause** : Court-circuit ou connexion défectueuse
-
-**Solution** :
-1. Vérifier continuité électrodes
-2. Vérifier que SWS_SENDER est bien sur P0.12
-3. Réduire le temps d'acquisition : `NRF_SAADC_ACQTIME_3US`
-
-### Problème 2 : Pas de détection sous l'eau
-
-**Cause** : Threshold trop élevé ou électrodes sales
-
-**Solution** :
-1. Forcer recalibration : plonger/ressortir 3× rapidement
-2. Vérifier ADC sous l'eau : doit être > 1000
-3. Nettoyer électrodes (alcool isopropylique)
-4. Réduire `THRESHOLD_MAX` temporairement
-
-### Problème 3 : Oscillations permanentes
-
-**Cause** : Hystérésis trop faible ou interférence électrique
-
-**Solution** :
-1. Augmenter `SWS_ANALOG_HYSTERESIS` à 20%
-2. Augmenter `UW_MIN_DRY_SAMPLES` à 5
-3. Vérifier masse commune MCU/électrodes
-
-### Problème 4 : Calibration perdue après reset
-
-**Cause** : Section noinit RAM effacée ou CRC incorrect
-
-**Solution** :
-1. Vérifier dans linker script : section `.noinit` existe
-2. Ne pas utiliser `--chiperase` lors des flash (utiliser `--sectorerase`)
-3. Ou accepter recalibration à chaque boot (~ 2 min)
-
----
-
-## 📚 Références
-
-### Documentation Technique
-
-- **nRF52840 SAADC** : `nRF5_SDK_17.0.2/components/drivers_nrf/hal/nrf_saadc.h`
-- **UWDetectorService** : `core/services/uwdetector_service.hpp`
-- **Configuration BSP** : `ports/nrf52840/bsp/gentracker_v1.0/`
-
-### Algorithmes Utilisés
-
-- **Moyenne mobile exponentielle** : `α × new + (1-α) × old`
-- **Hystérésis de Schmitt** : Deux seuils pour éviter oscillations
-- **CRC16-CCITT** : Validation intégrité calibration
-
-### Contact et Support
-
-Pour questions ou problèmes :
-- Créer une issue sur le repo GitHub
-- Vérifier les logs avec `DEBUG_TRACE` activé
-- Inclure valeurs ADC mesurées et configuration
-
----
-
-## 🎉 Conclusion
-
-Le nouveau **SWSAnalogService** offre une détection robuste et adaptative de la position surface/sous-eau, essentielle pour le tracking long terme. L'auto-calibration et le threshold dynamique garantissent une fiabilité continue même avec des changements de salinité, résolvant les limitations critiques de l'ancienne implémentation digitale.
-
-**Prochaines étapes recommandées** :
-1. ✅ Compiler et tester en lab
-2. ✅ Valider sur 3-5 devices pendant 1 semaine
-3. ✅ Analyser les données, ajuster si nécessaire
-4. ✅ Déploiement production sur toute la flotte
-
----
-
-*Document créé le 2026-01-07*
-*Dernière mise à jour : 2026-01-07*
-*Version du firmware : Linkit V4*
+*Last updated: 2026-02-17*

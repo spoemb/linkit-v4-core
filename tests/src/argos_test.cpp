@@ -6,12 +6,12 @@
 #include "fake_rtc.hpp"
 #include "fake_config_store.hpp"
 #include "fake_logger.hpp"
-#include "linux_timer.hpp"
 #include "fake_timer.hpp"
 #include "dte_protocol.hpp"
 #include "binascii.hpp"
 #include "timeutils.hpp"
 
+using namespace std::string_literals;
 
 extern Timer *system_timer;
 extern ConfigurationStore *configuration_store;
@@ -28,7 +28,6 @@ TEST_GROUP(ArgosScheduler)
 	MockKineis *mock_kineis;
 	MockBatteryMonitor *mock_battery;
 	FakeRTC *fake_rtc;
-	LinuxTimer *linux_timer;
 	FakeTimer *fake_timer;
 	FakeLog *fake_log;
 	unsigned int txco_warmup = 5U;
@@ -46,9 +45,8 @@ TEST_GROUP(ArgosScheduler)
 		fake_log->create();
 		fake_rtc = new FakeRTC;
 		rtc = fake_rtc;
-		linux_timer = new LinuxTimer;
 		fake_timer = new FakeTimer;
-		system_timer = fake_timer; // linux_timer;
+		system_timer = fake_timer;
 		system_scheduler = new Scheduler(system_timer);
 		fake_timer->start();
 
@@ -62,7 +60,6 @@ TEST_GROUP(ArgosScheduler)
 
 	void teardown() {
 		delete system_scheduler;
-		delete linux_timer;
 		delete fake_timer;
 		delete fake_rtc;
 		delete fake_log;
@@ -118,7 +115,7 @@ TEST(ArgosScheduler, LegacyModeSchedulingShortPacket)
 	mock().expectOneCall("get_voltage").onObject(battery_monitor).andReturnValue(4500);
 	argos_sched->start();
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.info.batt_voltage = 3960;
 	gps_entry.info.year = 2020;
 	gps_entry.info.month = 4;
@@ -214,7 +211,7 @@ TEST(ArgosScheduler, DutyCycleModeSchedulingShortPacket)
 	mock().expectOneCall("get_voltage").onObject(battery_monitor).andReturnValue(4500);
 	argos_sched->start();
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.info.batt_voltage = 3960;
 	gps_entry.info.year = 2020;
 	gps_entry.info.month = 4;
@@ -304,7 +301,7 @@ TEST(ArgosScheduler, SchedulingLongPacket)
 
 	argos_sched->start();
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.header.year = 2020;
 	gps_entry.header.month = 4;
 	gps_entry.header.day = 28;
@@ -469,7 +466,7 @@ TEST(ArgosScheduler, PrepassSchedulingShortPacket)
 	argos_sched->start();
 
 	// Populate GPS
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.header.year = 2020;
 	gps_entry.header.month = 4;
 	gps_entry.header.day = 28;
@@ -589,7 +586,7 @@ TEST(ArgosScheduler, PrepassSchedulingLongPacket)
 	argos_sched->start();
 
 	// Populate 4 GPS entries
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.header.year = 2020;
 	gps_entry.header.month = 4;
 	gps_entry.header.day = 28;
@@ -759,7 +756,7 @@ TEST(ArgosScheduler, DutyCycleModeManyShortPackets)
 	fake_timer->set_counter(0);
 	argos_sched->start();
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.info.batt_voltage = 3960;
 	gps_entry.info.year = 2020;
 	gps_entry.info.month = 4;
@@ -849,7 +846,7 @@ TEST(ArgosScheduler, DutyCycleWithSaltwaterSwitchEvents)
 	mock().expectOneCall("get_voltage").onObject(battery_monitor).andReturnValue(4500);
 	fake_timer->set_counter((t*1000));
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.info.batt_voltage = 3960;
 	gps_entry.info.year = 2020;
 	gps_entry.info.month = 4;
@@ -1036,7 +1033,7 @@ TEST(ArgosScheduler, PrepassWithSaltwaterSwitchEvents)
 	argos_sched->start();
 
 	// Write initial GPS entry
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.info.batt_voltage = 3960;
 	gps_entry.info.year = 2020;
 	gps_entry.info.month = 4;
@@ -1187,7 +1184,7 @@ TEST(ArgosScheduler, SchedulingShortPacketWithNonZeroAltitude)
 	mock().expectOneCall("get_voltage").onObject(battery_monitor).andReturnValue(4500);
 	argos_sched->start();
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.info.batt_voltage = 3960;
 	gps_entry.info.year = 2020;
 	gps_entry.info.month = 4;
@@ -1277,7 +1274,7 @@ TEST(ArgosScheduler, SchedulingShortPacketWithMaxTruncatedAltitude)
 	mock().expectOneCall("get_voltage").onObject(battery_monitor).andReturnValue(4500);
 	argos_sched->start();
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.info.batt_voltage = 3960;
 	gps_entry.info.year = 2020;
 	gps_entry.info.month = 4;
@@ -1368,7 +1365,7 @@ TEST(ArgosScheduler, SchedulingShortPacketWithMinTruncatedAltitude)
 	mock().expectOneCall("get_voltage").onObject(battery_monitor).andReturnValue(4500);
 	argos_sched->start();
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.info.batt_voltage = 3960;
 	gps_entry.info.year = 2020;
 	gps_entry.info.month = 4;
@@ -1451,7 +1448,7 @@ TEST(ArgosScheduler, SchedulingCheckGpsBurstCountInfiniteInDutyCycleMode)
 
 	argos_sched->start();
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.header.year = 2020;
 	gps_entry.header.month = 4;
 	gps_entry.header.day = 28;
@@ -1599,7 +1596,7 @@ TEST(ArgosScheduler, SchedulingCheckGpsBurstCountInfiniteInLegacyMode)
 
 	argos_sched->start();
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.header.year = 2020;
 	gps_entry.header.month = 4;
 	gps_entry.header.day = 28;
@@ -1750,7 +1747,7 @@ TEST(ArgosScheduler, SchedulingLongPacketLowBatteryFlag)
 
 	argos_sched->start();
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.header.year = 2020;
 	gps_entry.header.month = 4;
 	gps_entry.header.day = 28;
@@ -1902,7 +1899,7 @@ TEST(ArgosScheduler, SchedulingShortPacketLowBatteryFlag)
 
 	argos_sched->start();
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.header.year = 2020;
 	gps_entry.header.month = 4;
 	gps_entry.header.day = 28;
@@ -2020,7 +2017,7 @@ TEST(ArgosScheduler, SchedulingShortPacketOutOfZoneFlag)
 
 	argos_sched->start();
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.header.year = 2020;
 	gps_entry.header.month = 4;	// Setup zone config
 	gps_entry.header.day = 28;
@@ -2140,7 +2137,7 @@ TEST(ArgosScheduler, SchedulingLongPacketOutOfZoneFlag)
 
 	argos_sched->start();
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.header.year = 2020;
 	gps_entry.header.month = 4;
 	gps_entry.header.day = 28;
@@ -2303,7 +2300,7 @@ TEST(ArgosScheduler, TimeSyncBurstTransmissionIsSent)
 	mock().expectOneCall("get_voltage").onObject(battery_monitor).andReturnValue(4500);
 	argos_sched->start();
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.info.batt_voltage = 3960;
 	gps_entry.info.year = 2020;
 	gps_entry.info.month = 4;
@@ -2374,7 +2371,7 @@ TEST(ArgosScheduler, LegacyModeSchedulingShortPacketInfiniteBurst)
 	fake_timer->set_counter(t*1000);
 	argos_sched->start();
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.info.batt_voltage = 3960;
 	gps_entry.info.year = 2020;
 	gps_entry.info.month = 4;
@@ -2451,7 +2448,7 @@ TEST(ArgosScheduler, LegacyModeSchedulingShortPacketInfiniteBurstWithTimeSyncro)
 	fake_timer->set_counter(t*1000);
 	argos_sched->start();
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.info.batt_voltage = 3960;
 	gps_entry.info.year = 2020;
 	gps_entry.info.month = 4;
@@ -2550,7 +2547,7 @@ TEST(ArgosScheduler, SchedulingNonPrepassTxJitter)
 
 	argos_sched->start();
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.info.batt_voltage = 3960;
 	gps_entry.info.year = 2020;
 	gps_entry.info.month = 4;
@@ -2648,7 +2645,7 @@ TEST(ArgosScheduler, PrepassSchedulingShortPacketTXJitter)
 	argos_sched->start();
 
 	// Populate GPS
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.header.year = 2020;
 	gps_entry.header.month = 4;
 	gps_entry.header.day = 28;
@@ -2808,7 +2805,7 @@ TEST(ArgosScheduler, OutOfZoneModeChangeLegacy)
 
 	// This log entry should be inside the zone
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.info.batt_voltage = 3960;
 	gps_entry.info.year = 2020;
 	gps_entry.info.month = 4;
@@ -2971,7 +2968,7 @@ TEST(ArgosScheduler, OutOfZoneModeChangePrepass)
 
 	// This log entry should be inside the zone
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.info.batt_voltage = 3960;
 	gps_entry.info.year = 2020;
 	gps_entry.info.month = 4;
@@ -3071,7 +3068,7 @@ TEST(ArgosScheduler, LegacyModeSchedulingShortPacketInfiniteBurstWithNonZeroSens
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
 	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.info.batt_voltage = 3960;
 	gps_entry.info.year = 2020;
 	gps_entry.info.month = 4;
@@ -3165,7 +3162,7 @@ TEST(ArgosScheduler, LegacyModeSchedulingShortPacketInfiniteBurstConfirmDepthPil
 	fake_timer->set_counter(t*1000);
 	argos_sched->start();
 
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.header.year = year;
 	gps_entry.header.month = month;
 	gps_entry.header.day = day;
@@ -3290,7 +3287,7 @@ TEST(ArgosScheduler, TestDownlinkReceive)
 	argos_sched->start();
 
 	// Populate GPS
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.header.year = 2020;
 	gps_entry.header.month = 4;
 	gps_entry.header.day = 28;
@@ -3450,7 +3447,7 @@ TEST(ArgosScheduler, TestDownlinkWithAOPUpdatePeriod)
 	argos_sched->start();
 
 	// Populate GPS
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.header.year = 2020;
 	gps_entry.header.month = 4;
 	gps_entry.header.day = 28;
@@ -3883,7 +3880,7 @@ TEST(ArgosScheduler, TestAOPUpdateWithOutOfServiceSatellite)
 	argos_sched->start();
 
 	// Populate GPS
-	GPSLogEntry gps_entry;
+	GPSLogEntry gps_entry{};
 	gps_entry.header.year = 2020;
 	gps_entry.header.month = 4;
 	gps_entry.header.day = 28;

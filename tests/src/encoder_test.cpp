@@ -30,10 +30,6 @@ TEST_GROUP(Encoder)
 		ParamID::ARGOS_POWER,
 		ParamID::TR_NOM,
 	};
-	void setup() {
-	}
-	void teardown() {
-	}
 };
 
 TEST(Encoder, PARML_REQ)
@@ -235,16 +231,20 @@ TEST(Encoder, RSTBW_RESP)
 
 TEST(Encoder, PARAM_ARGOS_DECID_OutOfRangeCheck)
 {
+	// Max range is now 0xFFFFFFFF (full 32-bit), so 0xFFFFFFFF should be accepted
 	ParamValue p = { ParamID::ARGOS_DECID, 0xFFFFFFFFU };
 	std::vector<ParamValue> v = { p };
-	CHECK_THROWS(ErrorCode, DTEEncoder::encode(DTECommand::PARMW_REQ, v));
+	std::string s = DTEEncoder::encode(DTECommand::PARMW_REQ, v);
+	STRCMP_EQUAL("$PARMW#010;IDP12=4294967295\r", s.c_str());
 }
 
 TEST(Encoder, PARAM_ARGOS_HEXID_OutOfRangeCheck)
 {
+	// Max range is now 0xFFFFFFFF (full 32-bit), so 0xFFFFFFFF should be accepted
 	ParamValue p = { ParamID::ARGOS_HEXID, 0xFFFFFFFFU };
 	std::vector<ParamValue> v = { p };
-	CHECK_THROWS(ErrorCode, DTEEncoder::encode(DTECommand::PARMW_REQ, v));
+	std::string s = DTEEncoder::encode(DTECommand::PARMW_REQ, v);
+	STRCMP_EQUAL("$PARMW#00E;IDT06=FFFFFFFF\r", s.c_str());
 }
 
 TEST(Encoder, PARAM_ARGOS_DEVICE_MODEL_OutOfRangeCheck)

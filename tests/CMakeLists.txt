@@ -84,13 +84,13 @@ target_compile_options(${PROJECT_NAME} PRIVATE
     -DDEBUG_LEVEL=4
 
     # For setting default device model
-    -DDEVICE_MODEL_NAME="SURFACEBOX"s
+    -DDEVICE_MODEL_NAME=std::string\("SURFACEBOX"\)
     -DMODEL_SB=0
     -DMODEL_UW=0
     -DMODEL_CORE=1
 
     # For setting firmware app version
-    -DFW_APP_VERSION_STR="V0.1"s
+    -DFW_APP_VERSION_STR=std::string\("V0.1"\)
     -DFW_APP_VERSION_STR_C="V0.1"
 
 	# Packet protocol option for including CRC8
@@ -254,11 +254,11 @@ target_compile_options(${TURTLE_SIM_NAME} PRIVATE
     -DPREPAS_EMBEDDED
     -DDEBUG_ENABLE
     -DDEBUG_LEVEL=4
-    -DDEVICE_MODEL_NAME="SURFACEBOX"s
+    -DDEVICE_MODEL_NAME=std::string\("SURFACEBOX"\)
     -DMODEL_SB=0
     -DMODEL_UW=0
     -DMODEL_CORE=1
-    -DFW_APP_VERSION_STR="V0.1"s
+    -DFW_APP_VERSION_STR=std::string\("V0.1"\)
     -DFW_APP_VERSION_STR_C="V0.1"
     -DARGOS_USE_CRC8
     -DINPLACE_FUNCTION_SIZE_SCHEDULER=1024

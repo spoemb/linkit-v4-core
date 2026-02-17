@@ -74,6 +74,11 @@
 // Initialize static members in noinit section
 SWSAnalogService::CalibrationData SWSAnalogService::m_calib;
 uint16_t SWSAnalogService::m_calib_crc;
+SWSAnalogService::Status SWSAnalogService::m_status = {};
+
+SWSAnalogService::Status SWSAnalogService::get_status() {
+    return m_status;
+}
 
 // SAADC event handler (required but not used for blocking mode)
 static void nrfx_saadc_event_handler_sws(nrfx_saadc_evt_t const *p_event)
@@ -154,6 +159,7 @@ void SWSAnalogService::service_init() {
     // Initialize variance tracking
     m_variance_sum_sq = 0;
     m_variance_mean = 0;
+    m_rapid_surface_confirmed = false;
 
     DEBUG_INFO("SWSAnalog: Initialized - min=%u max=%u hyst=%u%% ratio=%u%% alpha=%u%%",
                m_threshold_min, m_threshold_max, m_hysteresis_percent,
@@ -663,10 +669,21 @@ bool SWSAnalogService::detector_state() {
         new_state = false;
         m_consecutive_samples = 0;
         m_time_in_hysteresis = 0;
+        // Flag: rapid detection confirmed - bypass confirmation on subsequent samples
+        // within the same parent batch (m_current_state hasn't been updated yet)
+        m_rapid_surface_confirmed = true;
+    } else if (m_rapid_surface_confirmed && filtered_value < threshold_high) {
+        // Rapid detection was confirmed in a previous sample of this batch.
+        // m_current_state is still true (parent updates at end-of-batch), but we know
+        // we're at surface. Return false immediately without confirmation delay.
+        new_state = false;
+        m_consecutive_samples = 0;
+        m_time_in_hysteresis = 0;
     } else if (filtered_value > threshold_high) {
         // Above threshold - potential underwater
         m_consecutive_samples++;
         m_time_in_hysteresis = 0;  // Reset hysteresis counter
+        m_rapid_surface_confirmed = false;  // Clear rapid flag if going back underwater
 
         if (m_consecutive_samples >= m_max_samples) {
             new_state = true;  // UNDERWATER confirmed
@@ -802,6 +819,17 @@ bool SWSAnalogService::detector_state() {
         DEBUG_INFO("SWSAnalog: Periodic recalibration triggered");
         calibrate_air_baseline();
     }
+
+    // Update status snapshot for DTE diagnostic readout
+    m_status.threshold_air = m_calib.threshold_air;
+    m_status.threshold_water = m_calib.threshold_water;
+    m_status.threshold_current = m_calib.threshold_current;
+    m_status.hysteresis = m_calib.hysteresis_value;
+    m_status.last_raw_adc = raw_value;
+    m_status.last_filtered_adc = filtered_value;
+    m_status.is_calibrated = m_calib.is_calibrated;
+    m_status.is_underwater = new_state;
+    m_status.time_in_state_sec = (uint32_t)m_time_in_current_state;
 
     return new_state;
 }

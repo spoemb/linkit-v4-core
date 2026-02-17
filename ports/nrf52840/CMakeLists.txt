@@ -1,11 +1,9 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.13)
 
 project(LinkIt
     VERSION 0.1
     LANGUAGES CXX C ASM
 )
-
-set(VERSION_NUMBER 0)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -15,7 +13,7 @@ set(PROJ_DIR      .)
 set(CORE_DIR      ../../core)
 set(LIB_DIR       ../../libraries)
 
-option(BOARD "Board to compile for" LINKIT)
+set(BOARD "LINKIT" CACHE STRING "Board to compile for")
 option(ARGOS_SMD "Use SMD satellite module" OFF)
 
 # Configure GPIO5 device (default: CAM)
@@ -125,8 +123,7 @@ else()
     set(BOOTLOADER "bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex")
 endif()
 
-if (DEBUG_LEVEL)
-else()
+if(NOT DEFINED DEBUG_LEVEL)
     set(DEBUG_LEVEL 3)
 endif()
 
@@ -492,7 +489,7 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     __HEAP_SIZE=0 # Use configTOTAL_HEAP_SIZE instead
     __STACK_SIZE=32768
     configTOTAL_HEAP_SIZE=65536
-    DEVICE_MODEL_NAME="${DEVICE_MODEL}"s
+    DEVICE_MODEL_NAME=std::string\("${DEVICE_MODEL}"\)
     #LFS_YES_TRACE
     #BATTERY_NOT_FITTED
     #DUMMY_PRESSURE_SENSOR
@@ -501,7 +498,7 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     ETL_LOG_ERRORS
     ARGOS_USE_CRC8
     PREPASS_EMBEDDED
-    FW_APP_VERSION_STR="${FW_APP_VERSION}"s
+    FW_APP_VERSION_STR=std::string\("${FW_APP_VERSION}"\)
     FW_APP_VERSION_STR_C="${FW_APP_VERSION}"
     #WORKAROUND_ALLCAST_CONSTELLATION_STATUS_ENCODING_BUG
     _XOPEN_SOURCE=700 # Enables strptime() usage

@@ -12,6 +12,8 @@
 #include "scheduler.hpp"
 #include "argos_tx_service.hpp"
 
+using namespace std::string_literals;
+
 extern Timer *system_timer;
 extern ConfigurationStore *configuration_store;
 extern Scheduler *system_scheduler;
@@ -124,8 +126,8 @@ TEST_GROUP(ArgosTxService)
 
 	void notify_underwater_state(bool state) {
 		ServiceEvent e;
-		e.event_type = ServiceEventType::SERVICE_LOG_UPDATED,
-		e.event_data = state,
+		e.event_type = ServiceEventType::SERVICE_LOG_UPDATED;
+		e.event_data = state;
 		e.event_source = ServiceIdentifier::UW_SENSOR;
 		e.event_originator_unique_id = 0x12345678;
 		ServiceManager::notify_peer_event(e);
@@ -313,143 +315,6 @@ TEST(ArgosTxService, SchedulerDutyCycleNoJitter)
 	CHECK_EQUAL(10000U, result);
 	sched.notify_tx_complete();
 }
-
-// TEST(ArgosTxService, SchedulerPrepassNoLocationSet)
-// {
-// 	ArgosTxScheduler sched;
-// 	ArgosConfig config;
-// 	KineisModulation mode;
-// 
-// 	config.argos_tx_jitter_en = false;
-// 	config.tr_nom = 10;
-// 
-// 	BasePassPredict pass_predict = {
-// 		/* version_code */ 0,
-// 		7,
-// 		{
-// 		    { 0xA, 5, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 59, 44 }, 7195.550f, 98.5444f, 327.835f, -25.341f, 101.3587f, 0.00f },
-// 			{ 0x9, 3, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 33, 39 }, 7195.632f, 98.7141f, 344.177f, -25.340f, 101.3600f, 0.00f },
-// 			{ 0xB, 7, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 23, 29, 29 }, 7194.917f, 98.7183f, 330.404f, -25.336f, 101.3449f, 0.00f },
-// 			{ 0x5, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 23, 50, 6 }, 7180.549f, 98.7298f, 289.399f, -25.260f, 101.0419f, -1.78f },
-// 			{ 0x8, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 22, 12, 6 }, 7226.170f, 99.0661f, 343.180f, -25.499f, 102.0039f, -1.80f },
-// 			{ 0xC, 6, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 52 }, 7226.509f, 99.1913f, 291.936f, -25.500f, 102.0108f, -1.98f },
-// 			{ 0xD, 4, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 53 }, 7160.246f, 98.5358f, 118.029f, -25.154f, 100.6148f, 0.00f }
-// 		}
-// 	};
-// 
-// 	CHECK_EQUAL(ArgosTxScheduler::INVALID_SCHEDULE, sched.schedule_legacy(config, pass_predict, mode, 0));
-// }
-
-// TEST(ArgosTxService, SchedulerPrepassNominal)
-// {
-// 	ArgosTxScheduler sched;
-// 	ArgosConfig config;
-// 	KineisModulation mode;
-// 
-// 	config.argos_tx_jitter_en = false;
-// 	config.tr_nom = 10;
-// 	config.prepass_comp_step = 10;
-// 	config.prepass_linear_margin = 300;
-// 	config.prepass_max_passes = 1000;
-// 	config.prepass_min_duration = 30;
-// 	config.prepass_min_elevation = 15;
-// 	config.prepass_max_elevation = 90;
-// 
-// 	BasePassPredict pass_predict = {
-// 		/* version_code */ 0,
-// 		7,
-// 		{
-// 		    { 0xA, 5, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 59, 44 }, 7195.550f, 98.5444f, 327.835f, -25.341f, 101.3587f, 0.00f },
-// 			{ 0x9, 3, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 33, 39 }, 7195.632f, 98.7141f, 344.177f, -25.340f, 101.3600f, 0.00f },
-// 			{ 0xB, 7, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 23, 29, 29 }, 7194.917f, 98.7183f, 330.404f, -25.336f, 101.3449f, 0.00f },
-// 			{ 0x5, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 23, 50, 6 }, 7180.549f, 98.7298f, 289.399f, -25.260f, 101.0419f, -1.78f },
-// 			{ 0x8, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 22, 12, 6 }, 7226.170f, 99.0661f, 343.180f, -25.499f, 102.0039f, -1.80f },
-// 			{ 0xC, 6, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 52 }, 7226.509f, 99.1913f, 291.936f, -25.500f, 102.0108f, -1.98f },
-// 			{ 0xD, 4, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 53 }, 7160.246f, 98.5358f, 118.029f, -25.154f, 100.6148f, 0.00f }
-// 		}
-// 	};
-// 
-// 	sched.set_last_location(0, 0);
-// 	unsigned int result = sched.schedule_legacy(config, pass_predict, mode, 1652100787U);
-// 	CHECK_EQUAL(15040000U, result);
-// 	CHECK_EQUAL(KineisModulation::LDA2, mode);
-// 	sched.notify_tx_complete();
-// 	result = sched.schedule_legacy(config, pass_predict, mode, 1652115827U);
-// 	CHECK_EQUAL(10000U, result);
-// 	CHECK_EQUAL(KineisModulation::LDA2, mode);
-// 	sched.notify_tx_complete();
-// 	result = sched.schedule_legacy(config, pass_predict, mode, 1652115837U);
-// 	CHECK_EQUAL(10000U, result);
-// 	CHECK_EQUAL(KineisModulation::LDA2, mode);
-// 	sched.notify_tx_complete();
-// 	result = sched.schedule_legacy(config, pass_predict, mode, 1652119000U);
-// 	CHECK_EQUAL(1670000U, result);
-// 	CHECK_EQUAL(KineisModulation::LDA2, mode);
-// 	sched.notify_tx_complete();
-// }
-
-// TEST(ArgosTxService, SchedulerPrepassEmpty)
-// {
-// 	ArgosTxScheduler sched;
-// 	ArgosConfig config;
-// 	KineisModulation mode;
-// 
-// 	config.argos_tx_jitter_en = false;
-// 	config.tr_nom = 10;
-// 	config.prepass_comp_step = 10;
-// 	config.prepass_linear_margin = 300;
-// 	config.prepass_max_passes = 1000;
-// 	config.prepass_min_duration = 30;
-// 	config.prepass_min_elevation = 15;
-// 	config.prepass_max_elevation = 90;
-// 
-// 	BasePassPredict pass_predict = {
-// 	};
-// 
-// 	sched.set_last_location(0, 0);
-// 	unsigned int result = sched.schedule_legacy(config, pass_predict, mode, 1652100787U);
-// 	CHECK_EQUAL(ArgosTxScheduler::INVALID_SCHEDULE, result);
-// }
-
-// TEST(ArgosTxService, SchedulerPrepassWithJitter)
-// {
-// 	ArgosTxScheduler sched;
-// 	ArgosConfig config;
-// 	KineisModulation mode;
-// 
-// 	config.argos_tx_jitter_en = true;
-// 	config.tr_nom = 10;
-// 	config.prepass_comp_step = 10;
-// 	config.prepass_linear_margin = 300;
-// 	config.prepass_max_passes = 1000;
-// 	config.prepass_min_duration = 30;
-// 	config.prepass_min_elevation = 15;
-// 	config.prepass_max_elevation = 90;
-// 
-// 	BasePassPredict pass_predict = {
-// 		/* version_code */ 0,
-// 		7,
-// 		{
-// 		    { 0xA, 5, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 59, 44 }, 7195.550f, 98.5444f, 327.835f, -25.341f, 101.3587f, 0.00f },
-// 			{ 0x9, 3, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 33, 39 }, 7195.632f, 98.7141f, 344.177f, -25.340f, 101.3600f, 0.00f },
-// 			{ 0xB, 7, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 23, 29, 29 }, 7194.917f, 98.7183f, 330.404f, -25.336f, 101.3449f, 0.00f },
-// 			{ 0x5, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 23, 50, 6 }, 7180.549f, 98.7298f, 289.399f, -25.260f, 101.0419f, -1.78f },
-// 			{ 0x8, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 22, 12, 6 }, 7226.170f, 99.0661f, 343.180f, -25.499f, 102.0039f, -1.80f },
-// 			{ 0xC, 6, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 52 }, 7226.509f, 99.1913f, 291.936f, -25.500f, 102.0108f, -1.98f },
-// 			{ 0xD, 4, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 53 }, 7160.246f, 98.5358f, 118.029f, -25.154f, 100.6148f, 0.00f }
-// 		}
-// 	};
-// 
-// 	sched.set_last_location(0, 0);
-// 	unsigned int result = sched.schedule_legacy(config, pass_predict, mode, 1652100787U);
-// 	CHECK_EQUAL(15043148U, result);
-// 	CHECK_EQUAL(KineisModulation::LDA2, mode);
-// 	sched.notify_tx_complete();
-// 	result = sched.schedule_legacy(config, pass_predict, mode, 1652100787U);
-// 	CHECK_EQUAL(15049502U, result);
-// 	CHECK_EQUAL(KineisModulation::LDA2, mode);
-// 	sched.notify_tx_complete();
-// }
 
 TEST(ArgosTxService, BuildLongCertificationPacket)
 {
@@ -1083,164 +948,6 @@ TEST(ArgosTxService, UnderwaterFor24HoursBeforeTx)
 	system_scheduler->run();
 }
 
-
-IGNORE_TEST(ArgosTxService, PassPredictTogglingLowBattery)
-{
-	double frequency = 900.22;
-	BaseArgosMode mode = BaseArgosMode::PASS_PREDICTION;
-	BaseArgosPower power = BaseArgosPower::POWER_1000_MW;
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_4;
-	unsigned int argos_hexid = 0x01234567U;
-	unsigned int lb_threshold = 20U;
-	bool lb_en = true;
-	unsigned int tr_nom = 10;
-	bool time_sync_en = false;
-
-	fake_config_store->write_param(ParamID::ARGOS_DEPTH_PILE, depth_pile);
-	fake_config_store->write_param(ParamID::ARGOS_FREQ, frequency);
-	fake_config_store->write_param(ParamID::ARGOS_MODE, mode);
-	fake_config_store->write_param(ParamID::ARGOS_HEXID, argos_hexid);
-	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
-	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
-	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
-	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
-
-	BasePassPredict pass_predict = {
-		/* version_code */ 0,
-		7,
-		{
-		    { 0xA, 5, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 59, 44 }, 7195.550f, 98.5444f, 327.835f, -25.341f, 101.3587f, 0.00f },
-			{ 0x9, 3, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 33, 39 }, 7195.632f, 98.7141f, 344.177f, -25.340f, 101.3600f, 0.00f },
-			{ 0xB, 7, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 23, 29, 29 }, 7194.917f, 98.7183f, 330.404f, -25.336f, 101.3449f, 0.00f },
-			{ 0x5, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 23, 50, 6 }, 7180.549f, 98.7298f, 289.399f, -25.260f, 101.0419f, -1.78f },
-			{ 0x8, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 22, 12, 6 }, 7226.170f, 99.0661f, 343.180f, -25.499f, 102.0039f, -1.80f },
-			{ 0xC, 6, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 52 }, 7226.509f, 99.1913f, 291.936f, -25.500f, 102.0108f, -1.98f },
-			{ 0xD, 4, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 53 }, 7160.246f, 98.5358f, 118.029f, -25.154f, 100.6148f, 0.00f }
-		}
-	};
-
-	fake_config_store->write_pass_predict(pass_predict);
-
-	ArgosTxService serv(*mock_kineis);
-
-	std::time_t t = 1580083200000;
-	fake_rtc->settime(t/1000);
-	fake_timer->set_counter(t);
-
-	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
-	serv.start();
-
-	inject_gps_location(1, 11.8768, -33.8232, t);
-	inject_gps_location(1, 11.8768, -33.8232, t);
-	inject_gps_location(1, 11.8768, -33.8232, t);
-	inject_gps_location(1, 11.8768, -33.8232, t);
-	system_scheduler->run();
-
-	// Run for 10 transmissions
-	for (unsigned int i = 0; i < 10; i++) {
-
-		if (i & 1) {
-			// Force LB state
-			fake_config_store->set_battery_level(10U);
-			mock().expectOneCall("send").onObject(mock_kineis).ignoreOtherParameters();
-		} else {
-			fake_config_store->set_battery_level(100U);
-			mock().expectOneCall("send").onObject(mock_kineis).ignoreOtherParameters();
-		}
-
-		inject_gps_location(1, 11.8768, -33.8232, t);
-
-		t += serv.get_last_schedule();
-		fake_rtc->settime(t/1000);
-		fake_timer->set_counter(t);
-		system_scheduler->run();
-
-		mock_kineis->notify(KineisEventTxComplete({}));
-
-	}
-}
-
-IGNORE_TEST(ArgosTxService, DepthPileNoEligibleEntries)
-{
-	double frequency = 900.22;
-	BaseArgosMode mode = BaseArgosMode::PASS_PREDICTION;
-	BaseArgosPower power = BaseArgosPower::POWER_1000_MW;
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_4;
-	unsigned int argos_hexid = 0x01234567U;
-	unsigned int lb_threshold = 20U;
-	bool lb_en = true;
-	unsigned int tr_nom = 10;
-	bool time_sync_en = false;
-	unsigned int n_try = 3;
-
-	fake_config_store->write_param(ParamID::ARGOS_DEPTH_PILE, depth_pile);
-	fake_config_store->write_param(ParamID::ARGOS_FREQ, frequency);
-	fake_config_store->write_param(ParamID::ARGOS_MODE, mode);
-	fake_config_store->write_param(ParamID::ARGOS_HEXID, argos_hexid);
-	fake_config_store->write_param(ParamID::LB_EN, lb_en);
-	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
-	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
-	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
-	fake_config_store->write_param(ParamID::NTRY_PER_MESSAGE, n_try);
-	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
-
-	BasePassPredict pass_predict = {
-		/* version_code */ 0,
-		7,
-		{
-		    { 0xA, 5, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 59, 44 }, 7195.550f, 98.5444f, 327.835f, -25.341f, 101.3587f, 0.00f },
-			{ 0x9, 3, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 33, 39 }, 7195.632f, 98.7141f, 344.177f, -25.340f, 101.3600f, 0.00f },
-			{ 0xB, 7, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 23, 29, 29 }, 7194.917f, 98.7183f, 330.404f, -25.336f, 101.3449f, 0.00f },
-			{ 0x5, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 23, 50, 6 }, 7180.549f, 98.7298f, 289.399f, -25.260f, 101.0419f, -1.78f },
-			{ 0x8, 0, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A2, { 2020, 1, 26, 22, 12, 6 }, 7226.170f, 99.0661f, 343.180f, -25.499f, 102.0039f, -1.80f },
-			{ 0xC, 6, SAT_DNLK_OFF, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 52 }, 7226.509f, 99.1913f, 291.936f, -25.500f, 102.0108f, -1.98f },
-			{ 0xD, 4, SAT_DNLK_ON_WITH_A3, SAT_UPLK_ON_WITH_A3, { 2020, 1, 26, 22, 3, 53 }, 7160.246f, 98.5358f, 118.029f, -25.154f, 100.6148f, 0.00f }
-		}
-	};
-
-	fake_config_store->write_pass_predict(pass_predict);
-
-	ArgosTxService serv(*mock_kineis);
-
-	std::time_t t = 1580083200000;
-	fake_rtc->settime(t/1000);
-	fake_timer->set_counter(t);
-
-	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
-	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
-	serv.start();
-
-	inject_gps_location(1, 11.8768, -33.8232, t);
-	inject_gps_location(1, 11.8768, -33.8232, t);
-	inject_gps_location(1, 11.8768, -33.8232, t);
-	inject_gps_location(1, 11.8768, -33.8232, t);
-	system_scheduler->run();
-
-	// Run for 10 transmissions
-	for (unsigned int i = 0; i < 4; i++) {
-
-		if (i < n_try) {
-			mock().expectOneCall("send").onObject(mock_kineis).ignoreOtherParameters();
-		}
-
-		t += serv.get_last_schedule();
-		fake_rtc->settime(t/1000);
-		fake_timer->set_counter(t);
-		system_scheduler->run();
-
-		if (i < n_try) {
-			mock_kineis->notify(KineisEventTxComplete({}));
-		}
-	}
-
-	CHECK_TRUE(Service::SCHEDULE_DISABLED == serv.get_last_schedule());
-	inject_gps_location(1, 11.8768, -33.8232, t);
-	CHECK_FALSE(Service::SCHEDULE_DISABLED == serv.get_last_schedule());
-}
-
-
 TEST(ArgosTxService, LastTxIsUpdated)
 {
 	double frequency = 900.22;
@@ -1533,23 +1240,23 @@ TEST(ArgosTxService, BuildSensorPacketAll) {
 	sea_temp.port[0] = 126000; // 0C
 
 	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, nullptr, nullptr, false, false, size_bits);
-	CHECK_EQUAL("297166C6600781E00258"s, Binascii::hexlify(x));
-	CHECK_EQUAL(78, size_bits);
+	CHECK_EQUAL("004B8B3633003C0F0012C0"s, Binascii::hexlify(x));
+	CHECK_EQUAL(83, size_bits);
 	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, &pressure, &sea_temp, nullptr, false, false, size_bits);
-	CHECK_EQUAL("297166C6600781E002584E20DAC03E8300000000"s, Binascii::hexlify(x));
-	CHECK_EQUAL(159, size_bits);
+	CHECK_EQUAL("004B8B3633003C0F0012C27106D601F41F401EC300"s, Binascii::hexlify(x));
+	CHECK_EQUAL(164, size_bits);
 	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, &ph, &pressure, &sea_temp, nullptr, false, false, size_bits);
-	CHECK_EQUAL("297166C6600781E00259B5807D07D0070000"s, Binascii::hexlify(x));
-	CHECK_EQUAL(142, size_bits);
+	CHECK_EQUAL("004B8B3633003C0F0012CDAC03E83E803D8600"s, Binascii::hexlify(x));
+	CHECK_EQUAL(147, size_bits);
 	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, nullptr, &pressure, &sea_temp, nullptr, false, false, size_bits);
-	CHECK_EQUAL("297166C6600781E002584E200FA0FA00000000"s, Binascii::hexlify(x));
-	CHECK_EQUAL(145, size_bits);
+	CHECK_EQUAL("004B8B3633003C0F0012C271007D07D007B0C0"s, Binascii::hexlify(x));
+	CHECK_EQUAL(150, size_bits);
 	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, nullptr, &sea_temp, nullptr, false, false, size_bits);
-	CHECK_EQUAL("297166C6600781E002584E20DAC07B0C00"s, Binascii::hexlify(x));
-	CHECK_EQUAL(130, size_bits);
+	CHECK_EQUAL("004B8B3633003C0F0012C27106D603D860"s, Binascii::hexlify(x));
+	CHECK_EQUAL(135, size_bits);
 	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, &pressure, nullptr, nullptr, false, false, size_bits);
-	CHECK_EQUAL("297166C6600781E002584E20DAC03E830000"s, Binascii::hexlify(x));
-	CHECK_EQUAL(138, size_bits);
+	CHECK_EQUAL("004B8B3633003C0F0012C27106D601F41F40"s, Binascii::hexlify(x));
+	CHECK_EQUAL(143, size_bits);
 }
 
 TEST(ArgosTxService, BuildSensorPacketSeaTemp) {
@@ -1561,8 +1268,8 @@ TEST(ArgosTxService, BuildSensorPacketSeaTemp) {
 	sea_temp.port[0] = 147100; // 21.1C
 
 	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, &sea_temp, nullptr, false, false, size_bits);
-	CHECK_EQUAL("297166C6600781E0025847D380"s, Binascii::hexlify(x));
-	CHECK_EQUAL(99, size_bits);
+	CHECK_EQUAL("004B8B3633003C0F0012C23E9C"s, Binascii::hexlify(x));
+	CHECK_EQUAL(104, size_bits);
 }
 
 

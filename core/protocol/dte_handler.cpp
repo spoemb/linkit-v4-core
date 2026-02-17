@@ -165,18 +165,19 @@ std::string DTEHandler::RSTVW_REQ(int error_code, std::vector<BaseType>& arg_lis
 	if (variable_id == 1) {
 		// TX_COUNTER
 		configuration_store->write_param(ParamID::TX_COUNTER, zero);
-		configuration_store->save_params();
 	} else if (variable_id == 3) {
 		// RX_COUNTER
 		configuration_store->write_param(ParamID::ARGOS_RX_COUNTER, zero);
-		configuration_store->save_params();
 	} else if (variable_id == 4) {
 		// RX_TIME
 		configuration_store->write_param(ParamID::ARGOS_RX_TIME, zero);
-		configuration_store->save_params();
 	} else {
 		// Invalid variable ID
 		error_code = (int)DTEError::INCORRECT_DATA;
+	}
+
+	if (!error_code) {
+		configuration_store->save_params();
 	}
 
 	return DTEEncoder::encode(DTECommand::RSTVW_RESP, error_code);
@@ -262,7 +263,8 @@ std::string DTEHandler::PASPW_REQ(int error_code, std::vector<BaseType>& arg_lis
 			configuration_store->save_params();
 
 			// Log that the PASPW has been updated
-			auto time = std::gmtime(&argos_aop_date);
+			struct tm tm_buf;
+			auto time = gmtime_r(&argos_aop_date, &tm_buf);
 			char buff[256];
 			if (time)
 				std::strftime(buff, sizeof(buff), "%d/%m/%Y %H:%M:%S", time);
@@ -336,7 +338,7 @@ std::string DTEHandler::DUMPD_REQ(int error_code, std::vector<BaseType>& arg_lis
 	LogEntry log_entry;
 	BaseRawData raw_data;
 	unsigned int start_index = m_dumpd_mmm * DTE_HANDLER_MAX_LOG_DUMP_ENTRIES;
-	unsigned int num_entries = std::min(total_entries - start_index, DTE_HANDLER_MAX_LOG_DUMP_ENTRIES);
+	unsigned int num_entries = (start_index < total_entries) ? std::min(total_entries - start_index, DTE_HANDLER_MAX_LOG_DUMP_ENTRIES) : 0;
 	raw_data.ptr = nullptr;
 	raw_data.length = 0;
 
@@ -860,6 +862,25 @@ std::string DTEHandler::PWRON_REQ(int error_code, std::vector<BaseType>& arg_lis
 	return DTEEncoder::encode(DTECommand::PWRON_RESP, (int)DTEError::OK);
 }
 
+std::string DTEHandler::SWSST_REQ(int error_code) {
+	if (error_code) {
+		return DTEEncoder::encode(DTECommand::SWSST_RESP, error_code);
+	}
+
+	auto st = SWSAnalogService::get_status();
+
+	return DTEEncoder::encode(DTECommand::SWSST_RESP, (int)DTEError::OK,
+		(unsigned int)st.threshold_air,
+		(unsigned int)st.threshold_water,
+		(unsigned int)st.threshold_current,
+		(unsigned int)st.hysteresis,
+		(unsigned int)st.last_raw_adc,
+		(unsigned int)st.last_filtered_adc,
+		(unsigned int)st.is_calibrated,
+		(unsigned int)st.is_underwater,
+		(unsigned int)st.time_in_state_sec);
+}
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch-enum"
 
@@ -974,6 +995,9 @@ DTEAction DTEHandler::handle_dte_message(const std::string& req, std::string& re
 		break;
 	case DTECommand::PWRON_REQ:
 		resp = PWRON_REQ(error_code, arg_list);
+		break;
+	case DTECommand::SWSST_REQ:
+		resp = SWSST_REQ(error_code);
 		break;
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	case DTECommand::SMDDFU_REQ:

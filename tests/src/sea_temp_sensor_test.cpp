@@ -313,8 +313,8 @@ TEST(SeaTempSensor, SchedulingTxEnableMedian)
 	CHECK_EQUAL(1, logger->num_entries());
 	SeaTempLogEntry e;
 	logger->read(&e, 0);
-	CHECK_EQUAL((double)50, e.sea_temp);
-	CHECK_EQUAL((double)50, sensorData.port[0]);
+	CHECK_EQUAL((double)49.5, e.sea_temp);
+	CHECK_EQUAL((double)49.5, sensorData.port[0]);
 
 	s.stop();
 }
@@ -364,8 +364,8 @@ TEST(SeaTempSensor, SchedulingTxEnableMaxSamplesTerminates)
 	CHECK_EQUAL(1, logger->num_entries());
 	SeaTempLogEntry e;
 	logger->read(&e, 0);
-	CHECK_EQUAL((double)50, e.sea_temp);
-	CHECK_EQUAL((double)50, sensorData.port[0]);
+	CHECK_EQUAL((double)49.5, e.sea_temp);
+	CHECK_EQUAL((double)49.5, sensorData.port[0]);
 
 	s.stop();
 }

@@ -95,6 +95,8 @@ TEST_GROUP(M8)
     }
 
     void expect_power_on() {
+        mock().expectOneCall("acquire_sensors_pwr");
+        mock().expectOneCall("init_pin").withParameter("pin", BSP::GPIO::GPIO_GPS_RST);
         mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_RST);
         mock().expectOneCall("delay_ms").ignoreOtherParameters();
         mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
@@ -105,7 +107,8 @@ TEST_GROUP(M8)
     void expect_power_off() {
         mock().expectOneCall("GPSEventPowerOff");
         mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
-        mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_RST);
+        mock().expectOneCall("release_to_highz").withParameter("pin", BSP::GPIO::GPIO_GPS_RST);
+        mock().expectOneCall("release_sensors_pwr");
     }
 
     void increment_time_ms(uint64_t ms = 0)

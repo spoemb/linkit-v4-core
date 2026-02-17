@@ -11,7 +11,10 @@ extern RGBLed *status_led;
 // SMD DFU support (only when SMD satellite module is enabled)
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 #include "smd_sat.hpp"
+#include "dte_protocol.hpp"
+#include "ble_service.hpp"
 extern SmdSat *smd_sat_instance;  // Defined in main.cpp when SMD is used
+extern BLEService *ble_service;   // Defined in main.cpp
 #endif
 
 // Flash header for firmware image in external flash
@@ -294,11 +297,34 @@ void OTAFlashFileUpdater::apply_file_update() {
 		if (result == DFU_RSP_OK) {
 			DEBUG_INFO("OTAFlashFileUpdater: SMD DFU completed successfully");
 			if (status_led) status_led->set(RGBLedColor::GREEN);
+
+			// Send firmware version back to pylinkit via BLE
+			std::string new_version = smd_sat_instance->get_new_firmware_version();
+			if (!new_version.empty()) {
+				DEBUG_INFO("OTAFlashFileUpdater: New SMD firmware version: %s", new_version.c_str());
+			}
+			std::string resp = DTEEncoder::encode(DTECommand::SMDDFU_RESP,
+				(unsigned int)0,       // error_code: OK
+				(unsigned int)0,       // status: success
+				(bool)false,           // dfu_mode: exited DFU
+				(unsigned int)100,     // progress: 100%
+				new_version);          // info: firmware version
+			if (ble_service) ble_service->write(resp);
+
 			// Remove firmware file after successful update
 			m_filesystem->remove("smd_firmware.dat");
 		} else {
 			DEBUG_ERROR("OTAFlashFileUpdater: SMD DFU failed with error %d", result);
 			if (status_led) status_led->set(RGBLedColor::RED);
+
+			// Notify pylinkit of DFU failure
+			std::string resp = DTEEncoder::encode(DTECommand::SMDDFU_RESP,
+				(unsigned int)0,       // error_code: OK (command was valid)
+				(unsigned int)1,       // status: failure
+				(bool)false,           // dfu_mode
+				(unsigned int)0,       // progress
+				std::string("DFU failed: error " + std::to_string((int)result)));
+			if (ble_service) ble_service->write(resp);
 		}
 	}
 #endif

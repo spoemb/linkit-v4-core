@@ -9,7 +9,10 @@ LPS28DFW::LPS28DFW(unsigned int bus, unsigned char address)
     m_ctx.write_reg = platform_write;
     m_ctx.read_reg = platform_read;
     m_ctx.handle = this;
-    init();
+    m_initialized = init();
+    if (!m_initialized) {
+        DEBUG_WARN("LPS28DFW: initialization failed (bus=%u, addr=0x%02X)", bus, address);
+    }
 }
 
 bool LPS28DFW::init() {

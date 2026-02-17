@@ -90,7 +90,12 @@ TEST(Decoder, ArgosModeParsing)
 	CHECK_TRUE(DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
 	CHECK_TRUE(DTECommand::PARMR_RESP == command);
 	CHECK_TRUE(BaseArgosMode::DUTY_CYCLE == std::get<BaseArgosMode>(param_values[0].value));
+	param_values.clear();
 	s = "$O;PARMR#007;ARP01=4\r";
+	CHECK_TRUE(DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
+	CHECK_TRUE(DTECommand::PARMR_RESP == command);
+	CHECK_TRUE(BaseArgosMode::DOPPLER == std::get<BaseArgosMode>(param_values[0].value));
+	s = "$O;PARMR#007;ARP01=5\r";
 	CHECK_THROWS(ErrorCode, DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
 }
 

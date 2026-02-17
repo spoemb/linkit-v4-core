@@ -25,6 +25,7 @@ enum class DTECommand {
 	SCALR_REQ,
 	SENSR_REQ,     // Sensor/GNSS read command with timeout
 	PWRON_REQ,     // Power on/off components
+	SWSST_REQ,     // SWS analog calibration status read
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	SMDDFU_REQ,    // SMD satellite module DFU command
 	SMDTST_REQ,    // SMD satellite module SPI applicative test
@@ -50,6 +51,7 @@ enum class DTECommand {
 	SCALR_RESP,
 	SENSR_RESP,    // Sensor/GNSS read response
 	PWRON_RESP,    // Power on/off response
+	SWSST_RESP,    // SWS analog calibration status response
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	SMDDFU_RESP,   // SMD satellite module DFU response
 	SMDTST_RESP,   // SMD satellite module SPI applicative test response

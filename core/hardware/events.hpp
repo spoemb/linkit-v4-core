@@ -1,31 +1,33 @@
 #pragma once
 
-#include <map>
+#include <vector>
+#include <algorithm>
 
 template <typename T>
 class EventEmitter {
 public:
     void subscribe(T& m) {
-        m_listeners[&m] = true;
+        if (std::find(m_listeners.begin(), m_listeners.end(), &m) == m_listeners.end())
+            m_listeners.push_back(&m);
     }
     void unsubscribe(T& m) {
-        m_listeners.erase(&m);
+        m_listeners.erase(std::remove(m_listeners.begin(), m_listeners.end(), &m), m_listeners.end());
     }
 
 protected:
     template<typename E> void notify(E const& e) {
-        for (auto m : m_listeners) {
-            if (m.second)
-                m.first->react(e);
+        auto listeners_copy = m_listeners;
+        for (const auto& m : listeners_copy) {
+            m->react(e);
         }
     }
     template<typename E> void notify(E & e) {
-        for (auto m : m_listeners) {
-            if (m.second)
-                m.first->react(e);
+        auto listeners_copy = m_listeners;
+        for (const auto& m : listeners_copy) {
+            m->react(e);
         }
     }
 private:
-    std::map<T*, bool> m_listeners;
+    std::vector<T*> m_listeners;
 
 };

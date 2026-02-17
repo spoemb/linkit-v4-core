@@ -2,9 +2,9 @@
 
 // Helper for EXTERNAL_WAKEUP which is defined as a flag (no value)
 #ifdef EXTERNAL_WAKEUP
-#define _HAS_EXTERNAL_WAKEUP true
+#define HAS_EXTERNAL_WAKEUP true
 #else
-#define _HAS_EXTERNAL_WAKEUP false
+#define HAS_EXTERNAL_WAKEUP false
 #endif
 
 // ARGOS_SMD is only defined on targets with SMD satellite module
@@ -115,10 +115,10 @@ const BaseMap param_map[] = {
 	{ "BATT_VOLTAGE", "POT06", BaseEncoding::FLOAT, 0.0, 12.0, {}, true, false },
 
 	// [88-91] TPL5111 power management parameters (slots always reserved)
-	{ "SHUTDOWN_TIMER", "PWP01", BaseEncoding::UINT, 0U, 86400U, {}, _HAS_EXTERNAL_WAKEUP, true },
-	{ "BOOT_COUNTER", "PWP02", BaseEncoding::UINT, 0U, 0U, {}, _HAS_EXTERNAL_WAKEUP, false },
-	{ "BOOT_COUNTER_MODULO", "PWP03", BaseEncoding::UINT, 2U, 1000U, {}, _HAS_EXTERNAL_WAKEUP, true },
-	{ "WAKEUP_PERIOD", "PWP04", BaseEncoding::UINT, 0U, 86400U, {}, _HAS_EXTERNAL_WAKEUP, false },
+	{ "SHUTDOWN_TIMER", "PWP01", BaseEncoding::UINT, 0U, 86400U, {}, HAS_EXTERNAL_WAKEUP, true },
+	{ "BOOT_COUNTER", "PWP02", BaseEncoding::UINT, 0U, 0U, {}, HAS_EXTERNAL_WAKEUP, false },
+	{ "BOOT_COUNTER_MODULO", "PWP03", BaseEncoding::UINT, 2U, 1000U, {}, HAS_EXTERNAL_WAKEUP, true },
+	{ "WAKEUP_PERIOD", "PWP04", BaseEncoding::UINT, 0U, 86400U, {}, HAS_EXTERNAL_WAKEUP, false },
 
 	// TCXO warmup period
 	{ "ARGOS_TCXO_WARMUP_TIME", "ARP35", BaseEncoding::UINT, 0U, 30U, {}, true, true },
@@ -241,3 +241,5 @@ const BaseMap param_map[] = {
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);
+static_assert(sizeof(param_map) / sizeof(param_map[0]) == (size_t)ParamID::__PARAM_SIZE,
+              "param_map size must match ParamID::__PARAM_SIZE");

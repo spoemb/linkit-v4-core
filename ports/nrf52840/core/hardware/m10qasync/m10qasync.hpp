@@ -39,8 +39,6 @@ private:
 
 	struct Timeout {
 		Scheduler::TaskHandle handle;
-		bool     running;
-		uint64_t end;
 	} m_timeout;
 	Scheduler::TaskHandle m_state_machine_handle;
 
@@ -110,7 +108,6 @@ private:
 	void save_config();
 	void soft_reset();
 	void setup_uart_port();
-	void read_uart_port();
 	void setup_gnss_channel_sharing();
 	void setup_power_management();
 	void setup_continuous_mode();
@@ -127,7 +124,6 @@ private:
 	void disable_nav_dop_message();
 	void disable_nav_status_message();
     void disable_nav_sat_message();
-	void send_offline_database();
 	void fetch_navigation_database();
 	void sync_baud_rate(unsigned int baud);
 	void dump_navigation_database(unsigned int);

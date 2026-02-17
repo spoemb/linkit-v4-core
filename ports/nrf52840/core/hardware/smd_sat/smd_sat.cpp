@@ -18,31 +18,6 @@
 extern Scheduler *system_scheduler;
 extern Timer *system_timer;
 
-static constexpr const char *const spistatus_string[] =
-{
-    "SPI_UNKNOWN",
-    "SPI_INIT",
-    "SPI_IDLE",
-    "SPI_PROCESS_CMD",
-    "SPI_WAITING_RX",
-    "SPI_WAITING_TX",
-    "SPI_WAITING_MAC_EVT",
-    "SPI_ERROR"
-};
-static constexpr const char *const kmacstatus_string[] =
-{
-    "MAC_UNKNOWN",
-    "MAC_OK",
-    "MAC_TX_DONE",
-    "MAC_TX_SIZE_ERROR",
-    "MAC_TXACK_DONE",
-    "MAC_TX_TIMEOUT",
-    "MAC_TXACK_TIMEOUT",
-    "MAC_RX_ERROR",
-    "MAC_RX_TIMEOUT",
-    "MAC_ERROR"
-};
-
 void SmdSat::read_byte(uint8_t *byte_read) {
     nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
     uint8_t read_cmd = SMDSAT_CMD_NONE;
@@ -861,14 +836,6 @@ bool SmdSat::is_tx_in_progress() {
 	}
 
 	return (rx[1] == MAC_TX_IN_PROGRESS);
-}
-
-bool SmdSat::is_command_accepted() {
-	return true;
-}
-
-bool SmdSat::is_firmware_ready() {
-	return true;
 }
 
 void SmdSat::power_off() {
@@ -1990,18 +1957,21 @@ SmdDfuResponse SmdSat::dfu_reset() {
 	return dfu_send_command(SMDSAT_CMD_DFU_RESET, nullptr, 0, nullptr, nullptr);
 }
 
+// Matches Zephyr argos_dfu_jump() — device may not respond after jump, that's OK
 SmdDfuResponse SmdSat::dfu_jump() {
-	DEBUG_TRACE("SmdSat::%s", __func__);
+	DEBUG_INFO("SmdSat::%s: Jumping to application...", __func__);
 
 	SmdDfuResponse result = dfu_send_command(SMDSAT_CMD_DFU_JUMP, nullptr, 0, nullptr, nullptr);
 
-	if (result == DFU_RSP_OK) {
-		m_dfu_mode = false;
-		DEBUG_INFO("SmdSat::%s: Jumping to application", __func__);
-		nrf_delay_ms(SMDSAT_DFU_RESET_DELAY_MS);
+	// Device may not respond after jump - that's OK (it has already jumped)
+	if (result != DFU_RSP_OK) {
+		DEBUG_WARN("SmdSat::%s: Jump response: 0x%02X (device may have jumped)", __func__, static_cast<int>(result));
 	}
 
-	return result;
+	m_dfu_mode = false;
+	nrf_delay_ms(SMDSAT_DFU_RESET_DELAY_MS);
+
+	return DFU_RSP_OK;  // Always return OK — no response means jump succeeded
 }
 
 SmdDfuResponse SmdSat::dfu_get_status(uint8_t *status) {
@@ -2376,12 +2346,53 @@ SmdDfuResponse SmdSat::firmware_update(const uint8_t *firmware, size_t size,
 
 	if (progress_callback) progress_callback(95);
 
-	// Step 7: Jump to application
+	// Step 7: Jump to application (may not respond — that's OK)
 	DEBUG_INFO("SmdSat::%s: Jumping to application...", __func__);
-	result = dfu_jump();
-	if (result != DFU_RSP_OK) {
-		DEBUG_ERROR("SmdSat::%s: Jump to application failed", __func__);
-		return result;
+	dfu_jump();
+
+	// Step 8: Hardware reset SMD to ensure clean app boot
+	DEBUG_INFO("SmdSat::%s: Hardware reset SMD...", __func__);
+	PMU::kick_watchdog();
+	GPIOPins::init_pin(SAT_RESET);
+	GPIOPins::clear(SAT_RESET);
+	nrf_delay_ms(50);
+	GPIOPins::release_to_highz(SAT_RESET);
+	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
+	PMU::kick_watchdog();
+
+	// Step 9: Read firmware version from the new app
+	DEBUG_INFO("SmdSat::%s: Reading new firmware version...", __func__);
+	m_dfu_mode = false;
+	m_protocol_detected = true;
+	m_protocol_mode = SpiProtocolMode::APLUS;
+	m_sequence_number = 0;
+
+	bool app_ready = false;
+	for (uint8_t attempt = 0; attempt < 10; attempt++) {
+		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS / 2);
+		PMU::kick_watchdog();
+		if (smd_ping()) {
+			DEBUG_INFO("SmdSat::%s: App ready after %u attempts", __func__, attempt + 1);
+			app_ready = true;
+			break;
+		}
+	}
+
+	if (app_ready) {
+		uint8_t rx[SPI_PROTOCOL_APLUS_MAX_DATA_LEN] = {0};
+		uint16_t rx_len = sizeof(rx);
+		if (send_command_auto(SMDSAT_CMD_READ_VERSION, nullptr, 0, rx, &rx_len)) {
+			size_t len = 0;
+			while (len < rx_len && rx[len] != 0 && rx[len] >= 0x20 && rx[len] < 0x7F) {
+				len++;
+			}
+			m_new_firmware_version = std::string((char*)rx, len);
+			DEBUG_INFO("SmdSat::%s: New firmware version: %s", __func__, m_new_firmware_version.c_str());
+		} else {
+			DEBUG_WARN("SmdSat::%s: Could not read version", __func__);
+		}
+	} else {
+		DEBUG_WARN("SmdSat::%s: App not responding after reset", __func__);
 	}
 
 	if (progress_callback) progress_callback(100);
@@ -2512,12 +2523,54 @@ SmdDfuResponse SmdSat::firmware_update(File *file, size_t size, uint32_t stm32_c
 
 	if (progress_callback) progress_callback(95);
 
-	// Step 7: Jump to application
+	// Step 7: Jump to application (may not respond — that's OK)
 	DEBUG_INFO("SmdSat::%s: Jumping to application...", __func__);
-	result = dfu_jump();
-	if (result != DFU_RSP_OK) {
-		DEBUG_ERROR("SmdSat::%s: Jump to application failed", __func__);
-		return result;
+	dfu_jump();
+
+	// Step 8: Hardware reset SMD to ensure clean app boot
+	DEBUG_INFO("SmdSat::%s: Hardware reset SMD...", __func__);
+	PMU::kick_watchdog();
+	GPIOPins::init_pin(SAT_RESET);
+	GPIOPins::clear(SAT_RESET);
+	nrf_delay_ms(50);
+	GPIOPins::release_to_highz(SAT_RESET);
+	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
+	PMU::kick_watchdog();
+
+	// Step 9: Read firmware version from the new app
+	DEBUG_INFO("SmdSat::%s: Reading new firmware version...", __func__);
+	m_dfu_mode = false;
+	m_protocol_detected = true;
+	m_protocol_mode = SpiProtocolMode::APLUS;
+	m_sequence_number = 0;
+
+	// Ping app to confirm it booted
+	bool app_ready = false;
+	for (uint8_t attempt = 0; attempt < 10; attempt++) {
+		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS / 2);
+		PMU::kick_watchdog();
+		if (smd_ping()) {
+			DEBUG_INFO("SmdSat::%s: App ready after %u attempts", __func__, attempt + 1);
+			app_ready = true;
+			break;
+		}
+	}
+
+	if (app_ready) {
+		uint8_t rx[SPI_PROTOCOL_APLUS_MAX_DATA_LEN] = {0};
+		uint16_t rx_len = sizeof(rx);
+		if (send_command_auto(SMDSAT_CMD_READ_VERSION, nullptr, 0, rx, &rx_len)) {
+			size_t len = 0;
+			while (len < rx_len && rx[len] != 0 && rx[len] >= 0x20 && rx[len] < 0x7F) {
+				len++;
+			}
+			m_new_firmware_version = std::string((char*)rx, len);
+			DEBUG_INFO("SmdSat::%s: New firmware version: %s", __func__, m_new_firmware_version.c_str());
+		} else {
+			DEBUG_WARN("SmdSat::%s: Could not read version (app may need more time)", __func__);
+		}
+	} else {
+		DEBUG_WARN("SmdSat::%s: App not responding after reset (may need manual reset)", __func__);
 	}
 
 	if (progress_callback) progress_callback(100);

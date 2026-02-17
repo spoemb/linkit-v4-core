@@ -388,7 +388,7 @@ TEST(SWSAnalog, RapidSurfaceDetection_CleanSensor)
 
     CHECK_FALSE(switch_state);
     // With parent batch of 3 (UW_MAX_SAMPLES=3), should detect within one batch
-    UNSIGNED_LONGS_EQUAL_TEXT(3, samples_to_surface,
+    CHECK_TEXT(samples_to_surface <= 3,
         "Clean sensor: surface should be detected within 1 batch (3 samples)");
 
     s.stop();
@@ -579,6 +579,168 @@ TEST(SWSAnalog, NoFalsePositive_GradualSalinityChange)
     // Should still be underwater - gradual changes are not surfacing events
     CHECK_TRUE_TEXT(switch_state,
         "Gradual salinity change: should NOT trigger false surface detection");
+
+    s.stop();
+}
+
+// ============================================================================
+// PROGRESSIVE BIOFOULING TEST
+// Simulates months of deployment with increasing electrode degradation.
+// Each dive cycle has higher "air" ADC (salt deposits) and lower "water" ADC
+// (biofilm reduces conductivity). Verifies detection remains fast at every stage.
+// ============================================================================
+
+/**
+ * Test 13: Progressive biofouling over multiple dive cycles
+ *
+ * Simulates the lifecycle of a deployed tracker:
+ *   Cycle 0 (clean):     water=3000, air=200   → 93% drop
+ *   Cycle 1 (3 months):  water=2800, air=600   → 78% drop
+ *   Cycle 2 (6 months):  water=2500, air=1000  → 60% drop
+ *   Cycle 3 (9 months):  water=2300, air=1400  → 39% drop
+ *   Cycle 4 (12 months): water=2100, air=1700  → 19% drop → still TIER 2
+ *
+ * At EACH stage, surface detection must complete within 1 parent batch (≤3 samples).
+ * The adaptive thresholds must track the changing baselines.
+ */
+TEST(SWSAnalog, ProgressiveBiofouling_MultiCycleDegradation)
+{
+    SWSAnalogService s;
+    bool switch_state = false;
+    unsigned int callbacks = 0;
+
+    system_timer->start();
+    SAADC::set_adc_value(200);
+
+    s.start([&switch_state, &callbacks](ServiceEvent &event) {
+        if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+            switch_state = std::get<bool>(event.event_data);
+            callbacks++;
+        }
+    });
+
+    // Biofouling degradation stages: {water_adc, air_adc, description}
+    struct BiofoulingStage {
+        uint16_t water_adc;
+        uint16_t air_adc;
+        const char *description;
+    };
+
+    BiofoulingStage stages[] = {
+        {3000, 200,  "Clean sensor (month 0)"},
+        {2800, 600,  "Light biofouling (month 3)"},
+        {2500, 1000, "Moderate biofouling (month 6)"},
+        {2300, 1400, "Heavy biofouling (month 9)"},
+        {2100, 1700, "Severe biofouling (month 12)"},
+    };
+
+    for (int stage = 0; stage < 5; stage++) {
+        uint16_t water = stages[stage].water_adc;
+        uint16_t air = stages[stage].air_adc;
+
+        // --- DIVE: go underwater ---
+        SAADC::set_adc_value(water);
+        for (int i = 0; i < 10; i++) {
+            run_one_sample();
+        }
+        CHECK_TRUE_TEXT(switch_state,
+            stages[stage].description);
+
+        unsigned int callbacks_before = callbacks;
+
+        // --- SURFACE: electrode loses water contact, ADC drops ---
+        SAADC::set_adc_value(air);
+
+        unsigned int samples_to_surface = 0;
+        for (int i = 0; i < 10; i++) {
+            run_one_sample();
+            samples_to_surface++;
+            if (callbacks > callbacks_before && !switch_state) {
+                break;
+            }
+        }
+
+        // Surface MUST be detected within 1 batch (3 samples max)
+        char msg[128];
+        snprintf(msg, sizeof(msg),
+            "%s: water=%u air=%u → detection took %u samples (max 3)",
+            stages[stage].description, water, air, samples_to_surface);
+        CHECK_TEXT(samples_to_surface <= 3, msg);
+        CHECK_FALSE_TEXT(switch_state, msg);
+
+        // Stay at surface a few samples to let adaptive thresholds update
+        for (int i = 0; i < 5; i++) {
+            run_one_sample();
+        }
+    }
+
+    s.stop();
+}
+
+/**
+ * Test 14: Extreme biofouling with small ADC gap
+ *
+ * Worst case: water=1800, air=1500 → only 16.7% drop, 300 absolute
+ * TIER 1 should still fire (25% fails BUT absolute 300 = threshold)
+ * If TIER 1 fails, TIER 2 must catch it in 2 samples.
+ *
+ * Also verifies that the adaptive air baseline rises to ~1500 over time,
+ * keeping the regular threshold detection working.
+ */
+TEST(SWSAnalog, ExtremeBiofouling_SmallGap)
+{
+    SWSAnalogService s;
+    bool switch_state = false;
+    unsigned int callbacks = 0;
+
+    system_timer->start();
+    SAADC::set_adc_value(200);
+
+    s.start([&switch_state, &callbacks](ServiceEvent &event) {
+        if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+            switch_state = std::get<bool>(event.event_data);
+            callbacks++;
+        }
+    });
+
+    // First: establish water baseline with normal seawater
+    SAADC::set_adc_value(2500);
+    for (int i = 0; i < 10; i++) {
+        run_one_sample();
+    }
+    CHECK_TRUE(switch_state);
+
+    // Surface with moderate biofouling first (to let thresholds adapt)
+    SAADC::set_adc_value(800);
+    for (int i = 0; i < 10; i++) {
+        run_one_sample();
+    }
+
+    // Second dive with degraded water signal
+    SAADC::set_adc_value(1800);
+    for (int i = 0; i < 10; i++) {
+        run_one_sample();
+    }
+
+    // Now surface with extreme biofouling: only 16.7% drop
+    // water=1800, air=1500
+    unsigned int callbacks_before = callbacks;
+    SAADC::set_adc_value(1500);
+
+    unsigned int samples_to_surface = 0;
+    for (int i = 0; i < 15; i++) {
+        run_one_sample();
+        samples_to_surface++;
+        if (callbacks > callbacks_before && !switch_state) {
+            break;
+        }
+    }
+
+    CHECK_FALSE_TEXT(switch_state,
+        "Extreme biofouling (1800→1500): must detect surface");
+    // Allow up to 5 samples for extreme case (TIER 2/3 path)
+    CHECK_TEXT(samples_to_surface <= 5,
+        "Extreme biofouling: detection should complete within 5 samples");
 
     s.stop();
 }

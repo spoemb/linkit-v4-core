@@ -40,6 +40,8 @@ TEST(NrfSwitch, SwitchTriggeringCallbackNoHysteresis) {
 
 	system_timer->start();
 
+	// resume() reads initial pin state
+	mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SWITCH).andReturnValue(0);
 	sw->start([&trigger_counter, &actual_state](bool state){ trigger_counter++; actual_state = state; });
 
 	mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SWITCH).andReturnValue(1);
@@ -69,6 +71,8 @@ TEST(NrfSwitch, SwitchTriggeringCallbackWithHysteresis) {
 
 	system_timer->start();
 
+	// resume() reads initial pin state
+	mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SWITCH).andReturnValue(0);
 	sw->start([&trigger_counter, &actual_state](bool state){ trigger_counter++; actual_state = state; });
 
 	mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SWITCH).andReturnValue(1);

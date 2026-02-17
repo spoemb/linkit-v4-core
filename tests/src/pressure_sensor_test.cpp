@@ -394,10 +394,10 @@ TEST(PressureSensor, SchedulingTxEnableMedian)
 	CHECK_EQUAL(1, logger->num_entries());
 	PressureLogEntry e;
 	logger->read(&e, 0);
-	CHECK_EQUAL((double)50, e.pressure);
-	CHECK_EQUAL((double)51, e.temperature);
-	CHECK_EQUAL((double)50, sensorData.port[0]);
-	CHECK_EQUAL((double)51, sensorData.port[1]);
+	CHECK_EQUAL((double)49.5, e.pressure);
+	CHECK_EQUAL((double)50.5, e.temperature);
+	CHECK_EQUAL((double)49.5, sensorData.port[0]);
+	CHECK_EQUAL((double)50.5, sensorData.port[1]);
 
 	s.stop();
 }
@@ -450,10 +450,10 @@ TEST(PressureSensor, SchedulingTxEnableMaxSamplesTerminates)
 	CHECK_EQUAL(1, logger->num_entries());
 	PressureLogEntry e;
 	logger->read(&e, 0);
-	CHECK_EQUAL((double)50, e.pressure);
-	CHECK_EQUAL((double)51, e.temperature);
-	CHECK_EQUAL((double)50, sensorData.port[0]);
-	CHECK_EQUAL((double)51, sensorData.port[1]);
+	CHECK_EQUAL((double)49.5, e.pressure);
+	CHECK_EQUAL((double)50.5, e.temperature);
+	CHECK_EQUAL((double)49.5, sensorData.port[0]);
+	CHECK_EQUAL((double)50.5, sensorData.port[1]);
 
 	s.stop();
 }

@@ -1,3 +1,5 @@
+#include <cstdint>
+#include <climits>
 #include "gps_service.hpp"
 #include "config_store.hpp"
 #include "scheduler.hpp"
@@ -47,8 +49,10 @@ unsigned int GPSService::service_next_schedule_in_ms() {
     		(unsigned int)m_is_first_schedule, (unsigned int)m_is_first_fix_found, (unsigned int)gnss_config.cold_start_retry_period, (unsigned int)aq_period,
 			(unsigned int)now, (unsigned int)next_schedule);
 
-    // Find the time in milliseconds until this schedule
-    return (next_schedule - now) * MS_PER_SEC;
+    // Find the time in milliseconds until this schedule (cast to uint64_t to prevent
+    // overflow when aq_period > 4294 seconds, since the result is truncated to unsigned int)
+    uint64_t delay_ms = static_cast<uint64_t>(next_schedule - now) * MS_PER_SEC;
+    return (delay_ms > UINT32_MAX) ? UINT32_MAX : static_cast<unsigned int>(delay_ms);
 }
 
 void GPSService::service_initiate() {
@@ -112,8 +116,7 @@ GPSLogEntry GPSService::invalid_log_entry()
 {
     DEBUG_INFO("GPSService::invalid_log_entry");
 
-    GPSLogEntry gps_entry;
-    memset(&gps_entry, 0, sizeof(gps_entry));
+    GPSLogEntry gps_entry{};
 
     gps_entry.header.log_type = LOG_GPS;
 
@@ -133,8 +136,7 @@ void GPSService::task_process_gnss_data()
 {
     DEBUG_TRACE("GPSService::task_process_gnss_data");
 
-    GPSLogEntry gps_entry;
-    memset(&gps_entry, 0, sizeof(gps_entry));
+    GPSLogEntry gps_entry{};
 
     gps_entry.header.log_type = LOG_GPS;
 

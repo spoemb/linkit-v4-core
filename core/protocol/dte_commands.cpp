@@ -382,6 +382,12 @@ const DTECommandMap command_map[] = {
 			}
 		}
 	},
+	// SWSST - SWS analog calibration status read (no arguments)
+	{
+		.name = "SWSST",
+		.command = DTECommand::SWSST_REQ,
+		.prototype = {}
+	},
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	// SMD DFU command - allows firmware update of SMD satellite module
 	// Usage: $SMDDFU#001;<action>\r
@@ -811,6 +817,104 @@ const DTECommandMap command_map[] = {
 		.name = "PWRON",
 		.command = DTECommand::PWRON_RESP,
 		.prototype = {}
+	},
+	// SWSST response - SWS calibration status values
+	{
+		.name = "SWSST",
+		.command = DTECommand::SWSST_RESP,
+		.prototype =
+		{
+			{
+				.name = "air",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 0U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "water",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 0U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "threshold",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 0U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "hysteresis",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 0U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "raw_adc",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 0U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "filtered_adc",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 0U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "calibrated",
+				.key = "",
+				.encoding = BaseEncoding::BOOLEAN,
+				.min_value = 0U,
+				.max_value = 1U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "underwater",
+				.key = "",
+				.encoding = BaseEncoding::BOOLEAN,
+				.min_value = 0U,
+				.max_value = 1U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "time_in_state",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 0U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
 	},
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	// SMD DFU response

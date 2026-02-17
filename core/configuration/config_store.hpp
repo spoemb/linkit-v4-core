@@ -15,9 +15,7 @@
 #include "sensor.hpp"
 #include "service_scheduler.hpp"
 
-#define MAX_CONFIG_ITEMS  (unsigned int)ParamID::__PARAM_SIZE
-
-using namespace std::string_literals;
+static constexpr unsigned int MAX_CONFIG_ITEMS = (unsigned int)ParamID::__PARAM_SIZE;
 
 struct GNSSConfig {
 	bool enable;
@@ -98,7 +96,7 @@ protected:
 		/* TX_COUNTER */ 0U,
 		/* BATT_SOC */ 0U,
 		/* LAST_FULL_CHARGE_DATE */ static_cast<std::time_t>(0U),
-		/* PROFILE_NAME */ "FACTORY"s,
+		/* PROFILE_NAME */ std::string("FACTORY"),
 		/* _RESERVED_9 */ 0U,
 		/* ARGOS_AOP_DATE */ static_cast<std::time_t>(1633646474U),
 		/* ARGOS_FREQ */ 401.65,
@@ -188,11 +186,7 @@ protected:
 		/* ZONE_ENABLE_ACTIVATION_DATE */ (bool)true,
 		/* ZONE_ACTIVATION_DATE */ static_cast<std::time_t>(1577836800U), // 01/01/2020 00:00:00
 		/* ZONE_ARGOS_DEPTH_PILE */ BaseArgosDepthPile::DEPTH_PILE_1,
-#if MODEL_SB
 		/* ZONE_ARGOS_POWER */ BaseArgosPower::POWER_350_MW,
-#else
-		/* ZONE_ARGOS_POWER */ BaseArgosPower::POWER_350_MW,
-#endif
 
 #if MODEL_SB
 		/* ZONE_ARGOS_REPETITION_SECONDS */ 60U,
@@ -216,10 +210,10 @@ protected:
 		/* ZONE_CENTER_LATITUDE */ -48.8752,
 		/* ZONE_RADIUS */ 1000U,
 		/* CERT_TX_ENABLE */ (bool)false,
-		/* CERT_TX_PAYLOAD */ "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"s, // 27 bytes for long payload
+		/* CERT_TX_PAYLOAD */ std::string("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"), // 27 bytes for long payload
 		/* CERT_TX_MODULATION */ BaseArgosModulation::A2,
 		/* CERT_TX_REPETITION */ 60U,
-		/* HW_VERSION */ ""s,
+		/* HW_VERSION */ std::string(""),
 		/* BATT_VOLTAGE */ (double)0,
 		/* [88] SHUTDOWN_TIMER */ 0U,
 		/* [89] BOOT_COUNTER */ 0U,
@@ -325,8 +319,8 @@ protected:
 		/* [169] CAM_PERIOD_ON */ 1U * 60U,
 		/* [170] CAM_PERIOD_OFF */ 5U * 60U,
 		/* [171] LB_CAM_EN */ (bool)false,
-		/* [172] ARGOS_SECKEY */ ""s,
-		/* [173] ARGOS_RADIOCONF */ ""s,
+		/* [172] ARGOS_SECKEY */ std::string(""),
+		/* [173] ARGOS_RADIOCONF */ std::string(""),
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,
@@ -353,10 +347,8 @@ protected:
 	virtual void update_battery_level() = 0;
 
 private:
-	static const inline unsigned int HOURS_PER_DAY = 24;
 	static const inline unsigned int SECONDS_PER_MINUTE	= 60;
 	static const inline unsigned int SECONDS_PER_HOUR = 3600;
-	static const inline unsigned int SECONDS_PER_DAY = (SECONDS_PER_HOUR * HOURS_PER_DAY);
 
 	BaseDeltaTimeLoc calc_delta_time_loc(unsigned int dloc_arg_nom) {
 		if (dloc_arg_nom >= (24 * SECONDS_PER_HOUR)) {
@@ -518,7 +510,7 @@ public:
 	}
 
 	template<typename T>
-	void write_param(ParamID param_id, T& value) {
+	void write_param(ParamID param_id, const T& value) {
 		try {
 			if (is_valid()) {
 				m_params.at((unsigned)param_id) = value;
@@ -545,7 +537,7 @@ public:
 		return m_last_gps_log_entry;
 	}
 
-	bool is_zone_exclusion(void) {
+	bool is_zone_exclusion() {
 
 		if (read_param<bool>(ParamID::ZONE_ENABLE_OUT_OF_ZONE_DETECTION_MODE) &&
 			read_param<BaseZoneType>(ParamID::ZONE_TYPE) == BaseZoneType::CIRCLE &&
@@ -785,7 +777,6 @@ public:
 		// Set sensor TX enable based on configuration
 		argos_config.sensor_tx_enable = 0;
 		if (argos_config.gnss_en) {
-			argos_config.sensor_tx_enable = 0;
 #if ENABLE_ALS_SENSOR
 			argos_config.sensor_tx_enable |=
 				(int)(read_param<bool>(ParamID::ALS_SENSOR_ENABLE) && read_param<BaseSensorEnableTxMode>(ParamID::ALS_SENSOR_ENABLE_TX_MODE) != BaseSensorEnableTxMode::OFF) << (int)ServiceIdentifier::ALS_SENSOR;
@@ -851,12 +842,12 @@ public:
 		return read_param<unsigned int>(ParamID::BOOT_COUNTER);
 	}
 
-	// Check if this boot should be skipped based on modulo
-	// Returns true if device should shutdown immediately (not our turn to run)
+	// Check if this boot is our turn to run based on modulo
+	// Returns true if (boot_counter % modulo == 0), meaning it's our turn to run
 	bool boot_count_check_modulo(unsigned int boot_counter) {
 		unsigned int modulo = read_param<unsigned int>(ParamID::BOOT_COUNTER_MODULO);
 
-		// Protection: modulo must be >= 2 to avoid shutdown every boot (modulo=1)
+		// Protection: modulo must be >= 2 to avoid running every boot (modulo=1)
 		// or division by zero (modulo=0). If misconfigured, always allow boot.
 		if (modulo < 2) {
 			DEBUG_WARN("BOOT_COUNTER_MODULO=%u invalid (must be >=2), allowing boot", modulo);
@@ -865,10 +856,10 @@ public:
 
 		if (boot_counter % modulo == 0) {
 			boot_count_clear();
-			return true;  // This is our turn to run
+			return true;  // It's our turn to run
 		}
 
-		return false;  // Not our turn, should shutdown
+		return false;  // Not our turn, caller should shutdown
 	}
 #endif
 };

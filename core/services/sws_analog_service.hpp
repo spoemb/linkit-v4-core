@@ -20,6 +20,21 @@
  */
 class SWSAnalogService : public UWDetectorService {
 public:
+    // Status snapshot for DTE SWSST command (read-only diagnostic)
+    struct Status {
+        uint16_t threshold_air;       // Current air baseline ADC
+        uint16_t threshold_water;     // Current water baseline ADC
+        uint16_t threshold_current;   // Active threshold ADC
+        uint16_t hysteresis;          // Hysteresis value (ADC counts)
+        uint16_t last_raw_adc;        // Last raw ADC reading
+        uint16_t last_filtered_adc;   // Last filtered ADC reading
+        bool     is_calibrated;       // Calibration valid
+        bool     is_underwater;       // Current state (true=underwater)
+        uint32_t time_in_state_sec;   // Seconds in current state
+    };
+
+    static Status get_status();
+
     SWSAnalogService() : UWDetectorService("SWSAnalog") {
         m_adc_history_idx = 0;
         m_last_state_change_time = 0;
@@ -30,6 +45,8 @@ public:
     }
 
 private:
+    // Live status snapshot (updated each detector_state() call)
+    static Status m_status;
     // Calibration data structure (stored in noinit RAM to survive resets)
     struct CalibrationData {
         uint16_t threshold_air;          // Baseline ADC value in air (low conductivity)
@@ -83,6 +100,11 @@ private:
     // Variance detection (high variance = surface drying, low variance = stable underwater)
     uint32_t m_variance_sum_sq;  // Sum of squared differences for variance calc
     uint16_t m_variance_mean;    // Running mean for variance calc
+
+    // Rapid detection confirmation bypass: when rapid drop is detected,
+    // subsequent samples don't need the m_consecutive_samples confirmation.
+    // Cleared when parent updates m_current_state at end-of-batch.
+    bool m_rapid_surface_confirmed;
 
     // Configuration parameters (loaded from config store)
     uint16_t m_threshold_min;

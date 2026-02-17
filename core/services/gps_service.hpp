@@ -85,7 +85,6 @@ private:
 	GPSDevice&   m_device;
 	bool       	 m_is_first_fix_found;
 	bool       	 m_is_first_schedule;
-	bool         m_is_underwater;
 	uint64_t     m_wakeup_time;
 	std::time_t  m_next_schedule;
 	struct {
@@ -103,5 +102,4 @@ private:
 	void populate_gps_log_with_time(GPSLogEntry &entry, std::time_t time);
 	GPSLogEntry invalid_log_entry();
 	void gnss_data_callback(GNSSData data);
-	void populate_gnss_data_and_callback();
 };

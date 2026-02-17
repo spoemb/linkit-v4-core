@@ -1,4 +1,5 @@
 #include <ctime>
+#include <cinttypes>
 #include "gps_scheduler.hpp"
 #include "battery.hpp"
 #include "logger.hpp"
@@ -94,7 +95,7 @@ void GPSScheduler::reschedule(bool immediate)
     // Find the time in milliseconds until this schedule
     int64_t time_until_next_schedule_ms = (m_next_schedule - now) * MS_PER_SEC;
 
-    DEBUG_INFO("GPSScheduler::schedule_aquisition in %llu seconds", time_until_next_schedule_ms / 1000);
+    DEBUG_INFO("GPSScheduler::schedule_aquisition in %" PRId64 " seconds", time_until_next_schedule_ms / 1000);
 
     deschedule(); // Ensure any previous schedule has been cleared
     m_task_acquisition_period = system_scheduler->post_task_prio(
@@ -136,7 +137,7 @@ void GPSScheduler::task_acquisition_period() {
         power_on(nav_settings,
         		[this](GNSSData data) { gnss_data_callback(data); } );
     }
-    catch(ErrorCode e)
+    catch(const ErrorCode& e)
     {
         // If our power on failed then log this as a failed GPS fix and notify the user
     	log_invalid_gps_entry();
@@ -168,8 +169,7 @@ void GPSScheduler::log_invalid_gps_entry()
 {
     DEBUG_INFO("GPSScheduler::log_invalid_gps_entry");
 
-    GPSLogEntry gps_entry;
-    memset(&gps_entry, 0, sizeof(gps_entry));
+    GPSLogEntry gps_entry{};
 
     gps_entry.header.log_type = LOG_GPS;
 
@@ -212,8 +212,7 @@ void GPSScheduler::task_process_gnss_data()
 {
     DEBUG_TRACE("GPSScheduler::task_process_gnss_data");
 
-    GPSLogEntry gps_entry;
-    memset(&gps_entry, 0, sizeof(gps_entry));
+    GPSLogEntry gps_entry{};
 
     gps_entry.header.log_type = LOG_GPS;
 
@@ -318,7 +317,9 @@ void GPSScheduler::gnss_data_callback(GNSSData data) {
     }
 
     // Now check the requisite number of consecutive fixes have been made
-    if (--m_num_consecutive_fixes) {
+    if (m_num_consecutive_fixes > 0)
+        --m_num_consecutive_fixes;
+    if (m_num_consecutive_fixes) {
        	DEBUG_TRACE("GPSScheduler::gnss_data_callback: criteria met with %u consecutive fixes remaining", m_num_consecutive_fixes);
         return;
     }

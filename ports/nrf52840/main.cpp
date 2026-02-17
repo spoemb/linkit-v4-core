@@ -371,7 +371,7 @@ int main()
 	{
 		SensorsPowerGuard power_guard;  // Acquire VSENSORS for I2C bus stability during init
 		NrfI2C::init();
-		bool is_linkit_v3_v4_early = (PMU::hardware_version() == "LinkIt V3") || (PMU::hardware_version() == "LinkIt V4");
+		PMU::hardware_version(); // Side-effect: I2C probes for hardware detection
 #if ENABLE_SEA_TEMP_SENSOR
 		{
 			try {
@@ -879,6 +879,4 @@ int main()
 			GenTracker::dispatch(event);
 		}
 	}
-
-	return 0;
 }
