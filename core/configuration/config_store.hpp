@@ -73,6 +73,7 @@ struct ArgosConfig {
 	unsigned int cert_tx_repetition;
 	unsigned int argos_tcxo_warmup_time;
 	unsigned int sensor_tx_enable;
+	unsigned int shutdown_ntime_sat;
 };
 
 enum class ConfigMode {
@@ -321,6 +322,9 @@ protected:
 		/* [171] LB_CAM_EN */ (bool)false,
 		/* [172] ARGOS_SECKEY */ std::string(""),
 		/* [173] ARGOS_RADIOCONF */ std::string(""),
+		/* [174] SHUTDOWN_NTIME_SAT */ 0U,
+		/* [175] LB_SHUTDOWN_NTIME_SAT */ 0U,
+		/* [176] GNSS_SESSION_SINGLE_FIX */ (bool)false,
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,
@@ -694,6 +698,7 @@ public:
 			argos_config.prepass_comp_step = read_param<unsigned int>(ParamID::PP_COMP_STEP);
 			unsigned int delta_time_loc = read_param<unsigned int>(ParamID::DLOC_ARG_LB);
 			argos_config.delta_time_loc = calc_delta_time_loc(delta_time_loc);
+			argos_config.shutdown_ntime_sat = read_param<unsigned int>(ParamID::LB_SHUTDOWN_NTIME_SAT);
 			if (m_last_config_mode != ConfigMode::LOW_BATTERY) {
 				DEBUG_INFO("ConfigurationStore: LOW_BATTERY mode detected");
 				m_last_config_mode = ConfigMode::LOW_BATTERY;
@@ -724,6 +729,7 @@ public:
 			argos_config.prepass_linear_margin = read_param<unsigned int>(ParamID::PP_LINEAR_MARGIN);
 			argos_config.prepass_comp_step = read_param<unsigned int>(ParamID::PP_COMP_STEP);
 			argos_config.delta_time_loc = calc_delta_time_loc(read_param<unsigned int>(ParamID::ZONE_GNSS_DELTA_ARG_LOC_ARGOS_SECONDS));
+			argos_config.shutdown_ntime_sat = read_param<unsigned int>(ParamID::SHUTDOWN_NTIME_SAT);
 
 			if (m_last_config_mode != ConfigMode::OUT_OF_ZONE) {
 				DEBUG_INFO("ConfigurationStore: OUT_OF_ZONE mode detected");
@@ -757,6 +763,7 @@ public:
 			argos_config.prepass_comp_step = read_param<unsigned int>(ParamID::PP_COMP_STEP);
 			unsigned int delta_time_loc = read_param<unsigned int>(ParamID::DLOC_ARG_NOM);
 			argos_config.delta_time_loc = calc_delta_time_loc(delta_time_loc);
+			argos_config.shutdown_ntime_sat = read_param<unsigned int>(ParamID::SHUTDOWN_NTIME_SAT);
 			if (m_last_config_mode != ConfigMode::NORMAL) {
 				DEBUG_INFO("ConfigurationStore: NORMAL mode detected");
 				m_last_config_mode = ConfigMode::NORMAL;

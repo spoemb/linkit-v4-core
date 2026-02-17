@@ -531,6 +531,10 @@ void ConfigurationState::process_usb_data() {}
 
 void BatteryCriticalState::entry() {
 	DEBUG_INFO("entry: BatteryCriticalState");
+#ifdef EXTERNAL_WAKEUP
+	DEBUG_INFO("EXTERNAL_WAKEUP: Critical battery, immediate powerdown");
+	PMU::powerdown();
+#else
 	led_handle::dispatch<SetLEDBatteryCritical>({});
 	buzz_handle::dispatch<SetBuzzOff>({});
 	m_transit_task = system_scheduler->post_task_prio([this](){
@@ -538,6 +542,7 @@ void BatteryCriticalState::entry() {
 	},
 	"GenTrackerBatteryCriticalTransitOffState",
 	Scheduler::DEFAULT_PRIORITY, BATTERY_CRITICAL_TIMEOUT_MS);
+#endif
 }
 
 void BatteryCriticalState::exit() {

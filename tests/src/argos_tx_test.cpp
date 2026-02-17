@@ -1273,6 +1273,99 @@ TEST(ArgosTxService, BuildSensorPacketSeaTemp) {
 }
 
 
+TEST(ArgosTxService, DepthPileManagerTestThermistorConversion)
+{
+	bool enable = true;
+	BaseSensorEnableTxMode mode = BaseSensorEnableTxMode::ONESHOT;
+	fake_config_store->write_param(ParamID::THERMISTOR_SENSOR_ENABLE, enable);
+	fake_config_store->write_param(ParamID::THERMISTOR_SENSOR_ENABLE_TX_MODE, mode);
+
+	std::time_t t = 1652105502000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	ArgosDepthPileManager man;
+
+	ServiceEvent e;
+	GPSLogEntry log;
+	log.info.valid = true;
+	ServiceSensorData sensor;
+
+	e.event_source = ServiceIdentifier::GNSS_SENSOR;
+	e.event_type = ServiceEventType::SERVICE_ACTIVE;
+	man.notify_peer_event(e);
+
+	e.event_data = log;
+	e.event_source = ServiceIdentifier::GNSS_SENSOR;
+	e.event_type = ServiceEventType::SERVICE_LOG_UPDATED;
+	man.notify_peer_event(e);
+
+	// Thermistor: 21.1°C -> (21.1 + 40.0) * 100 = 6110
+	sensor.port[0] = 21.1;
+	e.event_data = sensor;
+	e.event_source = ServiceIdentifier::THERMISTOR_SENSOR;
+	e.event_type = ServiceEventType::SERVICE_LOG_UPDATED;
+	man.notify_peer_event(e);
+
+	e.event_type = ServiceEventType::SERVICE_INACTIVE;
+	man.notify_peer_event(e);
+
+	CHECK_TRUE(man.eligible());
+
+	// Thermistor retrieves from sea_temp depth pile
+	ServiceSensorData *converted;
+	converted = man.retrieve_sensor_single(1, ServiceIdentifier::THERMISTOR_SENSOR);
+	CHECK_FALSE(nullptr == converted);
+	CHECK_EQUAL(6110, (unsigned int)converted->port[0]);
+}
+
+TEST(ArgosTxService, BuildSensorPacketWithAXL) {
+	unsigned int size_bits;
+	GPSLogEntry e = make_gps_location(1, 12.3, 44.4, 1652105502);
+	ServiceSensorData axl;
+	std::string x;
+
+	// AXL: temp=6500, x=16010, y=15980, z=17000, activity=5
+	axl.port[0] = 6500;
+	axl.port[1] = 16010;
+	axl.port[2] = 15980;
+	axl.port[3] = 17000;
+	axl.port[4] = 5;
+
+	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, nullptr, &axl, false, false, size_bits);
+	// Should include GPS + AXL data (temp 14 bits + X 15 bits + Y 15 bits + Z 15 bits + Activity 8 bits = 67 bits)
+	CHECK_TRUE(size_bits > 83); // Must be larger than GPS-only (83 bits)
+}
+
+TEST(ArgosTxService, BuildSensorPacketOutOfZone) {
+	unsigned int size_bits;
+	GPSLogEntry e = make_gps_location(1, 12.3, 44.4, 1652105502);
+	std::string x;
+
+	// Test with out-of-zone flag set
+	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, nullptr, nullptr, true, false, size_bits);
+	CHECK_EQUAL(83, size_bits); // GPS-only packet size should be same
+
+	// Test with low battery flag set
+	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, nullptr, nullptr, false, true, size_bits);
+	CHECK_EQUAL(83, size_bits);
+}
+
+TEST(ArgosTxService, BuildDopplerPacket) {
+	unsigned int size_bits;
+	std::string x;
+
+	// Battery at 4200mV, not low
+	x = ArgosPacketBuilder::build_doppler_packet(4200, false, size_bits);
+	CHECK_TRUE(size_bits > 0);
+	CHECK_FALSE(x.empty());
+
+	// Battery at 2800mV, low battery
+	x = ArgosPacketBuilder::build_doppler_packet(2800, true, size_bits);
+	CHECK_TRUE(size_bits > 0);
+	CHECK_FALSE(x.empty());
+}
+
 IGNORE_TEST(ArgosTxService, PassPredictWithSensorDataPayload)
 {
 	double frequency = 900.22;

@@ -867,6 +867,7 @@ std::string DTEHandler::SWSST_REQ(int error_code) {
 		return DTEEncoder::encode(DTECommand::SWSST_RESP, error_code);
 	}
 
+#ifdef SWS_ADC
 	auto st = SWSAnalogService::get_status();
 
 	return DTEEncoder::encode(DTECommand::SWSST_RESP, (int)DTEError::OK,
@@ -879,6 +880,9 @@ std::string DTEHandler::SWSST_REQ(int error_code) {
 		(unsigned int)st.is_calibrated,
 		(unsigned int)st.is_underwater,
 		(unsigned int)st.time_in_state_sec);
+#else
+	return DTEEncoder::encode(DTECommand::SWSST_RESP, (int)DTEError::PARAM_KEY_UNRECOGNISED);
+#endif
 }
 
 #pragma GCC diagnostic push

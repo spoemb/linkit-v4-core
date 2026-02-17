@@ -35,6 +35,12 @@ unsigned int GPSService::service_next_schedule_in_ms() {
 	GNSSConfig gnss_config;
 	configuration_store->get_gnss_configuration(gnss_config);
 
+    // Single fix mode: don't reschedule GNSS after first successful fix
+    if (m_is_first_fix_found && configuration_store->read_param<bool>(ParamID::GNSS_SESSION_SINGLE_FIX)) {
+        DEBUG_INFO("GPSService: GNSS_SESSION_SINGLE_FIX enabled, not rescheduling after first fix");
+        return Service::SCHEDULE_DISABLED;
+    }
+
     std::time_t now = service_current_time();
     std::time_t aq_period = m_is_first_schedule ? FIRST_AQPERIOD_SEC : (m_is_first_fix_found ? gnss_config.dloc_arg_nom : gnss_config.cold_start_retry_period);
 

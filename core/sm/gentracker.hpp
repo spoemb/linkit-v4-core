@@ -48,7 +48,11 @@ public:
 class PreOperationalState : public GenTracker
 {
 private:
+#ifdef EXTERNAL_WAKEUP
+	static inline const unsigned int TRANSIT_PERIOD_MS = 100;
+#else
 	static inline const unsigned int TRANSIT_PERIOD_MS = 5000;
+#endif
 	Scheduler::TaskHandle m_preop_state_task;
 
 public:

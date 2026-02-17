@@ -12,7 +12,7 @@
 class BleInterface : public BLEService
 {
 public:
-    void init();
+    void init() override;
 
 	void start(std::function<int(BLEServiceEvent& event)> on_event) override;
 	void stop() override;

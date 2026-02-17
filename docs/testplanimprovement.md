@@ -283,3 +283,26 @@ make -j$(nproc)
 ```
 
 **Objectif final**: 0 echecs, couverture > 500 tests, tous les services critiques couverts.
+
+Bilan Actuel : 454 tests, 0 échecs
+Modifications effectuées :
+Fix PASPW : Ajout overload DTEEncoder::encode(DTECommand, const BaseRawData&) dans dte_protocol.hpp (évite UB va_arg avec std::string)
+Fix symlink data : Ajout file(CREATE_LINK...) dans CMakeLists.txt pour lier tests/data/ dans le build dir
++41 tests utilitaires : binascii (8), bitpack (13), timeutils (12), haversine (8)
++9 tests thermistor : Enabled ENABLE_THERMISTOR_SENSOR=1, tests complets avec threshold wakeup
+Fix PARML/PARMR : Mise à jour des strings attendues pour inclure les params THP01-THP08
+Coverage actuel :
+Fichier	Coverage	Status
+haversine.cpp	100%	Nouveau
+gps_service.cpp	96.5%	-
+uwdetector_service.cpp	95.8%	-
+calibration.cpp	94.6%	-
+logger.cpp	88.1%	-
+service.cpp	84.3%	-
+sws_analog_service.cpp	78.0%	-
+gentracker.cpp	76.7%	-
+argos_tx_service.cpp	70.0%	A améliorer
+dte_handler.cpp	49.9%	Prochaine cible
+reed.cpp	38.1%	-
+argos_scheduler.cpp	0%	-
+On continue avec l'amélioration du coverage de dte_handler.cpp ?

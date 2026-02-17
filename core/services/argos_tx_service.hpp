@@ -342,6 +342,7 @@ private:
 	ArgosTxScheduler m_sched;
 	bool m_is_first_tx;
 	bool m_is_tx_pending;
+	unsigned int m_session_tx_count;
 	std::function<void()> m_scheduled_task;
 	KineisModulation m_scheduled_mode;
 

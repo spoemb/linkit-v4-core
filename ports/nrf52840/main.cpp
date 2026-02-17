@@ -526,12 +526,11 @@ int main()
 
 		// Check if this is not our turn to run based on modulo
 		// boot_count_check_modulo returns true if (counter % modulo == 0) meaning it IS our turn
-		// TODO: Re-enable for production
-		// if (boot_counter > 0 && !configuration_store->boot_count_check_modulo(boot_counter)) {
-		// 	DEBUG_INFO("EXTERNAL_WAKEUP: Not our turn to run (modulo check), powering down");
-		// 	PMU::powerdown();
-		// 	// Should not reach here - TPL5111 will cut power
-		// }
+		if (boot_counter > 0 && !configuration_store->boot_count_check_modulo(boot_counter)) {
+			DEBUG_INFO("EXTERNAL_WAKEUP: Not our turn to run (modulo check), powering down");
+			PMU::powerdown();
+			// Should not reach here - TPL5111 will cut power
+		}
 		DEBUG_INFO("EXTERNAL_WAKEUP: Our turn to run, continuing boot");
 	}
 #endif
@@ -870,7 +869,10 @@ int main()
 	while (true)
 	{
 		try {
-			NrfUSB::process();
+#ifdef DEBUG_UART_TX_PIN
+			if (g_debug_mode != BaseDebugMode::UART)
+#endif
+				NrfUSB::process();
 			system_scheduler->run();
 			PMU::run();
 		} catch (ErrorCode e) {

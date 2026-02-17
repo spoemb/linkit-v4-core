@@ -274,8 +274,12 @@ enum class ParamID {
 	ARGOS_SECKEY                             = 172,
 	ARGOS_RADIOCONF                          = 173,
 #endif
+	// === Session shutdown control (slots 174-176 always reserved) ===
+	SHUTDOWN_NTIME_SAT                       = 174,
+	LB_SHUTDOWN_NTIME_SAT                    = 175,
+	GNSS_SESSION_SINGLE_FIX                  = 176,
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 174,
+	__PARAM_SIZE                             = 177,
 	__NULL_PARAM                             = 0xFFFF
 };
 

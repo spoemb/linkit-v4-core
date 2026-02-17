@@ -743,6 +743,37 @@ public:
 		return buffer;
 	}
 
+	static std::string encode(DTECommand command, const BaseRawData& raw_data) {
+		std::string buffer;
+		std::string payload;
+		unsigned int command_index = (unsigned int)command & RESP_CMD_BASE ?
+				((unsigned int)command & ~RESP_CMD_BASE) + (unsigned int)DTECommand::__NUM_REQ : (unsigned int)command;
+		const std::string& command_name = command_map[command_index].name;
+
+		encode(payload, raw_data);
+
+		if ((unsigned int)command & RESP_CMD_BASE) {
+			buffer.append("$O;");
+		} else {
+			buffer.append("$");
+		}
+
+		if (payload.size() > BASE_MAX_PAYLOAD_LENGTH)
+		{
+			DEBUG_ERROR("DTE_PROTOCOL_MESSAGE_TOO_LARGE");
+			throw DTE_PROTOCOL_MESSAGE_TOO_LARGE;
+		}
+
+		buffer.append(command_name);
+		buffer.append("#");
+		string_sprintf(buffer, "%03X", payload.size());
+		buffer.append(";");
+		buffer.append(payload);
+		buffer.append("\r");
+
+		return buffer;
+	}
+
 	static std::string encode(DTECommand command, std::vector<ParamID>& params) {
 		std::string buffer;
 		std::string payload;

@@ -28,6 +28,9 @@ target_compile_definitions(CppUTestExt PUBLIC CPPUTEST_MEM_LEAK_DETECTION_DISABL
 find_package(Threads)
 add_executable(${PROJECT_NAME})
 
+# Create symlink to test data directory in build directory
+file(CREATE_LINK "${CMAKE_CURRENT_SOURCE_DIR}/data" "${CMAKE_CURRENT_BINARY_DIR}/data" SYMBOLIC)
+
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 17)
 set_property(TARGET ${PROJECT_NAME} PROPERTY CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -42,6 +45,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     ENABLE_ALS_SENSOR=1
     ENABLE_CDT_SENSOR=1
     ENABLE_AXL_SENSOR=1
+    ENABLE_THERMISTOR_SENSOR=1
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE
@@ -198,7 +202,12 @@ target_sources(${PROJECT_NAME} PRIVATE
     "src/argos_tx_test.cpp"
     "src/dive_mode_test.cpp"
     "src/m8_test.cpp"
-src/main.cpp
+    "src/binascii_test.cpp"
+    "src/bitpack_test.cpp"
+    "src/timeutils_test.cpp"
+    "src/haversine_test.cpp"
+    "src/thermistor_test.cpp"
+    "src/main.cpp"
     "fakes/memmang.cpp"
     "fakes/nrfx_rtc.c"
     "fakes/nrf_libuarte_async.cpp"

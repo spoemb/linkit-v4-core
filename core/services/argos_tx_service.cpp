@@ -36,6 +36,7 @@ void ArgosTxService::service_init() {
 	m_depth_pile_manager.clear();
 	m_is_first_tx = true;
 	m_is_tx_pending = false;
+	m_session_tx_count = 0;
 
 	// Set the idle timeout depending on the configuration settings
 	// i) In certification mode, keep powered on for 10 seconds in idle
@@ -338,6 +339,7 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 
 	// Increment TX counter
 	configuration_store->increment_tx_counter();
+	m_session_tx_count++;
 
 	// Update last TX date time
 	std::time_t t = service_current_time();
@@ -345,6 +347,16 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 
 	// Save configuration params
 	configuration_store->save_params();
+
+	// Check session TX limit (SHUTDOWN_NTIME_SAT / LB_SHUTDOWN_NTIME_SAT)
+	ArgosConfig argos_config;
+	configuration_store->get_argos_configuration(argos_config);
+	if (argos_config.shutdown_ntime_sat > 0 && m_session_tx_count >= argos_config.shutdown_ntime_sat) {
+		DEBUG_INFO("ArgosTxService: Session TX limit reached (%u/%u), powering down",
+		           m_session_tx_count, argos_config.shutdown_ntime_sat);
+		PMU::powerdown();
+		return;
+	}
 
 	m_sched.notify_tx_complete();
 	service_complete();

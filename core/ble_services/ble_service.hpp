@@ -32,6 +32,7 @@ struct BLEServiceEvent {
 class BLEService {
 public:
 	virtual ~BLEService() {}
+	virtual void init() {}
 	virtual void start(std::function<int(BLEServiceEvent& event)> on_event) = 0;
 	virtual void stop() = 0;
 	virtual bool write(std::string str) = 0;

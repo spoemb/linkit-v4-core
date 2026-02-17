@@ -210,7 +210,7 @@ void M10QAsyncReceiver::exit_shutdown() {
     GPIOPins::set(BSP::GPIO::GPIO_GPS_RST);
     PMU::delay_ms(10);
     GPIOPins::set(BSP::GPIO::GPIO_GPS_PWR_EN);
-    PMU::delay_ms(1000); // Necessary to allow the device to boot
+    PMU::delay_ms(500); // M10Q boot ~30ms, 500ms conservative margin (sync_baud_rate has retries)
 }
 
 void M10QAsyncReceiver::state_machine() {
@@ -674,8 +674,9 @@ void M10QAsyncReceiver::state_configure() {
 				disable_timepulse_output();
 				break;
 			} else if (m_step == 9) {
-				setup_power_management();
-				break;
+				// Skip - step 10 (setup_continuous_mode) overrides to FULL mode anyway
+				m_step++;
+				m_op_state = OpState::IDLE;
 			} else if (m_step == 10) {
 				setup_continuous_mode();
 				break;

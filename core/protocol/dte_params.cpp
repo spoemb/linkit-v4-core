@@ -238,6 +238,10 @@ const BaseMap param_map[] = {
 	// [172-173] SMD credentials (slots always reserved)
 	{ "ARGOS_SECKEY", "IDP13", BaseEncoding::TEXT, "", "", {}, (ARGOS_SMD == 1), true },
 	{ "ARGOS_RADIOCONF", "IDP14", BaseEncoding::TEXT, "", "", {}, (ARGOS_SMD == 1), true },
+	// [174-176] Session shutdown control (slots always reserved)
+	{ "SHUTDOWN_NTIME_SAT", "PWP05", BaseEncoding::UINT, 0U, 65535U, {}, true, true },
+	{ "LB_SHUTDOWN_NTIME_SAT", "LBP14", BaseEncoding::UINT, 0U, 65535U, {}, true, true },
+	{ "GNSS_SESSION_SINGLE_FIX", "GNP30", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);
