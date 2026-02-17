@@ -449,39 +449,7 @@ TEST(ConfigStore, PARAM_ARGOS_AOP_DATE)
 	CHECK_EQUAL(t, store->read_param<std::time_t>(ParamID::ARGOS_AOP_DATE));
 }
 
-TEST(ConfigStore, PARAM_ARGOS_FREQ)
-{
-	store = new LFSConfigurationStore(*main_filesystem);
-	store->init();
-
-	double t = 401.68;
-	store->write_param(ParamID::ARGOS_FREQ, t);
-	store->save_params();
-	CHECK_EQUAL(t, store->read_param<double>(ParamID::ARGOS_FREQ));
-
-	delete store;
-	store = new LFSConfigurationStore(*main_filesystem);
-	store->init();
-
-	CHECK_EQUAL(t, store->read_param<double>(ParamID::ARGOS_FREQ));
-}
-
-TEST(ConfigStore, PARAM_ARGOS_POWER)
-{
-	store = new LFSConfigurationStore(*main_filesystem);
-	store->init();
-
-	BaseArgosPower t = BaseArgosPower::POWER_200_MW;
-	store->write_param(ParamID::ARGOS_POWER, t);
-	store->save_params();
-	CHECK_TRUE(t == store->read_param<BaseArgosPower>(ParamID::ARGOS_POWER));
-
-	delete store;
-	store = new LFSConfigurationStore(*main_filesystem);
-	store->init();
-
-	CHECK_TRUE(t == store->read_param<BaseArgosPower>(ParamID::ARGOS_POWER));
-}
+// PARAM_ARGOS_FREQ and PARAM_ARGOS_POWER tests removed: these params are obsolete (RADIOCONF controls power/frequency)
 
 TEST(ConfigStore, PARAM_TR_NOM)
 {
@@ -739,22 +707,7 @@ TEST(ConfigStore, PARAM_LB_THRESHOLD)
 	CHECK_EQUAL(t, store->read_param<unsigned int>(ParamID::LB_THRESHOLD));
 }
 
-TEST(ConfigStore, PARAM_LB_ARGOS_POWER)
-{
-	store = new LFSConfigurationStore(*main_filesystem);
-	store->init();
-
-	BaseArgosPower t = BaseArgosPower::POWER_200_MW;
-	store->write_param(ParamID::LB_ARGOS_POWER, t);
-	store->save_params();
-	CHECK_TRUE(t == store->read_param<BaseArgosPower>(ParamID::LB_ARGOS_POWER));
-
-	delete store;
-	store = new LFSConfigurationStore(*main_filesystem);
-	store->init();
-
-	CHECK_TRUE(t == store->read_param<BaseArgosPower>(ParamID::LB_ARGOS_POWER));
-}
+// PARAM_LB_ARGOS_POWER test removed: param is obsolete (RADIOCONF controls power)
 
 TEST(ConfigStore, PARAM_TR_LB)
 {
@@ -1012,33 +965,27 @@ TEST(ConfigStore, RetrieveArgosConfigDefaultMode)
 	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_12;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0xFFFFFFU;
-	double frequency = 0;
 	BaseArgosMode mode = BaseArgosMode::DUTY_CYCLE;
 	unsigned int ntry_per_message = 1;
-	BaseArgosPower power = BaseArgosPower::POWER_500_MW;
 	unsigned int tr_nom = 60;
 	unsigned int tx_counter = 12;
 	bool lb_en = false;
 	BaseArgosDepthPile lb_depth_pile = BaseArgosDepthPile::DEPTH_PILE_4;
 	unsigned int lb_duty_cycle = 0xAAAAAAU;
 	BaseArgosMode lb_mode = BaseArgosMode::LEGACY;
-	BaseArgosPower lb_power = BaseArgosPower::POWER_40_MW;
 	unsigned int lb_tr_nom = 120;
 
 	store->write_param(ParamID::ARGOS_DEPTH_PILE, depth_pile);
 	store->write_param(ParamID::DRY_TIME_BEFORE_TX, dry_time_before_tx);
 	store->write_param(ParamID::DUTY_CYCLE, duty_cycle);
-	store->write_param(ParamID::ARGOS_FREQ, frequency);
 	store->write_param(ParamID::ARGOS_MODE, mode);
 	store->write_param(ParamID::NTRY_PER_MESSAGE, ntry_per_message);
-	store->write_param(ParamID::ARGOS_POWER, power);
 	store->write_param(ParamID::TR_NOM, tr_nom);
 	store->write_param(ParamID::TX_COUNTER, tx_counter);
 	store->write_param(ParamID::LB_EN, lb_en);
 	store->write_param(ParamID::LB_ARGOS_DEPTH_PILE, lb_depth_pile);
 	store->write_param(ParamID::LB_ARGOS_DUTY_CYCLE, lb_duty_cycle);
 	store->write_param(ParamID::LB_ARGOS_MODE, lb_mode);
-	store->write_param(ParamID::LB_ARGOS_POWER, lb_power);
 	store->write_param(ParamID::TR_LB, lb_tr_nom);
 
 	ArgosConfig argos_config;
@@ -1047,10 +994,10 @@ TEST(ConfigStore, RetrieveArgosConfigDefaultMode)
 	CHECK_EQUAL((unsigned int)depth_pile, (unsigned int)argos_config.depth_pile);
 	CHECK_EQUAL(dry_time_before_tx, argos_config.dry_time_before_tx);
 	CHECK_EQUAL(duty_cycle, argos_config.duty_cycle);
-	CHECK_EQUAL(frequency, argos_config.frequency);
+	CHECK_EQUAL(401.65, argos_config.frequency);
 	CHECK_EQUAL((unsigned int)mode, (unsigned int)argos_config.mode);
 	CHECK_EQUAL(ntry_per_message, argos_config.ntry_per_message);
-	CHECK_EQUAL((unsigned int)power, (unsigned int)argos_config.power);
+	CHECK_EQUAL((unsigned int)BaseArgosPower::POWER_350_MW, (unsigned int)argos_config.power);
 	CHECK_EQUAL(tr_nom, argos_config.tr_nom);
 	CHECK_EQUAL(tx_counter, argos_config.tx_counter);
 }
@@ -1064,10 +1011,8 @@ TEST(ConfigStore, RetrieveArgosConfigLBMode)
 	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_12;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0xFFFFFFU;
-	double frequency = 0;
 	BaseArgosMode mode = BaseArgosMode::DUTY_CYCLE;
 	unsigned int ntry_per_message = 1;
-	BaseArgosPower power = BaseArgosPower::POWER_500_MW;
 	unsigned int tr_nom = 60;
 	unsigned int tx_counter = 12;
 	bool lb_en = true;
@@ -1075,17 +1020,14 @@ TEST(ConfigStore, RetrieveArgosConfigLBMode)
 	unsigned int lb_duty_cycle = 0xAAAAAAU;
 	unsigned int lb_ntry_per_message = 5U;
 	BaseArgosMode lb_mode = BaseArgosMode::LEGACY;
-	BaseArgosPower lb_power = BaseArgosPower::POWER_40_MW;
 	unsigned int lb_tr_nom = 120;
 	unsigned int lb_thresh = 10U;
 
 	store->write_param(ParamID::ARGOS_DEPTH_PILE, depth_pile);
 	store->write_param(ParamID::DRY_TIME_BEFORE_TX, dry_time_before_tx);
 	store->write_param(ParamID::DUTY_CYCLE, duty_cycle);
-	store->write_param(ParamID::ARGOS_FREQ, frequency);
 	store->write_param(ParamID::ARGOS_MODE, mode);
 	store->write_param(ParamID::NTRY_PER_MESSAGE, ntry_per_message);
-	store->write_param(ParamID::ARGOS_POWER, power);
 	store->write_param(ParamID::TR_NOM, tr_nom);
 	store->write_param(ParamID::TX_COUNTER, tx_counter);
 	store->write_param(ParamID::LB_EN, lb_en);
@@ -1093,7 +1035,6 @@ TEST(ConfigStore, RetrieveArgosConfigLBMode)
 	store->write_param(ParamID::LB_ARGOS_DEPTH_PILE, lb_depth_pile);
 	store->write_param(ParamID::LB_ARGOS_DUTY_CYCLE, lb_duty_cycle);
 	store->write_param(ParamID::LB_ARGOS_MODE, lb_mode);
-	store->write_param(ParamID::LB_ARGOS_POWER, lb_power);
 	store->write_param(ParamID::TR_LB, lb_tr_nom);
 	store->write_param(ParamID::LB_THRESHOLD, lb_thresh);
 
@@ -1106,10 +1047,10 @@ TEST(ConfigStore, RetrieveArgosConfigLBMode)
 	CHECK_EQUAL((unsigned int)depth_pile, (unsigned int)argos_config.depth_pile);
 	CHECK_EQUAL(dry_time_before_tx, argos_config.dry_time_before_tx);
 	CHECK_EQUAL(duty_cycle, argos_config.duty_cycle);
-	CHECK_EQUAL(frequency, argos_config.frequency);
+	CHECK_EQUAL(401.65, argos_config.frequency);
 	CHECK_EQUAL((unsigned int)mode, (unsigned int)argos_config.mode);
 	CHECK_EQUAL(ntry_per_message, argos_config.ntry_per_message);
-	CHECK_EQUAL((unsigned int)power, (unsigned int)argos_config.power);
+	CHECK_EQUAL((unsigned int)BaseArgosPower::POWER_350_MW, (unsigned int)argos_config.power);
 	CHECK_EQUAL(tr_nom, argos_config.tr_nom);
 	CHECK_EQUAL(tx_counter, argos_config.tx_counter);
 
@@ -1121,10 +1062,10 @@ TEST(ConfigStore, RetrieveArgosConfigLBMode)
 	CHECK_EQUAL((unsigned int)lb_depth_pile, (unsigned int)argos_config.depth_pile);
 	CHECK_EQUAL(dry_time_before_tx, argos_config.dry_time_before_tx);
 	CHECK_EQUAL(lb_duty_cycle, argos_config.duty_cycle);
-	CHECK_EQUAL(frequency, argos_config.frequency);
+	CHECK_EQUAL(401.65, argos_config.frequency);
 	CHECK_EQUAL((unsigned int)lb_mode, (unsigned int)argos_config.mode);
 	CHECK_EQUAL(lb_ntry_per_message, argos_config.ntry_per_message);
-	CHECK_EQUAL((unsigned int)lb_power, (unsigned int)argos_config.power);
+	CHECK_EQUAL((unsigned int)BaseArgosPower::POWER_350_MW, (unsigned int)argos_config.power);
 	CHECK_EQUAL(lb_tr_nom, argos_config.tr_nom);
 	CHECK_EQUAL(tx_counter, argos_config.tx_counter);
 
@@ -1136,10 +1077,10 @@ TEST(ConfigStore, RetrieveArgosConfigLBMode)
 	CHECK_EQUAL((unsigned int)lb_depth_pile, (unsigned int)argos_config.depth_pile);
 	CHECK_EQUAL(dry_time_before_tx, argos_config.dry_time_before_tx);
 	CHECK_EQUAL(lb_duty_cycle, argos_config.duty_cycle);
-	CHECK_EQUAL(frequency, argos_config.frequency);
+	CHECK_EQUAL(401.65, argos_config.frequency);
 	CHECK_EQUAL((unsigned int)lb_mode, (unsigned int)argos_config.mode);
 	CHECK_EQUAL(lb_ntry_per_message, argos_config.ntry_per_message);
-	CHECK_EQUAL((unsigned int)lb_power, (unsigned int)argos_config.power);
+	CHECK_EQUAL((unsigned int)BaseArgosPower::POWER_350_MW, (unsigned int)argos_config.power);
 	CHECK_EQUAL(lb_tr_nom, argos_config.tr_nom);
 	CHECK_EQUAL(tx_counter, argos_config.tx_counter);
 
@@ -1151,10 +1092,10 @@ TEST(ConfigStore, RetrieveArgosConfigLBMode)
 	CHECK_EQUAL((unsigned int)depth_pile, (unsigned int)argos_config.depth_pile);
 	CHECK_EQUAL(dry_time_before_tx, argos_config.dry_time_before_tx);
 	CHECK_EQUAL(duty_cycle, argos_config.duty_cycle);
-	CHECK_EQUAL(frequency, argos_config.frequency);
+	CHECK_EQUAL(401.65, argos_config.frequency);
 	CHECK_EQUAL((unsigned int)mode, (unsigned int)argos_config.mode);
 	CHECK_EQUAL(ntry_per_message, argos_config.ntry_per_message);
-	CHECK_EQUAL((unsigned int)power, (unsigned int)argos_config.power);
+	CHECK_EQUAL((unsigned int)BaseArgosPower::POWER_350_MW, (unsigned int)argos_config.power);
 	CHECK_EQUAL(tr_nom, argos_config.tr_nom);
 	CHECK_EQUAL(tx_counter, argos_config.tx_counter);
 
@@ -1280,8 +1221,6 @@ TEST(ConfigStore, RetrieveArgosConfigZoneExclusionMode)
 	store->write_param(ParamID::ZONE_ARGOS_DEPTH_PILE, zone_argos_depth_pile);
 	BaseArgosMode zone_argos_mode = BaseArgosMode::LEGACY;
 	store->write_param(ParamID::ZONE_ARGOS_MODE, zone_argos_mode);
-	BaseArgosPower zone_argos_power = BaseArgosPower::POWER_3_MW;
-	store->write_param(ParamID::ZONE_ARGOS_POWER, zone_argos_power);
 	unsigned int zone_argos_time_repetition_seconds = 120;
 	store->write_param(ParamID::ZONE_ARGOS_REPETITION_SECONDS, zone_argos_time_repetition_seconds);
 
@@ -1289,10 +1228,8 @@ TEST(ConfigStore, RetrieveArgosConfigZoneExclusionMode)
 	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_12;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0xFFFFFFU;
-	double frequency = 0;
 	BaseArgosMode mode = BaseArgosMode::DUTY_CYCLE;
 	unsigned int ntry_per_message = 1;
-	BaseArgosPower power = BaseArgosPower::POWER_500_MW;
 	unsigned int tr_nom = 60;
 	unsigned int tx_counter = 12;
 	bool lb_en = false;
@@ -1300,10 +1237,8 @@ TEST(ConfigStore, RetrieveArgosConfigZoneExclusionMode)
 	store->write_param(ParamID::ARGOS_DEPTH_PILE, depth_pile);
 	store->write_param(ParamID::DRY_TIME_BEFORE_TX, dry_time_before_tx);
 	store->write_param(ParamID::DUTY_CYCLE, duty_cycle);
-	store->write_param(ParamID::ARGOS_FREQ, frequency);
 	store->write_param(ParamID::ARGOS_MODE, mode);
 	store->write_param(ParamID::NTRY_PER_MESSAGE, ntry_per_message);
-	store->write_param(ParamID::ARGOS_POWER, power);
 	store->write_param(ParamID::TR_NOM, tr_nom);
 	store->write_param(ParamID::TX_COUNTER, tx_counter);
 	store->write_param(ParamID::LB_EN, lb_en);
@@ -1315,10 +1250,10 @@ TEST(ConfigStore, RetrieveArgosConfigZoneExclusionMode)
 	CHECK_EQUAL((unsigned int)depth_pile, (unsigned int)argos_config.depth_pile);
 	CHECK_EQUAL(dry_time_before_tx, argos_config.dry_time_before_tx);
 	CHECK_EQUAL(duty_cycle, argos_config.duty_cycle);
-	CHECK_EQUAL(frequency, argos_config.frequency);
+	CHECK_EQUAL(401.65, argos_config.frequency);
 	CHECK_EQUAL((unsigned int)mode, (unsigned int)argos_config.mode);
 	CHECK_EQUAL(ntry_per_message, argos_config.ntry_per_message);
-	CHECK_EQUAL((unsigned int)power, (unsigned int)argos_config.power);
+	CHECK_EQUAL((unsigned int)BaseArgosPower::POWER_350_MW, (unsigned int)argos_config.power);
 	CHECK_EQUAL(tr_nom, argos_config.tr_nom);
 	CHECK_EQUAL(tx_counter, argos_config.tx_counter);
 
@@ -1333,10 +1268,10 @@ TEST(ConfigStore, RetrieveArgosConfigZoneExclusionMode)
 	CHECK_EQUAL((unsigned int)zone_argos_depth_pile, (unsigned int)argos_config.depth_pile);
 	CHECK_EQUAL(dry_time_before_tx, argos_config.dry_time_before_tx);
 	CHECK_EQUAL(zone_argos_duty_cycle, argos_config.duty_cycle);
-	CHECK_EQUAL(frequency, argos_config.frequency);
+	CHECK_EQUAL(401.65, argos_config.frequency);
 	CHECK_EQUAL((unsigned int)zone_argos_mode, (unsigned int)argos_config.mode);
 	CHECK_EQUAL(zone_argos_ntry_per_message, argos_config.ntry_per_message);
-	CHECK_EQUAL((unsigned int)zone_argos_power, (unsigned int)argos_config.power);
+	CHECK_EQUAL((unsigned int)BaseArgosPower::POWER_350_MW, (unsigned int)argos_config.power);
 	CHECK_EQUAL(zone_argos_time_repetition_seconds, argos_config.tr_nom);
 	CHECK_EQUAL(tx_counter, argos_config.tx_counter);
 }

@@ -29,7 +29,6 @@ void ArgosTxService::service_init() {
 	//@TODO => Get ID & ADDR ? m_artic.set_device_identifier(argos_config.argos_id);
 
 	m_kineis.subscribe(*this);
-	m_kineis.set_frequency(argos_config.frequency);
 	m_kineis.set_tcxo_warmup_time(argos_config.argos_tcxo_warmup_time);
 	DEBUG_TRACE("ArgosTxService::service_init DEBUG ARGOS ID %d", argos_config.argos_id);
 	m_sched.reset(argos_config.argos_id); // TODO verify if already set at this moment
@@ -222,11 +221,7 @@ void ArgosTxService::process_certification_burst() {
 	configuration_store->get_argos_configuration(argos_config);
 	unsigned int size_bits;
 	KineisPacket packet = ArgosPacketBuilder::build_certification_packet(argos_config.cert_tx_payload, size_bits);
-	DEBUG_INFO("ArgosTxService::process_certification_burst: mode=%s data=%s sz=%u power=%u mW", argos_modulation_to_string(argos_config.cert_tx_modulation), Binascii::hexlify(packet).c_str(), size_bits,
-			argos_power_to_integer(argos_config.power));
-#if ARGOS_SMD
-	m_kineis.set_tx_power(argos_power_to_integer(argos_config.power));
-#endif
+	DEBUG_INFO("ArgosTxService::process_certification_burst: mode=%s data=%s sz=%u", argos_modulation_to_string(argos_config.cert_tx_modulation), Binascii::hexlify(packet).c_str(), size_bits);
 	m_kineis.send((KineisModulation)argos_config.cert_tx_modulation, packet, size_bits);
 }
 
@@ -240,11 +235,7 @@ void ArgosTxService::process_time_sync_burst() {
 		KineisPacket packet = ArgosPacketBuilder::build_gnss_packet(v, argos_config.is_out_of_zone, argos_config.is_lb,
 				argos_config.delta_time_loc,
 				size_bits);
-		DEBUG_INFO("ArgosTxService::process_time_sync_burst: mode=%s data=%s sz=%u power=%u mW", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits,
-				argos_power_to_integer(argos_config.power));
-#if ARGOS_SMD
-		m_kineis.set_tx_power(argos_power_to_integer(argos_config.power));
-#endif
+		DEBUG_INFO("ArgosTxService::process_time_sync_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
 		m_kineis.send(m_scheduled_mode, packet, size_bits);
 	} else {
 		// No eligible entries for transmission in the depth pile, so send a doppler burst instead
@@ -277,11 +268,7 @@ void ArgosTxService::process_sensor_burst() {
 				argos_config.is_out_of_zone,
 				argos_config.is_lb,
 				size_bits);
-		DEBUG_INFO("ArgosTxService::process_sensor_burst: mode=%s data=%s sz=%u power=%u mW", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits,
-				argos_power_to_integer(argos_config.power));
-#if ARGOS_SMD
-		m_kineis.set_tx_power(argos_power_to_integer(argos_config.power));
-#endif
+		DEBUG_INFO("ArgosTxService::process_sensor_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
 		m_kineis.send(m_scheduled_mode, packet, size_bits);
 	} else {
 		// No eligible entries for transmission in the depth pile, so send a doppler burst instead
@@ -300,11 +287,7 @@ void ArgosTxService::process_gnss_burst() {
 		KineisPacket packet = ArgosPacketBuilder::build_gnss_packet(v, argos_config.is_out_of_zone, argos_config.is_lb,
 				argos_config.delta_time_loc,
 				size_bits);
-		DEBUG_INFO("ArgosTxService::process_gnss_burst: mode=%s data=%s sz=%u power=%u mW", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits,
-				argos_power_to_integer(argos_config.power));
-#if ARGOS_SMD
-		m_kineis.set_tx_power(argos_power_to_integer(argos_config.power));
-#endif
+		DEBUG_INFO("ArgosTxService::process_gnss_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
 		m_kineis.send(m_scheduled_mode, packet, size_bits);
 	} else {
 		// No eligible entries for transmission in the depth pile, so send a doppler burst instead
@@ -320,11 +303,7 @@ void ArgosTxService::process_doppler_burst() {
 	KineisPacket packet = ArgosPacketBuilder::build_doppler_packet(service_get_voltage(), service_is_battery_level_low(), size_bits);
 	ArgosConfig argos_config;
 	configuration_store->get_argos_configuration(argos_config);
-	DEBUG_INFO("ArgosTxService::process_doppler_burst: mode=A2 data=%s sz=%u power=%u mW", Binascii::hexlify(packet).c_str(), size_bits,
-			argos_power_to_integer(argos_config.power));
-#if ARGOS_SMD
-	m_kineis.set_tx_power(argos_power_to_integer(argos_config.power));
-#endif
+	DEBUG_INFO("ArgosTxService::process_doppler_burst: mode=A2 data=%s sz=%u", Binascii::hexlify(packet).c_str(), size_bits);
 	m_kineis.send(KineisModulation::LDA2, packet, size_bits);
 }
 

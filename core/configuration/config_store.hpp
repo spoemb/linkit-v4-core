@@ -670,6 +670,11 @@ public:
 		argos_config.is_out_of_zone = is_zone_exclusion();
 		argos_config.is_lb = false;
 
+		// Power and frequency are controlled by RADIOCONF on SMD devices.
+		// These fields are kept for legacy (non-SMD) scheduler compatibility.
+		argos_config.power = BaseArgosPower::POWER_350_MW;
+		argos_config.frequency = 401.65;
+
 		if (lb_en && m_is_battery_level_low) {
 			argos_config.is_lb = true;
 			argos_config.gnss_en = read_param<bool>(ParamID::LB_GNSS_EN);
@@ -683,9 +688,7 @@ public:
 			argos_config.mode = read_param<BaseArgosMode>(ParamID::LB_ARGOS_MODE);
 			argos_config.depth_pile = read_param<BaseArgosDepthPile>(ParamID::LB_ARGOS_DEPTH_PILE);
 			argos_config.duty_cycle = read_param<unsigned int>(ParamID::LB_ARGOS_DUTY_CYCLE);
-			argos_config.frequency = read_param<double>(ParamID::ARGOS_FREQ);
 			argos_config.ntry_per_message = read_param<unsigned int>(ParamID::LB_NTRY_PER_MESSAGE);
-			argos_config.power = read_param<BaseArgosPower>(ParamID::LB_ARGOS_POWER);
 			argos_config.tr_nom = read_param<unsigned int>(ParamID::TR_LB);
 			argos_config.dry_time_before_tx = read_param<unsigned int>(ParamID::DRY_TIME_BEFORE_TX);
 			argos_config.underwater_en = read_param<bool>(ParamID::UNDERWATER_EN);
@@ -715,9 +718,7 @@ public:
 			argos_config.mode = read_param<BaseArgosMode>(ParamID::ZONE_ARGOS_MODE);
 			argos_config.depth_pile = read_param<BaseArgosDepthPile>(ParamID::ZONE_ARGOS_DEPTH_PILE);
 			argos_config.duty_cycle = read_param<unsigned int>(ParamID::ZONE_ARGOS_DUTY_CYCLE);
-			argos_config.frequency = read_param<double>(ParamID::ARGOS_FREQ);
 			argos_config.ntry_per_message = read_param<unsigned int>(ParamID::ZONE_ARGOS_NTRY_PER_MESSAGE);
-			argos_config.power = read_param<BaseArgosPower>(ParamID::ZONE_ARGOS_POWER);
 			argos_config.tr_nom = read_param<unsigned int>(ParamID::ZONE_ARGOS_REPETITION_SECONDS);
 			argos_config.dry_time_before_tx = read_param<unsigned int>(ParamID::DRY_TIME_BEFORE_TX);
 			argos_config.underwater_en = read_param<bool>(ParamID::UNDERWATER_EN);
@@ -748,9 +749,7 @@ public:
 			argos_config.mode = read_param<BaseArgosMode>(ParamID::ARGOS_MODE);
 			argos_config.depth_pile = read_param<BaseArgosDepthPile>(ParamID::ARGOS_DEPTH_PILE);
 			argos_config.duty_cycle = read_param<unsigned int>(ParamID::DUTY_CYCLE);
-			argos_config.frequency = read_param<double>(ParamID::ARGOS_FREQ);
 			argos_config.ntry_per_message = read_param<unsigned int>(ParamID::NTRY_PER_MESSAGE);
-			argos_config.power = read_param<BaseArgosPower>(ParamID::ARGOS_POWER);
 			argos_config.tr_nom = read_param<unsigned int>(ParamID::TR_NOM);
 			argos_config.dry_time_before_tx = read_param<unsigned int>(ParamID::DRY_TIME_BEFORE_TX);
 			argos_config.underwater_en = read_param<bool>(ParamID::UNDERWATER_EN);

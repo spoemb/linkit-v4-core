@@ -389,7 +389,6 @@ TEST(ArgosTxService, TxCounterIncrements)
 	BaseArgosPower power = BaseArgosPower::POWER_1000_MW;
 	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
 
-	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
@@ -430,7 +429,6 @@ TEST(ArgosTxService, TimeSyncBurstPosFix)
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
@@ -449,7 +447,6 @@ TEST(ArgosTxService, TimeSyncBurstPosFix)
 	// No time sync should be scheduled now
 	bool time_sync_en = false;
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
-	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 	inject_gps_location(1, 11.8768, -33.8232, t);
@@ -482,7 +479,6 @@ TEST(ArgosTxService, TimeSyncBurstNoPosFix)
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
@@ -496,7 +492,6 @@ TEST(ArgosTxService, TimeSyncBurstNoPosFix)
 	// No time sync should be scheduled now
 	bool time_sync_en = false;
 	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
-	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 	inject_gps_location(1, 11.8768, -33.8232, t);
@@ -527,7 +522,6 @@ TEST(ArgosTxService, TimeSyncBurstNoPosOrTimeFix)
 
 	std::time_t t = 0;
 
-	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
@@ -563,7 +557,6 @@ TEST(ArgosTxService, LegacyTxServiceInv)
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
@@ -616,7 +609,6 @@ TEST(ArgosTxService, LegacyTxLowBattery)
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
@@ -675,7 +667,6 @@ TEST(ArgosTxService, LegacyTxOutOfZone)
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
@@ -727,7 +718,6 @@ TEST(ArgosTxService, TxServiceCancelledByUnderwaterBeforeTx)
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
@@ -791,7 +781,6 @@ TEST(ArgosTxService, TxServiceCancelledDuringTx)
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
@@ -860,7 +849,6 @@ TEST(ArgosTxService, LegacyTxServiceDepthPile1)
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
@@ -912,7 +900,6 @@ TEST(ArgosTxService, UnderwaterFor24HoursBeforeTx)
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
@@ -974,7 +961,6 @@ TEST(ArgosTxService, LastTxIsUpdated)
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
@@ -1042,7 +1028,6 @@ TEST(ArgosTxService, UnderwaterFor24HoursDryTimeZero)
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
@@ -1410,7 +1395,6 @@ IGNORE_TEST(ArgosTxService, PassPredictWithSensorDataPayload)
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	mock().expectOneCall("set_frequency").onObject(mock_kineis).withDoubleParameter("freq", frequency);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 

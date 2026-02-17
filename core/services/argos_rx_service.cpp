@@ -13,7 +13,6 @@ ArgosRxService::ArgosRxService(KineisDevice& device) : Service(ServiceIdentifier
 void ArgosRxService::service_init() {
 	ArgosConfig argos_config;
 	configuration_store->get_argos_configuration(argos_config);
-	m_kineis.set_frequency(argos_config.frequency);
 	m_kineis.set_tcxo_warmup_time(argos_config.argos_tcxo_warmup_time);
 	m_kineis.subscribe(*this);
 }
