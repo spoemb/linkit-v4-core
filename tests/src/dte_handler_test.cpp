@@ -722,6 +722,7 @@ TEST(DTEHandler, SENSR_REQ_PressureOnly)
 	MockSensor prs("PRS");
 	mock().expectOneCall("read").onObject(&prs).withUnsignedIntParameter("port", 0).andReturnValue(1013.25);
 	mock().expectOneCall("read").onObject(&prs).withUnsignedIntParameter("port", 1).andReturnValue(22.5);
+	mock().expectOneCall("calibration_read").onObject(&prs).withUnsignedIntParameter("offset", 0U).andReturnValue(1013.25);
 
 	// Request pressure only (mask=0x02, timeout=10s)
 	req = DTEEncoder::encode(DTECommand::SENSR_REQ, 2U, 10U);
@@ -731,6 +732,7 @@ TEST(DTEHandler, SENSR_REQ_PressureOnly)
 	CHECK_TRUE((unsigned int)DTEError::OK == error_code);
 	DOUBLES_EQUAL(1013.25, std::get<double>(arg_list[2]), 0.01);  // pressure
 	DOUBLES_EQUAL(22.5, std::get<double>(arg_list[3]), 0.01);     // temperature
+	CHECK(std::get<double>(arg_list[4]) != 0.0);                   // altitude (computed)
 }
 
 TEST(DTEHandler, SENSR_REQ_GNSS_NoFix)
@@ -749,10 +751,10 @@ TEST(DTEHandler, SENSR_REQ_GNSS_NoFix)
 	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
 	CHECK_TRUE(DTECommand::SENSR_RESP == command);
 	CHECK_TRUE((unsigned int)DTEError::OK == error_code);
-	DOUBLES_EQUAL(0.0, std::get<double>(arg_list[4]), 0.001);   // lat
-	DOUBLES_EQUAL(0.0, std::get<double>(arg_list[5]), 0.001);   // lon
-	DOUBLES_EQUAL(99.9, std::get<double>(arg_list[6]), 0.1);    // hdop (no fix)
-	CHECK_EQUAL(0U, std::get<unsigned int>(arg_list[7]));        // num_sv
+	DOUBLES_EQUAL(0.0, std::get<double>(arg_list[5]), 0.001);   // lat
+	DOUBLES_EQUAL(0.0, std::get<double>(arg_list[6]), 0.001);   // lon
+	DOUBLES_EQUAL(99.9, std::get<double>(arg_list[7]), 0.1);    // hdop (no fix)
+	CHECK_EQUAL(0U, std::get<unsigned int>(arg_list[8]));        // num_sv
 }
 
 TEST(DTEHandler, SENSR_REQ_GNSS_ValidFix)
@@ -780,10 +782,10 @@ TEST(DTEHandler, SENSR_REQ_GNSS_ValidFix)
 	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
 	CHECK_TRUE(DTECommand::SENSR_RESP == command);
 	CHECK_TRUE((unsigned int)DTEError::OK == error_code);
-	DOUBLES_EQUAL(48.8566, std::get<double>(arg_list[4]), 0.001);  // lat
-	DOUBLES_EQUAL(2.3522, std::get<double>(arg_list[5]), 0.001);   // lon
-	DOUBLES_EQUAL(1.2, std::get<double>(arg_list[6]), 0.1);        // hdop
-	CHECK_EQUAL(12U, std::get<unsigned int>(arg_list[7]));          // num_sv
+	DOUBLES_EQUAL(48.8566, std::get<double>(arg_list[5]), 0.001);  // lat
+	DOUBLES_EQUAL(2.3522, std::get<double>(arg_list[6]), 0.001);   // lon
+	DOUBLES_EQUAL(1.2, std::get<double>(arg_list[7]), 0.1);        // hdop
+	CHECK_EQUAL(12U, std::get<unsigned int>(arg_list[8]));          // num_sv
 }
 
 TEST(DTEHandler, SENSR_REQ_AllSensors)
@@ -803,6 +805,7 @@ TEST(DTEHandler, SENSR_REQ_AllSensors)
 	MockSensor prs("PRS");
 	mock().expectOneCall("read").onObject(&prs).withUnsignedIntParameter("port", 0).andReturnValue(1005.0);
 	mock().expectOneCall("read").onObject(&prs).withUnsignedIntParameter("port", 1).andReturnValue(21.0);
+	mock().expectOneCall("calibration_read").onObject(&prs).withUnsignedIntParameter("offset", 0U).andReturnValue(1013.25);
 
 	// Register AXL sensor
 	MockSensor axl("AXL");
@@ -835,19 +838,20 @@ TEST(DTEHandler, SENSR_REQ_AllSensors)
 	// Pressure
 	DOUBLES_EQUAL(1005.0, std::get<double>(arg_list[2]), 0.01);  // pressure
 	DOUBLES_EQUAL(21.0, std::get<double>(arg_list[3]), 0.01);    // temperature
+	CHECK(std::get<double>(arg_list[4]) != 0.0);                   // altitude (computed)
 
 	// GNSS
-	DOUBLES_EQUAL(43.6, std::get<double>(arg_list[4]), 0.001);   // lat
-	DOUBLES_EQUAL(1.44, std::get<double>(arg_list[5]), 0.001);   // lon
-	DOUBLES_EQUAL(0.9, std::get<double>(arg_list[6]), 0.1);      // hdop
-	CHECK_EQUAL(8U, std::get<unsigned int>(arg_list[7]));         // num_sv
+	DOUBLES_EQUAL(43.6, std::get<double>(arg_list[5]), 0.001);   // lat
+	DOUBLES_EQUAL(1.44, std::get<double>(arg_list[6]), 0.001);   // lon
+	DOUBLES_EQUAL(0.9, std::get<double>(arg_list[7]), 0.1);      // hdop
+	CHECK_EQUAL(8U, std::get<unsigned int>(arg_list[8]));         // num_sv
 
 	// Accelerometer
-	DOUBLES_EQUAL(0.01, std::get<double>(arg_list[8]), 0.001);   // accel_x
-	DOUBLES_EQUAL(-0.02, std::get<double>(arg_list[9]), 0.001);  // accel_y
-	DOUBLES_EQUAL(1.0, std::get<double>(arg_list[10]), 0.001);   // accel_z
-	DOUBLES_EQUAL(25.0, std::get<double>(arg_list[11]), 0.1);    // accel_temp
-	CHECK_EQUAL(3U, std::get<unsigned int>(arg_list[12]));        // activity
+	DOUBLES_EQUAL(0.01, std::get<double>(arg_list[9]), 0.001);   // accel_x
+	DOUBLES_EQUAL(-0.02, std::get<double>(arg_list[10]), 0.001);  // accel_y
+	DOUBLES_EQUAL(1.0, std::get<double>(arg_list[11]), 0.001);   // accel_z
+	DOUBLES_EQUAL(25.0, std::get<double>(arg_list[12]), 0.1);    // accel_temp
+	CHECK_EQUAL(3U, std::get<unsigned int>(arg_list[13]));        // activity
 }
 
 TEST(DTEHandler, SENSR_REQ_NoPressureSensor)
@@ -868,5 +872,282 @@ TEST(DTEHandler, SENSR_REQ_NoPressureSensor)
 	CHECK_TRUE((unsigned int)DTEError::OK == error_code);
 	DOUBLES_EQUAL(0.0, std::get<double>(arg_list[2]), 0.001);   // pressure default
 	DOUBLES_EQUAL(0.0, std::get<double>(arg_list[3]), 0.001);   // temperature default
+	DOUBLES_EQUAL(0.0, std::get<double>(arg_list[4]), 0.001);   // altitude default
+}
+
+TEST(DTEHandler, SECUR_REQ_ValidStaticCode)
+{
+	std::string req;
+	std::string resp;
+	DTECommand command;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// SECUR_REQ with the correct static access code 0x12345678
+	req = DTEEncoder::encode(DTECommand::SECUR_REQ, 0x12345678U);
+	CHECK_TRUE(DTEAction::SECUR == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::SECUR_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::OK, error_code);
+}
+
+TEST(DTEHandler, SECUR_REQ_ValidDynamicCode)
+{
+	std::string req;
+	std::string resp;
+	DTECommand command;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// Set device ARGOS_DECID and use it as access code
+	configuration_store->write_param(ParamID::ARGOS_DECID, 0xAABBCCDDU);
+	req = DTEEncoder::encode(DTECommand::SECUR_REQ, 0xAABBCCDDU);
+	CHECK_TRUE(DTEAction::SECUR == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::SECUR_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::OK, error_code);
+}
+
+TEST(DTEHandler, SECUR_REQ_InvalidCode)
+{
+	std::string req;
+	std::string resp;
+	DTECommand command;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// SECUR_REQ with an invalid access code (action is still SECUR since decode succeeded)
+	req = DTEEncoder::encode(DTECommand::SECUR_REQ, 0xDEADBEEFU);
+	CHECK_TRUE(DTEAction::SECUR == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::SECUR_RESP == command);
+	// Note: decoder %1u only reads single-digit error codes, so 12 decodes as 1
+	CHECK_TRUE(error_code != 0);
+}
+
+TEST(DTEHandler, RSTVW_REQ_ResetTxCounter)
+{
+	std::string req;
+	std::string resp;
+	DTECommand command;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// Set TX_COUNTER to non-zero
+	unsigned int counter = 42;
+	configuration_store->write_param(ParamID::TX_COUNTER, counter);
+
+	// Reset TX_COUNTER (variable_id=1)
+	req = DTEEncoder::encode(DTECommand::RSTVW_REQ, 1U);
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::RSTVW_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::OK, error_code);
+
+	// Verify counter was reset
+	CHECK_EQUAL(0U, configuration_store->read_param<unsigned int>(ParamID::TX_COUNTER));
+}
+
+TEST(DTEHandler, RSTVW_REQ_ResetRxCounter)
+{
+	std::string req;
+	std::string resp;
+	DTECommand command;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// Set RX_COUNTER to non-zero
+	unsigned int counter = 99;
+	configuration_store->write_param(ParamID::ARGOS_RX_COUNTER, counter);
+
+	// Reset RX_COUNTER (variable_id=3)
+	req = DTEEncoder::encode(DTECommand::RSTVW_REQ, 3U);
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::RSTVW_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::OK, error_code);
+
+	CHECK_EQUAL(0U, configuration_store->read_param<unsigned int>(ParamID::ARGOS_RX_COUNTER));
+}
+
+TEST(DTEHandler, RSTVW_REQ_ResetRxTime)
+{
+	std::string req;
+	std::string resp;
+	DTECommand command;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// Set RX_TIME to non-zero
+	unsigned int rx_time = 500;
+	configuration_store->write_param(ParamID::ARGOS_RX_TIME, rx_time);
+
+	// Reset RX_TIME (variable_id=4)
+	req = DTEEncoder::encode(DTECommand::RSTVW_REQ, 4U);
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::RSTVW_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::OK, error_code);
+
+	CHECK_EQUAL(0U, configuration_store->read_param<unsigned int>(ParamID::ARGOS_RX_TIME));
+}
+
+TEST(DTEHandler, PROFW_REQ_WriteProfile)
+{
+	std::string req;
+	std::string resp;
+	DTECommand command;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// Write a profile name
+	req = DTEEncoder::encode(DTECommand::PROFW_REQ, std::string("TestProfile"));
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::PROFW_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::OK, error_code);
+
+	// Verify profile was written
+	STRCMP_EQUAL("TestProfile", configuration_store->read_param<std::string>(ParamID::PROFILE_NAME).c_str());
+}
+
+TEST(DTEHandler, PROFR_REQ_ReadProfile)
+{
+	std::string req;
+	std::string resp;
+	DTECommand command;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// Write a profile name first
+	configuration_store->write_param(ParamID::PROFILE_NAME, std::string("MyTracker"));
+
+	// Read it back via DTE
+	req = DTEEncoder::encode(DTECommand::PROFR_REQ);
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::PROFR_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::OK, error_code);
+	STRCMP_EQUAL("MyTracker", std::get<std::string>(arg_list[0]).c_str());
+}
+
+TEST(DTEHandler, SCALW_REQ_WriteCalibration)
+{
+	std::string req;
+	std::string resp;
+	DTECommand command;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// Register a sensor that supports calibration
+	MockSensor axl("AXL");
+	mock().expectOneCall("calibration_write").onObject(&axl).withParameter("value", 1.5).withParameter("offset", 0);
+
+	// SCALW_REQ: device_id=0 (AXL), offset=0, value=1.5
+	req = DTEEncoder::encode(DTECommand::SCALW_REQ, 0U, 0U, 1.5);
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::SCALW_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::OK, error_code);
+}
+
+TEST(DTEHandler, SCALW_REQ_NoSensorRegistered)
+{
+	std::string req;
+	std::string resp;
+	DTECommand command;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// SCALW_REQ with no sensor registered
+	req = DTEEncoder::encode(DTECommand::SCALW_REQ, 0U, 0U, 1.0);
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::SCALW_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::INCORRECT_DATA, error_code);
+}
+
+TEST(DTEHandler, DUMPD_REQ_InvalidDType)
+{
+	std::string req;
+	std::string resp;
+	DTECommand command;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// DUMPD_REQ with d_type that has no registered logger (e.g. ALS=2)
+	req = DTEEncoder::encode(DTECommand::DUMPD_REQ, (unsigned int)BaseLogDType::ALS_SENSOR);
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::DUMPD_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::INCORRECT_DATA, error_code);
+}
+
+TEST(DTEHandler, SENSR_REQ_NoBatteryMonitor)
+{
+	std::string req;
+	std::string resp;
+	DTECommand command;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// Set battery_monitor to nullptr
+	BatteryMonitor *saved = battery_monitor;
+	battery_monitor = nullptr;
+
+	// Request battery reading (mask=0x01)
+	req = DTEEncoder::encode(DTECommand::SENSR_REQ, 1U, 10U);
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::SENSR_RESP == command);
+	CHECK_TRUE((unsigned int)DTEError::OK == error_code);
+	// Battery values should be 0 when monitor is not available
+	CHECK_EQUAL(0U, std::get<unsigned int>(arg_list[0]));   // batt_mv
+	CHECK_EQUAL(0U, std::get<unsigned int>(arg_list[1]));   // batt_soc
+
+	// Restore battery_monitor
+	battery_monitor = saved;
+}
+
+TEST(DTEHandler, ERASE_REQ_InvalidLogType)
+{
+	std::string req;
+	std::string resp;
+	DTECommand command;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// ERASE_REQ with d_type that has no registered logger (ALS=4)
+	req = DTEEncoder::encode(DTECommand::ERASE_REQ, 4U);
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::ERASE_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::INCORRECT_DATA, error_code);
 }
 

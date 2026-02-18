@@ -333,7 +333,7 @@ const DTECommandMap command_map[] = {
 	// SENSR - Sensor/GNSS read command
 	// Usage: $SENSR,<sensors_bitmask>,<gnss_timeout_s>*<checksum>\r\n
 	// sensors_bitmask: 1=battery, 2=pressure, 4=GNSS, 8=accel, 15=all
-	// Response: $SENSR,<status>,<batt_mv>,<batt_soc>,<pressure_mbar>,<temp_c>,<lat>,<lon>,<hdop>,<num_sv>,<accel_x>,<accel_y>,<accel_z>,<accel_temp>*<checksum>\r\n
+	// Response: $SENSR,<status>,<batt_mv>,<batt_soc>,<pressure_bar>,<temp_c>,<altitude_m>,<lat>,<lon>,<hdop>,<num_sv>,<accel_x>,<accel_y>,<accel_z>,<accel_temp>*<checksum>\r\n
 	{
 		.name = "SENSR",
 		.command = DTECommand::SENSR_REQ,
@@ -712,6 +712,16 @@ const DTECommandMap command_map[] = {
 			},
 			{
 				.name = "temperature",
+				.key = "",
+				.encoding = BaseEncoding::FLOAT,
+				.min_value = 0.0,
+				.max_value = 0.0,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "altitude",
 				.key = "",
 				.encoding = BaseEncoding::FLOAT,
 				.min_value = 0.0,

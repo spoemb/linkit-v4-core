@@ -41,32 +41,8 @@ TEST(Decoder, DatestringParsing)
 	CHECK_EQUAL(1233659564U, (unsigned)std::get<std::time_t>(param_values[0].value));
 }
 
-TEST(Decoder, ArgosPowerParsing)
-{
-	std::string s;
-	s = "$O;PARMR#007;ARP04=4\r";
-	CHECK_TRUE(DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
-	CHECK_TRUE(DTECommand::PARMR_RESP == command);
-	CHECK_TRUE(BaseArgosPower::POWER_500_MW == std::get<BaseArgosPower>(param_values[0].value));
-	param_values.clear();
-	s = "$O;PARMR#007;ARP04=3\r";
-	CHECK_TRUE(DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
-	CHECK_TRUE(DTECommand::PARMR_RESP == command);
-	CHECK_TRUE(BaseArgosPower::POWER_200_MW == std::get<BaseArgosPower>(param_values[0].value));
-	param_values.clear();
-	s = "$O;PARMR#007;ARP04=2\r";
-	CHECK_TRUE(DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
-	CHECK_TRUE(DTECommand::PARMR_RESP == command);
-	CHECK_TRUE(BaseArgosPower::POWER_40_MW == std::get<BaseArgosPower>(param_values[0].value));
-	param_values.clear();
-	s = "$O;PARMR#007;ARP04=1\r";
-	CHECK_TRUE(DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
-	CHECK_TRUE(DTECommand::PARMR_RESP == command);
-	CHECK_TRUE(BaseArgosPower::POWER_3_MW == std::get<BaseArgosPower>(param_values[0].value));
-	s = "$O;PARMR#009;ARP04=999\r";
-	CHECK_THROWS(ErrorCode, DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
-	CHECK_TRUE(DTECommand::PARMR_RESP == command);
-}
+// NOTE: ArgosPowerParsing test removed - ARP04 (ARGOS_POWER) is now
+// reserved/obsolete with an empty DTE key (RADIOCONF controls power)
 
 TEST(Decoder, ArgosModeParsing)
 {

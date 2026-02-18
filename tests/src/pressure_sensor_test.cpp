@@ -2,6 +2,7 @@
 #include "CppUTestExt/MockSupport.h"
 
 #include <iostream>
+#include <cmath>
 
 #include "pressure_sensor_service.hpp"
 #include "mock_sensor.hpp"
@@ -122,6 +123,7 @@ TEST(PressureSensor, SchedulingPeriodic)
 	for (unsigned int i = 0; i < 5; i++) {
 		mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 0).andReturnValue((double)i);
 		mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 1).andReturnValue((double)i+1);
+		mock().expectOneCall("calibration_read").onObject(&drv).withUnsignedIntParameter("offset", 0U).andReturnValue(1013.25);
 		fake_timer->increment_counter(period*1000);
 		system_scheduler->run();
 	}
@@ -135,6 +137,9 @@ TEST(PressureSensor, SchedulingPeriodic)
 		logger->read(&e, i);
 		CHECK_EQUAL((double)i, e.pressure);
 		CHECK_EQUAL((double)i+1, e.temperature);
+		if (i > 0) {
+			CHECK(e.altitude != 0.0);
+		}
 	}
 
 	s.stop();
@@ -199,6 +204,7 @@ TEST(PressureSensor, SchedulingPeriodicWithUWThresholdLoggingMode)
 	for (unsigned int i = 0; i < 5; i++) {
 		mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 0).andReturnValue((double)1.0);
 		mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 1).andReturnValue((double)24.0);
+		mock().expectOneCall("calibration_read").onObject(&drv).withUnsignedIntParameter("offset", 0U).andReturnValue(1013.25);
 		fake_timer->increment_counter(period*1000);
 		system_scheduler->run();
 	}
@@ -210,6 +216,7 @@ TEST(PressureSensor, SchedulingPeriodicWithUWThresholdLoggingMode)
 	for (unsigned int i = 0; i < 5; i++) {
 		mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 0).andReturnValue((double)1.1);
 		mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 1).andReturnValue((double)24.0);
+		mock().expectOneCall("calibration_read").onObject(&drv).withUnsignedIntParameter("offset", 0U).andReturnValue(1013.25);
 		fake_timer->increment_counter(period*1000);
 		system_scheduler->run();
 	}
@@ -221,6 +228,7 @@ TEST(PressureSensor, SchedulingPeriodicWithUWThresholdLoggingMode)
 	for (unsigned int i = 0; i < 5; i++) {
 		mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 0).andReturnValue((double)1.0);
 		mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 1).andReturnValue((double)24.0);
+		mock().expectOneCall("calibration_read").onObject(&drv).withUnsignedIntParameter("offset", 0U).andReturnValue(1013.25);
 		fake_timer->increment_counter(period*1000);
 		system_scheduler->run();
 	}
@@ -272,6 +280,7 @@ TEST(PressureSensor, SchedulingTxEnableOneShot)
 	notify_gnss_active();
 
 	// Sampling should happen once in one-shot mode
+	mock().expectOneCall("calibration_read").onObject(&drv).withUnsignedIntParameter("offset", 0U).andReturnValue(1013.25);
 	for (unsigned int i = 0; i < 1; i++) {
 		mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 0).andReturnValue((double)i);
 		mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 1).andReturnValue((double)i+1);
@@ -328,6 +337,7 @@ TEST(PressureSensor, SchedulingTxEnableMean)
 	notify_gnss_active();
 
 	// Sampling should happen periodically in mean sampling mode
+	mock().expectOneCall("calibration_read").onObject(&drv).withUnsignedIntParameter("offset", 0U).andReturnValue(1013.25);
 	for (unsigned int i = 0; i < max_samples; i++) {
 		mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 0).andReturnValue((double)i);
 		mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 1).andReturnValue((double)i+1);
@@ -380,7 +390,8 @@ TEST(PressureSensor, SchedulingTxEnableMedian)
 	// Sampling is triggered by GNSS
 	notify_gnss_active();
 
-	// Sampling should happen periodically in mean sampling mode
+	// Sampling should happen periodically in median sampling mode
+	mock().expectOneCall("calibration_read").onObject(&drv).withUnsignedIntParameter("offset", 0U).andReturnValue(1013.25);
 	for (unsigned int i = 0; i < max_samples; i++) {
 		mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 0).andReturnValue((double)i);
 		mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 1).andReturnValue((double)i+1);
@@ -435,6 +446,7 @@ TEST(PressureSensor, SchedulingTxEnableMaxSamplesTerminates)
 	notify_gnss_active();
 
 	// Sampling should happen periodically in median sampling mode
+	mock().expectOneCall("calibration_read").onObject(&drv).withUnsignedIntParameter("offset", 0U).andReturnValue(1013.25);
 	for (unsigned int i = 0; i < 2 * max_samples; i++) {
 		if (i < max_samples) {
 			mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 0).andReturnValue((double)i);
@@ -454,6 +466,121 @@ TEST(PressureSensor, SchedulingTxEnableMaxSamplesTerminates)
 	CHECK_EQUAL((double)50.5, e.temperature);
 	CHECK_EQUAL((double)49.5, sensorData.port[0]);
 	CHECK_EQUAL((double)50.5, sensorData.port[1]);
+
+	s.stop();
+}
+
+
+TEST(PressureSensor, AltitudeCalculationAtSeaLevel)
+{
+	MockSensor drv;
+	PressureSensorService s(drv, logger);
+	unsigned int num_callbacks = 0;
+
+	system_timer->start();
+
+	unsigned int period = 10;
+	bool sensor_en = true;
+
+	configuration_store->write_param(ParamID::PRESSURE_SENSOR_ENABLE, sensor_en);
+	configuration_store->write_param(ParamID::PRESSURE_SENSOR_PERIODIC, period);
+
+	s.start([&num_callbacks](ServiceEvent &event) {
+		if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+			num_callbacks++;
+		}
+	});
+
+	// Sensor reads 1.01325 bar = 1013.25 hPa (sea level pressure)
+	mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 0).andReturnValue((double)1.01325);
+	mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 1).andReturnValue((double)20.0);
+	mock().expectOneCall("calibration_read").onObject(&drv).withUnsignedIntParameter("offset", 0U).andReturnValue(1013.25);
+	fake_timer->increment_counter(period*1000);
+	system_scheduler->run();
+
+	CHECK_EQUAL(1, num_callbacks);
+	PressureLogEntry e;
+	logger->read(&e, 0);
+	DOUBLES_EQUAL(1.01325, e.pressure, 0.0001);
+	DOUBLES_EQUAL(20.0, e.temperature, 0.0001);
+	// When pressure == sea level pressure, altitude should be ~0
+	DOUBLES_EQUAL(0.0, e.altitude, 1.0);
+
+	s.stop();
+}
+
+
+TEST(PressureSensor, AltitudeCalculationAtKnownHeight)
+{
+	MockSensor drv;
+	PressureSensorService s(drv, logger);
+	unsigned int num_callbacks = 0;
+
+	system_timer->start();
+
+	unsigned int period = 10;
+	bool sensor_en = true;
+
+	configuration_store->write_param(ParamID::PRESSURE_SENSOR_ENABLE, sensor_en);
+	configuration_store->write_param(ParamID::PRESSURE_SENSOR_PERIODIC, period);
+
+	s.start([&num_callbacks](ServiceEvent &event) {
+		if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+			num_callbacks++;
+		}
+	});
+
+	// 0.89875 bar = 898.75 hPa ~ approximately 1000m altitude
+	mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 0).andReturnValue((double)0.89875);
+	mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 1).andReturnValue((double)15.0);
+	mock().expectOneCall("calibration_read").onObject(&drv).withUnsignedIntParameter("offset", 0U).andReturnValue(1013.25);
+	fake_timer->increment_counter(period*1000);
+	system_scheduler->run();
+
+	CHECK_EQUAL(1, num_callbacks);
+	PressureLogEntry e;
+	logger->read(&e, 0);
+	DOUBLES_EQUAL(0.89875, e.pressure, 0.0001);
+	DOUBLES_EQUAL(15.0, e.temperature, 0.0001);
+	// Expected altitude ~1000m with barometric formula
+	double expected_alt = 44330.0 * (1.0 - std::pow(898.75 / 1013.25, 1.0 / 5.255));
+	DOUBLES_EQUAL(expected_alt, e.altitude, 1.0);
+
+	s.stop();
+}
+
+
+TEST(PressureSensor, AltitudeWithCustomSeaLevel)
+{
+	MockSensor drv;
+	PressureSensorService s(drv, logger);
+	unsigned int num_callbacks = 0;
+
+	system_timer->start();
+
+	unsigned int period = 10;
+	bool sensor_en = true;
+
+	configuration_store->write_param(ParamID::PRESSURE_SENSOR_ENABLE, sensor_en);
+	configuration_store->write_param(ParamID::PRESSURE_SENSOR_PERIODIC, period);
+
+	s.start([&num_callbacks](ServiceEvent &event) {
+		if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+			num_callbacks++;
+		}
+	});
+
+	// 1.0 bar = 1000 hPa = same as custom sea level -> altitude should be ~0
+	mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 0).andReturnValue((double)1.0);
+	mock().expectOneCall("read").onObject(&drv).withUnsignedIntParameter("port", 1).andReturnValue((double)20.0);
+	mock().expectOneCall("calibration_read").onObject(&drv).withUnsignedIntParameter("offset", 0U).andReturnValue(1000.0);
+	fake_timer->increment_counter(period*1000);
+	system_scheduler->run();
+
+	CHECK_EQUAL(1, num_callbacks);
+	PressureLogEntry e;
+	logger->read(&e, 0);
+	DOUBLES_EQUAL(0.0, e.altitude, 1.0);
 
 	s.stop();
 }

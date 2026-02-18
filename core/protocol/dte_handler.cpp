@@ -1,4 +1,5 @@
 #include "dte_handler.hpp"
+#include <cmath>
 
 DTEHandler::DTEHandler() {
 	m_dumpd_NNN = 0;
@@ -697,6 +698,7 @@ std::string DTEHandler::SENSR_REQ(int error_code, std::vector<BaseType>& arg_lis
 	unsigned int batt_soc = 0;
 	double pressure = 0.0;
 	double temperature = 0.0;
+	double altitude = 0.0;
 	double lat = 0.0;
 	double lon = 0.0;
 	double hdop = 99.9;
@@ -709,14 +711,14 @@ std::string DTEHandler::SENSR_REQ(int error_code, std::vector<BaseType>& arg_lis
 
 	if (error_code) {
 		return DTEEncoder::encode(DTECommand::SENSR_RESP, error_code,
-			batt_mv, batt_soc, pressure, temperature, lat, lon, hdop, num_sv,
+			batt_mv, batt_soc, pressure, temperature, altitude, lat, lon, hdop, num_sv,
 			accel_x, accel_y, accel_z, accel_temp, activity);
 	}
 
 	// Parse parameters
 	if (arg_list.size() < 2) {
 		return DTEEncoder::encode(DTECommand::SENSR_RESP, (int)DTEError::MISSING_ARGUMENT,
-			batt_mv, batt_soc, pressure, temperature, lat, lon, hdop, num_sv,
+			batt_mv, batt_soc, pressure, temperature, altitude, lat, lon, hdop, num_sv,
 			accel_x, accel_y, accel_z, accel_temp, activity);
 	}
 
@@ -742,12 +744,19 @@ std::string DTEHandler::SENSR_REQ(int error_code, std::vector<BaseType>& arg_lis
 	if (sensors_mask & 0x02) {
 		try {
 			Sensor& prs = SensorManager::find_by_name("PRS");
-			pressure = prs.read(0);      // Channel 0 = pressure (mbar)
+			pressure = prs.read(0);      // Channel 0 = pressure (bar)
 			temperature = prs.read(1);   // Channel 1 = temperature (C)
-			DEBUG_TRACE("SENSR: Pressure %.2f mbar, Temp %.2f C", pressure, temperature);
+			// Compute barometric altitude: altitude = 44330 * (1 - (P/P0)^(1/5.255))
+			double sea_level_hpa = 1013.25;
+			prs.calibration_read(sea_level_hpa, 0);
+			double pressure_hpa = pressure * 1000.0;
+			if (sea_level_hpa > 0.0 && pressure_hpa > 0.0) {
+				altitude = 44330.0 * (1.0 - std::pow(pressure_hpa / sea_level_hpa, 1.0 / 5.255));
+			}
+			DEBUG_TRACE("SENSR: Pressure %.4f bar, Temp %.2f C, Altitude %.2f m", pressure, temperature, altitude);
 		} catch (...) {
 			DEBUG_WARN("SENSR: Pressure sensor not available");
-			// Leave pressure/temperature at defaults (0.0)
+			// Leave pressure/temperature/altitude at defaults (0.0)
 		}
 	}
 
@@ -791,7 +800,7 @@ std::string DTEHandler::SENSR_REQ(int error_code, std::vector<BaseType>& arg_lis
 #endif
 
 	return DTEEncoder::encode(DTECommand::SENSR_RESP, (int)DTEError::OK,
-		batt_mv, batt_soc, pressure, temperature, lat, lon, hdop, num_sv,
+		batt_mv, batt_soc, pressure, temperature, altitude, lat, lon, hdop, num_sv,
 		accel_x, accel_y, accel_z, accel_temp, activity);
 }
 

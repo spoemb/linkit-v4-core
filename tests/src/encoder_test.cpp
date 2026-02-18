@@ -26,8 +26,6 @@ TEST_GROUP(Encoder)
 		ParamID::LAST_FULL_CHARGE_DATE,
 		ParamID::PROFILE_NAME,
 		ParamID::ARGOS_AOP_DATE,
-		ParamID::ARGOS_FREQ,
-		ParamID::ARGOS_POWER,
 		ParamID::TR_NOM,
 	};
 };
@@ -43,21 +41,21 @@ TEST(Encoder, PARML_RESP)
 {
 	std::string s;
 	s = DTEEncoder::encode(DTECommand::PARML_RESP, params);
-	STRCMP_EQUAL("$O;PARML#04D;IDT06,IDP12,IDT02,IDT03,ART01,ART02,POT03,POT05,IDP11,ART03,ARP03,ARP04,ARP05\r", s.c_str());
+	STRCMP_EQUAL("$O;PARML#041;IDT06,IDP12,IDT02,IDT03,ART01,ART02,POT03,POT05,IDP11,ART03,ARP05\r", s.c_str());
 }
 
 TEST(Encoder, PARMR_REQ)
 {
 	std::string s;
 	s = DTEEncoder::encode(DTECommand::PARMR_REQ, params);
-	STRCMP_EQUAL("$PARMR#04D;IDT06,IDP12,IDT02,IDT03,ART01,ART02,POT03,POT05,IDP11,ART03,ARP03,ARP04,ARP05\r", s.c_str());
+	STRCMP_EQUAL("$PARMR#041;IDT06,IDP12,IDT02,IDT03,ART01,ART02,POT03,POT05,IDP11,ART03,ARP05\r", s.c_str());
 }
 
 TEST(Encoder, STATR_REQ)
 {
 	std::string s;
 	s = DTEEncoder::encode(DTECommand::STATR_REQ, params);
-	STRCMP_EQUAL("$STATR#04D;IDT06,IDP12,IDT02,IDT03,ART01,ART02,POT03,POT05,IDP11,ART03,ARP03,ARP04,ARP05\r", s.c_str());
+	STRCMP_EQUAL("$STATR#041;IDT06,IDP12,IDT02,IDT03,ART01,ART02,POT03,POT05,IDP11,ART03,ARP05\r", s.c_str());
 }
 
 TEST(Encoder, PARMW_REQ)
@@ -356,11 +354,12 @@ TEST(Encoder, PARAM_ARGOS_AOP_DATE)
 
 TEST(Encoder, PARAM_ARGOS_FREQ)
 {
+	// ARGOS_FREQ is now reserved/obsolete (empty DTE key), encoding produces empty key
 	std::string s;
 	ParamValue p = { ParamID::ARGOS_FREQ, 401.6599};
 	std::vector<ParamValue> v = { p };
 	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
-	STRCMP_EQUAL("$O;PARMR#009;ARP03=399\r", s.c_str());
+	STRCMP_EQUAL("$O;PARMR#004;=399\r", s.c_str());
 }
 
 TEST(Encoder, PARAM_ARGOS_FREQ_OutOfRangeCheck)
@@ -375,23 +374,12 @@ TEST(Encoder, PARAM_ARGOS_FREQ_OutOfRangeCheck)
 
 TEST(Encoder, PARAM_ARGOS_POWER)
 {
+	// ARGOS_POWER is now reserved/obsolete (empty DTE key)
 	std::string s;
 	ParamValue p = { ParamID::ARGOS_POWER, BaseArgosPower::POWER_3_MW};
 	std::vector<ParamValue> v = { p };
 	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
-	STRCMP_EQUAL("$O;PARMR#007;ARP04=1\r", s.c_str());
-	p = { ParamID::ARGOS_POWER, BaseArgosPower::POWER_40_MW};
-	v = { p };
-	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
-	STRCMP_EQUAL("$O;PARMR#007;ARP04=2\r", s.c_str());
-	p = { ParamID::ARGOS_POWER, BaseArgosPower::POWER_200_MW};
-	v = { p };
-	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
-	STRCMP_EQUAL("$O;PARMR#007;ARP04=3\r", s.c_str());
-	p = { ParamID::ARGOS_POWER, BaseArgosPower::POWER_500_MW};
-	v = { p };
-	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
-	STRCMP_EQUAL("$O;PARMR#007;ARP04=4\r", s.c_str());
+	STRCMP_EQUAL("$O;PARMR#002;=1\r", s.c_str());
 }
 
 TEST(Encoder, PARAM_TR_NOM)
@@ -701,23 +689,12 @@ TEST(Encoder, PARAM_LB_THRESHOLD_OutOfRangeCheck)
 
 TEST(Encoder, PARAM_LB_ARGOS_POWER)
 {
+	// LB_ARGOS_POWER is now reserved/obsolete (empty DTE key)
 	std::string s;
 	ParamValue p = { ParamID::LB_ARGOS_POWER, BaseArgosPower::POWER_3_MW};
 	std::vector<ParamValue> v = { p };
 	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
-	STRCMP_EQUAL("$O;PARMR#007;LBP03=1\r", s.c_str());
-	p = { ParamID::LB_ARGOS_POWER, BaseArgosPower::POWER_40_MW};
-	v = { p };
-	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
-	STRCMP_EQUAL("$O;PARMR#007;LBP03=2\r", s.c_str());
-	p = { ParamID::LB_ARGOS_POWER, BaseArgosPower::POWER_200_MW};
-	v = { p };
-	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
-	STRCMP_EQUAL("$O;PARMR#007;LBP03=3\r", s.c_str());
-	p = { ParamID::LB_ARGOS_POWER, BaseArgosPower::POWER_500_MW};
-	v = { p };
-	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
-	STRCMP_EQUAL("$O;PARMR#007;LBP03=4\r", s.c_str());
+	STRCMP_EQUAL("$O;PARMR#002;=1\r", s.c_str());
 }
 
 TEST(Encoder, PARAM_TR_LB)

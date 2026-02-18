@@ -19,9 +19,19 @@ public:
     void read(double& t, double& p) { t = 0; p = 0; }
 };
 
+/**
+ * Calibration write offsets (SCALW device_id=1):
+ *   0 = sea level pressure (hPa), default 1013.25
+ */
 class PressureSensor : public Sensor {
 public:
-    PressureSensor(PressureSensorDevice& device) : Sensor("PRS"), m_device(device) {}
+    PressureSensor(PressureSensorDevice& device) : Sensor("PRS"), m_device(device), m_cal("PRS") {
+        try {
+            m_sea_level_hpa = m_cal.read(0);
+        } catch (...) {
+            m_sea_level_hpa = 1013.25;
+        }
+    }
     double read(unsigned int channel = 0) {
         if (0 == channel) {
             m_device.read(m_last_temperature, m_last_pressure);
@@ -32,8 +42,25 @@ public:
         throw ErrorCode::BAD_SENSOR_CHANNEL;
     }
 
+    void calibration_write(const double value, const unsigned int offset) override {
+        if (offset == 0) {
+            m_sea_level_hpa = value;
+            m_cal.write(0, value);
+            m_cal.save();
+            DEBUG_TRACE("PressureSensor: sea_level_hpa calibrated to %.2f", m_sea_level_hpa);
+        }
+    }
+
+    void calibration_read(double &value, const unsigned int offset) override {
+        if (offset == 0) {
+            value = m_sea_level_hpa;
+        }
+    }
+
 private:
     double m_last_pressure;
     double m_last_temperature;
+    double m_sea_level_hpa;
     PressureSensorDevice& m_device;
+    Calibration m_cal;
 };

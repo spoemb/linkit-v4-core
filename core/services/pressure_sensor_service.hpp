@@ -5,6 +5,7 @@
 #include "sensor_service.hpp"
 #include "timeutils.hpp"
 #include "error.hpp"
+#include <cmath>
 
 
 struct __attribute__((packed)) PressureLogEntry {
@@ -13,6 +14,7 @@ struct __attribute__((packed)) PressureLogEntry {
 		struct {
 			double pressure;
 			double temperature;
+			double altitude;
 		};
 		uint8_t data[MAX_LOG_PAYLOAD];
 	};
@@ -21,7 +23,7 @@ struct __attribute__((packed)) PressureLogEntry {
 class PressureLogFormatter : public LogFormatter {
 public:
 	const std::string header() override {
-		return "log_datetime,pressure,temperature\r\n";
+		return "log_datetime,pressure,temperature,altitude\r\n";
 	}
 	const std::string log_entry(const LogEntry& e) override {
 		char entry[512], d1[128];
@@ -34,9 +36,9 @@ public:
 		std::strftime(d1, sizeof(d1), "%d/%m/%Y %H:%M:%S", tm);
 
 		// Convert to CSV
-		snprintf(entry, sizeof(entry), "%s,%f,%f\r\n",
+		snprintf(entry, sizeof(entry), "%s,%f,%f,%.2f\r\n",
 				d1,
-				log->pressure, log->temperature);
+				log->pressure, log->temperature, log->altitude);
 		return std::string(entry);
 	}
 };
@@ -64,6 +66,19 @@ private:
 		PressureLogEntry *log = (PressureLogEntry *)e;
 		log->pressure = data.port[(unsigned int)PressureSensorPort::PRESSURE];
 		log->temperature = data.port[(unsigned int)PressureSensorPort::TEMPERATURE];
+
+		// Compute barometric altitude: altitude = 44330 * (1 - (P/P0)^(1/5.255))
+		// Sensor pressure is in bars, 1 bar = 1000 hPa
+		double sea_level_hpa = 1013.25;
+		m_sensor.calibration_read(sea_level_hpa, 0);
+		double pressure_hpa = log->pressure * 1000.0;
+		if (sea_level_hpa > 0.0 && pressure_hpa > 0.0) {
+			log->altitude = 44330.0 * (1.0 - std::pow(pressure_hpa / sea_level_hpa, 1.0 / 5.255));
+		} else {
+			log->altitude = 0.0;
+		}
+		DEBUG_TRACE("PressureSensorService: pressure=%.4f bar, temp=%.2f C, altitude=%.2f m (P0=%.2f hPa)",
+				log->pressure, log->temperature, log->altitude, sea_level_hpa);
 
 		// Check pressure logging mode
 		BasePressureSensorLoggingMode mode = service_read_param<BasePressureSensorLoggingMode>(ParamID::PRESSURE_SENSOR_LOGGING_MODE);
