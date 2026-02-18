@@ -278,8 +278,11 @@ enum class ParamID {
 	SHUTDOWN_NTIME_SAT                       = 174,
 	LB_SHUTDOWN_NTIME_SAT                    = 175,
 	GNSS_SESSION_SINGLE_FIX                  = 176,
+#if ENABLE_PRESSURE_SENSOR
+	PRESSURE_SENSOR_FULL_SCALE               = 177,
+#endif
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 177,
+	__PARAM_SIZE                             = 178,
 	__NULL_PARAM                             = 0xFFFF
 };
 
@@ -305,6 +308,7 @@ enum class BaseEncoding {
 	UWDETECTSOURCE,
 	DEBUGMODE,
 	PRESSURESENSORLOGGINGMODE,
+	PRESSURESENSORFULLSCALE,
 	SENSORENABLETXMODE,
 	KEY_LIST,
 	KEY_VALUE_LIST
@@ -313,6 +317,11 @@ enum class BaseEncoding {
 enum class BasePressureSensorLoggingMode {
 	ALWAYS = 0,
 	UW_THRESHOLD,
+};
+
+enum class BasePressureSensorFullScale {
+	FS_1260 = 0,
+	FS_4060,
 };
 
 enum class BaseUnderwaterDetectSource {
@@ -603,7 +612,7 @@ using BaseName = std::string;
 using BaseConstraint = std::variant<unsigned int, int, double, std::string>;
 
 // !!! Do not change the ordering of variants and also make sure std::string is the first entry !!!
-using BaseType = std::variant<std::string, unsigned int, int, double, std::time_t, BaseRawData, BaseArgosMode, BaseArgosPower, BaseArgosDepthPile, bool, BaseGNSSFixMode, BaseGNSSDynModel, BaseLEDMode, BaseZoneType, BaseArgosModulation, BaseUnderwaterDetectSource, BaseDebugMode, BasePressureSensorLoggingMode, BaseSensorEnableTxMode>;
+using BaseType = std::variant<std::string, unsigned int, int, double, std::time_t, BaseRawData, BaseArgosMode, BaseArgosPower, BaseArgosDepthPile, bool, BaseGNSSFixMode, BaseGNSSDynModel, BaseLEDMode, BaseZoneType, BaseArgosModulation, BaseUnderwaterDetectSource, BaseDebugMode, BasePressureSensorLoggingMode, BasePressureSensorFullScale, BaseSensorEnableTxMode>;
 
 struct BaseMap {
 	BaseName 	   name;

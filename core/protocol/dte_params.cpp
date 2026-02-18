@@ -242,6 +242,8 @@ const BaseMap param_map[] = {
 	{ "SHUTDOWN_NTIME_SAT", "PWP05", BaseEncoding::UINT, 0U, 65535U, {}, true, true },
 	{ "LB_SHUTDOWN_NTIME_SAT", "LBP14", BaseEncoding::UINT, 0U, 65535U, {}, true, true },
 	{ "GNSS_SESSION_SINGLE_FIX", "GNP30", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
+	// [177] Pressure sensor full scale (slots always reserved)
+	{ "PRESSURE_SENSOR_FULL_SCALE", "PRP07", BaseEncoding::PRESSURESENSORFULLSCALE, 0, 0, {}, ENABLE_PRESSURE_SENSOR, true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

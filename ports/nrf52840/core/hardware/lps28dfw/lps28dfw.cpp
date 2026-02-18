@@ -29,7 +29,7 @@ bool LPS28DFW::init() {
     m_mode.odr = LPS28DFW_ONE_SHOT;
     m_mode.avg = LPS28DFW_32_AVG;
     m_mode.lpf = LPS28DFW_LPF_DISABLE;
-    m_mode.fs  = LPS28DFW_4060hPa;
+    m_mode.fs  = LPS28DFW_1260hPa;
 
     if (lps28dfw_mode_set(&m_ctx, &m_mode) != 0) return false;
 
@@ -38,6 +38,14 @@ bool LPS28DFW::init() {
 
 void LPS28DFW::read(double& temperature, double& pressure) {
     SensorsPowerGuard power_guard;  // Acquire VSENSORS power for I2C access
+
+    // Re-apply configuration after power cycle (registers are volatile)
+    if (lps28dfw_init_set(&m_ctx, LPS28DFW_DRV_RDY) != 0 ||
+        lps28dfw_mode_set(&m_ctx, &m_mode) != 0) {
+        DEBUG_ERROR("LPS28DFW::read - failed to re-apply configuration");
+        throw ErrorCode::I2C_COMMS_ERROR;
+    }
+
     if (lps28dfw_trigger_sw(&m_ctx, &m_mode) != 0) {
         DEBUG_ERROR("LPS28DFW::read - trigger_sw failed");
         throw ErrorCode::I2C_COMMS_ERROR;
@@ -55,6 +63,11 @@ void LPS28DFW::read(double& temperature, double& pressure) {
     pressure = static_cast<double>(data.pressure.hpa) / 1000.0; // convert hPa to bar
 
     DEBUG_TRACE("LPS28DFW::read - %.2f °C, %.5f bar", temperature, pressure);
+}
+
+void LPS28DFW::set_full_scale(unsigned int mode) {
+    m_mode.fs = (mode == 1) ? LPS28DFW_4060hPa : LPS28DFW_1260hPa;
+    DEBUG_TRACE("LPS28DFW::set_full_scale - %s", (mode == 1) ? "4060hPa" : "1260hPa");
 }
 
 int32_t LPS28DFW::platform_write(void* handle, uint8_t reg, const uint8_t* bufp, uint16_t len) {

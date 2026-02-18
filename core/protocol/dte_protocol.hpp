@@ -398,6 +398,9 @@ protected:
 	static inline void encode(std::string& output, const BasePressureSensorLoggingMode& value) {
 		encode(output, (unsigned int&)value);
 	}
+	static inline void encode(std::string& output, const BasePressureSensorFullScale& value) {
+		encode(output, (unsigned int&)value);
+	}
 	static inline void encode(std::string& output, const std::time_t& value) {
 		char buff[256];
 		auto time = std::gmtime(&value);
@@ -616,6 +619,8 @@ protected:
 	static void validate(const BaseMap &, const BaseDebugMode&) {
 	}
 	static void validate(const BaseMap &, const BasePressureSensorLoggingMode&) {
+	}
+	static void validate(const BaseMap &, const BasePressureSensorFullScale&) {
 	}
 public:
 	// FIXME: Using C variadic args with non-POD types (std::string, BaseRawData) is
@@ -1050,6 +1055,17 @@ private:
 		}
 	}
 
+	static BasePressureSensorFullScale decode_pressure_sensor_full_scale(const std::string& s) {
+		if (s == "0") {
+			return BasePressureSensorFullScale::FS_1260;
+		} else if (s == "1") {
+			return BasePressureSensorFullScale::FS_4060;
+		} else {
+			DEBUG_ERROR("DTE_PROTOCOL_VALUE_OUT_OF_RANGE in %s(%s)", __FUNCTION__, s.c_str());
+			throw DTE_PROTOCOL_VALUE_OUT_OF_RANGE;
+		}
+	}
+
 	static BaseSensorEnableTxMode decode_sensor_enable_tx_mode(const std::string& s) {
 		if (s == "0") {
 			return BaseSensorEnableTxMode::OFF;
@@ -1447,6 +1463,13 @@ private:
 							val.push_back(key_value);
 							break;
 						}
+						case BaseEncoding::PRESSURESENSORFULLSCALE:
+						{
+							BasePressureSensorFullScale x = decode_pressure_sensor_full_scale(value);
+							key_value.value = x;
+							val.push_back(key_value);
+							break;
+						}
 						case BaseEncoding::SENSORENABLETXMODE:
 						{
 							BaseSensorEnableTxMode x = decode_sensor_enable_tx_mode(value);
@@ -1680,6 +1703,7 @@ public:
 				case BaseEncoding::MODULATION:
 				case BaseEncoding::DEBUGMODE:
 				case BaseEncoding::PRESSURESENSORLOGGINGMODE:
+				case BaseEncoding::PRESSURESENSORFULLSCALE:
 				case BaseEncoding::SENSORENABLETXMODE:
 				default:
 					DEBUG_ERROR("BaseEncoding::Not supported");

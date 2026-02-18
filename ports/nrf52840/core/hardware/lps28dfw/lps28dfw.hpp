@@ -10,6 +10,7 @@ public:
     bool init();
     bool is_initialized() const { return m_initialized; }
     void read(double& temperature, double& pressure) override;
+    void set_full_scale(unsigned int mode) override;
 
 private:
     unsigned int m_bus;

@@ -86,7 +86,7 @@ enum class ConfigMode {
 class ConfigurationStore {
 
 protected:
-	static inline const unsigned int m_config_version_code = 0x1c07e800 | 0x14;
+	static inline const unsigned int m_config_version_code = 0x1c07e800 | 0x15;
 	static inline const unsigned int m_config_version_code_aop = 0x1c07e800 | 0x03;
 	static inline const std::array<BaseType,MAX_CONFIG_ITEMS> default_params { {
 		/* ARGOS_DECID */ 0U,
@@ -325,6 +325,7 @@ protected:
 		/* [174] SHUTDOWN_NTIME_SAT */ 0U,
 		/* [175] LB_SHUTDOWN_NTIME_SAT */ 0U,
 		/* [176] GNSS_SESSION_SINGLE_FIX */ (bool)false,
+		/* [177] PRESSURE_SENSOR_FULL_SCALE */ BasePressureSensorFullScale::FS_1260,
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,

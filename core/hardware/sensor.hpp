@@ -17,6 +17,7 @@ public:
 	virtual double read(unsigned int port = 0) = 0;
 	virtual void install_event_handler(unsigned int, std::function<void()>) {}
 	virtual void remove_event_handler(unsigned int) {}
+	virtual void set_full_scale(unsigned int mode) { (void)mode; }
 };
 
 

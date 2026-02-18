@@ -125,6 +125,11 @@ private:
 
 	bool sensor_is_usable_underwater() override { return true; }
 
+	void sensor_init() override {
+		unsigned int fs = (unsigned int)service_read_param<BasePressureSensorFullScale>(ParamID::PRESSURE_SENSOR_FULL_SCALE);
+		m_sensor.set_full_scale(fs);
+	}
+
 	BaseSensorEnableTxMode sensor_enable_tx_mode() override {
 		return service_read_param<BaseSensorEnableTxMode>(ParamID::PRESSURE_SENSOR_ENABLE_TX_MODE);
 	}

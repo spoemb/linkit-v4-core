@@ -12,6 +12,7 @@ class PressureSensorDevice {
 public:
     virtual ~PressureSensorDevice() {}
     virtual void read(double& temperature, double& pressure) = 0;
+    virtual void set_full_scale(unsigned int mode) { (void)mode; }
 };
 
 class PressureSensoDummyDevice : public PressureSensorDevice {
@@ -22,6 +23,10 @@ public:
 /**
  * Calibration write offsets (SCALW device_id=1):
  *   0 = sea level pressure (hPa), default 1013.25
+ *
+ * Full scale modes (set via PRESSURE_SENSOR_FULL_SCALE param):
+ *   0 = 1260 hPa (surface only, better precision)
+ *   1 = 4060 hPa (surface + underwater)
  */
 class PressureSensor : public Sensor {
 public:
@@ -55,6 +60,10 @@ public:
         if (offset == 0) {
             value = m_sea_level_hpa;
         }
+    }
+
+    void set_full_scale(unsigned int mode) {
+        m_device.set_full_scale(mode);
     }
 
 private:
