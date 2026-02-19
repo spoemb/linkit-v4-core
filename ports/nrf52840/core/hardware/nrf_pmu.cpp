@@ -104,7 +104,7 @@ void PMU::powerdown() {
 
 #if defined(EXTERNAL_WAKEUP) && defined(MCU_DONE_PIN)
 	// Signal TPL5111 to cut power by pulsing MCU_DONE
-	DEBUG_TRACE("External wakeup enabled, set MCU_DONE and wait for TPL5111 power cut");
+	DEBUG_TRACE("External wakeup enabled | set MCU_DONE and wait for TPL5111 power cut");
 	GPIOPins::set(MCU_DONE_PIN);
 	PMU::delay_ms(100); // Allow time for TPL5111 to respond
 	GPIOPins::clear(MCU_DONE_PIN);

@@ -180,7 +180,7 @@ bool ArgosTxService::service_is_triggered_on_surfaced(bool &immediate) {
 }
 
 void ArgosTxService::notify_peer_event(ServiceEvent& e) {
-	//DEBUG_TRACE("ArgosTxService::notify_peer_event: (%u,%u)", e.event_source, e.event_type);
+	//DEBUG_TRACE("ArgosTxService::notify_peer_event: (%u|%u)", e.event_source, e.event_type);
 
 	m_depth_pile_manager.notify_peer_event(e);
 
@@ -331,7 +331,7 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 	ArgosConfig argos_config;
 	configuration_store->get_argos_configuration(argos_config);
 	if (argos_config.shutdown_ntime_sat > 0 && m_session_tx_count >= argos_config.shutdown_ntime_sat) {
-		DEBUG_INFO("ArgosTxService: Session TX limit reached (%u/%u), powering down",
+		DEBUG_INFO("ArgosTxService: Session TX limit reached (%u/%u) | powering down",
 		           m_session_tx_count, argos_config.shutdown_ntime_sat);
 		PMU::powerdown();
 		return;
@@ -738,7 +738,7 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 	size_bits = base_pos;
 
 	if (size_bits > SENSOR_PACKET_MAX_TX_BITS) {
-		DEBUG_WARN("ArgosPacketBuilder::build_sensor_packet: packet %u bits exceeds max %u bits (%u bytes) — sensor TX config has too many sensors enabled, truncating",
+		DEBUG_WARN("ArgosPacketBuilder::build_sensor_packet: packet %u bits exceeds max %u bits (%u bytes) | too many sensors enabled | truncating",
 				size_bits, SENSOR_PACKET_MAX_TX_BITS, SENSOR_PACKET_MAX_TX_BYTES);
 		size_bits = SENSOR_PACKET_MAX_TX_BITS;
 	}

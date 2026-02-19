@@ -285,8 +285,6 @@ TEST(SWSAnalog, MaxDiveTimeSafety)
     CHECK_TRUE(switch_state);  // Confirmed underwater
 
     // Wait for max dive time to expire (>5 seconds of real time)
-    // The PMU::get_timestamp_ms() uses std::chrono, so real time passing matters
-    // Sleep to simulate time passing
     std::this_thread::sleep_for(std::chrono::seconds(6));
 
     // Take another reading (still high ADC)

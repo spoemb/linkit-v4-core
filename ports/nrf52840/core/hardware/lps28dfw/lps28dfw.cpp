@@ -11,13 +11,13 @@ LPS28DFW::LPS28DFW(unsigned int bus, unsigned char address)
     m_ctx.handle = this;
     m_initialized = init();
     if (!m_initialized) {
-        DEBUG_WARN("LPS28DFW: initialization failed (bus=%u, addr=0x%02X)", bus, address);
+        DEBUG_WARN("LPS28DFW: initialization failed (bus=%u | addr=0x%02X)", bus, address);
     }
 }
 
 bool LPS28DFW::init() {
     SensorsPowerGuard power_guard;  // Acquire VSENSORS power for I2C access
-    DEBUG_TRACE("LPS28DFW::init - bus=%u, addr=0x%02X", m_bus, m_addr);
+    DEBUG_TRACE("LPS28DFW::init - bus=%u | addr=0x%02X", m_bus, m_addr);
     lps28dfw_id_t id;
     if (lps28dfw_id_get(&m_ctx, &id) != 0 || id.whoami != LPS28DFW_ID) {
         DEBUG_ERROR("LPS28DFW::init - WHOAMI mismatch or read error");
@@ -62,7 +62,7 @@ void LPS28DFW::read(double& temperature, double& pressure) {
     temperature = static_cast<double>(data.heat.deg_c);
     pressure = static_cast<double>(data.pressure.hpa) / 1000.0; // convert hPa to bar
 
-    DEBUG_TRACE("LPS28DFW::read - %.2f °C, %.5f bar", temperature, pressure);
+    DEBUG_TRACE("LPS28DFW::read - %.2f °C | %.5f bar", temperature, pressure);
 }
 
 void LPS28DFW::set_full_scale(unsigned int mode) {

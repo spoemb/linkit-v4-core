@@ -1,11 +1,18 @@
 #include "dte_handler.hpp"
+#include "argos_tx_service.hpp"
+#include "scheduler.hpp"
+#include "pmu.hpp"
 #include <cmath>
+
+extern Scheduler *system_scheduler;
 
 DTEHandler::DTEHandler() {
 	m_dumpd_NNN = 0;
 	m_dumpd_mmm = 0;
 	m_dumpd_d_type = 0xFFFFFFFF;  // Invalid initial value
 	m_sat_device_active = false;
+	m_doppler_cal_active = false;
+	m_doppler_cal_first_tx = false;
 }
 
 DTEHandler::~DTEHandler() {}
@@ -235,7 +242,7 @@ std::string DTEHandler::PASPW_REQ(int error_code, std::vector<BaseType>& arg_lis
 		// If the number of records is zero then return an incorrect data error and flag this
 		// back to the user without updating the configuration store
 		if (pass_predict.num_records == 0) {
-			DEBUG_ERROR("DTEHandler::PASPW_REQ: no AOP records, so not updating the config store");
+			DEBUG_ERROR("DTEHandler::PASPW_REQ: no AOP records | not updating the config store");
 			error_code = (int)DTEError::INCORRECT_DATA;
 			break;
 		}
@@ -274,7 +281,7 @@ std::string DTEHandler::PASPW_REQ(int error_code, std::vector<BaseType>& arg_lis
 			DEBUG_INFO("DTEHandler:PASPW_REQ: saving PASPW with #AOPs=%u ARGOS_AOP_DATE=%s", (unsigned int)pass_predict.num_records, buff);
 			break;
 		} else {
-			DEBUG_ERROR("DTEHandler::PASPW_REQ: no valid AOP records, so not updating the config store");
+			DEBUG_ERROR("DTEHandler::PASPW_REQ: no valid AOP records | not updating the config store");
 			error_code = (int)DTEError::INCORRECT_DATA;
 			break;
 		}
@@ -708,18 +715,19 @@ std::string DTEHandler::SENSR_REQ(int error_code, std::vector<BaseType>& arg_lis
 	double accel_z = 0.0;
 	double accel_temp = 0.0;
 	unsigned int activity = 0;
+	double thermistor_temp = 0.0;
 
 	if (error_code) {
 		return DTEEncoder::encode(DTECommand::SENSR_RESP, error_code,
 			batt_mv, batt_soc, pressure, temperature, altitude, lat, lon, hdop, num_sv,
-			accel_x, accel_y, accel_z, accel_temp, activity);
+			accel_x, accel_y, accel_z, accel_temp, activity, thermistor_temp);
 	}
 
 	// Parse parameters
 	if (arg_list.size() < 2) {
 		return DTEEncoder::encode(DTECommand::SENSR_RESP, (int)DTEError::MISSING_ARGUMENT,
 			batt_mv, batt_soc, pressure, temperature, altitude, lat, lon, hdop, num_sv,
-			accel_x, accel_y, accel_z, accel_temp, activity);
+			accel_x, accel_y, accel_z, accel_temp, activity, thermistor_temp);
 	}
 
 	unsigned int sensors_mask = std::get<unsigned int>(arg_list[0]);
@@ -734,7 +742,7 @@ std::string DTEHandler::SENSR_REQ(int error_code, std::vector<BaseType>& arg_lis
 			battery_monitor->update();  // Refresh readings
 			batt_mv = battery_monitor->get_voltage();
 			batt_soc = battery_monitor->get_level();
-			DEBUG_TRACE("SENSR: Battery %umV, %u%%", batt_mv, batt_soc);
+			DEBUG_TRACE("SENSR: Battery %umV | %u%%", batt_mv, batt_soc);
 		} else {
 			DEBUG_WARN("SENSR: Battery monitor not available");
 		}
@@ -753,7 +761,7 @@ std::string DTEHandler::SENSR_REQ(int error_code, std::vector<BaseType>& arg_lis
 			if (sea_level_hpa > 0.0 && pressure_hpa > 0.0) {
 				altitude = 44330.0 * (1.0 - std::pow(pressure_hpa / sea_level_hpa, 1.0 / 5.255));
 			}
-			DEBUG_TRACE("SENSR: Pressure %.4f bar, Temp %.2f C, Altitude %.2f m", pressure, temperature, altitude);
+			DEBUG_TRACE("SENSR: Pressure %.4f bar | Temp %.2f C | Altitude %.2f m", pressure, temperature, altitude);
 		} catch (...) {
 			DEBUG_WARN("SENSR: Pressure sensor not available");
 			// Leave pressure/temperature/altitude at defaults (0.0)
@@ -799,9 +807,24 @@ std::string DTEHandler::SENSR_REQ(int error_code, std::vector<BaseType>& arg_lis
 	(void)(sensors_mask & 0x08);  // Suppress unused warning
 #endif
 
+	// Read thermistor (SensrType::THERMISTOR = 0x10)
+#if ENABLE_THERMISTOR_SENSOR
+	if (sensors_mask & 0x10) {
+		try {
+			Sensor& therm = SensorManager::find_by_name("THERMISTOR");
+			thermistor_temp = therm.read(0);  // Channel 0 = temperature (°C)
+			DEBUG_TRACE("SENSR: Thermistor %.2f C", thermistor_temp);
+		} catch (...) {
+			DEBUG_WARN("SENSR: Thermistor not available");
+		}
+	}
+#else
+	(void)(sensors_mask & 0x10);  // Suppress unused warning
+#endif
+
 	return DTEEncoder::encode(DTECommand::SENSR_RESP, (int)DTEError::OK,
 		batt_mv, batt_soc, pressure, temperature, altitude, lat, lon, hdop, num_sv,
-		accel_x, accel_y, accel_z, accel_temp, activity);
+		accel_x, accel_y, accel_z, accel_temp, activity, thermistor_temp);
 }
 
 // PWRON handler - Power on/off components
@@ -820,21 +843,25 @@ std::string DTEHandler::PWRON_REQ(int error_code, std::vector<BaseType>& arg_lis
 
 	switch ((ComponentPower)component) {
 	case ComponentPower::ALL:
-		// Power on all components
+		// Power on all components (VSENSORS first for stable power rail)
 		DEBUG_TRACE("PWRON: Powering ON all components");
-		GPIOPins::clear(GPS_RST);
-		GPIOPins::set(GPS_POWER);
 		GPIOPins::acquire_sensors_pwr();
+		GPIOPins::init_pin(GPS_RST);
+		GPIOPins::set(GPS_RST);
+		PMU::delay_ms(10);
+		GPIOPins::set(GPS_POWER);
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 		GPIOPins::set(SAT_PWR_EN);
 #endif
 		break;
 
 	case ComponentPower::GNSS:
-		// Power on GNSS (requires VSENSORS for stable power rail)
+		// Power on GNSS (matches M10Q exit_shutdown sequence)
 		DEBUG_TRACE("PWRON: Powering ON GNSS");
 		GPIOPins::acquire_sensors_pwr();
-		GPIOPins::clear(GPS_RST);
+		GPIOPins::init_pin(GPS_RST);
+		GPIOPins::set(GPS_RST);
+		PMU::delay_ms(10);
 		GPIOPins::set(GPS_POWER);
 		break;
 
@@ -854,10 +881,10 @@ std::string DTEHandler::PWRON_REQ(int error_code, std::vector<BaseType>& arg_lis
 		break;
 
 	case ComponentPower::OFF:
-		// Power off all components
+		// Power off all components (matches M10Q enter_shutdown sequence)
 		DEBUG_TRACE("PWRON: Powering OFF all components");
-		GPIOPins::set(GPS_RST);
 		GPIOPins::clear(GPS_POWER);
+		GPIOPins::release_to_highz(GPS_RST);
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 		GPIOPins::clear(SAT_PWR_EN);
 #endif
@@ -1023,6 +1050,9 @@ DTEAction DTEHandler::handle_dte_message(const std::string& req, std::string& re
 		resp = SMDCD_REQ(error_code, arg_list);
 		break;
 #endif
+	case DTECommand::SATDP_REQ:
+		resp = SATDP_REQ(error_code, arg_list);
+		break;
 	default:
 		break;
 	}
@@ -1039,29 +1069,122 @@ DTEAction DTEHandler::handle_dte_message(const std::string& req, std::string& re
 // KineisEventListener: async TX result notification
 void DTEHandler::react(KineisEventTxComplete const& ) {
 	DEBUG_INFO("DTEHandler::react: KineisEventTxComplete");
-	if (m_async_write) {
-		std::string resp = DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::OK);
-		DEBUG_TRACE("DTEHandler::react: async responding: %s", resp.c_str());
-		m_async_write(resp);
+	if (m_doppler_cal_first_tx) {
+		// First SATDP TX succeeded — respond OK, then schedule periodic TX
+		m_doppler_cal_first_tx = false;
+		if (m_async_write)
+			m_async_write(DTEEncoder::encode(DTECommand::SATDP_RESP, (int)DTEError::OK));
+		schedule_doppler_cal_tx();
+	} else if (m_doppler_cal_active) {
+		// Periodic Doppler TX completed — schedule next one
+		schedule_doppler_cal_tx();
+	} else {
+		// Regular ARGOSTX async response
+		if (m_async_write) {
+			std::string resp = DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::OK);
+			DEBUG_TRACE("DTEHandler::react: async responding: %s", resp.c_str());
+			m_async_write(resp);
+		}
 	}
 }
 
 void DTEHandler::react(KineisEventDeviceError const& ) {
 	DEBUG_WARN("DTEHandler::react: KineisEventDeviceError");
-	if (m_async_write) {
-		std::string resp = DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::INCORRECT_DATA);
-		DEBUG_TRACE("DTEHandler::react: async responding: %s", resp.c_str());
-		m_async_write(resp);
+	if (m_doppler_cal_first_tx) {
+		// First SATDP TX failed — respond error, abort calibration
+		m_doppler_cal_active = false;
+		m_doppler_cal_first_tx = false;
+		if (m_async_write)
+			m_async_write(DTEEncoder::encode(DTECommand::SATDP_RESP, (int)DTEError::INCORRECT_DATA));
+	} else if (m_doppler_cal_active) {
+		// Periodic Doppler TX failed — retry on next cycle
+		DEBUG_WARN("DTEHandler: SATDP periodic TX failed | will retry");
+		schedule_doppler_cal_tx();
+	} else {
+		// Regular ARGOSTX async error response
+		if (m_async_write) {
+			std::string resp = DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::INCORRECT_DATA);
+			DEBUG_TRACE("DTEHandler::react: async responding: %s", resp.c_str());
+			m_async_write(resp);
+		}
 	}
 }
 
 // KineisEventListener: handle power off to release subscription
 void DTEHandler::react(KineisEventPowerOff const& ) {
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
-	if (m_sat_device_active) {
+	if (m_sat_device_active && !m_doppler_cal_active) {
 		m_sat_device_active = false;
 		smd_sat_instance->set_idle_timeout(3000);
 		smd_sat_instance->unsubscribe(*this);
 	}
+#endif
+}
+
+std::string DTEHandler::SATDP_REQ(int error_code, std::vector<BaseType>& arg_list) {
+	(void)arg_list;
+
+	if (error_code) {
+		return DTEEncoder::encode(DTECommand::SATDP_RESP, error_code);
+	}
+
+	if (m_doppler_cal_active) {
+		return DTEEncoder::encode(DTECommand::SATDP_RESP, (int)DTEError::INCORRECT_DATA);
+	}
+
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	if (!smd_sat_instance) {
+		return smd_not_available_error("SATDP_REQ", DTECommand::SATDP_RESP);
+	}
+
+	// Subscribe to satellite events if not already active
+	if (!m_sat_device_active) {
+		smd_sat_instance->subscribe(*this);
+		m_sat_device_active = true;
+	}
+	smd_sat_instance->set_idle_timeout(0);  // Keep satellite powered on indefinitely
+
+	// Build and send the first Doppler packet
+	unsigned int size_bits;
+	unsigned int batt_mv = battery_monitor ? battery_monitor->get_voltage() : 3700;
+	bool is_lb = battery_monitor ? battery_monitor->is_battery_low() : false;
+	KineisPacket packet = ArgosPacketBuilder::build_doppler_packet(batt_mv, is_lb, size_bits);
+
+	DEBUG_INFO("DTEHandler::SATDP_REQ: sending first Doppler packet (%u bits)", size_bits);
+	smd_sat_instance->send(KineisModulation::LDA2, packet, size_bits);
+
+	m_doppler_cal_active = true;
+	m_doppler_cal_first_tx = true;
+
+	// No immediate response — wait for KineisEventTxComplete/DeviceError
+	return {};
+#else
+	DEBUG_WARN("DTEHandler::SATDP_REQ: No satellite device available");
+	return DTEEncoder::encode(DTECommand::SATDP_RESP, (int)DTEError::INCORRECT_DATA);
+#endif
+}
+
+void DTEHandler::schedule_doppler_cal_tx() {
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	ArgosConfig config;
+	configuration_store->get_argos_configuration(config);
+	unsigned int delay_ms = config.tr_nom * 1000;
+
+	DEBUG_TRACE("DTEHandler::schedule_doppler_cal_tx: next TX in %u ms", delay_ms);
+
+	system_scheduler->post_task_prio(
+		[this]() {
+			if (!m_doppler_cal_active || !smd_sat_instance) return;
+			unsigned int size_bits;
+			unsigned int batt_mv = battery_monitor ? battery_monitor->get_voltage() : 3700;
+			bool is_lb = battery_monitor ? battery_monitor->is_battery_low() : false;
+			KineisPacket packet = ArgosPacketBuilder::build_doppler_packet(batt_mv, is_lb, size_bits);
+			DEBUG_TRACE("DTEHandler: SATDP periodic TX (%u bits)", size_bits);
+			smd_sat_instance->send(KineisModulation::LDA2, packet, size_bits);
+		},
+		"SATDPPeriodicTx",
+		Scheduler::DEFAULT_PRIORITY,
+		delay_ms
+	);
 #endif
 }

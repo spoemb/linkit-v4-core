@@ -244,3 +244,10 @@ void LEDBatteryCritical::entry() {
 		status_led->set(RGBLedColor::YELLOW);
 	}
 }
+
+void LEDDFUUpdate::entry() {
+	DEBUG_TRACE("LEDDFUUpdate: entry");
+	status_led->flash_alternate(RGBLedColor::BLUE, RGBLedColor::WHITE, 250);
+	if (ext_status_led)
+		ext_status_led->off();
+}

@@ -1,0 +1,54 @@
+# Doxyfile for LinKit v4 Core
+
+PROJECT_NAME           = "LinKit v4 Core"
+PROJECT_BRIEF          = "Multi-sensor wildlife tracker firmware for nRF52840"
+PROJECT_NUMBER         = "4.0"
+
+# Input
+INPUT                  = ../core/ ../ports/nrf52840/core/
+RECURSIVE              = YES
+FILE_PATTERNS          = *.hpp *.cpp *.h
+EXCLUDE_PATTERNS       = */build/* */tests/* */nRF5_SDK_*
+
+# Output
+OUTPUT_DIRECTORY       = doxygen_output
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+HTML_OUTPUT            = html
+
+# Extraction
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+EXTRACT_LOCAL_CLASSES  = YES
+
+# Source browsing
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
+
+# Graphs
+HAVE_DOT               = NO
+CLASS_DIAGRAMS         = YES
+COLLABORATION_GRAPH    = NO
+INCLUDE_GRAPH          = NO
+INCLUDED_BY_GRAPH      = NO
+
+# Preprocessing
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+PREDEFINED             = ENABLE_PRESSURE_SENSOR=1 \
+                         ENABLE_AXL_SENSOR=1 \
+                         ENABLE_THERMISTOR_SENSOR=1 \
+                         ENABLE_PH_SENSOR=1 \
+                         ENABLE_SEA_TEMP_SENSOR=1 \
+                         ENABLE_ALS_SENSOR=1 \
+                         ENABLE_CDT_SENSOR=1 \
+                         ENABLE_CAM_SENSOR=1 \
+                         EXTERNAL_WAKEUP=1 \
+                         ARGOS_SMD=1
+
+# Warnings
+WARN_IF_UNDOCUMENTED   = NO
+QUIET                  = YES

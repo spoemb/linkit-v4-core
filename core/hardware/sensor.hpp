@@ -43,4 +43,7 @@ public:
 	static Sensor &find_by_name(const char *name) {
 		return m_map.at(std::string(name));
 	}
+	static void clear() {
+		m_map.clear();
+	}
 };

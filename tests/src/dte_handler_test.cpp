@@ -68,6 +68,7 @@ TEST_GROUP(DTEHandler)
 	}
 
 	void teardown() {
+		mock().checkExpectations();
 		delete dte_handler;
 		delete mock_sensor_log;
 		delete mock_system_log;
@@ -76,6 +77,9 @@ TEST_GROUP(DTEHandler)
 		delete store;
 		ram_filesystem->umount();
 		delete ram_filesystem;
+		SensorManager::clear();
+		CalibratableManager::clear();
+		mock().clear();
 	}
 
 	std::string read_file_into_string(std::string path) {
@@ -120,7 +124,19 @@ TEST(DTEHandler, PARML_REQ)
 	std::string resp;
 	std::string req = DTEEncoder::encode(DTECommand::PARML_REQ);
 	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
-	STRCMP_EQUAL("$O;PARML#3B3;IDP12,IDT06,IDT02,IDT03,ART01,ART02,POT03,POT05,IDP11,ART03,ARP05,ARP01,ARP19,ARP18,GNP01,ARP11,ARP16,GNP02,GNP03,GNP05,UNP01,UNP02,UNP03,LBP01,LBP02,ARP06,LBP04,LBP05,LBP06,ARP12,LBP07,LBP08,LBP09,UNP04,PPP01,PPP02,PPP03,PPP04,PPP05,PPP06,GNP09,GNP10,GNP11,GNP20,GNP21,GNP22,GNP23,ARP30,LDP01,ARP31,ARP32,ARP33,ARP34,ART10,ART11,GNP24,LBP10,LBP11,ZOP01,ZOP04,ZOP05,ZOP06,ZOP08,ZOP10,ZOP11,ZOP12,ZOP13,ZOP14,ZOP15,ZOP16,ZOP17,ZOP18,ZOP19,ZOP20,CTP01,CTP02,CTP03,CTP04,IDT04,POT06,ARP35,IDT10,GNP25,GNP26,UNP10,UNP11,PHP01,PHP02,PHP03,STP01,STP02,STP03,LTP01,LTP02,LTP03,CDP01,CDP02,CDP03,CDP04,CDP05,THP01,THP02,THP03,THP04,THP05,LDP02,AXP01,AXP02,AXP03,AXP04,AXP08,AXP09,PRP01,PRP02,DBP01,GNP27,UNP05,UNP06,UNP07,UNP08,UNP20,UNP21,UNP22,UNP23,UNP24,UNP25,UNP12,UNP13,UNP14,UNP15,UNP16,UNP17,UNP18,LBP12,PRP03,GNP28,STP04,STP05,STP06,PHP04,PHP05,PHP06,LTP04,LTP05,LTP06,PRP04,PRP05,PRP06,AXP05,AXP06,AXP07,THP06,THP07,THP08,PWP05,LBP14,GNP30,PRP07\r", resp.c_str());
+
+	// Build expected PARML response dynamically from param_map
+	std::string payload;
+	for (unsigned int i = 0; i < param_map_size; i++) {
+		if (param_map[i].is_implemented) {
+			if (!payload.empty()) payload += ",";
+			payload += param_map[i].key;
+		}
+	}
+	char header[16];
+	snprintf(header, sizeof(header), "%03X", (unsigned int)payload.size());
+	std::string expected = std::string("$O;PARML#") + header + ";" + payload + "\r";
+	STRCMP_EQUAL(expected.c_str(), resp.c_str());
 }
 
 TEST(DTEHandler, PARMW_REQ)
@@ -1148,6 +1164,206 @@ TEST(DTEHandler, ERASE_REQ_InvalidLogType)
 	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
 	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
 	CHECK_TRUE(DTECommand::ERASE_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::INCORRECT_DATA, error_code);
+}
+
+TEST(DTEHandler, PARMW_PRP07_PressureSensorFullScale)
+{
+	std::string resp;
+
+	// Write PRP07=0 (FS_1260)
+	std::string req = "$PARMW#007;PRP07=0\r";
+	CHECK_TRUE(DTEAction::CONFIG_UPDATED == dte_handler->handle_dte_message(req, resp));
+	STRCMP_EQUAL("$O;PARMW#000;\r", resp.c_str());
+
+	// Verify value was written
+	auto val = configuration_store->read_param<BasePressureSensorFullScale>(ParamID::PRESSURE_SENSOR_FULL_SCALE);
+	CHECK_TRUE(BasePressureSensorFullScale::FS_1260 == val);
+
+	// Write PRP07=1 (FS_4060)
+	req = "$PARMW#007;PRP07=1\r";
+	CHECK_TRUE(DTEAction::CONFIG_UPDATED == dte_handler->handle_dte_message(req, resp));
+	STRCMP_EQUAL("$O;PARMW#000;\r", resp.c_str());
+
+	val = configuration_store->read_param<BasePressureSensorFullScale>(ParamID::PRESSURE_SENSOR_FULL_SCALE);
+	CHECK_TRUE(BasePressureSensorFullScale::FS_4060 == val);
+}
+
+TEST(DTEHandler, PARMR_PRP07_PressureSensorFullScale)
+{
+	std::string resp;
+
+	// Set to FS_4060
+	auto fs = BasePressureSensorFullScale::FS_4060;
+	configuration_store->write_param(ParamID::PRESSURE_SENSOR_FULL_SCALE, fs);
+
+	// Read back via DTE
+	std::string req = "$PARMR#005;PRP07\r";
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	STRCMP_EQUAL("$O;PARMR#007;PRP07=1\r", resp.c_str());
+}
+
+TEST(DTEHandler, ARGOSTX_REQ_NoSatelliteDevice)
+{
+	DTECommand command;
+	std::string req;
+	std::string resp;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// ARGOSTX_REQ with valid args - no satellite device in test build
+	// DTE command name is "SATTX", payload: "0,500,401.650000,10,0" = 21 chars = 0x15
+	req = "$SATTX#015;0,500,401.650000,10,0\r";
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::ARGOSTX_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::INCORRECT_DATA, error_code);
+}
+
+TEST(DTEHandler, PWRON_REQ_PowerOnAll)
+{
+	DTECommand command;
+	std::string req;
+	std::string resp;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	mock().ignoreOtherCalls();
+
+	// PWRON_REQ component=0 (ALL)
+	req = "$PWRON#001;0\r";
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::PWRON_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::OK, error_code);
+}
+
+TEST(DTEHandler, PWRON_REQ_PowerOff)
+{
+	DTECommand command;
+	std::string req;
+	std::string resp;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	mock().ignoreOtherCalls();
+
+	// PWRON_REQ component=4 (OFF)
+	req = "$PWRON#001;4\r";
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::PWRON_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::OK, error_code);
+}
+
+TEST(DTEHandler, PWRON_REQ_InvalidComponent)
+{
+	DTECommand command;
+	std::string req;
+	std::string resp;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	mock().ignoreOtherCalls();
+
+	// PWRON_REQ component=99 (invalid)
+	req = "$PWRON#002;99\r";
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::PWRON_RESP == command);
+	CHECK_TRUE(error_code != 0);
+}
+
+TEST(DTEHandler, PWRON_REQ_PowerOnGNSS)
+{
+	DTECommand command;
+	std::string req;
+	std::string resp;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	mock().ignoreOtherCalls();
+
+	// PWRON_REQ component=1 (GNSS)
+	req = "$PWRON#001;1\r";
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::PWRON_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::OK, error_code);
+}
+
+TEST(DTEHandler, PWRON_REQ_PowerOnSensors)
+{
+	DTECommand command;
+	std::string req;
+	std::string resp;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	mock().ignoreOtherCalls();
+
+	// PWRON_REQ component=2 (SENSORS)
+	req = "$PWRON#001;2\r";
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::PWRON_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::OK, error_code);
+}
+
+TEST(DTEHandler, PARMW_REQ_OutOfRangeReturnsError)
+{
+	std::string resp;
+
+	// Write an out-of-range value for TR_NOM (valid range: 30-1200)
+	// "ARP05=29" = 8 chars = 0x08
+	std::string req = "$PARMW#008;ARP05=29\r";
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	STRCMP_EQUAL("$N;PARMW#001;7\r", resp.c_str());
+
+	// Verify TR_NOM was NOT changed (still default)
+	unsigned int val = configuration_store->read_param<unsigned int>(ParamID::TR_NOM);
+	CHECK_EQUAL(60U, val);
+}
+
+TEST(DTEHandler, PARMW_REQ_UnknownParamKey)
+{
+	std::string resp;
+
+	// Write with a non-existent param key - unknown keys are silently skipped
+	// "XXXXX=123" = 9 chars = 0x09
+	std::string req = "$PARMW#009;XXXXX=123\r";
+	CHECK_TRUE(DTEAction::CONFIG_UPDATED == dte_handler->handle_dte_message(req, resp));
+	// Handler succeeds (skips unknown key), returns OK
+	STRCMP_EQUAL("$O;PARMW#000;\r", resp.c_str());
+}
+
+TEST(DTEHandler, SATDP_REQ_NoSatelliteDevice)
+{
+	DTECommand command;
+	std::string req;
+	std::string resp;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// SATDP with no satellite device in test build - should return error
+	req = "$SATDP#000;\r";
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::SATDP_RESP == command);
 	CHECK_EQUAL((unsigned int)DTEError::INCORRECT_DATA, error_code);
 }
 

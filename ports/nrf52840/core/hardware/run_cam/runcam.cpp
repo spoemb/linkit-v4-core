@@ -35,13 +35,13 @@ void RunCam::power_on()
    if (m_state == State::POWERED_ON)
         return;
 	DEBUG_TRACE("RunCam::power_on");
-	DEBUG_TRACE("Setting CAM_PWR_EN (GPIO %u, pin P%u.%u)", CAM_PWR_EN,
+	DEBUG_TRACE("Setting CAM_PWR_EN (GPIO %u | pin P%u.%u)", CAM_PWR_EN,
 		(BSP::GPIO_Inits[CAM_PWR_EN].pin_number >> 5), (BSP::GPIO_Inits[CAM_PWR_EN].pin_number & 0x1F));
 	//nrf_gpio_pin_set(CAM_PWR_EN);
    GPIOPins::set(CAM_PWR_EN);
    DEBUG_TRACE("CAM_PWR_EN set, waiting %ums", PWR_DELAY);
    PMU::delay_ms(PWR_DELAY);
-   DEBUG_TRACE("Setting CAM_PWR_BUTT (GPIO %u, pin P%u.%u)", CAM_PWR_BUTT,
+   DEBUG_TRACE("Setting CAM_PWR_BUTT (GPIO %u | pin P%u.%u)", CAM_PWR_BUTT,
 		(BSP::GPIO_Inits[CAM_PWR_BUTT].pin_number >> 5), (BSP::GPIO_Inits[CAM_PWR_BUTT].pin_number & 0x1F));
    GPIOPins::set(CAM_PWR_BUTT);
    DEBUG_TRACE("CAM_PWR_BUTT set, waiting %ums", PWR_BUTT_DELAY);

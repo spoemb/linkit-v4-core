@@ -91,7 +91,7 @@ void M10QAsyncReceiver::power_on(const GPSNavSettings& nav_settings) {
         m_num_consecutive_fixes = m_nav_settings.num_consecutive_fixes;
 #ifdef GPS_FAKE_POSITION
         // Fake GPS mode: simulate a fix after 2s delay
-        DEBUG_WARN("M10QAsyncReceiver: FAKE GPS MODE - will simulate fix at Saint-Paul, Reunion");
+        DEBUG_WARN("M10QAsyncReceiver: FAKE GPS MODE - will simulate fix at Saint-Paul Reunion");
         m_fix_was_found = false;
         notify<GPSEventPowerOn>({});
         m_state_machine_handle = system_scheduler->post_task_prio(
@@ -334,7 +334,7 @@ void M10QAsyncReceiver::react(const UBXCommsEventCfgValget& valget) {
         offset += paramSize;
 
         // Print the decoded configuration key-value pair
-        DEBUG_TRACE("Config Key: 0x%08X, Value: %lld (0x%X)", key, paramValue, paramValue);
+        DEBUG_TRACE("Config Key: 0x%08X | Value: %lld (0x%X)", key, paramValue, paramValue);
     }
 
     // msg_buffer automatically freed when function exits (RAII)
@@ -885,7 +885,7 @@ void M10QAsyncReceiver::state_fetchdatabase() {
         return;
     }
     if (m_ano_database_len) {
-        DEBUG_TRACE("M10QAsyncReceiver: fetchdatabase: ANO in use, not fetching");
+        DEBUG_TRACE("M10QAsyncReceiver: fetchdatabase: ANO in use | not fetching");
         STATE_CHANGE(fetchdatabase, poweroff);
         return;
     }

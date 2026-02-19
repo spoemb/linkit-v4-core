@@ -139,7 +139,7 @@ int Is25Flash::_prog(lfs_block_t block, lfs_off_t off, const void *buffer, lfs_s
 
 	if (size > sizeof(read_buffer))
 	{
-		DEBUG_ERROR("QSPI Flash prog verification buffer too small, need size of %lu", size);
+		DEBUG_ERROR("QSPI Flash prog verification buffer too small | need size of %lu", size);
 		return LFS_ERR_NOMEM;
 	}
 

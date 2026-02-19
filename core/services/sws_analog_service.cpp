@@ -100,15 +100,15 @@ void SWSAnalogService::service_init() {
 
     // Validate configuration parameters
     if (m_threshold_min < ADC_INVALID_MIN || m_threshold_min >= m_threshold_max) {
-        DEBUG_WARN("SWSAnalog: Invalid threshold_min, using default");
+        DEBUG_WARN("SWSAnalog: Invalid threshold_min | using default");
         m_threshold_min = DEFAULT_THRESHOLD_MIN;
     }
     if (m_threshold_max > ADC_INVALID_MAX || m_threshold_max <= m_threshold_min) {
-        DEBUG_WARN("SWSAnalog: Invalid threshold_max, using default");
+        DEBUG_WARN("SWSAnalog: Invalid threshold_max | using default");
         m_threshold_max = DEFAULT_THRESHOLD_MAX;
     }
     if (m_hysteresis_percent > 50) {
-        DEBUG_WARN("SWSAnalog: Invalid hysteresis, using default");
+        DEBUG_WARN("SWSAnalog: Invalid hysteresis | using default");
         m_hysteresis_percent = DEFAULT_HYSTERESIS_PERCENT;
     }
 
@@ -403,7 +403,7 @@ bool SWSAnalogService::check_safety_timeouts(bool current_state) {
     // Check max dive time (force surface if underwater too long)
     if (current_state && m_max_dive_time_sec > 0) {
         if (m_time_in_current_state >= m_max_dive_time_sec) {
-            DEBUG_WARN("SWSAnalog: Max dive time exceeded (%us), forcing surface detection",
+            DEBUG_WARN("SWSAnalog: Max dive time exceeded (%us) | forcing surface detection",
                        m_time_in_current_state);
             return true;  // Override to surface
         }
@@ -412,7 +412,7 @@ bool SWSAnalogService::check_safety_timeouts(bool current_state) {
     // Check min surface time (ignore underwater detections if just surfaced)
     if (!current_state && m_min_surface_time_sec > 0) {
         if (m_time_in_current_state < m_min_surface_time_sec) {
-            DEBUG_TRACE("SWSAnalog: Min surface time not met (%us < %us), ignoring transient",
+            DEBUG_TRACE("SWSAnalog: Min surface time not met (%us < %us) | ignoring transient",
                         m_time_in_current_state, m_min_surface_time_sec);
             // Don't override, but this info can be used by caller
         }
@@ -427,7 +427,7 @@ bool SWSAnalogService::detector_state() {
 
     // Validate reading
     if (!is_value_valid(raw_value)) {
-        DEBUG_WARN("SWSAnalog: Invalid ADC reading %u, using previous state", raw_value);
+        DEBUG_WARN("SWSAnalog: Invalid ADC reading %u | using previous state", raw_value);
         return m_current_state;  // Keep previous state if reading is invalid
     }
 
@@ -722,7 +722,7 @@ bool SWSAnalogService::detector_state() {
             }
         }
 
-        DEBUG_TRACE("SWSAnalog: In hysteresis zone (%us), maintaining state=%u",
+        DEBUG_TRACE("SWSAnalog: In hysteresis zone (%us) | maintaining state=%u",
                     m_time_in_hysteresis, new_state);
     }
 
@@ -785,7 +785,7 @@ bool SWSAnalogService::detector_state() {
 
     // Surface lockout: prevent return to underwater during lockout period
     if (m_surface_lockout_remaining > 0 && new_state) {
-        DEBUG_TRACE("SWSAnalog: Surface lockout active (%us remaining), staying at surface",
+        DEBUG_TRACE("SWSAnalog: Surface lockout active (%us remaining) | staying at surface",
                     m_surface_lockout_remaining);
         new_state = false;
     }
@@ -810,7 +810,7 @@ bool SWSAnalogService::detector_state() {
         m_peak_adc_since_underwater = 0;
         m_cumulative_drop_percent = 0;
 
-        DEBUG_INFO("SWSAnalog: State change %u -> %u (value=%u, thresh=%u)",
+        DEBUG_INFO("SWSAnalog: State change %u -> %u (value=%u | thresh=%u)",
                    m_current_state, new_state, filtered_value, m_calib.threshold_current);
     }
 

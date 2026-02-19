@@ -134,7 +134,7 @@ double Thermistor::find_calibration_point(double target_value) {
 	if (average_temperature > target_value) {
 		difference = -difference;
 	}
-	DEBUG_TRACE("THERMISTOR::%s: Average Temperature = %.5lf, Difference = %.5lf",
+	DEBUG_TRACE("THERMISTOR::%s: Average Temperature = %.5lf | Difference = %.5lf",
 		__func__, average_temperature, difference);
 
 	return difference;

@@ -225,7 +225,7 @@ static void read_ms5837_02bar(const int32_t D1, const int32_t D2, const uint16_t
 }
 
 MS58xxLL::MS58xxLL(unsigned int bus, unsigned char addr, std::string variant) {
-	DEBUG_TRACE("MS58xxLL::MS58xxLL(i2cbus=%u, i2caddr=0x%02x, variant=%s)", bus, (unsigned int)addr, variant.c_str());
+	DEBUG_TRACE("MS58xxLL::MS58xxLL(i2cbus=%u | i2caddr=0x%02x | variant=%s)", bus, (unsigned int)addr, variant.c_str());
 	m_bus = bus;
 	m_addr = addr;
 	m_resolution = MS58xxCommand::ADC_4096;

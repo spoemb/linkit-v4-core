@@ -66,7 +66,7 @@ void CDT::calibration_read(double& value, const unsigned int offset) {
 		int16_t real, imag;
 		// This will fetch I and Q samples so must be called first
 		m_ad5933.get_real_imaginary(real, imag);
-		DEBUG_TRACE("CDT::calibrate: read real value: %d,%d", (int)real, (int)imag);
+		DEBUG_TRACE("CDT::calibrate: read real value: %d|%d", (int)real, (int)imag);
 		value = (double)real;
 		m_last_imaginary = imag;
 	} else if (5 == offset) {
@@ -87,7 +87,7 @@ double CDT::read_calibrated_conductivity() {
 	try {
 		gain_factor = m_cal.read((unsigned int)CalibrationPoint::GAIN_FACTOR);
 	} catch (...) {
-		DEBUG_TRACE("CDT::read_calibrated_conductivity: GF calibration missing, using default calibration");
+		DEBUG_TRACE("CDT::read_calibrated_conductivity: GF calibration missing | using default calibration");
 		gain_factor = 10.95E-6;
 	}
 
@@ -96,7 +96,7 @@ double CDT::read_calibrated_conductivity() {
 		CB = m_cal.read((unsigned int)CalibrationPoint::CB);
 		CC = m_cal.read((unsigned int)CalibrationPoint::CC);
 	} catch (...) {
-		DEBUG_TRACE("CDT::read_calibrated_conductivity: CA/CB/CC calibration missing, using default calibration");
+		DEBUG_TRACE("CDT::read_calibrated_conductivity: CA/CB/CC calibration missing | using default calibration");
 		CA = 0.0011;
 		CB = 0.9095;
 		CC = 0.4696;

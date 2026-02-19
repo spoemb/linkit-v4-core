@@ -972,3 +972,16 @@ TEST(Encoder, PARAM_PP_COMP_STEP)
 	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
 	STRCMP_EQUAL("$O;PARMR#008;PPP06=30\r", s.c_str());
 }
+
+TEST(Encoder, PARAM_PRESSURE_SENSOR_FULL_SCALE)
+{
+	std::string s;
+	ParamValue p = { ParamID::PRESSURE_SENSOR_FULL_SCALE, BasePressureSensorFullScale::FS_1260 };
+	std::vector<ParamValue> v = { p };
+	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
+	STRCMP_EQUAL("$O;PARMR#007;PRP07=0\r", s.c_str());
+	p = { ParamID::PRESSURE_SENSOR_FULL_SCALE, BasePressureSensorFullScale::FS_4060 };
+	v = { p };
+	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
+	STRCMP_EQUAL("$O;PARMR#007;PRP07=1\r", s.c_str());
+}

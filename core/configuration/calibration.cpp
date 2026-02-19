@@ -31,6 +31,10 @@ void CalibratableManager::save_all(bool force) {
 	}
 }
 
+void CalibratableManager::clear() {
+	m_map.clear();
+}
+
 Calibration::Calibration(const char *name) : m_has_changed(false) {
 	m_filename = std::string(name) + ".CAL";
 	try {

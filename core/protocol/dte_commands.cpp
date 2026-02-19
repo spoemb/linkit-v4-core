@@ -344,7 +344,7 @@ const DTECommandMap command_map[] = {
 				.key = "",
 				.encoding = BaseEncoding::UINT,
 				.min_value = 1U,
-				.max_value = 15U,  // Bitmask: 1=battery, 2=pressure, 4=GNSS, 8=accel
+				.max_value = 31U,  // Bitmask: 1=battery, 2=pressure, 4=GNSS, 8=accel, 16=thermistor
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false
@@ -463,8 +463,16 @@ const DTECommandMap command_map[] = {
 				.is_writable = false
 			}
 		}
-	}, 
+	},
 #endif
+	// SATDP - Satellite Doppler calibration (no arguments)
+	// Usage: $SATDP#000;\r
+	// Starts periodic Doppler TX at TR_NOM interval until device reset
+	{
+		.name = "SATDP",
+		.command = DTECommand::SATDP_REQ,
+		.prototype = {}
+	},
 	{
 		.name = "PARML",
 		.command = DTECommand::PARML_RESP,
@@ -819,6 +827,16 @@ const DTECommandMap command_map[] = {
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false
+			},
+			{
+				.name = "thermistor_temp",
+				.key = "",
+				.encoding = BaseEncoding::FLOAT,
+				.min_value = 0.0,
+				.max_value = 0.0,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
 			}
 		}
 	},
@@ -1002,6 +1020,12 @@ const DTECommandMap command_map[] = {
 		}
 	},
 #endif
+	// SATDP response - simple OK/error acknowledgement
+	{
+		.name = "SATDP",
+		.command = DTECommand::SATDP_RESP,
+		.prototype = {}
+	},
 };
 
 const size_t command_map_size = sizeof(command_map) / sizeof(command_map[0]);

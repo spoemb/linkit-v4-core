@@ -352,11 +352,13 @@ int ConfigurationState::on_ble_event(BLEServiceEvent& event) {
 		DEBUG_INFO("ConfigurationState::on_ble_event: OTA_START");
 		restart_inactivity_timeout();
 		ota_updater->start_file_transfer((OTAFileIdentifier)event.file_id, event.file_size, event.crc32);
+		led_handle::dispatch<SetLEDDFUUpdate>({});
 		break;
 	case BLEServiceEventType::OTA_END:
 		DEBUG_INFO("ConfigurationState::on_ble_event: OTA_END");
 		restart_inactivity_timeout();
 		ota_updater->complete_file_transfer();
+		led_handle::dispatch<SetLEDConfigConnected>({});
 		system_scheduler->post_task_prio(std::bind(&OTAFileUpdater::apply_file_update, ota_updater),
 				"BLEApplyOTAFileUpdate"
 				);
@@ -365,6 +367,7 @@ int ConfigurationState::on_ble_event(BLEServiceEvent& event) {
 		DEBUG_INFO("ConfigurationState::on_ble_event: OTA_ABORT");
 		restart_inactivity_timeout();
 		ota_updater->abort_file_transfer();
+		led_handle::dispatch<SetLEDConfigConnected>({});
 		break;
 	case BLEServiceEventType::OTA_FILE_DATA:
 		//DEBUG_TRACE("ConfigurationState::on_ble_event: OTA_FILE_DATA");
@@ -532,7 +535,7 @@ void ConfigurationState::process_usb_data() {}
 void BatteryCriticalState::entry() {
 	DEBUG_INFO("entry: BatteryCriticalState");
 #ifdef EXTERNAL_WAKEUP
-	DEBUG_INFO("EXTERNAL_WAKEUP: Critical battery, immediate powerdown");
+	DEBUG_INFO("EXTERNAL_WAKEUP: Critical battery | immediate powerdown");
 	PMU::powerdown();
 #else
 	led_handle::dispatch<SetLEDBatteryCritical>({});

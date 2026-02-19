@@ -55,7 +55,7 @@ void GPIOPins::initialise()
 
 #ifdef CAM_PWR_EN
 	// Initialize CAM power pins to OFF state
-	DEBUG_TRACE("Initializing CAM pins: CAM_PWR_EN=%u (P%u.%u), CAM_PWR_BUTT=%u (P%u.%u)",
+	DEBUG_TRACE("Initializing CAM pins: CAM_PWR_EN=%u (P%u.%u) | CAM_PWR_BUTT=%u (P%u.%u)",
 		CAM_PWR_EN, (BSP::GPIO_Inits[CAM_PWR_EN].pin_number >> 5), (BSP::GPIO_Inits[CAM_PWR_EN].pin_number & 0x1F),
 		CAM_PWR_BUTT, (BSP::GPIO_Inits[CAM_PWR_BUTT].pin_number >> 5), (BSP::GPIO_Inits[CAM_PWR_BUTT].pin_number & 0x1F));
 	clear(CAM_PWR_EN);
@@ -151,7 +151,7 @@ void GPIOPins::release_sensors_pwr()
 #ifdef SENSORS_PWR_PIN
 	if (m_sensors_pwr_refcount == 0)
 	{
-		DEBUG_WARN("GPIOPins::release_sensors_pwr: refcount already 0, ignoring release");
+		DEBUG_WARN("GPIOPins::release_sensors_pwr: refcount already 0 | ignoring release");
 		return;
 	}
 	m_sensors_pwr_refcount--;

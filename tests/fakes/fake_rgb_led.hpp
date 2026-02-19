@@ -37,6 +37,12 @@ public:
 		m_is_flashing = true;
 		DEBUG_TRACE("LED[%s]=flashing %s", m_name, color_to_string(color).c_str());
 	}
+	void flash_alternate(RGBLedColor color1, RGBLedColor color2, unsigned int period_ms = 250) override {
+		m_period = period_ms;
+		m_color = color1;
+		m_is_flashing = true;
+		DEBUG_TRACE("LED[%s]=flashing alternate %s/%s", m_name, color_to_string(color1).c_str(), color_to_string(color2).c_str());
+	}
 	bool is_flashing() override {
 		return m_is_flashing;
 	}

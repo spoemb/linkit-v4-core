@@ -895,7 +895,7 @@ private:
 				return &command_map[i];
 			}
 		}
-		DEBUG_ERROR("DTE_PROTOCOL_UNKNOWN_COMMAND: '%s' not found in range [%u, %u)",
+		DEBUG_ERROR("DTE_PROTOCOL_UNKNOWN_COMMAND: '%s' not found in range [%u|%u)",
 			command_str.c_str(), start, end);
 		throw DTE_PROTOCOL_UNKNOWN_COMMAND;
 	}
@@ -907,7 +907,7 @@ private:
 				return static_cast<ParamID>(i);
 			}
 		}
-		DEBUG_ERROR("DTE_PROTOCOL_PARAM_KEY_UNRECOGNISED, \"%s\"", key.c_str());
+		DEBUG_ERROR("DTE_PROTOCOL_PARAM_KEY_UNRECOGNISED | \"%s\"", key.c_str());
 		throw DTE_PROTOCOL_PARAM_KEY_UNRECOGNISED;
 	}
 
@@ -1565,7 +1565,7 @@ public:
 
 		// Check the supplied length matches the actual length //
 		if (length != payload_len) {
-			DEBUG_ERROR("DTE_PROTOCOL_PAYLOAD_LENGTH_MISMATCH, expected %ld but got %ld", length, payload_len);
+			DEBUG_ERROR("DTE_PROTOCOL_PAYLOAD_LENGTH_MISMATCH | expected %ld but got %ld", length, payload_len);
 			throw DTE_PROTOCOL_PAYLOAD_LENGTH_MISMATCH;
 		}
 

@@ -358,7 +358,7 @@ uint64_t ArgosScheduler::next_prepass() {
 			// Mark a new downlink RX window
 			m_downlink_end = (uint64_t)next_pass.epoch + next_pass.duration;
 			m_downlink_start = (uint64_t)next_pass.epoch;
-			DEBUG_INFO("next_prepass: new DL RX window = [%llu, %llu]", m_downlink_start, m_downlink_end);
+			DEBUG_INFO("next_prepass: new DL RX window = [%llu|%llu]", m_downlink_start, m_downlink_end);
 		}
 	}
 
@@ -541,7 +541,7 @@ unsigned int ArgosScheduler::build_certification_packet(ArgosPacket& packet) {
 		m_next_mode = ArgosMode::ARGOS_4;
 		break;
 	default:
-		DEBUG_WARN("ArgosScheduler::build_certification_packet: modulation mode %u not supported, using A2 instead", m_argos_config.cert_tx_modulation);
+		DEBUG_WARN("ArgosScheduler::build_certification_packet: modulation mode %u not supported | using A2 instead", m_argos_config.cert_tx_modulation);
 		m_next_mode = ArgosMode::ARGOS_2;
 		break;
 	}
@@ -804,7 +804,7 @@ void ArgosScheduler::prepare_time_sync_burst() {
 		handle_packet(packet, SHORT_PACKET_BITS, ArgosMode::ARGOS_2);
 
 	} else {
-		DEBUG_ERROR("ArgosScheduler::prepare_time_sync_burst: sensor log state is invalid, can't transmit");
+		DEBUG_ERROR("ArgosScheduler::prepare_time_sync_burst: sensor log state is invalid | can't transmit");
 	}
 }
 

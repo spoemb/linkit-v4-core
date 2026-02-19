@@ -37,7 +37,7 @@ unsigned int GPSService::service_next_schedule_in_ms() {
 
     // Single fix mode: don't reschedule GNSS after first successful fix
     if (m_is_first_fix_found && configuration_store->read_param<bool>(ParamID::GNSS_SESSION_SINGLE_FIX)) {
-        DEBUG_INFO("GPSService: GNSS_SESSION_SINGLE_FIX enabled, not rescheduling after first fix");
+        DEBUG_INFO("GPSService: GNSS_SESSION_SINGLE_FIX enabled | not rescheduling after first fix");
         return Service::SCHEDULE_DISABLED;
     }
 
@@ -274,7 +274,7 @@ bool GPSService::service_is_triggered_on_event(ServiceEvent& event, bool& immedi
 }
 
 void GPSService::notify_peer_event(ServiceEvent& e) {
-	//DEBUG_TRACE("GPSService::notify_peer_event: (%u,%u)", e.event_source, e.event_type);
+	//DEBUG_TRACE("GPSService::notify_peer_event: (%u|%u)", e.event_source, e.event_type);
 	if (e.event_source == ServiceIdentifier::UW_SENSOR && e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
 		// Check for surfacing condition
 		if (std::get<bool>(e.event_data) == false) {

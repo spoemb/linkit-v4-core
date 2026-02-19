@@ -134,7 +134,7 @@ void OTAFlashFileUpdater::start_file_transfer(OTAFileIdentifier file_id, lfs_siz
 		throw ErrorCode::OTA_TRANSFER_INVALID_FILE_ID;
 		break;
 	}
-	DEBUG_INFO("OTAFlashFileUpdater::start_file_transfer: m_file_id=%u, m_file_size=%u crc32=%08x",
+	DEBUG_INFO("OTAFlashFileUpdater::start_file_transfer: m_file_id=%u | m_file_size=%u crc32=%08x",
 			   (unsigned int)file_id, length, crc32);
 	m_file_id = file_id;
 	m_file_size = length;
@@ -263,11 +263,11 @@ void OTAFlashFileUpdater::apply_file_update() {
 		                       ((uint32_t)header[6] << 8) |
 		                       ((uint32_t)header[7]);
 
-		DEBUG_INFO("OTAFlashFileUpdater: SMD firmware size=%u, STM32 CRC32=0x%08X", fw_size, stm32_crc32);
+		DEBUG_INFO("OTAFlashFileUpdater: SMD firmware size=%u | STM32 CRC32=0x%08X", fw_size, stm32_crc32);
 
 		// Verify size matches
 		if (fw_size != (uint32_t)(fw_file_size - SMD_FW_HEADER_SIZE)) {
-			DEBUG_ERROR("OTAFlashFileUpdater: SMD firmware size mismatch: header=%u, actual=%u",
+			DEBUG_ERROR("OTAFlashFileUpdater: SMD firmware size mismatch: header=%u | actual=%u",
 			            fw_size, (uint32_t)(fw_file_size - SMD_FW_HEADER_SIZE));
 			m_file_size = 0;
 			return;
@@ -285,8 +285,8 @@ void OTAFlashFileUpdater::apply_file_update() {
 		// No hardware power-off/reset needed for DFU.
 		DEBUG_INFO("OTAFlashFileUpdater: Starting SMD DFU (streamed, SMD stays running)...");
 
-		// LED feedback: flash BLUE during DFU
-		if (status_led) status_led->flash(RGBLedColor::BLUE, 250);
+		// LED feedback: alternate BLUE/WHITE during DFU
+		if (status_led) status_led->flash_alternate(RGBLedColor::BLUE, RGBLedColor::WHITE, 250);
 
 		SmdDfuResponse result = smd_sat_instance->firmware_update(&fw_file, fw_size, stm32_crc32,
 			[](uint8_t percent) {

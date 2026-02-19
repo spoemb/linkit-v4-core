@@ -247,7 +247,7 @@ unsigned int ArgosRxScheduler::schedule(ArgosConfig& argos_config, BasePassPredi
 		if ((start + ARGOS_RX_MARGIN_MSECS) < end) {
 			// We're good to go for this schedule, compute relative delay until the epoch arrives
 			mode = KineisModulation::LDA2;
-			DEBUG_INFO("ArgosRxScheduler::schedule_prepass: scheduled for %llu secs from now, timeout %u secs", start - now, end - start);
+			DEBUG_INFO("ArgosRxScheduler::schedule_prepass: scheduled for %llu secs from now | timeout %u secs", start - now, end - start);
 			timeout = (end - start) * MSECS_PER_SECOND;
 			return (start - now) * MSECS_PER_SECOND;
 		} else {

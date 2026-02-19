@@ -25,5 +25,5 @@ void FakeBatteryMonitor::internal_update()
     m_is_low_level = false;
     m_is_critical_voltage = false;
 
-    DEBUG_TRACE("FakeBatteryMonitor: Update - %umV, %u%%", m_last_voltage_mv, m_last_level);
+    DEBUG_TRACE("FakeBatteryMonitor: Update - %umV | %u%%", m_last_voltage_mv, m_last_level);
 }

@@ -28,7 +28,7 @@ void Bar100::command(uint8_t reg, uint8_t *read_buffer, unsigned int length, uns
 }
 
 Bar100::Bar100(unsigned int bus, unsigned char addr) {
-	DEBUG_TRACE("Bar100::Bar100(i2cbus=%u, i2caddr=0x%02x)", bus, (unsigned int)addr);
+	DEBUG_TRACE("Bar100::Bar100(i2cbus=%u | i2caddr=0x%02x)", bus, (unsigned int)addr);
 	m_bus = bus;
 	m_addr = addr;
 

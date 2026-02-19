@@ -8,7 +8,7 @@ public:
 
 	void service_initiate() {
 		HeapStats_t heap_stats = MEMMANG::heap_stats();
-		DEBUG_INFO("MemoryMonitorService: HEAP: %d min, %d free, %d freeblk, %d allocs, %d frees",
+		DEBUG_INFO("MemoryMonitorService: HEAP: %d min | %d free | %d freeblk | %d allocs | %d frees",
 			heap_stats.xMinimumEverFreeBytesRemaining,
 			heap_stats.xAvailableHeapSpaceInBytes,
 			heap_stats.xNumberOfFreeBlocks,

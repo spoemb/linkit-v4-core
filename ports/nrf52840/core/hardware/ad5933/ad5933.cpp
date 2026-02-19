@@ -10,7 +10,7 @@
 
 
 AD5933LL::AD5933LL(unsigned int bus, unsigned char addr) {
-	DEBUG_TRACE("AD5933LL::AD5933LL(%u, 0x%02x)", bus, (unsigned int)addr);
+	DEBUG_TRACE("AD5933LL::AD5933LL(%u | 0x%02x)", bus, (unsigned int)addr);
 	m_bus = bus;
 	m_addr = addr;
 	powerdown();
@@ -79,7 +79,7 @@ void AD5933LL::get_real_imaginary(int16_t& real, int16_t& imag)
 	real = read_real();
 	imag = read_imag();
 
-	DEBUG_TRACE("AD5933LL::get_real_imaginary() = %d,%d", (int)real, (int)imag);
+	DEBUG_TRACE("AD5933LL::get_real_imaginary() = %d|%d", (int)real, (int)imag);
 #ifdef DEBUG_AD5933
 	dump_regs();
 #endif

@@ -199,6 +199,6 @@ bool CAMService::service_is_triggered_on_event(ServiceEvent& event, bool& immedi
 }
 
 // void CAMService::notify_peer_event(ServiceEvent& event) {
-//     DEBUG_TRACE("CAMService::notify_peer_event: (%u,%u)", event.event_source, event.event_type);
+//     DEBUG_TRACE("CAMService::notify_peer_event: (%u|%u)", event.event_source, event.event_type);
 // 	Service::notify_peer_event(event);
 // }

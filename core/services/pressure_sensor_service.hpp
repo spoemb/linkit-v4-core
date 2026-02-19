@@ -77,7 +77,7 @@ private:
 		} else {
 			log->altitude = 0.0;
 		}
-		DEBUG_TRACE("PressureSensorService: pressure=%.4f bar, temp=%.2f C, altitude=%.2f m (P0=%.2f hPa)",
+		DEBUG_TRACE("PressureSensorService: pressure=%.4f bar | temp=%.2f C | altitude=%.2f m (P0=%.2f hPa)",
 				log->pressure, log->temperature, log->altitude, sea_level_hpa);
 
 		// Check pressure logging mode
@@ -90,12 +90,12 @@ private:
 			if ((m_last_pressure < uw_threshold && log->pressure >= uw_threshold) ||
 				(m_last_pressure >= uw_threshold && log->pressure < uw_threshold)) {
 				// Trigger criteria of submerged or surfaced is met
-				DEBUG_TRACE("PressureSensorService: threshold met (%f,%f)", m_last_pressure, log->pressure);
+				DEBUG_TRACE("PressureSensorService: threshold met (%f|%f)", m_last_pressure, log->pressure);
 				m_last_pressure = log->pressure;
 				service_set_log_header_time(log->header, service_current_time());
 			} else {
 				// Don't log if trigger criteria is not met
-				DEBUG_TRACE("PressureSensorService: discarding sample (%f,%f)", m_last_pressure, log->pressure);
+				DEBUG_TRACE("PressureSensorService: discarding sample (%f|%f)", m_last_pressure, log->pressure);
 				m_last_pressure = log->pressure;
 				throw ErrorCode::RESOURCE_NOT_AVAILABLE;
 			}

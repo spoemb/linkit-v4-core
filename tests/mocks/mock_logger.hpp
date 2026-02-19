@@ -22,7 +22,7 @@ public:
 	}
 
 	void write(void *entry) {
-		mock().actualCall("create").onObject(this).withParameter("entry", entry);
+		mock().actualCall("write").onObject(this).withParameter("entry", entry);
 	}
 
 	void read(void *entry, int index=0) {

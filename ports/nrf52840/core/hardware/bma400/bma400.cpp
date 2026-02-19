@@ -60,11 +60,11 @@ BMA400LL::BMA400LL(unsigned int bus, unsigned char addr, int wakeup_pin)
 	, m_cal_y(0)
 	, m_cal_z(1.0)
 {
-	DEBUG_TRACE("BMA400LL::BMA400LL: constructor entered, bus=%u addr=0x%02X wakeup_pin=%d", bus, addr, wakeup_pin);
+	DEBUG_TRACE("BMA400LL::BMA400LL: constructor entered | bus=%u addr=0x%02X wakeup_pin=%d", bus, addr, wakeup_pin);
 	try {
 		init();
 	} catch (...) {
-		DEBUG_ERROR("BMA400LL::BMA400LL: init() threw exception, unregistering device");
+		DEBUG_ERROR("BMA400LL::BMA400LL: init() threw exception | unregistering device");
 		BMA400LLManager::unregister_device(m_unique_id);
 		throw;
 	}
@@ -261,7 +261,7 @@ void BMA400LL::read_xyz(double& x, double& y, double& z, int16_t& temperature)
 	struct bma400_sensor_data data;
 	uint8_t g_force = range_to_g(m_g_range);
 
-	DEBUG_TRACE("BMA400::read_xyz: m_g_range=%u, g_force=%u, m_power_mode=%u, cal(%.4f,%.4f,%.4f)",
+	DEBUG_TRACE("BMA400::read_xyz: m_g_range=%u | g_force=%u | m_power_mode=%u | cal(%.4f|%.4f|%.4f)",
 	            m_g_range, g_force, m_power_mode, m_cal_x, m_cal_y, m_cal_z);
 
 	// Use same mode as calibration for consistent readings
@@ -318,7 +318,7 @@ void BMA400LL::read_xyz(double& x, double& y, double& z, int16_t& temperature)
 	y = y_raw - m_cal_y;
 	z = z_raw - (m_cal_z - 1.0);
 
-	DEBUG_INFO("BMA400::read_xyz: raw(%d,%d,%d) raw_g(%.2f,%.2f,%.2f) cal_g(%.2f,%.2f,%.2f)",
+	DEBUG_INFO("BMA400::read_xyz: raw(%d|%d|%d) raw_g(%.2f|%.2f|%.2f) cal_g(%.2f|%.2f|%.2f)",
 	           data.x, data.y, data.z, x_raw, y_raw, z_raw, x, y, z);
 
 	// Read temperature while sensor is still in active mode
@@ -442,7 +442,7 @@ void BMA400LL::calibrate_offset(uint8_t g_range, double& offset_x, double& offse
 	offset_y = accumulated_y / n_samples;
 	offset_z = accumulated_z / n_samples;
 
-	DEBUG_TRACE("BMA400::calibrate_offset: x=%.4f g, y=%.4f g, z=%.4f g", offset_x, offset_y, offset_z);
+	DEBUG_TRACE("BMA400::calibrate_offset: x=%.4f g | y=%.4f g | z=%.4f g", offset_x, offset_y, offset_z);
 }
 
 // ============================================================================
@@ -589,7 +589,7 @@ BMA400::BMA400()
 		unsigned int power_mode = configuration_store->read_param<unsigned int>(ParamID::AXL_SENSOR_POWER_MODE);
 		m_bma400.set_range(g_range);
 		m_bma400.set_power_mode(power_mode);
-		DEBUG_INFO("BMA400::BMA400: initialized from config g_range=%u, power_mode=%u", g_range, power_mode);
+		DEBUG_INFO("BMA400::BMA400: initialized from config g_range=%u | power_mode=%u", g_range, power_mode);
 	}
 
 	// Load calibration from file and apply to sensor
@@ -606,13 +606,13 @@ void BMA400::load_calibration()
 		m_bma400.set_x_calibration(x);
 		m_bma400.set_y_calibration(y);
 		m_bma400.set_z_calibration(z);
-		DEBUG_INFO("BMA400::load_calibration: loaded X=%.4f g, Y=%.4f g, Z=%.4f g", x, y, z);
+		DEBUG_INFO("BMA400::load_calibration: loaded X=%.4f g | Y=%.4f g | Z=%.4f g", x, y, z);
 	} catch (...) {
 		// No calibration file or missing values, use defaults
 		m_bma400.set_x_calibration(0.0);
 		m_bma400.set_y_calibration(0.0);
 		m_bma400.set_z_calibration(1.0);
-		DEBUG_INFO("BMA400::load_calibration: using defaults X=0, Y=0, Z=1");
+		DEBUG_INFO("BMA400::load_calibration: using defaults X=0 | Y=0 | Z=1");
 	}
 }
 
@@ -670,14 +670,14 @@ double BMA400::compute_activity()
 
 	m_last_activity = static_cast<uint8_t>((activity_g / max_deviation) * 255.0);
 
-	DEBUG_TRACE("BMA400::compute_activity: mag=%.2f, dev=%.2f, activity=%u",
+	DEBUG_TRACE("BMA400::compute_activity: mag=%.2f | dev=%.2f | activity=%u",
 	            g_magnitude, activity_g, m_last_activity);
 	return static_cast<double>(m_last_activity);
 }
 
 void BMA400::calibration_write(const double value, const unsigned int offset)
 {
-	DEBUG_TRACE("BMA400::calibration_write: value=%.2f, offset=%u", value, offset);
+	DEBUG_TRACE("BMA400::calibration_write: value=%.2f | offset=%u", value, offset);
 
 	switch (offset) {
 		case 0: // X calibration
@@ -706,20 +706,20 @@ void BMA400::calibration_write(const double value, const unsigned int offset)
 				m_cal.write((unsigned int)CalibrationPoint::X, offset_x);
 				m_cal.write((unsigned int)CalibrationPoint::Y, offset_y);
 				m_cal.write((unsigned int)CalibrationPoint::Z, offset_z);
-				DEBUG_INFO("BMA400::calibration_write: auto-calibrated X=%.4f g, Y=%.4f g, Z=%.4f g",
+				DEBUG_INFO("BMA400::calibration_write: auto-calibrated X=%.4f g | Y=%.4f g | Z=%.4f g",
 				           offset_x, offset_y, offset_z);
 			}
 			break;
 		case 4: // Read and display calibrated X, Y, Z values
 			{
 				m_bma400.read_xyz(m_last_x, m_last_y, m_last_z, m_last_temperature);
-				DEBUG_INFO("BMA400::calibration_write: calibrated values X=%.4f g, Y=%.4f g, Z=%.4f g",
+				DEBUG_INFO("BMA400::calibration_write: calibrated values X=%.4f g | Y=%.4f g | Z=%.4f g",
 				           m_last_x, m_last_y, m_last_z);
 			}
 			break;
 		case 5: // Read and display current calibration coefficients
 			{
-				DEBUG_INFO("BMA400::calibration_write: calibration coefficients X=%.4f g, Y=%.4f g, Z=%.4f g",
+				DEBUG_INFO("BMA400::calibration_write: calibration coefficients X=%.4f g | Y=%.4f g | Z=%.4f g",
 				           m_bma400.get_x_calibration(), m_bma400.get_y_calibration(), m_bma400.get_z_calibration());
 			}
 			break;
@@ -786,7 +786,7 @@ void BMA400::calibration_read(double& value, const unsigned int offset)
 			break;
 	}
 
-	DEBUG_INFO("BMA400::calibration_read: offset=%u, value=%.4f", offset, value);
+	DEBUG_INFO("BMA400::calibration_read: offset=%u | value=%.4f", offset, value);
 }
 
 void BMA400::install_event_handler(unsigned int, std::function<void()> handler)

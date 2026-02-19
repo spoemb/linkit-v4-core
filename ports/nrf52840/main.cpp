@@ -527,11 +527,11 @@ int main()
 		// Check if this is not our turn to run based on modulo
 		// boot_count_check_modulo returns true if (counter % modulo == 0) meaning it IS our turn
 		if (boot_counter > 0 && !configuration_store->boot_count_check_modulo(boot_counter)) {
-			DEBUG_INFO("EXTERNAL_WAKEUP: Not our turn to run (modulo check), powering down");
+			DEBUG_INFO("EXTERNAL_WAKEUP: Not our turn to run (modulo check) | powering down");
 			PMU::powerdown();
 			// Should not reach here - TPL5111 will cut power
 		}
-		DEBUG_INFO("EXTERNAL_WAKEUP: Our turn to run, continuing boot");
+		DEBUG_INFO("EXTERNAL_WAKEUP: Our turn to run | continuing boot");
 	}
 #endif
 
@@ -851,7 +851,7 @@ int main()
 		if (shutdown_timer > 0) {
 			DEBUG_INFO("EXTERNAL_WAKEUP: Shutdown timer scheduled for %u seconds", shutdown_timer);
 			system_scheduler->post_task_prio([]() {
-				DEBUG_INFO("EXTERNAL_WAKEUP: Shutdown timer expired, powering down");
+				DEBUG_INFO("EXTERNAL_WAKEUP: Shutdown timer expired | powering down");
 				PMU::powerdown();
 			}, "SHUTDOWN_TIMER", Scheduler::DEFAULT_PRIORITY, shutdown_timer * 1000);
 		} else {

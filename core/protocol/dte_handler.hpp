@@ -98,7 +98,11 @@ private:
 	unsigned int m_dumpd_mmm;
 	unsigned int m_dumpd_d_type;  // Track current dump type to detect mid-stream changes
 	bool m_sat_device_active;
+	bool m_doppler_cal_active;     // Periodic Doppler TX mode active (until reset)
+	bool m_doppler_cal_first_tx;   // Waiting for first TX result
 	std::function<void(const std::string&)> m_async_write;
+
+	void schedule_doppler_cal_tx();
 
 	// Helper: read params by filter character (used by PARMR_REQ and STATR_REQ)
 	static std::string read_params_by_filter(int error_code, std::vector<ParamID>& params, char filter_char, DTECommand resp_cmd);
@@ -135,6 +139,8 @@ public:
 	static std::string SENSR_REQ(int error_code, std::vector<BaseType>& arg_list);
 	static std::string PWRON_REQ(int error_code, std::vector<BaseType>& arg_list);
 	static std::string SWSST_REQ(int error_code);
+
+	std::string SATDP_REQ(int error_code, std::vector<BaseType>& arg_list);
 
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	static std::string SMDDFU_REQ(int error_code, std::vector<BaseType>& arg_list);

@@ -87,7 +87,7 @@ uint16_t SmdSat::build_aplus_frame(uint8_t *frame, uint8_t cmd, const uint8_t *d
     uint8_t crc = spi_crc8_ccitt(frame, idx);
     frame[idx++] = crc;
 
-    DEBUG_TRACE("SmdSat::%s: Frame built - SEQ=%u, CMD=0x%02X, LEN=%u, CRC=0x%02X",
+    DEBUG_TRACE("SmdSat::%s: Frame built - SEQ=%u | CMD=0x%02X | LEN=%u | CRC=0x%02X",
                 __func__, m_sequence_number, cmd, data_len, crc);
 
     // Return fixed frame size for SPI transfer
@@ -152,7 +152,7 @@ bool SmdSat::parse_aplus_response(const uint8_t *rx_buffer, uint16_t rx_len, Spi
     // Bounds check: header + data + CRC must fit in remaining buffer
     uint16_t expected_len = SPI_PROTOCOL_APLUS_HEADER_LEN + data_len + SPI_PROTOCOL_APLUS_CRC_LEN;
     if (rx_len - offset < expected_len) {
-        DEBUG_WARN("SmdSat::%s: Response incomplete: got %u, expected %u",
+        DEBUG_WARN("SmdSat::%s: Response incomplete: got %u | expected %u",
                    __func__, rx_len - offset, expected_len);
         response->status = SPI_APLUS_STATUS_FRAME_ERROR;
         return false;
@@ -170,14 +170,14 @@ bool SmdSat::parse_aplus_response(const uint8_t *rx_buffer, uint16_t rx_len, Spi
     uint8_t calculated_crc = spi_crc8_ccitt(&rx_buffer[offset], crc_data_len);
 
     if (received_crc != calculated_crc) {
-        DEBUG_WARN("SmdSat::%s: CRC mismatch (recv=0x%02X, calc=0x%02X)",
+        DEBUG_WARN("SmdSat::%s: CRC mismatch (recv=0x%02X | calc=0x%02X)",
                    __func__, received_crc, calculated_crc);
         response->status = SPI_APLUS_STATUS_FRAME_CRC_ERROR;
         return false;
     }
 
     response->valid = true;
-    DEBUG_TRACE("SmdSat::%s: Response parsed - SEQ=%u, STATUS=%u, LEN=%u",
+    DEBUG_TRACE("SmdSat::%s: Response parsed - SEQ=%u | STATUS=%u | LEN=%u",
                 __func__, response->seq, static_cast<int>(response->status), response->data_len);
 
     return true;
@@ -274,7 +274,7 @@ bool SmdSat::send_command_aplus(uint8_t command, const uint8_t *tx_data, uint16_
 
         // For flash ops: check for BUSY/IDLE pattern and retry
         if (is_flash_op && is_slave_not_ready(response_frame, 8) && retry < max_retries) {
-            DEBUG_TRACE("SmdSat::%s: Slave not ready (0x%02X), retry %u/%u",
+            DEBUG_TRACE("SmdSat::%s: Slave not ready (0x%02X) | retry %u/%u",
                         __func__, response_frame[0], retry + 1, max_retries);
             nrf_delay_ms(SMDSAT_SPI_BUSY_RETRY_DELAY_MS);
             m_sequence_number++;
@@ -337,7 +337,7 @@ bool SmdSat::send_command_auto(uint8_t command, const uint8_t *tx_data, uint16_t
 // Phase 2: Send WRITE command with actual data
 bool SmdSat::send_command_2phase(uint8_t req_cmd, uint8_t write_cmd,
                                   const uint8_t *data, uint16_t len) {
-    DEBUG_TRACE("SmdSat::%s: REQ=0x%02X, WRITE=0x%02X, len=%u", __func__, req_cmd, write_cmd, len);
+    DEBUG_TRACE("SmdSat::%s: REQ=0x%02X | WRITE=0x%02X | len=%u", __func__, req_cmd, write_cmd, len);
 
     // Phase 1: Send REQ command
     if (!send_command_auto(req_cmd)) {
@@ -396,7 +396,7 @@ void SmdSat::read_spimac_state(uint8_t *spi_state, uint8_t *mac_state) {
 	}
 	if (spi_state) *spi_state = rx[0];
 	if (mac_state) *mac_state = rx[1];
-	DEBUG_TRACE("SmdSat::%s: SPI state=%u, MAC state=%u", __func__, rx[0], rx[1]);
+	DEBUG_TRACE("SmdSat::%s: SPI state=%u | MAC state=%u", __func__, rx[0], rx[1]);
 }
 
 void SmdSat::read_firmware_info(uint8_t *info, uint16_t *len) {
@@ -508,7 +508,7 @@ void SmdSat::spi_sync() {
 		nrf_delay_ms(SMDSAT_SPI_DETECT_TIMEOUT_MS);
 	}
 
-	DEBUG_WARN("SmdSat::%s: SPI sync incomplete, proceeding anyway", __func__);
+	DEBUG_WARN("SmdSat::%s: SPI sync incomplete | proceeding anyway", __func__);
 }
 
 void SmdSat::get_spi_status(uint8_t *status) {
@@ -563,7 +563,7 @@ void SmdSat::read_radio_conf(SmdArgosModulation *modulation) {
 	int8_t rf_level = rx[8];
 	*modulation = static_cast<SmdArgosModulation>(rx[9]);
 
-	DEBUG_INFO("SmdSat::%s: Modulation: %u, Min Freq: %u, Max Freq: %u, RF Level %d", __func__,
+	DEBUG_INFO("SmdSat::%s: Modulation: %u | Min Freq: %u | Max Freq: %u | RF Level %d", __func__,
 		*modulation, min_frequency, max_frequency, rf_level);
 }
 
@@ -781,7 +781,7 @@ bool SmdSat::smd_ping()
 				return true;
 			}
 		} catch (...) {
-			DEBUG_WARN("SmdSat::%s: Ping failed, retry %u/%u", __func__, retry + 1, SMDSAT_SPI_MAX_RETRIES);
+			DEBUG_WARN("SmdSat::%s: Ping failed | retry %u/%u", __func__, retry + 1, SMDSAT_SPI_MAX_RETRIES);
 		}
 		nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
 	}
@@ -1049,7 +1049,7 @@ void SmdSat::state_powering_on() {
 	// Release VPA to HIGH-Z so SMD can control it autonomously
 	GPIOPins::release_to_highz(SMD_VPA_PIN);
 #endif
-	DEBUG_TRACE("SmdSat::%s: Power enabled, waiting for stabilization", __func__);
+	DEBUG_TRACE("SmdSat::%s: Power enabled | waiting for stabilization", __func__);
 
 	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 
@@ -1166,7 +1166,7 @@ void SmdSat::state_transmitting_enter() {
 	// Poll every SMDSAT_TIMING_POLL_MS (500ms)
 	uint32_t total_timeout_ms = (m_tcxo_warmup_time * 1000) + 5000;  // TCXO warmup + 5s margin
 	m_state_counter = (total_timeout_ms / SMDSAT_TIMING_POLL_MS) + 1;
-	DEBUG_TRACE("SmdSat::%s: poll timeout=%ums, counter=%u", __func__, total_timeout_ms, m_state_counter);
+	DEBUG_TRACE("SmdSat::%s: poll timeout=%ums | counter=%u", __func__, total_timeout_ms, m_state_counter);
 }
 
 void SmdSat::state_transmitting_exit() {
@@ -1246,7 +1246,7 @@ void SmdSat::initiate_tx() {
 		                   reinterpret_cast<const uint8_t*>(m_tx_buffer.data()), size,
 		                   &response);
 		if (response.status != SPI_APLUS_STATUS_OK && response.valid) {
-			DEBUG_WARN("SmdSat::%s: TX DATA status=%u (non-fatal, data may be queued)",
+			DEBUG_WARN("SmdSat::%s: TX DATA status=%u (non-fatal | data may be queued)",
 			           __func__, (unsigned)response.status);
 		}
 	}
@@ -1360,7 +1360,7 @@ void SmdSat::set_credentials(unsigned int dec_id, unsigned int address, const st
 			}
 		}
 		if (!smd_ready) {
-			DEBUG_ERROR("SmdSat::%s: SMD not ready after power-on, aborting", __func__);
+			DEBUG_ERROR("SmdSat::%s: SMD not ready after power-on | aborting", __func__);
 			goto cleanup;
 		}
 	}
@@ -1608,7 +1608,7 @@ uint32_t SmdSat::calculate_crc32(const uint8_t *data, size_t len) {
 //   5. Parse response, increment sequence number
 SmdDfuResponse SmdSat::dfu_send_command(uint8_t cmd, const uint8_t *data, uint16_t data_len,
                                         uint8_t *response_data, uint16_t *response_len) {
-	DEBUG_TRACE("SmdSat::%s: cmd=0x%02X, data_len=%u, seq=%u", __func__, cmd, data_len, m_sequence_number);
+	DEBUG_TRACE("SmdSat::%s: cmd=0x%02X | data_len=%u | seq=%u", __func__, cmd, data_len, m_sequence_number);
 
 	// ═══ Step 1: Build Protocol A+ request frame ═══
 	// Format: [0xAA][SEQ][CMD][LEN][DATA...][CRC8]
@@ -1709,10 +1709,10 @@ SmdDfuResponse SmdSat::dfu_send_command(uint8_t cmd, const uint8_t *data, uint16
 	while (!has_valid_response(rx_buf, DFU_TRANSACTION_SIZE) &&
 	       busy_retries < DFU_BUSY_RETRY_COUNT) {
 		if (is_busy_pattern(rx_buf, DFU_TRANSACTION_SIZE)) {
-			DEBUG_TRACE("SmdSat::%s: Slave BUSY (0xBB), re-polling... (%u/%u)",
+			DEBUG_TRACE("SmdSat::%s: Slave BUSY (0xBB) | re-polling... (%u/%u)",
 			            __func__, busy_retries + 1, DFU_BUSY_RETRY_COUNT);
 		} else {
-			DEBUG_TRACE("SmdSat::%s: No response yet (0x%02X), re-polling... (%u/%u)",
+			DEBUG_TRACE("SmdSat::%s: No response yet (0x%02X) | re-polling... (%u/%u)",
 			            __func__, rx_buf[0], busy_retries + 1, DFU_BUSY_RETRY_COUNT);
 		}
 
@@ -1784,7 +1784,7 @@ SmdDfuResponse SmdSat::dfu_send_with_retry(uint8_t cmd, const uint8_t *data, uin
 		bool recoverable = (result == DFU_RSP_BUSY ||
 		                    result == static_cast<SmdDfuResponse>(0x10));  // FRAME_CRC_ERROR
 		if (recoverable) {
-			DEBUG_WARN("SmdSat::%s: Recoverable error (0x%02X), retry %d/%d",
+			DEBUG_WARN("SmdSat::%s: Recoverable error (0x%02X) | retry %d/%d",
 			           __func__, static_cast<int>(result), retry + 1, SMDSAT_DFU_MAX_RETRIES);
 			nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
 			continue;
@@ -1840,7 +1840,7 @@ SmdDfuResponse SmdSat::dfu_get_info(SmdDfuInfo *info) {
 		info->flash_page_size = response_data[11] | (response_data[12] << 8) |
 		                        (response_data[13] << 16) | (response_data[14] << 24);
 
-		DEBUG_INFO("SmdSat::%s: Bootloader v%u.%u.%u, app_start=0x%08X, max_size=%u, page_size=%u",
+		DEBUG_INFO("SmdSat::%s: Bootloader v%u.%u.%u | app_start=0x%08X | max_size=%u | page_size=%u",
 		           __func__, info->version_major, info->version_minor, info->version_patch,
 		           info->app_start_addr, info->app_max_size, info->flash_page_size);
 	}
@@ -1865,7 +1865,7 @@ SmdDfuResponse SmdSat::dfu_erase() {
 
 // Matches Zephyr argos_dfu_write_chunk() — WRITE_REQ + WRITE_DATA with retry
 SmdDfuResponse SmdSat::dfu_write_chunk(uint32_t addr, const uint8_t *data, uint16_t len) {
-	DEBUG_TRACE("SmdSat::%s: addr=0x%08X, len=%u", __func__, addr, len);
+	DEBUG_TRACE("SmdSat::%s: addr=0x%08X | len=%u", __func__, addr, len);
 
 	if (data == nullptr || len == 0 || len > SMDSAT_DFU_CHUNK_SIZE) {
 		return DFU_RSP_SIZE_ERROR;
@@ -1903,7 +1903,7 @@ SmdDfuResponse SmdSat::dfu_write_chunk(uint32_t addr, const uint8_t *data, uint1
 
 // Matches Zephyr argos_dfu_read() — READ_REQ + READ_DATA with retry
 SmdDfuResponse SmdSat::dfu_read_chunk(uint32_t addr, uint8_t *data, uint16_t len) {
-	DEBUG_TRACE("SmdSat::%s: addr=0x%08X, len=%u", __func__, addr, len);
+	DEBUG_TRACE("SmdSat::%s: addr=0x%08X | len=%u", __func__, addr, len);
 
 	if (data == nullptr || len == 0) {
 		return DFU_RSP_SIZE_ERROR;
@@ -2081,7 +2081,7 @@ bool SmdSat::dfu_enter() {
 		if (app_ok && app_response.status == SPI_APLUS_STATUS_OK) {
 			DEBUG_INFO("SmdSat::%s: APP PING OK!", __func__);
 		} else {
-			DEBUG_WARN("SmdSat::%s: APP PING failed, checking if already in bootloader...", __func__);
+			DEBUG_WARN("SmdSat::%s: APP PING failed | checking if already in bootloader...", __func__);
 			m_sequence_number = 0;
 			SmdDfuResponse bl_ping = dfu_ping();
 			if (bl_ping == DFU_RSP_OK) {
@@ -2089,14 +2089,14 @@ bool SmdSat::dfu_enter() {
 				m_dfu_mode = true;
 				return true;
 			}
-			DEBUG_WARN("SmdSat::%s: No response from app or bootloader, trying DFU_ENTER anyway...", __func__);
+			DEBUG_WARN("SmdSat::%s: No response from app or bootloader | trying DFU_ENTER anyway...", __func__);
 		}
 	}
 	PMU::kick_watchdog();
 	nrf_delay_ms(200);
 
 	// ═══ STEP 3: DFU_ENTER (cmd 0x3F, send-only) ═══
-	DEBUG_INFO("SmdSat::%s: STEP 3 - DFU_ENTER (cmd 0x3F, send-only)...", __func__);
+	DEBUG_INFO("SmdSat::%s: STEP 3 - DFU_ENTER (cmd 0x3F | send-only)...", __func__);
 	{
 		uint8_t tx_buf[SPI_PROTOCOL_APLUS_FRAME_SIZE];
 		uint8_t rx_buf[SPI_PROTOCOL_APLUS_FRAME_SIZE];
@@ -2237,7 +2237,7 @@ bool SmdSat::dfu_get_bootloader_info(SmdDfuInfo *info) {
 
 SmdDfuResponse SmdSat::firmware_update(const uint8_t *firmware, size_t size,
                                        void (*progress_callback)(uint8_t percent)) {
-	DEBUG_INFO("SmdSat::%s: Starting firmware update, size=%u bytes", __func__, (unsigned int)size);
+	DEBUG_INFO("SmdSat::%s: Starting firmware update | size=%u bytes", __func__, (unsigned int)size);
 
 	if (firmware == nullptr || size == 0) {
 		DEBUG_ERROR("SmdSat::%s: Invalid firmware data", __func__);
@@ -2403,7 +2403,7 @@ SmdDfuResponse SmdSat::firmware_update(const uint8_t *firmware, size_t size,
 
 SmdDfuResponse SmdSat::firmware_update(File *file, size_t size, uint32_t stm32_crc32,
                                        void (*progress_callback)(uint8_t percent)) {
-	DEBUG_INFO("SmdSat::%s: Starting streamed firmware update, size=%u bytes, CRC32=0x%08X",
+	DEBUG_INFO("SmdSat::%s: Starting streamed firmware update | size=%u bytes | CRC32=0x%08X",
 	           __func__, (unsigned int)size, stm32_crc32);
 
 	if (file == nullptr || size == 0) {
@@ -2479,7 +2479,7 @@ SmdDfuResponse SmdSat::firmware_update(File *file, size_t size, uint32_t stm32_c
 
 		lfs_ssize_t bytes_read = file->read(chunk_buf, chunk_size);
 		if (bytes_read != (lfs_ssize_t)chunk_size) {
-			DEBUG_ERROR("SmdSat::%s: File read failed at offset %u (got %d, expected %u)",
+			DEBUG_ERROR("SmdSat::%s: File read failed at offset %u (got %d | expected %u)",
 			            __func__, (unsigned int)offset, (int)bytes_read, chunk_size);
 			dfu_abort();
 			return DFU_RSP_ERROR;
@@ -2642,7 +2642,7 @@ std::string SmdSat::get_firmware_version() {
 		}
 
 		if (!smd_ready) {
-			DEBUG_ERROR("SmdSat::%s: SMD not ready, cannot read firmware version", __func__);
+			DEBUG_ERROR("SmdSat::%s: SMD not ready | cannot read firmware version", __func__);
 		} else {
 			// CMD_READ_VERSION (0x05) via A+ - returns firmware version string
 			// (CMD_READ_FIRMWARE 0x06 is NOT supported in A+ by STM32 firmware)
@@ -2822,7 +2822,7 @@ std::string SmdSat::smd_spi_test() {
 				nrf_delay_ms(50);
 			}
 
-			DEBUG_INFO("=== TEST SUMMARY: %u/%u PASSED, %u FAILED ===",
+			DEBUG_INFO("=== TEST SUMMARY: %u/%u PASSED | %u FAILED ===",
 			           pass_count, num_tests, fail_count);
 
 			// Compact DTE result: "13/14 OK" or "13/14 FAIL:READ_FIRMWARE"

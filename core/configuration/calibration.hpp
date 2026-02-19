@@ -17,6 +17,7 @@ public:
 	static void remove(Calibratable& s);
 	static Calibratable &find_by_name(const char *name);
 	static void save_all(bool force = false);
+	static void clear();
 };
 
 class Calibratable {

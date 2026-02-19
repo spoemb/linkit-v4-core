@@ -68,7 +68,7 @@ bool NrfI2C::is_bus_stuck(uint8_t bus) {
 	bool sda_low = (nrf_gpio_pin_read(sda_pin) == 0);
 
 	if (scl_low || sda_low) {
-		DEBUG_WARN("NrfI2C::is_bus_stuck - bus %u: SCL=%s, SDA=%s",
+		DEBUG_WARN("NrfI2C::is_bus_stuck - bus %u: SCL=%s | SDA=%s",
 			bus, scl_low ? "LOW" : "HIGH", sda_low ? "LOW" : "HIGH");
 		return true;
 	}
@@ -221,7 +221,7 @@ void NrfI2C::init(void) {
 	for (unsigned int i = 0; i < BSP::I2C_TOTAL_NUMBER; i++) {
 		// Skip buses that are already initialized
 		if (m_is_enabled[i]) {
-			//DEBUG_TRACE("NrfI2C::init - bus %u already enabled, skipping", i);
+			//DEBUG_TRACE("NrfI2C::init - bus %u already enabled | skipping", i);
 			continue;
 		}
 
@@ -234,9 +234,9 @@ void NrfI2C::init(void) {
 
 		// Check if bus is stuck before init
 		if (is_bus_stuck(i)) {
-			DEBUG_WARN("NrfI2C::init - bus %u stuck, attempting recovery", i);
+			DEBUG_WARN("NrfI2C::init - bus %u stuck | attempting recovery", i);
 			if (!clock_stretch_recovery(i)) {
-				DEBUG_ERROR("NrfI2C::init - bus %u recovery failed, skipping", i);
+				DEBUG_ERROR("NrfI2C::init - bus %u recovery failed | skipping", i);
 				m_is_enabled[i] = false;
 				continue;
 			}

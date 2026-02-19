@@ -18,6 +18,7 @@ private:
 	int m_pin_blue;
 	RGBLedColor m_color;
 	RGBLedColor m_flash_color;
+	RGBLedColor m_flash_color_alt;
 	bool m_is_flashing;
 	bool m_flash_state;
 	unsigned int m_flash_interval;
@@ -31,7 +32,7 @@ private:
 		if (m_flash_state)
 			set_color(m_flash_color);
 		else
-			set_color(RGBLedColor::BLACK);
+			set_color(m_flash_color_alt);
 		m_flash_state = !m_flash_state;
 		m_led_timer = system_timer->add_schedule([this]() {
 			if (m_is_flashing)
@@ -111,10 +112,21 @@ public:
 		system_timer->cancel_schedule(m_led_timer);
 		m_flash_interval = interval_ms;
 		m_flash_color = color;
+		m_flash_color_alt = RGBLedColor::BLACK;
 		m_is_flashing = true;
 		m_flash_state = true;
 		toggle_led();
 		//DEBUG_TRACE("LED[%s]=flashing %s", m_name, color_to_string(color).c_str());
+	}
+	void flash_alternate(RGBLedColor color1, RGBLedColor color2, unsigned int interval_ms = 250) override {
+		InterruptLock lock;
+		system_timer->cancel_schedule(m_led_timer);
+		m_flash_interval = interval_ms;
+		m_flash_color = color1;
+		m_flash_color_alt = color2;
+		m_is_flashing = true;
+		m_flash_state = true;
+		toggle_led();
 	}
 	bool is_flashing() override {
 		return m_is_flashing;

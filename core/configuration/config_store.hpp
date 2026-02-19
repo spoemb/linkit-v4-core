@@ -563,10 +563,10 @@ public:
 
 				// Check if outside zone radius for exclusion parameter triggering
 				if (d_km > ((double)read_param<unsigned int>(ParamID::ZONE_RADIUS) / (double)1000)) {
-					DEBUG_TRACE("ConfigurationStore::is_zone_exclusion: activation criteria met, d_km = %f", d_km);
+					DEBUG_TRACE("ConfigurationStore::is_zone_exclusion: activation criteria met | d_km = %f", d_km);
 					return true;
 				}
-				DEBUG_TRACE("ConfigurationStore::is_zone_exclusion: activation criteria not met, d_km = %f", d_km);
+				DEBUG_TRACE("ConfigurationStore::is_zone_exclusion: activation criteria not met | d_km = %f", d_km);
 				return false;
 			}
 		}
@@ -857,7 +857,7 @@ public:
 		// Protection: modulo must be >= 2 to avoid running every boot (modulo=1)
 		// or division by zero (modulo=0). If misconfigured, always allow boot.
 		if (modulo < 2) {
-			DEBUG_WARN("BOOT_COUNTER_MODULO=%u invalid (must be >=2), allowing boot", modulo);
+			DEBUG_WARN("BOOT_COUNTER_MODULO=%u invalid (must be >=2) | allowing boot", modulo);
 			return false;
 		}
 
