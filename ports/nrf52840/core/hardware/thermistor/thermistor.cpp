@@ -6,6 +6,7 @@
 #include "error.hpp"
 #include "debug.hpp"
 #include "nrf_delay.h"
+#include "gpio.hpp"  // For SensorsPowerGuard (VSENSORS management)
 #include <cmath>
 
 // ADC constants
@@ -59,6 +60,9 @@ float Thermistor::sample_adc()
 	if (!m_is_init) {
 		adc_calibration();
 	}
+
+	SensorsPowerGuard power_guard;  // Acquire VSENSORS power for ADC reading
+
 	nrf_saadc_value_t raw = 0;
 
 	nrfx_saadc_init(&BSP::ADC_Inits.config, nrfx_saadc_event_handler);
