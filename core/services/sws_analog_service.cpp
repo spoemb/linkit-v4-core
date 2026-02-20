@@ -315,6 +315,7 @@ void SWSAnalogService::calibrate_water_baseline(uint16_t value) {
     // ALL conditions must be met to update water baseline
     if (clearly_underwater && above_absolute_min && significantly_above_air &&
         (within_expected_range || salinity_increase)) {
+
         uint16_t new_water = (uint16_t)(alpha * value + (1.0f - alpha) * m_calib.threshold_water);
 
         DEBUG_TRACE("SWSAnalog: Updating water baseline %u -> %u (alpha=%.2f)",
@@ -414,7 +415,6 @@ bool SWSAnalogService::check_safety_timeouts(bool current_state) {
         if (m_time_in_current_state < m_min_surface_time_sec) {
             DEBUG_TRACE("SWSAnalog: Min surface time not met (%us < %us) | ignoring transient",
                         m_time_in_current_state, m_min_surface_time_sec);
-            // Don't override, but this info can be used by caller
         }
     }
 

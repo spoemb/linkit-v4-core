@@ -77,6 +77,7 @@ protected:
 	void service_set_time(std::time_t);
 	void service_update_battery();
 	uint16_t service_get_voltage();
+	uint8_t service_get_level();
 	bool service_is_battery_level_low();
 	uint64_t service_current_timer();
 	template <typename T> T& service_read_param(ParamID param_id) {

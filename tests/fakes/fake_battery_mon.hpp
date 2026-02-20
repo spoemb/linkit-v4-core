@@ -4,7 +4,7 @@
 
 class FakeBatteryMonitor : public BatteryMonitor {
 public:
-	FakeBatteryMonitor() : BatteryMonitor(10, 2200) {}
+	FakeBatteryMonitor() : BatteryMonitor(10, 5) {}
 	void internal_update() {}
 	void set_values(uint8_t level = 100, uint16_t mv = 4200, bool is_low = false, bool is_critical = false) {
 		m_last_voltage_mv = mv;

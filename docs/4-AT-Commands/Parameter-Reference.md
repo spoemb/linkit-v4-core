@@ -79,7 +79,7 @@ Each parameter has a 5-character DTE key (3-letter prefix + 2-digit number) used
 | ID | Name | DTE Key | Type | Range | Default | RW | Enable Flag |
 |----|------|---------|------|-------|---------|----|-------------|
 | 26 | UNDERWATER_EN | UNP01 | BOOL | - | false (UW: true) | RW | |
-| 27 | DRY_TIME_BEFORE_TX | UNP02 | UINT | 1-MAX | 1 | RW | |
+| 27 | DRY_TIME_BEFORE_TX | UNP02 | UINT | 0-MAX | 0 | RW | Seconds at surface before TX. 0 = immediate |
 | 28 | SAMPLING_UNDER_FREQ | UNP03 | UINT | 1-MAX | 60 | RW | |
 | 40 | SAMPLING_SURF_FREQ | UNP04 | UINT | 1-MAX | 60 | RW | |
 | 128 | UW_MAX_SAMPLES | UNP05 | UINT | 1-MAX | 5 (UW: 10) | RW | |
@@ -113,7 +113,7 @@ Each parameter has a 5-character DTE key (3-letter prefix + 2-digit number) used
 |----|------|---------|------|-------|---------|----|-------------|
 | 29 | LB_EN | LBP01 | BOOL | - | false | RW | |
 | 30 | LB_THRESHOLD | LBP02 | UINT | 0-100 | 10 | RW | |
-| 145 | LB_CRITICAL_THRESH | LBP12 | FLOAT | 0-12 | 2.8 | RW | |
+| 145 | LB_CRITICAL_THRESH | LBP12 | UINT | 0-100 | 5 | RW | Battery SOC (%) below which device enters critical poweroff |
 | 32 | TR_LB | ARP06 | UINT | 30-1200 | 240 | RW | |
 | 33 | LB_ARGOS_MODE | LBP04 | ARGOSMODE | {0-4} | LEGACY | RW | |
 | 34 | LB_ARGOS_DUTY_CYCLE | LBP05 | UINT | 0-16777215 | 0 | RW | |
@@ -172,6 +172,8 @@ Each parameter has a 5-character DTE key (3-letter prefix + 2-digit number) used
 
 ### Accelerometer
 
+**Note:** The Argos TX encoding uses `AXL_SENSOR_MEASUREMENT_RANGE` as the offset for X/Y/Z axis values. The encoding formula is `(value_g + g_range) * 1000` where g_range is derived from this parameter (0=2g, 1=4g, 2=8g, 3=16g). The decoder (pylinkiot) must use the same g_range to decode: `value_g = (raw / 1000.0) - g_range`.
+
 | ID | Name | DTE Key | Type | Range | Default | RW | Enable Flag |
 |----|------|---------|------|-------|---------|----|-------------|
 | 118 | AXL_SENSOR_ENABLE | AXP01 | BOOL | - | false | RW | ENABLE_AXL_SENSOR |
@@ -185,6 +187,8 @@ Each parameter has a 5-character DTE key (3-letter prefix + 2-digit number) used
 | 162 | AXL_SENSOR_ENABLE_TX_SAMPLE_PERIOD | AXP07 | UINT | 1-MAX | 1000 | RW | ENABLE_AXL_SENSOR |
 
 ### Thermistor
+
+**Note:** The thermistor calibration offset (set via `CALCW,THERMISTOR,0,<offset>`) is loaded once at boot. A device reboot is required after changing the calibration offset for the new value to take effect.
 
 | ID | Name | DTE Key | Type | Range | Default | RW | Enable Flag |
 |----|------|---------|------|-------|---------|----|-------------|

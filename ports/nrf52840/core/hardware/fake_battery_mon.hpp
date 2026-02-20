@@ -11,5 +11,5 @@ private:
     void internal_update() override;
 
 public:
-    FakeBatteryMonitor(uint16_t critical_voltage = 2800, uint8_t low_level = 10);
+    FakeBatteryMonitor(uint8_t critical_level = 5, uint8_t low_level = 10);
 };

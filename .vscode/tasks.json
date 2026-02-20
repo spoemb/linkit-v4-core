@@ -67,7 +67,7 @@
 		{
 			"type": "shell",
 			"label": "RSPB: build (Debug)",
-			"command": "mkdir -p ports/nrf52840/build/RSPB && cd ports/nrf52840/build/RSPB && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=RSPB -DCMAKE_BUILD_TYPE=Debug -DMODEL=CORE -DARGOS_SMD=ON -DENABLE_PRESSURE_SENSOR=ON -DENABLE_AXL_SENSOR=ON -DGPS_FAKE_POSITION=1 ../.. && make -j20",
+			"command": "mkdir -p ports/nrf52840/build/RSPB && cd ports/nrf52840/build/RSPB && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=RSPB -DCMAKE_BUILD_TYPE=Debug -DMODEL=CORE -DARGOS_SMD=ON -DENABLE_PRESSURE_SENSOR=ON -DENABLE_AXL_SENSOR=ON -DGPS_FAKE_POSITION=0 ../.. && make -j20",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -80,7 +80,7 @@
 		{
 			"type": "shell",
 			"label": "RSPB: clean build (Debug)",
-			"command": "rm -rf ports/nrf52840/build/RSPB && mkdir -p ports/nrf52840/build/RSPB && cd ports/nrf52840/build/RSPB && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=RSPB -DCMAKE_BUILD_TYPE=Debug -DMODEL=CORE -DARGOS_SMD=ON -DENABLE_PRESSURE_SENSOR=ON -DENABLE_AXL_SENSOR=ON -DGPS_FAKE_POSITION=1 ../.. && make -j20",
+			"command": "rm -rf ports/nrf52840/build/RSPB && mkdir -p ports/nrf52840/build/RSPB && cd ports/nrf52840/build/RSPB && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=RSPB -DCMAKE_BUILD_TYPE=Debug -DMODEL=CORE -DARGOS_SMD=ON -DENABLE_PRESSURE_SENSOR=ON -DENABLE_AXL_SENSOR=ON -DGPS_FAKE_POSITION=0 ../.. && make -j20",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"

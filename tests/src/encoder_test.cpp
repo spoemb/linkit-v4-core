@@ -634,11 +634,13 @@ TEST(Encoder, PARAM_DRY_TIME_BEFORE_TX)
 	STRCMP_EQUAL("$O;PARMR#008;UNP02=10\r", s.c_str());
 }
 
-TEST(Encoder, PARAM_DRY_TIME_BEFORE_TX_OutOfRangeCheck)
+TEST(Encoder, PARAM_DRY_TIME_BEFORE_TX_ZeroIsValid)
 {
+	std::string s;
 	ParamValue p = { ParamID::DRY_TIME_BEFORE_TX, 0U };
 	std::vector<ParamValue> v = { p };
-	CHECK_THROWS(ErrorCode, DTEEncoder::encode(DTECommand::PARMR_RESP, v));
+	DTEEncoder::encode(DTECommand::PARMR_RESP, v, s);
+	STRCMP_EQUAL("$O;PARMR#008;UNP02=0\r", s.c_str());
 }
 
 TEST(Encoder, PARAM_SAMPLING_UNDER_FREQ)

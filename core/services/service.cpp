@@ -225,6 +225,10 @@ uint16_t Service::service_get_voltage() {
 	return battery_monitor->get_voltage();
 }
 
+uint8_t Service::service_get_level() {
+	return battery_monitor->get_level();
+}
+
 bool Service::service_is_battery_level_low() {
 	return battery_monitor->is_battery_low();
 }

@@ -40,7 +40,7 @@ const BaseMap param_map[] = {
 	{ "GNSS_ACQ_TIMEOUT", "GNP05", BaseEncoding::UINT, 10U, 600U, {}, true, true },
 	{ "GNSS_NTRY", "GNP04", BaseEncoding::UINT, 0U, 0U, {}, false, true },
 	{ "UNDERWATER_EN", "UNP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
-	{ "DRY_TIME_BEFORE_TX", "UNP02", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
+	{ "DRY_TIME_BEFORE_TX", "UNP02", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true },
 	{ "SAMPLING_UNDER_FREQ", "UNP03", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 	{ "LB_EN", "LBP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "LB_THRESHOLD", "LBP02", BaseEncoding::UINT, 0U, 100U, {}, true, true },
@@ -159,7 +159,7 @@ const BaseMap param_map[] = {
 	{ "AXL_SENSOR_ENABLE", "AXP01", BaseEncoding::BOOLEAN, 0, 0, {}, ENABLE_AXL_SENSOR, true },
 	{ "AXL_SENSOR_PERIODIC", "AXP02", BaseEncoding::UINT, 0U, 0U, {}, ENABLE_AXL_SENSOR, true },
 	{ "AXL_SENSOR_WAKEUP_THRESH", "AXP03", BaseEncoding::FLOAT, (double)0.0, (double)8.0, {}, ENABLE_AXL_SENSOR, true },
-	{ "AXL_SENSOR_WAKEUP_SAMPLES", "AXP04", BaseEncoding::UINT, 1U, 5U, {}, ENABLE_AXL_SENSOR, true },
+	{ "AXL_SENSOR_WAKEUP_SAMPLES", "AXP04", BaseEncoding::UINT, 0U, 50U, {}, ENABLE_AXL_SENSOR, true },
 	{ "AXL_SENSOR_MEASUREMENT_RANGE", "AXP08", BaseEncoding::UINT, 0U, 4U, {}, ENABLE_AXL_SENSOR, true },
 	{ "AXL_SENSOR_POWER_MODE", "AXP09", BaseEncoding::UINT, 0U, 2U, {}, ENABLE_AXL_SENSOR, true },
 	// [124-125] Pressure sensor (slots always reserved)
@@ -198,7 +198,7 @@ const BaseMap param_map[] = {
 	{ "UW_GNSS_DETECT_THRESH", "UNP18", BaseEncoding::UINT, 1U, 7U, {}, true, true },
 
 	// Critical battery threshold
-	{ "LB_CRITICAL_THRESH", "LBP12", BaseEncoding::FLOAT, 0.0, 12.0, {}, true, true },
+	{ "LB_CRITICAL_THRESH", "LBP12", BaseEncoding::UINT, 0U, 100U, {}, true, true },
 
 	// [146] Pressure sensor logging mode (slot always reserved)
 	{ "PRESSURE_SENSOR_LOGGING_MODE", "PRP03", BaseEncoding::PRESSURESENSORLOGGINGMODE, 0, 0, {}, ENABLE_PRESSURE_SENSOR, true },

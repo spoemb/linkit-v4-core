@@ -105,7 +105,7 @@ TEST(NrfBattery, CheckIsBatteryLevelLowIndication) {
 }
 
 TEST(NrfBattery, CheckIsBatteryCriticalIndication) {
-	NrfBatteryMonitor batt_mon(BSP::ADC::ADC_CHANNEL_0, BATT_CHEM_NCR18650_3100_3400, 2500, 10);
+	NrfBatteryMonitor batt_mon(BSP::ADC::ADC_CHANNEL_0, BATT_CHEM_NCR18650_3100_3400, 25, 10);
 	SAADC::set_adc_value(9088); // 4000 mV
 	batt_mon.update();
 	CHECK_FALSE(batt_mon.is_battery_critical());
@@ -124,7 +124,7 @@ TEST(NrfBattery, CheckIsBatteryCriticalIndication) {
 }
 
 TEST(NrfBattery, CheckIsBatteryCriticalEvents) {
-	NrfBatteryMonitor batt_mon(BSP::ADC::ADC_CHANNEL_0, BATT_CHEM_NCR18650_3100_3400, 2500, 10);
+	NrfBatteryMonitor batt_mon(BSP::ADC::ADC_CHANNEL_0, BATT_CHEM_NCR18650_3100_3400, 25, 10);
 	BatteryCriticalHandler event_handler(batt_mon);
 	SAADC::set_adc_value(9088); // 4000 mV
 	batt_mon.update();

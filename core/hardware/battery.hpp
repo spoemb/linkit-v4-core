@@ -15,7 +15,7 @@ class BatteryMonitor : public EventEmitter<BatteryMonitorEventListener> {
 protected:
 	uint16_t m_last_voltage_mv;
 	uint8_t  m_last_level;
-	uint16_t m_critical_voltage_mv;
+	uint8_t  m_critical_level;
 	uint8_t  m_low_level;
 	bool     m_is_low_level;
 	bool     m_is_critical_voltage;
@@ -32,9 +32,9 @@ private:
 	virtual void internal_update() {}
 
 public:
-	BatteryMonitor(uint8_t low_level, uint16_t critical_voltage) :
+	BatteryMonitor(uint8_t low_level, uint8_t critical_level) :
 		m_last_voltage_mv(0), m_last_level(0),
-		m_critical_voltage_mv(critical_voltage), m_low_level(low_level),
+		m_critical_level(critical_level), m_low_level(low_level),
 		m_is_low_level(false),
 		m_is_critical_voltage(false),
 		m_is_critical_voltage_last(false) {}

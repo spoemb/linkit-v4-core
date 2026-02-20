@@ -68,7 +68,7 @@ Each mode has different behavior to maximize device lifetime.
        |         Doppler TX only (no GPS)        |  Battery voltage only
        |         Fewer messages per session       |
        |                                         |
-  LBP12|---- LB_CRITICAL_THRESH (default: 2.8V) |
+  LBP12|---- LB_CRITICAL_THRESH (default: 5%)   |
        |          CRITICAL MODE                  |  No operation:
        |       Immediate power off               |  Preserve battery for
        |       No TX, no GPS, nothing            |  solar recharge
@@ -159,7 +159,7 @@ When battery drops below `LB_THRESHOLD` and `LB_EN=1`:
 
 ### Mode 3: Critical Battery
 
-When battery voltage drops below `LB_CRITICAL_THRESH`:
+When battery SOC drops below `LB_CRITICAL_THRESH`:
 
 ```
   WAKEUP
@@ -181,7 +181,7 @@ When battery voltage drops below `LB_CRITICAL_THRESH`:
 
 | Parameter | DTE Key | Default | Description |
 |-----------|---------|---------|-------------|
-| LB_CRITICAL_THRESH | LBP12 | 2.8V | Voltage threshold for critical mode |
+| LB_CRITICAL_THRESH | LBP12 | 5% | SOC percentage threshold for critical mode |
 
 
 ---
@@ -315,7 +315,7 @@ indefinitely if something goes wrong (e.g., satellite TX keeps failing).
 | LB_GNSS_EN | LBP06 | BOOL | 0/1 | 1 | **0** | Enable GNSS in LB mode. 0 = Doppler-only (no GPS position). |
 | LB_SHUTDOWN_NTIME_SAT | LBP14 | UINT | 0-65535 | 0 | **2** | Number of Doppler TX per LB session before powerdown. 0=disabled. |
 | TR_LB | ARP06 | UINT | 30-1200 | 240 | **90** | LB mode: interval between Doppler TX (seconds). |
-| LB_CRITICAL_THRESH | LBP12 | FLOAT | 0-12 | 2.8 | 2.8 | Battery voltage (V) for critical mode. Below this = immediate poweroff. |
+| LB_CRITICAL_THRESH | LBP12 | UINT | 0-100 | 5 | 5 | Battery SOC (%) for critical mode. Below this = immediate poweroff. |
 
 ### Underwater / Surface Detection
 

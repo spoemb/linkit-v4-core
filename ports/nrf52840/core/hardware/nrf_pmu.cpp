@@ -66,6 +66,11 @@ void PMU::powerdown() {
 #if defined(EXTERNAL_WAKEUP)
 	DEBUG_TRACE("Powerdown with external wakeup enabled");
 
+	// Force all LEDs off at hardware level
+	GPIOPins::clear(BSP::GPIO::GPIO_LED_GREEN);
+	GPIOPins::clear(BSP::GPIO::GPIO_LED_RED);
+	GPIOPins::clear(BSP::GPIO::GPIO_LED_BLUE);
+
 	// Disable all power rails to peripherals
 #ifdef SENSORS_PWR_PIN
 	GPIOPins::clear(SENSORS_PWR_PIN);  // Sensors power OFF

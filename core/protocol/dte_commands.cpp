@@ -388,6 +388,14 @@ const DTECommandMap command_map[] = {
 		.command = DTECommand::SWSST_REQ,
 		.prototype = {}
 	},
+	// SATDP - Satellite Doppler calibration (no arguments)
+	// Usage: $SATDP#000;\r
+	// Starts periodic Doppler TX at TR_NOM interval until device reset
+	{
+		.name = "SATDP",
+		.command = DTECommand::SATDP_REQ,
+		.prototype = {}
+	},
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	// SMD DFU command - allows firmware update of SMD satellite module
 	// Usage: $SMDDFU#001;<action>\r
@@ -465,14 +473,6 @@ const DTECommandMap command_map[] = {
 		}
 	},
 #endif
-	// SATDP - Satellite Doppler calibration (no arguments)
-	// Usage: $SATDP#000;\r
-	// Starts periodic Doppler TX at TR_NOM interval until device reset
-	{
-		.name = "SATDP",
-		.command = DTECommand::SATDP_REQ,
-		.prototype = {}
-	},
 	{
 		.name = "PARML",
 		.command = DTECommand::PARML_RESP,
@@ -944,6 +944,12 @@ const DTECommandMap command_map[] = {
 			}
 		}
 	},
+	// SATDP response - simple OK/error acknowledgement
+	{
+		.name = "SATDP",
+		.command = DTECommand::SATDP_RESP,
+		.prototype = {}
+	},
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	// SMD DFU response
 	// Response: $SMDDFU,<status>,<dfu_mode>,<progress>[,<info>]*<checksum>\r\n
@@ -1011,7 +1017,7 @@ const DTECommandMap command_map[] = {
 				.is_writable = false
 			}
 		}
-	},	
+	},
 	{
 		.name = "SMDCD",
 		.command = DTECommand::SMDCD_RESP,
@@ -1020,12 +1026,6 @@ const DTECommandMap command_map[] = {
 		}
 	},
 #endif
-	// SATDP response - simple OK/error acknowledgement
-	{
-		.name = "SATDP",
-		.command = DTECommand::SATDP_RESP,
-		.prototype = {}
-	},
 };
 
 const size_t command_map_size = sizeof(command_map) / sizeof(command_map[0]);

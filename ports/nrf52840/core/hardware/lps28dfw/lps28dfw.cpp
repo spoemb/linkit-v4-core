@@ -51,7 +51,21 @@ void LPS28DFW::read(double& temperature, double& pressure) {
         throw ErrorCode::I2C_COMMS_ERROR;
     }
 
-    PMU::delay_ms(10); // allow sensor to complete conversion
+    // Poll STATUS register for data ready (non-blocking with timeout)
+    // LPS28DFW_32_AVG one-shot conversion takes ~20ms typical
+    lps28dfw_stat_t status;
+    unsigned int retries = 50; // 50ms max
+    do {
+        PMU::delay_ms(1);
+        if (lps28dfw_status_get(&m_ctx, &status) != 0) {
+            DEBUG_WARN("LPS28DFW::read - status_get failed, proceeding anyway");
+            break;
+        }
+    } while (!status.drdy_pres && --retries > 0);
+
+    if (retries == 0) {
+        DEBUG_WARN("LPS28DFW::read - DRDY timeout after 50ms, reading anyway");
+    }
 
     lps28dfw_data_t data;
     if (lps28dfw_data_get(&m_ctx, &m_mode, &data) != 0) {

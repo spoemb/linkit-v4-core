@@ -22,7 +22,7 @@ private:
 	bool previous_sensors_pwr_state = false;
 public:
 	GaugeBatteryMonitor(
-			uint16_t critical_voltage = 2800,
+			uint8_t critical_level = 5,
 			uint8_t low_level = 10);
     bool IsInit() { return m_is_init; };
 

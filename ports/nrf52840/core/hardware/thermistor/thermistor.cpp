@@ -124,7 +124,14 @@ double Thermistor::read(unsigned int offset)
 	return temperature;
 }
 
-double Thermistor::find_calibration_point(double target_value) {
+double Thermistor::find_calibration_point(double target_temp_mdeg) {
+	// target_temp_mdeg is in millidegrees (e.g., 24000 = 24.000°C)
+	double target_c = target_temp_mdeg / 1000.0;
+
+	// Temporarily disable offset to measure raw temperature
+	double saved_offset = offset_temp;
+	offset_temp = 0.0;
+
 	constexpr unsigned int num_samples = 10;
 	double total_temperature = 0.0;
 
@@ -133,25 +140,34 @@ double Thermistor::find_calibration_point(double target_value) {
 		nrf_delay_ms(100);
 	}
 
-	double average_temperature = total_temperature / num_samples;
-	double difference = std::fabs(average_temperature - target_value);
-	if (average_temperature > target_value) {
-		difference = -difference;
-	}
-	DEBUG_TRACE("THERMISTOR::%s: Average Temperature = %.5lf | Difference = %.5lf",
-		__func__, average_temperature, difference);
+	double average_raw = total_temperature / num_samples;
 
-	return difference;
+	// offset = target - measured (added to raw readings to correct)
+	double calibration_offset = target_c - average_raw;
+
+	DEBUG_INFO("THERMISTOR::calibrate: target=%.3f C | measured=%.3f C | offset=%.3f C",
+		target_c, average_raw, calibration_offset);
+
+	// Restore offset (will be replaced when calibration is applied)
+	offset_temp = saved_offset;
+
+	return calibration_offset;
 }
 
 void Thermistor::calibration_write(const double value, const unsigned int offset) {
 	if (offset == 0) {
-		m_cal.reset();
-	} else if (offset == 1) {
-		double calibration_value = find_calibration_point(value);
-		m_cal.write((unsigned int)CalibrationPoint::TEMP_THRESHOLD, calibration_value);
-	} else if (offset == 2) {
+		// Reset calibration
+		offset_temp = 0.0;
+		m_cal.write((unsigned int)CalibrationPoint::TEMP_THRESHOLD, 0.0);
 		m_cal.save();
+		DEBUG_INFO("THERMISTOR: Calibration reset");
+	} else if (offset == 1) {
+		// Calibrate: value is known temperature in millidegrees (e.g., 24000 = 24.0°C)
+		double calibration_value = find_calibration_point(value);
+		offset_temp = calibration_value;
+		m_cal.write((unsigned int)CalibrationPoint::TEMP_THRESHOLD, calibration_value);
+		m_cal.save();
+		DEBUG_INFO("THERMISTOR: Calibration saved offset=%.3f C", calibration_value);
 	}
 }
 

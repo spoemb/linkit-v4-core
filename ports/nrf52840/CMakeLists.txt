@@ -45,6 +45,13 @@ if(NOT DEFINED ENABLE_THERMISTOR_SENSOR)
     set(ENABLE_THERMISTOR_SENSOR 0)
 endif()
 
+# Guard: THERMISTOR and SEA_TEMP share the same depth pile slot in Argos TX.
+# Enabling both simultaneously would cause data corruption (last writer wins).
+if(ENABLE_THERMISTOR_SENSOR AND ENABLE_SEA_TEMP_SENSOR)
+    message(FATAL_ERROR "ENABLE_THERMISTOR_SENSOR and ENABLE_SEA_TEMP_SENSOR cannot both be enabled. "
+        "They share the same Argos TX depth pile slot (m_sea_temp_depth_pile).")
+endif()
+
 # Battery monitor type: ANALOG, FAKE (always 4.1V), STC3117 (I2C fuel gauge)
 # Default: STC3117 for RSPB board, ANALOG for others
 if(NOT DEFINED BATTERY_MONITOR_TYPE)

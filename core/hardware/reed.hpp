@@ -35,4 +35,5 @@ public:
 	~ReedSwitch();
 	void start(std::function<void(ReedSwitchGesture)> func);
 	void stop();
+	bool is_engaged() { return m_switch.get_state(); }
 };

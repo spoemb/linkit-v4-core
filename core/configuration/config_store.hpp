@@ -143,7 +143,7 @@ protected:
 #else
 		/* UNDERWATER_EN */ (bool)false,
 #endif
-		/* DRY_TIME_BEFORE_TX */ 1U,
+		/* DRY_TIME_BEFORE_TX */ 0U,
 		/* SAMPLING_UNDER_FREQ */ 60U,
 		/* LB_EN */ (bool)false,
 		/* LB_THRESHOLD */ 10U,
@@ -293,7 +293,7 @@ protected:
 #else
 		/* UW_GNSS_DETECT_THRESH */ 1U,
 #endif
-		/* [145] LB_CRITICAL_THRESH */ 2.8,
+		/* [145] LB_CRITICAL_THRESH */ 5U,
 		/* [146] PRESSURE_SENSOR_LOGGING_MODE */ BasePressureSensorLoggingMode::ALWAYS,
 		/* [147] GNSS_TRIGGER_COLD_START_ON_SURFACED */ (bool)false,
 		/* [148] SEA_TEMP_SENSOR_ENABLE_TX_MODE */ BaseSensorEnableTxMode::OFF,

@@ -527,34 +527,39 @@ int main()
 		// Check if this is not our turn to run based on modulo
 		// boot_count_check_modulo returns true if (counter % modulo == 0) meaning it IS our turn
 		if (boot_counter > 0 && !configuration_store->boot_count_check_modulo(boot_counter)) {
-			DEBUG_INFO("EXTERNAL_WAKEUP: Not our turn to run (modulo check) | powering down");
-			PMU::powerdown();
-			// Should not reach here - TPL5111 will cut power
+			// If magnet is present, user wants to configure - skip powerdown
+			if (nrf_reed_switch.get_state()) {
+				DEBUG_INFO("EXTERNAL_WAKEUP: Magnet detected | skipping modulo powerdown");
+			} else {
+				DEBUG_INFO("EXTERNAL_WAKEUP: Not our turn to run (modulo check) | powering down");
+				PMU::powerdown();
+				// Should not reach here - TPL5111 will cut power
+			}
 		}
 		DEBUG_INFO("EXTERNAL_WAKEUP: Our turn to run | continuing boot");
 	}
 #endif
 
 	DEBUG_TRACE("Battery monitor...");
-	double critical_batt_voltage = configuration_store->read_param<double>(ParamID::LB_CRITICAL_THRESH);
+	unsigned int critical_batt_level = configuration_store->read_param<unsigned int>(ParamID::LB_CRITICAL_THRESH);
 	unsigned int low_batt_level = configuration_store->read_param<unsigned int>(ParamID::LB_THRESHOLD);
 
 #if defined(BATTERY_MONITOR_ANALOG)
     #ifdef BATTERY_ADC
     NrfBatteryMonitor nrf_battery_monitor(BATTERY_ADC, BATT_CHEM_NCR18650_3100_3400,
-    		(uint16_t)(critical_batt_voltage*1000), low_batt_level);
+    		(uint8_t)critical_batt_level, low_batt_level);
     battery_monitor = &nrf_battery_monitor;
     #else
-    static BatteryMonitor stub_battery_monitor(low_batt_level, (uint16_t)(critical_batt_voltage*1000));
+    static BatteryMonitor stub_battery_monitor(low_batt_level, (uint8_t)critical_batt_level);
     battery_monitor = &stub_battery_monitor;
     #endif
 #elif defined(BATTERY_MONITOR_FAKE)
     DEBUG_INFO("Using FAKE battery monitor (always 4.1V)");
-    static FakeBatteryMonitor fake_battery_monitor((uint16_t)(critical_batt_voltage*1000), low_batt_level);
+    static FakeBatteryMonitor fake_battery_monitor((uint8_t)critical_batt_level, low_batt_level);
     battery_monitor = &fake_battery_monitor;
 #elif defined(BATTERY_MONITOR_STC3117)
     DEBUG_INFO("Using STC3117 fuel gauge battery monitor");
-    static GaugeBatteryMonitor stc3117_battery_monitor((uint16_t)(critical_batt_voltage*1000), low_batt_level);
+    static GaugeBatteryMonitor stc3117_battery_monitor((uint8_t)critical_batt_level, low_batt_level);
     battery_monitor = &stc3117_battery_monitor;
 #else
     #error "No battery monitor type defined! Set BATTERY_MONITOR_TYPE in CMake"

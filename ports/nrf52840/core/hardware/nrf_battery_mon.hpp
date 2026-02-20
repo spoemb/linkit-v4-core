@@ -23,6 +23,6 @@ private:
 public:
 	NrfBatteryMonitor(uint8_t adc_channel,
 			BatteryChemistry chem = BATT_CHEM_NCR18650_3100_3400,
-			uint16_t critical_voltage = 2800,
+			uint8_t critical_level = 5,
 			uint8_t low_level = 10);
 };

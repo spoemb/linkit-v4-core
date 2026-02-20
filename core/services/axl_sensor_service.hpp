@@ -142,8 +142,8 @@ private:
 		m_sensor.calibration_write(g_force, to_underlying(AXLCalibration::G_FORCE));
 		m_sensor.calibration_write(power_mode, to_underlying(AXLCalibration::POWER_MODE));
 
-		// Enable wakeup interrupt if threshold is configured and sensor is enabled
-		if (g_thresh && sensor_is_enabled()) {
+		// Enable wakeup interrupt if threshold and duration are configured and sensor is enabled
+		if (g_thresh && duration && sensor_is_enabled()) {
 			m_sensor.calibration_write(g_thresh, to_underlying(AXLCalibration::WAKEUP_THRESH));
 			m_sensor.calibration_write(duration, to_underlying(AXLCalibration::WAKEUP_DURATION));
 			m_sensor.install_event_handler(AXLEvent::WAKEUP, [this]() {

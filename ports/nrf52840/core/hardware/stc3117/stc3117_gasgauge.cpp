@@ -22,8 +22,8 @@ extern "C" {
 #define crc16_compute(x, y, z)  0xFFFF
 #endif
 
-// Thresholds for low/critical battery filtering
-#define CRITICIAL_V_THRESHOLD_MV	250
+// Thresholds for low/critical battery filtering (SOC hysteresis in %)
+#define CRITICAL_SOC_HYSTERESIS		3
 #define LOW_BATT_THRESHOLD			5
 
 // Cache TTL: skip I2C read if last measurement was less than this ago
@@ -49,10 +49,10 @@ static void setup_i2c() {
 }
 
 
-GaugeBatteryMonitor::GaugeBatteryMonitor(uint16_t critical_voltage,
+GaugeBatteryMonitor::GaugeBatteryMonitor(uint8_t critical_level,
 		uint8_t low_level
 		) :
-		BatteryMonitor(low_level, critical_voltage)
+		BatteryMonitor(low_level, critical_level)
 {
     DEBUG_INFO("STC3117: Low-power battery monitor initialized");
 
@@ -210,7 +210,7 @@ void GaugeBatteryMonitor::internal_update() {
         mv = (uint16_t)STC3117_GG_struct.Voltage;
         level = (uint8_t)(STC3117_GG_struct.SOC / 10);
 
-        DEBUG_TRACE("STC3117: Using previous values V=%umV SOC=%u%%", mv, level);
+        // Using previous cached values
     }
     else {
         // Error - keep previous values
@@ -228,14 +228,13 @@ void GaugeBatteryMonitor::internal_update() {
     // 4. Apply filtering to prevent value bouncing
     uint16_t crc = crc16_compute((const uint8_t *)m_filtered_values, sizeof(m_filtered_values), nullptr);
     if (crc == m_crc) {
-        // Previously filtered values are valid
-        if (m_filtered_values[0] < m_critical_voltage_mv) {
-            if (mv >= (m_critical_voltage_mv + CRITICIAL_V_THRESHOLD_MV))
-                m_filtered_values[0] = mv;
-        } else {
-            m_filtered_values[0] = mv;
-        }
-        if (m_filtered_values[1] < m_low_level) {
+        // Previously filtered values are valid - voltage (no hysteresis needed, just store)
+        m_filtered_values[0] = mv;
+        // SOC critical hysteresis
+        if (m_filtered_values[1] < m_critical_level) {
+            if (level >= (m_critical_level + CRITICAL_SOC_HYSTERESIS))
+                m_filtered_values[1] = level;
+        } else if (m_filtered_values[1] < m_low_level) {
             if (level >= (m_low_level + LOW_BATT_THRESHOLD))
                 m_filtered_values[1] = level;
         } else {
@@ -254,8 +253,8 @@ void GaugeBatteryMonitor::internal_update() {
     m_last_voltage_mv = mv;
     m_last_level = level;
 
-    // Set flags
-    m_is_critical_voltage = m_filtered_values[0] < m_critical_voltage_mv;
+    // Set flags (both based on SOC level)
+    m_is_critical_voltage = m_filtered_values[1] < m_critical_level;
     m_is_low_level = m_filtered_values[1] < m_low_level;
 }
 

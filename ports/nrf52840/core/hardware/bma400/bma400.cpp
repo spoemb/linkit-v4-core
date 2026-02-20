@@ -128,9 +128,7 @@ int8_t BMA400LL::i2c_write(uint8_t reg_addr, const uint8_t *reg_data, uint32_t l
 	buffer[0] = reg_addr;
 	memcpy(&buffer[1], reg_data, length);
 
-	DEBUG_TRACE("BMA400LL::i2c_write: bus=%u addr=0x%02X reg=0x%02X len=%u", device.m_bus, device.m_addr, reg_addr, length);
 	NrfI2C::write(device.m_bus, device.m_addr, buffer, length + 1, false);
-	DEBUG_TRACE("BMA400LL::i2c_write: done");
 
 	return BMA400_OK;
 }
@@ -139,11 +137,8 @@ int8_t BMA400LL::i2c_read(uint8_t reg_addr, uint8_t *reg_data, uint32_t length, 
 {
 	BMA400LL& device = BMA400LLManager::lookup_device(*(uint8_t *)intf_ptr);
 
-	DEBUG_TRACE("BMA400LL::i2c_read: bus=%u addr=0x%02X reg=0x%02X len=%u", device.m_bus, device.m_addr, reg_addr, length);
 	NrfI2C::write(device.m_bus, device.m_addr, &reg_addr, 1, true);
-	DEBUG_TRACE("BMA400LL::i2c_read: write done, reading...");
 	NrfI2C::read(device.m_bus, device.m_addr, reg_data, length);
-	DEBUG_TRACE("BMA400LL::i2c_read: done");
 
 	return BMA400_OK;
 }
@@ -261,9 +256,6 @@ void BMA400LL::read_xyz(double& x, double& y, double& z, int16_t& temperature)
 	struct bma400_sensor_data data;
 	uint8_t g_force = range_to_g(m_g_range);
 
-	DEBUG_TRACE("BMA400::read_xyz: m_g_range=%u | g_force=%u | m_power_mode=%u | cal(%.4f|%.4f|%.4f)",
-	            m_g_range, g_force, m_power_mode, m_cal_x, m_cal_y, m_cal_z);
-
 	// Use same mode as calibration for consistent readings
 	if (m_power_mode == 0) {
 		setup_low_power_mode();
@@ -324,8 +316,6 @@ void BMA400LL::read_xyz(double& x, double& y, double& z, int16_t& temperature)
 	// Read temperature while sensor is still in active mode
 	// Temperature sensor only works correctly in NORMAL or LOW_POWER mode, not SLEEP
 	bma400_get_temperature_data(&temperature, &m_bma400_dev);
-	DEBUG_TRACE("BMA400::read_xyz: temperature = %d (x0.1 C)", temperature);
-
 	// Return to sleep mode
 	setup_sleep_mode();
 }
@@ -339,7 +329,6 @@ int16_t BMA400LL::read_temperature()
 	int16_t temperature_data;
 	bma400_get_temperature_data(&temperature_data, &m_bma400_dev);
 
-	DEBUG_TRACE("BMA400::read_temperature = %d (x0.1 C)", temperature_data);
 	return temperature_data;
 }
 
@@ -669,9 +658,6 @@ double BMA400::compute_activity()
 	if (activity_g > max_deviation) activity_g = max_deviation;
 
 	m_last_activity = static_cast<uint8_t>((activity_g / max_deviation) * 255.0);
-
-	DEBUG_TRACE("BMA400::compute_activity: mag=%.2f | dev=%.2f | activity=%u",
-	            g_magnitude, activity_g, m_last_activity);
 	return static_cast<double>(m_last_activity);
 }
 
@@ -749,16 +735,9 @@ void BMA400::calibration_write(const double value, const unsigned int offset)
 
 void BMA400::calibration_read(double& value, const unsigned int offset)
 {
-	double offset_x = 0.0, offset_y = 0.0, offset_z = 0.0;
-
 	// Read calibrated sensor values (offset 1-3)
 	if (offset >= 1 && offset <= 3) {
 		m_bma400.read_xyz(m_last_x, m_last_y, m_last_z, m_last_temperature);
-	}
-
-	// Perform calibration measurement if reading raw offsets (offset 4-6)
-	if (offset >= 4 && offset <= 6) {
-		m_bma400.calibrate_offset(m_bma400.get_range(), offset_x, offset_y, offset_z);
 	}
 
 	switch (offset) {
@@ -771,14 +750,14 @@ void BMA400::calibration_read(double& value, const unsigned int offset)
 		case 3: // Read calibrated Z value
 			value = m_last_z;
 			break;
-		case 4: // X calibration offset (raw measurement)
-			value = offset_x;
+		case 4: // X calibration offset (saved)
+			value = m_bma400.get_x_calibration();
 			break;
-		case 5: // Y calibration offset (raw measurement)
-			value = offset_y;
+		case 5: // Y calibration offset (saved)
+			value = m_bma400.get_y_calibration();
 			break;
-		case 6: // Z calibration offset (raw measurement)
-			value = offset_z;
+		case 6: // Z calibration offset (saved)
+			value = m_bma400.get_z_calibration();
 			break;
 		default:
 			DEBUG_WARN("BMA400::calibration_read: invalid offset %u", offset);

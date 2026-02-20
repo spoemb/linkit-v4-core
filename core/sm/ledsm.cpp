@@ -44,10 +44,8 @@ void LEDBoot::entry() {
 void LEDPowerDown::entry() {
 	DEBUG_TRACE("LEDPowerDown: entry");
 	m_is_battery_critical = false;
-	if (m_is_magnet_engaged)
-		status_led->set(RGBLedColor::WHITE);
-	else
-		status_led->flash(RGBLedColor::WHITE, 50);
+	// Always flash white during powerdown countdown, regardless of magnet
+	status_led->flash(RGBLedColor::WHITE, 50);
 	if (ext_status_led)
 		ext_status_led->flash(50);
 }

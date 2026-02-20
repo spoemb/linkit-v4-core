@@ -66,11 +66,11 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 	// Critical battery check: immediate powerdown, no transmission
 	if (argos_config.is_lb) {
 		service_update_battery();
-		double critical_thresh = configuration_store->read_param<double>(ParamID::LB_CRITICAL_THRESH);
-		double current_voltage = (double)service_get_voltage() / 1000.0;
-		if (current_voltage > 0 && current_voltage < critical_thresh) {
-			DEBUG_INFO("ArgosTxService: CRITICAL battery %.2fV < %.2fV - immediate powerdown",
-			           current_voltage, critical_thresh);
+		unsigned int critical_level = configuration_store->read_param<unsigned int>(ParamID::LB_CRITICAL_THRESH);
+		unsigned int current_soc = service_get_level();
+		if (current_soc < critical_level) {
+			DEBUG_INFO("ArgosTxService: CRITICAL battery SOC %u%% < %u%% - immediate powerdown",
+			           current_soc, critical_level);
 			PMU::powerdown();
 			return Service::SCHEDULE_DISABLED;
 		}
@@ -1064,11 +1064,15 @@ void ArgosDepthPileManager::notify_peer_event(ServiceEvent& e) {
 			e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
 		DEBUG_TRACE("ArgosDepthPileManager::notify_peer_event: AXL cache set");
 		ServiceSensorData& entry = std::get<ServiceSensorData>(e.event_data);
-		m_axl_cache.port[0] = (unsigned int)((entry.port[0] + 40.0) * 100U);    // Temperature (-40 to 85°C)
-		m_axl_cache.port[1] = (unsigned int)((entry.port[1] + 16.0) * 1000U);   // X axis (-16g to +16g)
-		m_axl_cache.port[2] = (unsigned int)((entry.port[2] + 16.0) * 1000U);   // Y axis (-16g to +16g)
-		m_axl_cache.port[3] = (unsigned int)((entry.port[3] + 16.0) * 1000U);   // Z axis (-16g to +16g)
-		m_axl_cache.port[4] = (unsigned int)(entry.port[4]);                     // Activity (0-255)
+		// Read configured g-range (register value 0-3) and convert to actual g value
+		unsigned int range_reg = configuration_store->read_param<unsigned int>(ParamID::AXL_SENSOR_MEASUREMENT_RANGE);
+		static const double g_range_table[] = { 2.0, 4.0, 8.0, 16.0 };
+		double g_range = (range_reg < 4) ? g_range_table[range_reg] : 16.0;
+		m_axl_cache.port[0] = (unsigned int)((entry.port[0] + 40.0) * 100U);                  // Temperature (-40 to 85°C)
+		m_axl_cache.port[1] = (unsigned int)((entry.port[1] + g_range) * 1000U);               // X axis
+		m_axl_cache.port[2] = (unsigned int)((entry.port[2] + g_range) * 1000U);               // Y axis
+		m_axl_cache.port[3] = (unsigned int)((entry.port[3] + g_range) * 1000U);               // Z axis
+		m_axl_cache.port[4] = (unsigned int)(entry.port[4]);                                   // Activity (0-255)
 		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::AXL_SENSOR);
 #endif
 	} else if (e.event_source == ServiceIdentifier::GNSS_SENSOR &&

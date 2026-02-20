@@ -17,6 +17,8 @@
 #include "ledsm.hpp"
 #include "buzzm.hpp"
 #include "battery.hpp"
+#include "rgb_led.hpp"
+#include "led.hpp"
 #include "gps.hpp"
 #include "ble_service.hpp"
 #include "gentracker.hpp"
@@ -25,6 +27,10 @@
 #ifdef USB_DTE_ENABLED
 #include "usb_interface.hpp"
 #endif
+
+// LED hardware access for forced LED off before powerdown
+extern RGBLed *status_led;
+extern Led *ext_status_led;
 
 // These contexts must be created before the FSM is initialised
 extern FileSystem *main_filesystem;
@@ -134,6 +140,16 @@ void BootState::entry() {
 	// Start reed switch monitoring and dispatch events to state machine
 	reed_switch->start([](ReedSwitchGesture s) { ReedSwitchEvent e; e.state = s; dispatch(e); });
 
+	// If magnet is already present at boot, NrfSwitch::resume() reads the state
+	// but does NOT fire a callback (only state CHANGES trigger callbacks).
+	// Manually dispatch an ENGAGE event so the FSM knows the magnet is present.
+	if (reed_switch->is_engaged()) {
+		DEBUG_INFO("BootState: Magnet already present at boot | dispatching ENGAGE");
+		ReedSwitchEvent e;
+		e.state = ReedSwitchGesture::ENGAGE;
+		dispatch(e);
+	}
+
 	try {
 		// The underlying classes will create the files on the filesystem if they do not
 		// already yet exist
@@ -169,7 +185,9 @@ void OffState::entry() {
 	DEBUG_INFO("entry: OffState");
 	led_handle::dispatch<SetLEDPowerDown>({});
 	m_off_state_task = system_scheduler->post_task_prio([](){
-		led_handle::dispatch<SetLEDOff>({});
+		// Force LED off at hardware level before powerdown
+		status_led->off();
+		if (ext_status_led) ext_status_led->off();
 		buzz_handle::dispatch<SetBuzzOff>({});
 		PMU::powerdown();
 	},
@@ -535,7 +553,15 @@ void ConfigurationState::process_usb_data() {}
 void BatteryCriticalState::entry() {
 	DEBUG_INFO("entry: BatteryCriticalState");
 #ifdef EXTERNAL_WAKEUP
+	// If magnet is present, user wants to configure via BLE - don't powerdown
+	if (reed_switch->is_engaged()) {
+		DEBUG_INFO("BatteryCriticalState: Magnet detected, entering configuration mode");
+		transit<ConfigurationState>();
+		return;
+	}
 	DEBUG_INFO("EXTERNAL_WAKEUP: Critical battery | immediate powerdown");
+	status_led->off();
+	if (ext_status_led) ext_status_led->off();
 	PMU::powerdown();
 #else
 	led_handle::dispatch<SetLEDBatteryCritical>({});

@@ -5,8 +5,8 @@
 #define FAKE_BATTERY_MV     4100    // 4.1V
 #define FAKE_BATTERY_LEVEL  100     // 100%
 
-FakeBatteryMonitor::FakeBatteryMonitor(uint16_t critical_voltage, uint8_t low_level)
-    : BatteryMonitor(low_level, critical_voltage)
+FakeBatteryMonitor::FakeBatteryMonitor(uint8_t critical_level, uint8_t low_level)
+    : BatteryMonitor(low_level, critical_level)
 {
     DEBUG_INFO("FakeBatteryMonitor: Initialized (always returns %.2fV)", FAKE_BATTERY_MV / 1000.0);
 
@@ -24,6 +24,4 @@ void FakeBatteryMonitor::internal_update()
     m_last_level = FAKE_BATTERY_LEVEL;
     m_is_low_level = false;
     m_is_critical_voltage = false;
-
-    DEBUG_TRACE("FakeBatteryMonitor: Update - %umV | %u%%", m_last_voltage_mv, m_last_level);
 }
