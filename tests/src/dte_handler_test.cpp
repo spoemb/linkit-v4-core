@@ -31,6 +31,7 @@ extern FileSystem *main_filesystem;
 extern ConfigurationStore *configuration_store;
 extern MemoryAccess *memory_access;
 extern BatteryMonitor *battery_monitor;
+extern GPSDevice *gps_device;
 
 
 TEST_GROUP(DTEHandler)
@@ -1282,7 +1283,7 @@ TEST(DTEHandler, PWRON_REQ_InvalidComponent)
 	CHECK_TRUE(error_code != 0);
 }
 
-TEST(DTEHandler, PWRON_REQ_PowerOnGNSS)
+TEST(DTEHandler, PWRON_REQ_PowerOnGNSS_NoDevice)
 {
 	DTECommand command;
 	std::string req;
@@ -1294,12 +1295,13 @@ TEST(DTEHandler, PWRON_REQ_PowerOnGNSS)
 
 	mock().ignoreOtherCalls();
 
-	// PWRON_REQ component=1 (GNSS)
+	// PWRON_REQ component=1 (GNSS) with no GPS device — returns error
+	gps_device = nullptr;
 	req = "$PWRON#001;1\r";
 	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
 	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
 	CHECK_TRUE(DTECommand::PWRON_RESP == command);
-	CHECK_EQUAL((unsigned int)DTEError::OK, error_code);
+	CHECK_EQUAL((unsigned int)DTEError::INCORRECT_DATA, error_code);
 }
 
 TEST(DTEHandler, PWRON_REQ_PowerOnSensors)
@@ -1365,5 +1367,81 @@ TEST(DTEHandler, SATDP_REQ_NoSatelliteDevice)
 	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
 	CHECK_TRUE(DTECommand::SATDP_RESP == command);
 	CHECK_EQUAL((unsigned int)DTEError::INCORRECT_DATA, error_code);
+}
+
+TEST(DTEHandler, GNSSI_REQ_NoGPSDevice)
+{
+	DTECommand command;
+	std::string req;
+	std::string resp;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// Ensure gps_device is null (test build default)
+	gps_device = nullptr;
+
+	// GNSSI with no GPS device - should return INCORRECT_DATA error
+	req = "$GNSSI#000;\r";
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::GNSSI_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::INCORRECT_DATA, error_code);
+}
+
+TEST(DTEHandler, GNSSA_REQ_NoGPSDevice)
+{
+	DTECommand command;
+	std::string req;
+	std::string resp;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// Ensure gps_device is null (test build default)
+	gps_device = nullptr;
+
+	// GNSSA with no GPS device - should return INCORRECT_DATA error
+	req = "$GNSSA#000;\r";
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::GNSSA_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::INCORRECT_DATA, error_code);
+}
+
+TEST(DTEHandler, GNSSA_REQ_NoAlmanacFile)
+{
+	DTECommand command;
+	std::string req;
+	std::string resp;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// Use a minimal fake GPSDevice (base class returns default GNSSAlmanacStatus)
+	class FakeGPSDevice : public GPSDevice {
+	public:
+		void power_on(const GPSNavSettings&) override {}
+		void power_off() override {}
+	};
+	FakeGPSDevice fake_gps;
+	gps_device = &fake_gps;
+
+	// GNSSA with GPS device but no almanac file - base class returns all zeros
+	req = "$GNSSA#000;\r";
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::GNSSA_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::OK, error_code);
+	CHECK_EQUAL(0U, std::get<unsigned int>(arg_list[0]));  // present=0
+	CHECK_EQUAL(0U, std::get<unsigned int>(arg_list[1]));  // file_size=0
+	CHECK_EQUAL(0U, std::get<unsigned int>(arg_list[2]));  // total_records=0
+	CHECK_EQUAL(0U, std::get<unsigned int>(arg_list[3]));  // valid_records=0
+	CHECK_EQUAL(0U, std::get<unsigned int>(arg_list[4]));  // stale=0
+
+	gps_device = nullptr;
 }
 

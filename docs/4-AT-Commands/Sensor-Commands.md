@@ -28,8 +28,9 @@ Perform a live sensor reading. The bitmask argument selects which sensor subsyst
 | 1 | 2 | Pressure (pressure, temperature, altitude) |
 | 2 | 4 | GNSS (latitude, longitude, HDOP, satellite count) |
 | 3 | 8 | Accelerometer (X, Y, Z axes, temperature, activity) |
+| 4 | 16 | Thermistor (temperature) |
 
-Combine bits to read multiple sensors. Use 15 (0x0F) for all sensors.
+Combine bits to read multiple sensors. Use 31 (0x1F) for all sensors.
 
 ```
 $SENSR#004;1,10\r
@@ -37,7 +38,7 @@ $SENSR#004;1,10\r
 
 The `timeout` parameter is reserved for future GNSS acquisition use. Currently the GNSS reading returns the last cached position.
 
-**Response:** 14 comma-separated fields:
+**Response:** 15 comma-separated fields:
 
 | Field | Name | Type | Unit | Description |
 |-------|------|------|------|-------------|
@@ -55,6 +56,7 @@ The `timeout` parameter is reserved for future GNSS acquisition use. Currently t
 | 12 | accel_z | float | g | Accelerometer Z-axis |
 | 13 | accel_temp | float | C | Accelerometer temperature |
 | 14 | activity | uint | -- | Activity level (0--255) |
+| 15 | thermistor_temp | float | C | Thermistor temperature |
 
 Fields for unselected sensors return default values (0 for integers, 0.0 for floats, 99.9 for hdop).
 
@@ -202,3 +204,77 @@ $O;SWSST#LEN;2048,3500,2800,50,2750,2760,1,0,300\r
 ```
 
 **Error:** Returns error 6 (PARAM_KEY_UNRECOGNISED) on builds without SWS analog support.
+
+---
+
+## GNSSI -- GNSS Device Info
+
+Query the GNSS module (u-blox M10Q) for its unique hardware ID and firmware/hardware version strings. The information is cached after the first GNSS power-on cycle.
+
+**Request:** No arguments.
+
+```
+$GNSSI#000;\r
+```
+
+**Behavior:**
+
+- If the GNSS module has been powered on at least once (via `PWRON 1` or a normal operational cycle), the cached info is returned immediately.
+- If no cached info is available, the handler autonomously powers on the GNSS module, waits for the device info callback, sends the response asynchronously, then powers off the GNSS.
+
+**Response:** 3 comma-separated TEXT fields:
+
+| Field | Name | Type | Description |
+|-------|------|------|-------------|
+| 1 | unique_id | text | 5-byte hardware unique ID as hex string (10 chars) |
+| 2 | sw_version | text | GNSS firmware version (e.g., "SPG 4.04 (7b202e)") |
+| 3 | hw_version | text | GNSS hardware version (e.g., "00190000") |
+
+**Example:**
+
+```
+Request:  $GNSSI#000;\r
+Response: $O;GNSSI#02B;01A2B3C4D5,SPG 4.04 (7b202e),00190000\r
+```
+
+**Typical workflow:**
+
+```
+$PWRON#001;1\r          # Power on GNSS
+(wait ~2 seconds for configure phase)
+$GNSSI#000;\r           # Read device info (cached)
+$PWRON#001;4\r          # Power off
+```
+
+**Error:** Returns error 5 (INCORRECT_DATA) if no GPS device is available or if device info could not be retrieved.
+
+---
+
+## GNSSA -- GNSS Almanac Status
+
+Query the status of the GNSS AssistNow Offline almanac file stored on the device. This is useful to check whether the almanac needs to be refreshed before deployment.
+
+**Request:** No arguments.
+
+```
+$GNSSA#000;\r
+```
+
+**Response:** 5 comma-separated fields:
+
+| Field | Name | Type | Description |
+|-------|------|------|-------------|
+| 1 | present | uint | 1 if almanac file exists, 0 otherwise |
+| 2 | file_size | uint | File size in bytes (0 if not present) |
+| 3 | total_records | uint | Total number of records in the file |
+| 4 | valid_records | uint | Number of records still valid (not expired) |
+| 5 | stale | uint | 1 if almanac is expired/stale, 0 if fresh |
+
+**Example:**
+
+```
+Request:  $GNSSA#000;\r
+Response: $O;GNSSA#00D;1,32768,35,28,0\r
+```
+
+**Error:** Returns error 5 (INCORRECT_DATA) if no GPS device is available.

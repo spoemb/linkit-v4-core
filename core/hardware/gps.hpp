@@ -57,6 +57,21 @@ struct GNSSData {
 	uint32_t   ttff;      // ms
 };
 
+struct GNSSDeviceInfo {
+    char swVersion[30];
+    char hwVersion[10];
+    uint8_t uniqueId[5];
+    bool valid;
+};
+
+struct GNSSAlmanacStatus {
+    bool file_present;
+    unsigned int file_size;
+    unsigned int total_records;
+    unsigned int valid_records;
+    bool stale;
+};
+
 struct GPSEventMaxNavSamples {};
 struct GPSEventMaxSatSamples {};
 
@@ -68,6 +83,7 @@ struct GPSEventSatReport {
 
 struct GPSEventError {};
 struct GPSEventPowerOn {};
+struct GPSEventDeviceInfoReady {};
 struct GPSEventPowerOff {
     bool fix_found;
     GPSEventPowerOff(bool a) : fix_found(a) {}
@@ -87,6 +103,7 @@ public:
     virtual void react(const GPSEventSatReport&) {}
     virtual void react(const GPSEventMaxNavSamples&) {}
     virtual void react(const GPSEventMaxSatSamples&) {}
+    virtual void react(const GPSEventDeviceInfoReady&) {}
 };
 
 class GPSDevice : public EventEmitter<GPSEventListener> {
@@ -95,4 +112,6 @@ public:
     // These methods are specific to the chipset and should be implemented by device-specific subclass
     virtual void power_off() = 0;
     virtual void power_on(const GPSNavSettings& nav_settings) = 0;
+    virtual GNSSDeviceInfo get_device_info() const { return {}; }
+    virtual GNSSAlmanacStatus get_almanac_status() const { return {}; }
 };

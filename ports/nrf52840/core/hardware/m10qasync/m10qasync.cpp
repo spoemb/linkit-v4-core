@@ -12,11 +12,13 @@
 #include "timeutils.hpp"
 #include "binascii.hpp"
 #include "interrupt_lock.hpp"
+#include "config_store.hpp"
 
 using namespace UBX;
 
 extern Scheduler  *system_scheduler;
 extern RTC        *rtc;
+extern ConfigurationStore *configuration_store;
 extern FileSystem *main_filesystem;
 
 // Required baud rates
@@ -60,6 +62,10 @@ M10QAsyncReceiver::M10QAsyncReceiver() {
 	m_mga_ack_count = 0;
 	m_step = 0;
 	m_retries = 0;
+	m_gnss_info_valid = false;
+	std::memset(m_gnss_sw_version, 0, sizeof(m_gnss_sw_version));
+	std::memset(m_gnss_hw_version, 0, sizeof(m_gnss_hw_version));
+	std::memset(m_gnss_unique_id, 0, sizeof(m_gnss_unique_id));
 }
 
 M10QAsyncReceiver::~M10QAsyncReceiver() {
@@ -104,21 +110,25 @@ void M10QAsyncReceiver::power_on(const GPSNavSettings& nav_settings) {
 
 void M10QAsyncReceiver::check_for_power_off() {
 
-	// Don't power off unless there are clients or the system is already powering off
-	if (m_num_power_on || m_powering_off)
+	if (m_powering_off)
+		return;
+
+	// On unrecoverable error, force shutdown regardless of client count —
+	// the GPS hardware is in a broken state and cannot serve any client
+	if (m_unrecoverable_error) {
+		m_powering_off = true;
+		m_num_power_on = 0;
+		STATE_CHANGE(idle, poweroff);
+		return;
+	}
+
+	// Don't power off if there are still active clients
+	if (m_num_power_on)
 		return;
 
 	// Try to cleanup in a way that will preserve navigation data
 	// before powering off
 	m_powering_off = true;
-
-	// Check for unrecoverable error as we won't be able to shutdown cleanly in this case
-	// because it is likely caused by comms failures to the GPS module
-	if (m_unrecoverable_error) {
-		// Do a forced shutdown
-		STATE_CHANGE(idle, poweroff);
-		return;
-	}
 
 	// Try to shutdown cleanly
 	if (STATE_EQUAL(idle)) {
@@ -617,6 +627,14 @@ void M10QAsyncReceiver::state_poweroff() {
 		return;
 	}
 	enter_shutdown();
+#ifdef EXTERNAL_WAKEUP
+	// Persist current RTC for pseudo RTC on next boot (one save per GNSS session)
+	if (rtc->is_set()) {
+		configuration_store->write_param(ParamID::LAST_KNOWN_RTC, static_cast<unsigned int>(rtc->gettime()));
+		configuration_store->save_params();
+		DEBUG_TRACE("EXTERNAL_WAKEUP: Saved LAST_KNOWN_RTC = %u", static_cast<unsigned int>(rtc->gettime()));
+	}
+#endif
     notify(GPSEventPowerOff(m_fix_was_found));
     STATE_CHANGE(poweroff, idle);
 }
@@ -694,6 +712,12 @@ void M10QAsyncReceiver::state_configure() {
 					m_op_state = OpState::IDLE;
 					m_step++;
 				}
+			} else if (m_step == 14) {
+				query_mon_ver();
+				break;
+			} else if (m_step == 15) {
+				query_sec_uniqid();
+				break;
 			} else {
 			    // Always try to send offline database as priority
 			    STATE_CHANGE(configure, sendofflinedatabase);
@@ -1307,8 +1331,7 @@ void M10QAsyncReceiver::setup_simple_navigation_settings() {
     };
 
     // Create the VALSET message with the navigation parameters
-    CFG::VALSET::MSG_VALSET nav_valset_msg(0x00, CFG::VALSET::LAYERS::BBR, navspg_config);
-    //CFG::VALSET::MSG_VALSET nav_valset_msg(0x00, CFG::VALSET::LAYERS::BBR | CFG::VALSET::LAYERS::RAM, navspg_config);
+    CFG::VALSET::MSG_VALSET nav_valset_msg(0x00, CFG::VALSET::LAYERS::BBR | CFG::VALSET::LAYERS::RAM, navspg_config);
     size_t cfgDataSize = nav_valset_msg.get_cfgData_size(navspg_config);
     initiate_timeout();
 
@@ -1651,4 +1674,130 @@ void M10QAsyncReceiver::dump_navigation_database(unsigned int len) {
 	for (unsigned int i = 0; i < len; i++)
 		printf("%02X", m_navigation_database[i]);
 	printf("\n");
+}
+
+void M10QAsyncReceiver::query_mon_ver() {
+	DEBUG_TRACE("M10QAsyncReceiver::query_mon_ver");
+	UBX::Empty msg = {};
+	initiate_timeout();
+	m_ubx_comms.send_packet_with_expect(
+		MessageClass::MSG_CLASS_MON, MON::ID_VER, msg,
+		MessageClass::MSG_CLASS_MON, MON::ID_VER);
+}
+
+void M10QAsyncReceiver::query_sec_uniqid() {
+	DEBUG_TRACE("M10QAsyncReceiver::query_sec_uniqid");
+	UBX::Empty msg = {};
+	initiate_timeout();
+	m_ubx_comms.send_packet_with_expect(
+		MessageClass::MSG_CLASS_SEC, SEC::ID_UNIQID, msg,
+		MessageClass::MSG_CLASS_SEC, SEC::ID_UNIQID);
+}
+
+void M10QAsyncReceiver::react(const UBXCommsEventMonVer& ver) {
+	if (m_op_state == OpState::PENDING) {
+		cancel_timeout();
+		std::memcpy(m_gnss_sw_version, ver.swVersion, sizeof(m_gnss_sw_version));
+		std::memcpy(m_gnss_hw_version, ver.hwVersion, sizeof(m_gnss_hw_version));
+		m_gnss_sw_version[sizeof(m_gnss_sw_version) - 1] = '\0';
+		m_gnss_hw_version[sizeof(m_gnss_hw_version) - 1] = '\0';
+		DEBUG_INFO("GNSS SW: %s HW: %s", m_gnss_sw_version, m_gnss_hw_version);
+		m_op_state = OpState::SUCCESS;
+		run_state_machine();
+	}
+}
+
+void M10QAsyncReceiver::react(const UBXCommsEventSecUniqId& uid) {
+	if (m_op_state == OpState::PENDING) {
+		cancel_timeout();
+		std::memcpy(m_gnss_unique_id, uid.uniqueId, sizeof(m_gnss_unique_id));
+		m_gnss_info_valid = true;
+		DEBUG_INFO("GNSS UID: %02X%02X%02X%02X%02X",
+			m_gnss_unique_id[0], m_gnss_unique_id[1], m_gnss_unique_id[2],
+			m_gnss_unique_id[3], m_gnss_unique_id[4]);
+		notify(GPSEventDeviceInfoReady{});
+		m_op_state = OpState::SUCCESS;
+		run_state_machine();
+	}
+}
+
+GNSSDeviceInfo M10QAsyncReceiver::get_device_info() const {
+	GNSSDeviceInfo info = {};
+	if (m_gnss_info_valid) {
+		std::memcpy(info.swVersion, m_gnss_sw_version, sizeof(info.swVersion));
+		std::memcpy(info.hwVersion, m_gnss_hw_version, sizeof(info.hwVersion));
+		std::memcpy(info.uniqueId, m_gnss_unique_id, sizeof(info.uniqueId));
+		info.valid = true;
+	}
+	return info;
+}
+
+GNSSAlmanacStatus M10QAsyncReceiver::get_almanac_status() const {
+	GNSSAlmanacStatus status = {};
+
+	if (!main_filesystem) {
+		status.stale = true;
+		return status;
+	}
+
+	try {
+		LFSFile file(main_filesystem, "gps_config.dat", LFS_O_RDONLY);
+		status.file_present = true;
+		status.file_size = (unsigned int)file.size();
+
+		// Parse UBX messages to count ANO records and check dates
+		uint8_t buffer[MAX_PACKET_LEN];
+		unsigned int total_records = 0;
+		unsigned int valid_records = 0;
+		std::time_t deltatime = (std::time_t)0xFFFFFFFF;
+		bool rtc_available = rtc && rtc->is_set();
+		std::time_t now = rtc_available ? rtc->gettime() : 0;
+
+		while (true) {
+			lfs_ssize_t sz = file.read(buffer, sizeof(Header));
+			if (sz != (lfs_ssize_t)(sizeof(Header)))
+				break;
+
+			HeaderAndPayloadCRC *msg = (HeaderAndPayloadCRC *)buffer;
+			unsigned int msg_len = msg->msgLength + sizeof(Header) + 2;
+
+			if (msg_len > MAX_PACKET_LEN)
+				break;
+
+			sz = file.read(&buffer[sizeof(Header)], (msg->msgLength + 2));
+			if (sz != (lfs_ssize_t)(msg->msgLength + 2))
+				break;
+
+			if (msg->msgClass == MessageClass::MSG_CLASS_MGA && msg->msgId == MGA::ID_ANO) {
+				total_records++;
+
+				if (rtc_available) {
+					MGA::MSG_ANO *ano = (MGA::MSG_ANO *)msg->payload;
+					std::time_t ano_time = convert_epochtime(2000 + ano->year, ano->month, ano->day, 12, 0, 0);
+					std::time_t timediff = std::abs(ano_time - now);
+
+					if (timediff < deltatime) {
+						deltatime = timediff;
+						valid_records = 1;
+					} else if (timediff == deltatime) {
+						valid_records++;
+					}
+				}
+			}
+		}
+
+		status.total_records = total_records;
+		status.valid_records = valid_records;
+
+		if (!rtc_available || deltatime >= (24 * 3600)) {
+			status.stale = true;
+			status.valid_records = 0;
+		}
+
+	} catch (...) {
+		status.file_present = false;
+		status.stale = true;
+	}
+
+	return status;
 }

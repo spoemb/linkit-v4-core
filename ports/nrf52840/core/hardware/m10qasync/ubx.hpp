@@ -22,7 +22,8 @@ namespace UBX
         MSG_CLASS_AID = 0x0B,
         MSG_CLASS_TIM = 0x0D,
         MSG_CLASS_MGA = 0x13,
-        MSG_CLASS_LOG = 0x21
+        MSG_CLASS_LOG = 0x21,
+        MSG_CLASS_SEC = 0x27
     };
 
     struct __attribute__((__packed__)) Empty
@@ -84,7 +85,32 @@ namespace UBX
             ID_VER = 0x04
         };
 
+        struct __attribute__((__packed__)) MSG_VER
+        {
+            char swVersion[30];
+            char hwVersion[10];
+            // Variable-length extension strings follow (30 bytes each)
+        };
+
     } // namespace MON
+
+    /****************************** SEC *************************************/
+
+    namespace SEC
+    {
+        enum Id : uint8_t
+        {
+            ID_UNIQID = 0x03
+        };
+
+        struct __attribute__((__packed__)) MSG_UNIQID
+        {
+            uint8_t version;
+            uint8_t reserved[3];
+            uint8_t uniqueId[5];
+        };
+
+    } // namespace SEC
 
     /****************************** CFG *************************************/
 

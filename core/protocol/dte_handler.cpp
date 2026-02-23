@@ -13,6 +13,8 @@ DTEHandler::DTEHandler() {
 	m_sat_device_active = false;
 	m_doppler_cal_active = false;
 	m_doppler_cal_first_tx = false;
+	m_gnssi_pending = false;
+	m_gps_subscribed = false;
 }
 
 DTEHandler::~DTEHandler() {}
@@ -106,6 +108,10 @@ std::string DTEHandler::PARMR_REQ(int error_code, std::vector<ParamID>& params) 
 }
 
 std::string DTEHandler::STATR_REQ(int error_code, std::vector<ParamID>& params) {
+	// Refresh live RTC value before reading status params
+	if (rtc) {
+		configuration_store->write_param(ParamID::RTC_CURRENT_TIME, static_cast<unsigned int>(rtc->gettime()));
+	}
 	return read_params_by_filter(error_code, params, 'T', DTECommand::STATR_RESP);
 }
 
@@ -173,6 +179,13 @@ std::string DTEHandler::RSTVW_REQ(int error_code, std::vector<BaseType>& arg_lis
 	if (variable_id == 1) {
 		// TX_COUNTER
 		configuration_store->write_param(ParamID::TX_COUNTER, zero);
+	} else if (variable_id == 2) {
+		// BOOT_COUNTER
+#ifdef EXTERNAL_WAKEUP
+		configuration_store->write_param(ParamID::BOOT_COUNTER, zero);
+#else
+		error_code = (int)DTEError::INCORRECT_DATA;
+#endif
 	} else if (variable_id == 3) {
 		// RX_COUNTER
 		configuration_store->write_param(ParamID::ARGOS_RX_COUNTER, zero);
@@ -843,26 +856,27 @@ std::string DTEHandler::PWRON_REQ(int error_code, std::vector<BaseType>& arg_lis
 
 	switch ((ComponentPower)component) {
 	case ComponentPower::ALL:
-		// Power on all components (VSENSORS first for stable power rail)
+		// Power on all components via drivers
 		DEBUG_TRACE("PWRON: Powering ON all components");
+		if (gps_device) {
+			GPSNavSettings nav = {};
+			gps_device->power_on(nav);
+		}
 		GPIOPins::acquire_sensors_pwr();
-		GPIOPins::init_pin(GPS_RST);
-		GPIOPins::set(GPS_RST);
-		PMU::delay_ms(10);
-		GPIOPins::set(GPS_POWER);
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 		GPIOPins::set(SAT_PWR_EN);
 #endif
 		break;
 
 	case ComponentPower::GNSS:
-		// Power on GNSS (matches M10Q exit_shutdown sequence)
+		// Power on GNSS via M10Q driver (triggers full state machine: configure, etc.)
 		DEBUG_TRACE("PWRON: Powering ON GNSS");
-		GPIOPins::acquire_sensors_pwr();
-		GPIOPins::init_pin(GPS_RST);
-		GPIOPins::set(GPS_RST);
-		PMU::delay_ms(10);
-		GPIOPins::set(GPS_POWER);
+		if (gps_device) {
+			GPSNavSettings nav = {};
+			gps_device->power_on(nav);
+		} else {
+			return DTEEncoder::encode(DTECommand::PWRON_RESP, (int)DTEError::INCORRECT_DATA);
+		}
 		break;
 
 	case ComponentPower::SENSORS:
@@ -881,10 +895,11 @@ std::string DTEHandler::PWRON_REQ(int error_code, std::vector<BaseType>& arg_lis
 		break;
 
 	case ComponentPower::OFF:
-		// Power off all components (matches M10Q enter_shutdown sequence)
+		// Power off all components via drivers
 		DEBUG_TRACE("PWRON: Powering OFF all components");
-		GPIOPins::clear(GPS_POWER);
-		GPIOPins::release_to_highz(GPS_RST);
+		if (gps_device) {
+			gps_device->power_off();
+		}
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 		GPIOPins::clear(SAT_PWR_EN);
 #endif
@@ -919,6 +934,149 @@ std::string DTEHandler::SWSST_REQ(int error_code) {
 #else
 	return DTEEncoder::encode(DTECommand::SWSST_RESP, (int)DTEError::PARAM_KEY_UNRECOGNISED);
 #endif
+}
+
+// Helper to format and return GNSSI response from cached info
+static std::string format_gnssi_response(const GNSSDeviceInfo& info) {
+	char uid_hex[11];
+	snprintf(uid_hex, sizeof(uid_hex), "%02X%02X%02X%02X%02X",
+		info.uniqueId[0], info.uniqueId[1], info.uniqueId[2],
+		info.uniqueId[3], info.uniqueId[4]);
+
+	return DTEEncoder::encode(DTECommand::GNSSI_RESP, (int)DTEError::OK,
+		std::string(uid_hex),
+		std::string(info.swVersion),
+		std::string(info.hwVersion));
+}
+
+std::string DTEHandler::GNSSI_REQ(int error_code) {
+	if (error_code) {
+		return DTEEncoder::encode(DTECommand::GNSSI_RESP, error_code);
+	}
+
+	if (!gps_device) {
+		return DTEEncoder::encode(DTECommand::GNSSI_RESP, (int)DTEError::INCORRECT_DATA);
+	}
+
+	// If info is already cached, return immediately
+	auto info = gps_device->get_device_info();
+	if (info.valid) {
+		return format_gnssi_response(info);
+	}
+
+	// Autonomous mode: power on GNSS, wait for device info via async callback
+	DEBUG_INFO("DTEHandler::GNSSI_REQ: info not cached, powering on GNSS autonomously");
+
+	if (!m_gps_subscribed) {
+		gps_device->subscribe(*this);
+		m_gps_subscribed = true;
+	}
+
+	m_gnssi_pending = true;
+	GNSSConfig gnss_config;
+	configuration_store->get_gnss_configuration(gnss_config);
+	GPSNavSettings nav = {
+		gnss_config.fix_mode,
+		gnss_config.dyn_model,
+		gnss_config.assistnow_enable,
+		gnss_config.assistnow_offline_enable,
+		gnss_config.hdop_filter_enable,
+		gnss_config.hdop_filter_threshold,
+		gnss_config.hacc_filter_enable,
+		gnss_config.hacc_filter_threshold,
+	};
+	gps_device->power_on(nav);
+
+	// No immediate response — GPSEventDeviceInfoReady will trigger async response
+	return {};
+}
+
+void DTEHandler::react(const GPSEventDeviceInfoReady&) {
+	if (!m_gnssi_pending) return;
+	m_gnssi_pending = false;
+
+	DEBUG_INFO("DTEHandler::react: GPSEventDeviceInfoReady — sending GNSSI response");
+
+	auto info = gps_device->get_device_info();
+	std::string resp;
+	if (info.valid) {
+		resp = format_gnssi_response(info);
+	} else {
+		resp = DTEEncoder::encode(DTECommand::GNSSI_RESP, (int)DTEError::INCORRECT_DATA);
+	}
+
+	if (m_async_write) {
+		m_async_write(resp);
+	}
+
+	// Power off GNSS now that we have the info
+	gps_device->power_off();
+}
+
+void DTEHandler::react(const GPSEventError&) {
+	if (!m_gnssi_pending) return;
+	m_gnssi_pending = false;
+
+	DEBUG_WARN("DTEHandler::react: GPSEventError — GNSSI failed");
+
+	if (m_async_write) {
+		m_async_write(DTEEncoder::encode(DTECommand::GNSSI_RESP, (int)DTEError::INCORRECT_DATA));
+	}
+
+	// Power off GNSS to reset state machine back to idle
+	gps_device->power_off();
+}
+
+std::string DTEHandler::GNSSA_REQ(int error_code) {
+	if (error_code) {
+		return DTEEncoder::encode(DTECommand::GNSSA_RESP, error_code);
+	}
+
+	if (!gps_device) {
+		return DTEEncoder::encode(DTECommand::GNSSA_RESP, (int)DTEError::INCORRECT_DATA);
+	}
+
+	auto status = gps_device->get_almanac_status();
+
+	return DTEEncoder::encode(DTECommand::GNSSA_RESP, (int)DTEError::OK,
+		(unsigned int)(status.file_present ? 1 : 0),
+		(unsigned int)status.file_size,
+		(unsigned int)status.total_records,
+		(unsigned int)status.valid_records,
+		(unsigned int)(status.stale ? 1 : 0));
+}
+
+std::string DTEHandler::RTCW_REQ(int error_code, std::vector<BaseType>& arg_list) {
+	if (error_code) {
+		return DTEEncoder::encode(DTECommand::RTCW_RESP, error_code);
+	}
+
+	if (arg_list.size() < 1) {
+		return DTEEncoder::encode(DTECommand::RTCW_RESP, (int)DTEError::MISSING_ARGUMENT);
+	}
+
+	unsigned int timestamp = std::get<unsigned int>(arg_list[0]);
+
+	if (timestamp == 0) {
+		return DTEEncoder::encode(DTECommand::RTCW_RESP, (int)DTEError::VALUE_OUT_OF_RANGE);
+	}
+
+	if (!rtc) {
+		return DTEEncoder::encode(DTECommand::RTCW_RESP, (int)DTEError::INCORRECT_DATA);
+	}
+
+	// Set the RTC to the provided unix timestamp
+	rtc->settime(static_cast<std::time_t>(timestamp));
+	DEBUG_INFO("DTEHandler::RTCW_REQ: RTC set to %u", timestamp);
+
+#ifdef EXTERNAL_WAKEUP
+	// Also update LAST_KNOWN_RTC so the pseudo RTC chain continues from this value
+	configuration_store->write_param(ParamID::LAST_KNOWN_RTC, timestamp);
+	configuration_store->save_params();
+	DEBUG_TRACE("DTEHandler::RTCW_REQ: LAST_KNOWN_RTC updated to %u", timestamp);
+#endif
+
+	return DTEEncoder::encode(DTECommand::RTCW_RESP, (int)DTEError::OK);
 }
 
 #pragma GCC diagnostic push
@@ -1038,6 +1196,15 @@ DTEAction DTEHandler::handle_dte_message(const std::string& req, std::string& re
 		break;
 	case DTECommand::SWSST_REQ:
 		resp = SWSST_REQ(error_code);
+		break;
+	case DTECommand::GNSSI_REQ:
+		resp = GNSSI_REQ(error_code);
+		break;
+	case DTECommand::GNSSA_REQ:
+		resp = GNSSA_REQ(error_code);
+		break;
+	case DTECommand::RTCW_REQ:
+		resp = RTCW_REQ(error_code, arg_list);
 		break;
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	case DTECommand::SMDDFU_REQ:

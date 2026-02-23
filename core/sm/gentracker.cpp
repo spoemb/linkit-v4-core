@@ -217,7 +217,13 @@ void PreOperationalState::entry() {
 			led_handle::dispatch<SetLEDPreOperationalBatteryNominal>({});
 
 		m_preop_state_task = system_scheduler->post_task_prio([this](){
-			transit<OperationalState>();
+			// If user started a BLE entry gesture (SHORT_HOLD) during PreOperational,
+			// the LED is in ConfigPending state — honour it and go to ConfigurationState
+			// instead of OperationalState (which would override ConfigPending with SetLEDOff).
+			if (led_handle::is_in_state<LEDConfigPending>())
+				transit<ConfigurationState>();
+			else
+				transit<OperationalState>();
 		},
 		"GenTrackerPreOperationalStateTransitOperationalState",
 		Scheduler::DEFAULT_PRIORITY, TRANSIT_PERIOD_MS);

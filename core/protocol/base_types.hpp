@@ -281,8 +281,15 @@ enum class ParamID {
 #if ENABLE_PRESSURE_SENSOR
 	PRESSURE_SENSOR_FULL_SCALE               = 177,
 #endif
+	GNSS_TOKEN                               = 178,
+	// === Pseudo RTC (slot 179 always reserved) ===
+#ifdef EXTERNAL_WAKEUP
+	LAST_KNOWN_RTC                           = 179,
+#endif
+	// === System status (slot 180 always reserved) ===
+	RTC_CURRENT_TIME                         = 180,
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 178,
+	__PARAM_SIZE                             = 181,
 	__NULL_PARAM                             = 0xFFFF
 };
 

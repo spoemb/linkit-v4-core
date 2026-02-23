@@ -27,6 +27,9 @@ enum class DTECommand {
 	PWRON_REQ,     // Power on/off components
 	SWSST_REQ,     // SWS analog calibration status read
 	SATDP_REQ,     // Satellite Doppler calibration (periodic TX until reset)
+	GNSSI_REQ,     // GNSS device info (unique ID, SW/HW version)
+	GNSSA_REQ,     // GNSS almanac file validation
+	RTCW_REQ,      // RTC manual write (set time before GNSS fix)
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	SMDDFU_REQ,    // SMD satellite module DFU command
 	SMDTST_REQ,    // SMD satellite module SPI applicative test
@@ -54,6 +57,9 @@ enum class DTECommand {
 	PWRON_RESP,    // Power on/off response
 	SWSST_RESP,    // SWS analog calibration status response
 	SATDP_RESP,    // Satellite Doppler calibration response
+	GNSSI_RESP,    // GNSS device info response
+	GNSSA_RESP,    // GNSS almanac file validation response
+	RTCW_RESP,     // RTC manual write response
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	SMDDFU_RESP,   // SMD satellite module DFU response
 	SMDTST_RESP,   // SMD satellite module SPI applicative test response

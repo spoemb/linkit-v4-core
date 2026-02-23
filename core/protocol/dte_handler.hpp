@@ -16,6 +16,8 @@
 #include "bsp.hpp"
 #include "kineis_device.hpp"
 #include "sws_analog_service.hpp"
+#include "gps.hpp"
+#include "rtc.hpp"
 
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 #include "smd_sat.hpp"
@@ -24,6 +26,8 @@ extern SmdSat *smd_sat_instance;
 
 // External sensor access for SENSR command
 extern BatteryMonitor *battery_monitor;
+extern GPSDevice *gps_device;
+extern RTC *rtc;
 
 // This governs the maximum number of log entries we can read out in a single request
 #define DTE_HANDLER_MAX_LOG_DUMP_ENTRIES          8U
@@ -58,7 +62,7 @@ enum class DTEError {
 extern ConfigurationStore *configuration_store;
 extern MemoryAccess *memory_access;
 
-class DTEHandler : public KineisEventListener {
+class DTEHandler : public KineisEventListener, public GPSEventListener {
 private:
 	// Tables
 	static inline std::map<unsigned int, std::string> m_logger_dump = {
@@ -71,6 +75,7 @@ private:
 		{(unsigned int)BaseLogDType::CAM_SENSOR, "CAM"},
 		{(unsigned int)BaseLogDType::AXL_SENSOR, "AXL"},
 		{(unsigned int)BaseLogDType::PRESSURE_SENSOR, "PRESSURE"},
+		{(unsigned int)BaseLogDType::THERMISTOR_SENSOR, "THERMISTOR"},
 		{(unsigned int)BaseLogDType::TSYS01_SENSOR, "TSYS01"},
 	};
 	static inline std::map<unsigned int, std::string> m_logger_erase = {
@@ -83,6 +88,7 @@ private:
 		{(unsigned int)BaseEraseType::CAM_SENSOR, "CAM"},
 		{(unsigned int)BaseEraseType::AXL_SENSOR, "AXL"},
 		{(unsigned int)BaseEraseType::PRESSURE_SENSOR, "PRESSURE"},
+		{(unsigned int)BaseEraseType::THERMISTOR_SENSOR, "THERMISTOR"},
 		{(unsigned int)BaseEraseType::TSYS01_SENSOR, "TSYS01"},
 	};
 	static inline std::map<unsigned int, std::string> m_scalx = {
@@ -101,6 +107,8 @@ private:
 	bool m_sat_device_active;
 	bool m_doppler_cal_active;     // Periodic Doppler TX mode active (until reset)
 	bool m_doppler_cal_first_tx;   // Waiting for first TX result
+	bool m_gnssi_pending;          // Waiting for GNSS device info (autonomous GNSSI)
+	bool m_gps_subscribed;         // Subscribed to GPS events
 	std::function<void(const std::string&)> m_async_write;
 
 	void schedule_doppler_cal_tx();
@@ -138,8 +146,11 @@ public:
 	static std::string SCALR_REQ(int error_code, std::vector<BaseType>& arg_list);
 	std::string ARGOSTX_REQ(int error_code, std::vector<BaseType>& arg_list);
 	static std::string SENSR_REQ(int error_code, std::vector<BaseType>& arg_list);
-	static std::string PWRON_REQ(int error_code, std::vector<BaseType>& arg_list);
+	std::string PWRON_REQ(int error_code, std::vector<BaseType>& arg_list);
 	static std::string SWSST_REQ(int error_code);
+	std::string GNSSI_REQ(int error_code);
+	static std::string GNSSA_REQ(int error_code);
+	static std::string RTCW_REQ(int error_code, std::vector<BaseType>& arg_list);
 
 	std::string SATDP_REQ(int error_code, std::vector<BaseType>& arg_list);
 
@@ -155,4 +166,8 @@ public:
 	void react(KineisEventTxComplete const&) override;
 	void react(KineisEventDeviceError const&) override;
 	void react(KineisEventPowerOff const&) override;
+
+	// GPSEventListener overrides
+	void react(const GPSEventDeviceInfoReady&) override;
+	void react(const GPSEventError&) override;
 };

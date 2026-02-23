@@ -72,6 +72,10 @@ $N;COMMAND#LEN;ERROR_CODE\r
 | SCALR | Request | Read sensor calibration value | [Sensor Commands](Sensor-Commands.md) |
 | PWRON | Request | Power on/off components | [Sensor Commands](Sensor-Commands.md) |
 | SWSST | Request | Read SWS analog calibration status | [Sensor Commands](Sensor-Commands.md) |
+| GNSSI | Request | Read GNSS module device info | [Sensor Commands](Sensor-Commands.md) |
+| GNSSA | Request | Read GNSS almanac file status | [Sensor Commands](Sensor-Commands.md) |
+| RTCW | Request | Set device RTC (unix timestamp) | [Device Commands](Device-Commands.md) |
+| SATDP | Request | Start periodic Doppler TX calibration | [Argos Commands](Argos-Commands.md) |
 | SMDDFU | Request | SMD satellite module DFU | [Argos Commands](Argos-Commands.md) |
 | SMDTST | Request | SMD SPI applicative test | [Argos Commands](Argos-Commands.md) |
 | SMDCD | Request | SMD credentials write | [Argos Commands](Argos-Commands.md) |
@@ -104,5 +108,6 @@ Parameter keys are 5 characters: 3-letter prefix + 2-digit number.
 | `IDT` | Identity Telemetry | Device model, HW/FW version |
 | `IDP` | Identity Params | Device IDs, profile name |
 | `POT` | Power Telemetry | Battery SOC, voltage |
+| `SYT` | System Telemetry | System status (RTC, etc.) |
 
 See [Parameter Reference](Parameter-Reference.md) for the complete table.

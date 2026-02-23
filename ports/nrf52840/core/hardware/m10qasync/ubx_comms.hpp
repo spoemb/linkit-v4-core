@@ -57,6 +57,31 @@ struct UBXCommsEventMgaDBD {
 
 struct UBXCommsEventSendComplete {};
 
+struct UBXCommsEventMonVer {
+	char swVersion[30];
+	char hwVersion[10];
+	UBXCommsEventMonVer(const uint8_t *payload, unsigned int len) {
+		std::memset(swVersion, 0, sizeof(swVersion));
+		std::memset(hwVersion, 0, sizeof(hwVersion));
+		if (len >= sizeof(UBX::MON::MSG_VER)) {
+			const UBX::MON::MSG_VER *ver = (const UBX::MON::MSG_VER *)payload;
+			std::memcpy(swVersion, ver->swVersion, sizeof(swVersion));
+			std::memcpy(hwVersion, ver->hwVersion, sizeof(hwVersion));
+		}
+	}
+};
+
+struct UBXCommsEventSecUniqId {
+	uint8_t uniqueId[5];
+	UBXCommsEventSecUniqId(const uint8_t *payload, unsigned int len) {
+		std::memset(uniqueId, 0, sizeof(uniqueId));
+		if (len >= sizeof(UBX::SEC::MSG_UNIQID)) {
+			const UBX::SEC::MSG_UNIQID *uid = (const UBX::SEC::MSG_UNIQID *)payload;
+			std::memcpy(uniqueId, uid->uniqueId, sizeof(uniqueId));
+		}
+	}
+};
+
 class UBXCommsEventListener {
 public:
 	virtual ~UBXCommsEventListener() {}
@@ -67,6 +92,8 @@ public:
 	virtual void react(const UBXCommsEventNavReport&) {}
     virtual void react(const UBXCommsEventSatReport&) {}
 	virtual void react(const UBXCommsEventMgaDBD&) {}
+	virtual void react(const UBXCommsEventMonVer&) {}
+	virtual void react(const UBXCommsEventSecUniqId&) {}
 	virtual void react(const UBXCommsEventDebug&) {}
 	virtual void react(const UBXCommsEventError&) {}
 };

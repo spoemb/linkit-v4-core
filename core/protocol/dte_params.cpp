@@ -118,7 +118,7 @@ const BaseMap param_map[] = {
 	{ "SHUTDOWN_TIMER", "PWP01", BaseEncoding::UINT, 0U, 86400U, {}, HAS_EXTERNAL_WAKEUP, true },
 	{ "BOOT_COUNTER", "PWP02", BaseEncoding::UINT, 0U, 0U, {}, HAS_EXTERNAL_WAKEUP, false },
 	{ "BOOT_COUNTER_MODULO", "PWP03", BaseEncoding::UINT, 2U, 1000U, {}, HAS_EXTERNAL_WAKEUP, true },
-	{ "WAKEUP_PERIOD", "PWP04", BaseEncoding::UINT, 0U, 86400U, {}, HAS_EXTERNAL_WAKEUP, false },
+	{ "WAKEUP_PERIOD", "PWP04", BaseEncoding::UINT, 0U, 86400U, {}, HAS_EXTERNAL_WAKEUP, true },
 
 	// TCXO warmup period
 	{ "ARGOS_TCXO_WARMUP_TIME", "ARP35", BaseEncoding::UINT, 0U, 30U, {}, true, true },
@@ -244,6 +244,12 @@ const BaseMap param_map[] = {
 	{ "GNSS_SESSION_SINGLE_FIX", "GNP30", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	// [177] Pressure sensor full scale (slots always reserved)
 	{ "PRESSURE_SENSOR_FULL_SCALE", "PRP07", BaseEncoding::PRESSURESENSORFULLSCALE, 0, 0, {}, ENABLE_PRESSURE_SENSOR, true },
+	// [178] GNSS token (e.g. u-blox AssistNow/CloudLocate token)
+	{ "GNSS_TOKEN", "GNP31", BaseEncoding::TEXT, "", "", {}, true, true },
+	// [179] Last known RTC timestamp for pseudo RTC at boot (TPL5111)
+	{ "LAST_KNOWN_RTC", "PWP06", BaseEncoding::UINT, 0U, 0U, {}, HAS_EXTERNAL_WAKEUP, false },
+	// [180] Current RTC time (live, refreshed on STATR read)
+	{ "RTC_CURRENT_TIME", "SYT01", BaseEncoding::UINT, 0U, 0U, {}, true, false },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

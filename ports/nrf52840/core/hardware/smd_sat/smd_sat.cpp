@@ -888,6 +888,11 @@ void SmdSat::power_off_immediate()
     if (m_nrf_spim) {
         delete m_nrf_spim;
         m_nrf_spim = nullptr;
+        nrf_gpio_cfg_output(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
+        nrf_gpio_pin_clear(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
+        nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.mosi_pin, NRF_GPIO_PIN_PULLDOWN);
+        nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.miso_pin, NRF_GPIO_PIN_PULLDOWN);
+        nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.sck_pin, NRF_GPIO_PIN_PULLDOWN);
     }
     m_dfu_mode = false;
 }
@@ -921,7 +926,11 @@ void SmdSat::shutdown(void) {
 	GPIOPins::clear(SAT_RESET);
 	nrf_delay_ms(SMDSAT_DELAY_RST_MS);
 	GPIOPins::clear(SAT_PWR_EN);
-	nrf_gpio_cfg_default(BSP::GPIO_Inits[SAT_RESET].pin_number);  // Disconnect reset (ext pull-up)
+	// Keep RESET driven LOW (do NOT disconnect with cfg_default).
+	// If we disconnect RESET here, the ext pull-up pulls it HIGH while VSENSORS
+	// is still on, back-powering SMD through the RESET ESD diode and partially
+	// charging its decoupling caps. This causes brownout on the next power cycle.
+	// RESET will be disconnected by disconnect_smd_pins() after VSENSORS is off.
 #ifdef SMD_VPA_PIN
 	GPIOPins::drive_low(SMD_VPA_PIN);
 #endif
@@ -982,6 +991,9 @@ void SmdSat::state_starting()
 	m_protocol_detected = true;
 	m_sequence_number = 0;
 	m_nrf_spim = new NrfSPIM(SPI_SATELLITE);
+	// NrfSPIM constructor deactivates SS (HIGH) which can back-power the SMD
+	// through CS ESD diode. Drive SS LOW until we're ready to communicate.
+	nrf_gpio_pin_clear(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
 	m_state_counter = 3;
 	m_next_delay = 0;
 	SMD_STATE_CHANGE(starting, powering_on);
@@ -1016,6 +1028,8 @@ void SmdSat::state_stopped_enter() {
 
 	this->shutdown();
 	GPIOPins::release_sensors_pwr();
+	// Now that VSENSORS is off, safe to disconnect RESET (ext pull-up has no power)
+	nrf_gpio_cfg_default(BSP::GPIO_Inits[SAT_RESET].pin_number);
 	is_kmac_profil_loaded = false;
 	// Keep Protocol A+ mode forced, just reset sequence number
 	m_sequence_number = 0;
@@ -1496,10 +1510,16 @@ cleanup:
 	if (stop_spi) {
 		delete m_nrf_spim;
 		m_nrf_spim = nullptr;
+		nrf_gpio_cfg_output(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
+		nrf_gpio_pin_clear(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
+		nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.mosi_pin, NRF_GPIO_PIN_PULLDOWN);
+		nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.miso_pin, NRF_GPIO_PIN_PULLDOWN);
+		nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.sck_pin, NRF_GPIO_PIN_PULLDOWN);
 	}
 	if (was_stopped) {
 		shutdown();
 		GPIOPins::release_sensors_pwr();
+		nrf_gpio_cfg_default(BSP::GPIO_Inits[SAT_RESET].pin_number);
 	}
 }
 
@@ -1571,10 +1591,16 @@ void SmdSat::read_credentials(unsigned int *dec_id, unsigned int *address, std::
 		if (stop_spi) {
 			delete m_nrf_spim;
 			m_nrf_spim = nullptr;
+			nrf_gpio_cfg_output(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
+			nrf_gpio_pin_clear(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
+			nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.mosi_pin, NRF_GPIO_PIN_PULLDOWN);
+			nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.miso_pin, NRF_GPIO_PIN_PULLDOWN);
+			nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.sck_pin, NRF_GPIO_PIN_PULLDOWN);
 		}
 		if (m_state == SmdSatState::stopped) {
 			shutdown();
 			GPIOPins::release_sensors_pwr();
+			nrf_gpio_cfg_default(BSP::GPIO_Inits[SAT_RESET].pin_number);
 		}
 		throw;
 	}
@@ -1582,10 +1608,16 @@ void SmdSat::read_credentials(unsigned int *dec_id, unsigned int *address, std::
 	if(stop_spi) {
 		delete m_nrf_spim;
 		m_nrf_spim = nullptr;
+		nrf_gpio_cfg_output(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
+		nrf_gpio_pin_clear(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
+		nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.mosi_pin, NRF_GPIO_PIN_PULLDOWN);
+		nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.miso_pin, NRF_GPIO_PIN_PULLDOWN);
+		nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.sck_pin, NRF_GPIO_PIN_PULLDOWN);
 	}
 	if (m_state == SmdSatState::stopped) {
 		shutdown();
 		GPIOPins::release_sensors_pwr();
+		nrf_gpio_cfg_default(BSP::GPIO_Inits[SAT_RESET].pin_number);
 	}
 }
 
@@ -2200,10 +2232,16 @@ bool SmdSat::dfu_enter() {
 	if (stop_spi) {
 		delete m_nrf_spim;
 		m_nrf_spim = nullptr;
+		nrf_gpio_cfg_output(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
+		nrf_gpio_pin_clear(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
+		nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.mosi_pin, NRF_GPIO_PIN_PULLDOWN);
+		nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.miso_pin, NRF_GPIO_PIN_PULLDOWN);
+		nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.sck_pin, NRF_GPIO_PIN_PULLDOWN);
 	}
 	if (was_stopped) {
 		shutdown();
 		GPIOPins::release_sensors_pwr();
+		nrf_gpio_cfg_default(BSP::GPIO_Inits[SAT_RESET].pin_number);
 	}
 
 	return false;
@@ -2603,6 +2641,9 @@ std::string SmdSat::get_firmware_version() {
 	// SPI pins must be configured before powering SMD to avoid floating pins issues
 	if (m_nrf_spim == nullptr) {
 		m_nrf_spim = new NrfSPIM(SPI_SATELLITE);
+		// NrfSPIM constructor deactivates SS (HIGH) which can back-power SMD
+		// through CS ESD diode. Keep SS LOW until we communicate.
+		nrf_gpio_pin_clear(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
 		need_spi_cleanup = true;
 	}
 
@@ -2665,16 +2706,22 @@ std::string SmdSat::get_firmware_version() {
 		DEBUG_ERROR("SmdSat::%s: Failed to read firmware version", __func__);
 	}
 
-	// Cleanup if we initialized SPI
+	// Cleanup if we initialized SPI (match state_stopped_enter GPIO cleanup)
 	if (need_spi_cleanup) {
 		delete m_nrf_spim;
 		m_nrf_spim = nullptr;
+		nrf_gpio_cfg_output(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
+		nrf_gpio_pin_clear(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
+		nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.mosi_pin, NRF_GPIO_PIN_PULLDOWN);
+		nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.miso_pin, NRF_GPIO_PIN_PULLDOWN);
+		nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.sck_pin, NRF_GPIO_PIN_PULLDOWN);
 	}
 
 	// Full power off SMD if we powered it on
 	if (was_stopped) {
 		shutdown();
 		GPIOPins::release_sensors_pwr();
+		nrf_gpio_cfg_default(BSP::GPIO_Inits[SAT_RESET].pin_number);
 	}
 
 	return version;
@@ -2690,6 +2737,9 @@ std::string SmdSat::smd_spi_test() {
 	// Initialize SPI if needed
 	if (m_nrf_spim == nullptr) {
 		m_nrf_spim = new NrfSPIM(SPI_SATELLITE);
+		// NrfSPIM constructor deactivates SS (HIGH) which can back-power SMD
+		// through CS ESD diode. Keep SS LOW until we communicate.
+		nrf_gpio_pin_clear(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
 		need_spi_cleanup = true;
 	}
 
@@ -2838,14 +2888,20 @@ std::string SmdSat::smd_spi_test() {
 		result = "FAIL: Exception";
 	}
 
-	// Cleanup
+	// Cleanup (match state_stopped_enter GPIO cleanup)
 	if (need_spi_cleanup) {
 		delete m_nrf_spim;
 		m_nrf_spim = nullptr;
+		nrf_gpio_cfg_output(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
+		nrf_gpio_pin_clear(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
+		nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.mosi_pin, NRF_GPIO_PIN_PULLDOWN);
+		nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.miso_pin, NRF_GPIO_PIN_PULLDOWN);
+		nrf_gpio_cfg_input(BSP::SPI_Inits[SPI_SATELLITE].config.sck_pin, NRF_GPIO_PIN_PULLDOWN);
 	}
 	if (was_stopped) {
 		shutdown();
 		GPIOPins::release_sensors_pwr();
+		nrf_gpio_cfg_default(BSP::GPIO_Inits[SAT_RESET].pin_number);
 	}
 
 	DEBUG_INFO("SmdSat::%s: === SMD SPI COMMAND TEST END ===", __func__);

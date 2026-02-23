@@ -119,6 +119,7 @@ ReedSwitch *reed_switch;
 DTEHandler *dte_handler;
 RTC *rtc;
 BatteryMonitor *battery_monitor;
+GPSDevice *gps_device;
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 SmdSat *smd_sat_instance = nullptr;  // For SMD DFU OTA support
 #endif
@@ -517,23 +518,32 @@ int main()
 	configuration_store->init();
 
 #ifdef EXTERNAL_WAKEUP
-	// TPL5111 boot counter management
-	// On first boot (after flash/format), boot counter is 0 and we always run
-	// On subsequent boots, we check the modulo to decide if this is our turn to run
 	{
+		// Pseudo RTC: advance the last known RTC by WAKEUP_PERIOD at each boot.
+		// This provides an approximate time immediately, before a GNSS fix corrects it.
+		unsigned int last_rtc = configuration_store->read_param<unsigned int>(ParamID::LAST_KNOWN_RTC);
+		unsigned int wakeup_period = configuration_store->read_param<unsigned int>(ParamID::WAKEUP_PERIOD);
+		if (last_rtc > 0 && wakeup_period > 0) {
+			unsigned int pseudo_rtc = last_rtc + wakeup_period;
+			configuration_store->write_param(ParamID::LAST_KNOWN_RTC, pseudo_rtc);
+			rtc->settime(static_cast<std::time_t>(pseudo_rtc));
+			DEBUG_INFO("EXTERNAL_WAKEUP: Pseudo RTC set to %u (last=%u + period=%u)", pseudo_rtc, last_rtc, wakeup_period);
+		} else {
+			DEBUG_INFO("EXTERNAL_WAKEUP: No pseudo RTC available (last_rtc=%u, wakeup_period=%u)", last_rtc, wakeup_period);
+		}
+
+		// TPL5111 boot counter management
+		// boot_count_increment() calls save_params() which also persists the LAST_KNOWN_RTC update above
 		unsigned int boot_counter = configuration_store->boot_count_increment();
 		DEBUG_INFO("EXTERNAL_WAKEUP: Boot counter = %u", boot_counter);
 
 		// Check if this is not our turn to run based on modulo
-		// boot_count_check_modulo returns true if (counter % modulo == 0) meaning it IS our turn
 		if (boot_counter > 0 && !configuration_store->boot_count_check_modulo(boot_counter)) {
-			// If magnet is present, user wants to configure - skip powerdown
 			if (nrf_reed_switch.get_state()) {
 				DEBUG_INFO("EXTERNAL_WAKEUP: Magnet detected | skipping modulo powerdown");
 			} else {
 				DEBUG_INFO("EXTERNAL_WAKEUP: Not our turn to run (modulo check) | powering down");
 				PMU::powerdown();
-				// Should not reach here - TPL5111 will cut power
 			}
 		}
 		DEBUG_INFO("EXTERNAL_WAKEUP: Our turn to run | continuing boot");
@@ -678,6 +688,7 @@ int main()
 	DEBUG_TRACE("GPS M10Q ...");
 	try {
 		static M10QAsyncReceiver m10q_gnss;
+		gps_device = &m10q_gnss;
 		static GPSService gps_service(m10q_gnss, &fs_sensor_log);
 		static GNSSDetectorService gps_detector(m10q_gnss);
 	} catch (...) {

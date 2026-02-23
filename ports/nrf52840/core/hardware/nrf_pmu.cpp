@@ -13,6 +13,13 @@
 #include "crc16.h"
 #include <string>
 
+#ifdef EXTERNAL_WAKEUP
+#include "rtc.hpp"
+#include "config_store.hpp"
+extern RTC *rtc;
+extern ConfigurationStore *configuration_store;
+#endif
+
 static uint32_t m_reset_cause = 0;
 
 static __attribute__((section(".noinit"))) volatile uint32_t m_callstack[8];
@@ -65,6 +72,15 @@ void PMU::powerdown() {
 
 #if defined(EXTERNAL_WAKEUP)
 	DEBUG_TRACE("Powerdown with external wakeup enabled");
+
+	// Persist current RTC for pseudo RTC chain on next boot
+	if (configuration_store && rtc && rtc->is_set()) {
+		configuration_store->write_param(ParamID::LAST_KNOWN_RTC,
+			static_cast<unsigned int>(rtc->gettime()));
+		configuration_store->save_params();
+		DEBUG_TRACE("PMU::powerdown: Saved LAST_KNOWN_RTC = %u",
+			static_cast<unsigned int>(rtc->gettime()));
+	}
 
 	// Force all LEDs off at hardware level
 	GPIOPins::clear(BSP::GPIO::GPIO_LED_GREEN);

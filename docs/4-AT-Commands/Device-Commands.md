@@ -114,6 +114,7 @@ Reset a specific runtime counter variable to zero.
 | Index | Variable |
 |-------|----------|
 | 1 | TX_COUNTER |
+| 2 | BOOT_COUNTER (EXTERNAL_WAKEUP builds only) |
 | 3 | ARGOS_RX_COUNTER |
 | 4 | ARGOS_RX_TIME |
 
@@ -254,3 +255,32 @@ $O;ERASE#000;\r
 ```
 $N;ERASE#001;7\r
 ```
+
+---
+
+## RTCW -- Set RTC (Manual Time Write)
+
+Manually set the device's real-time clock to a Unix timestamp. This is useful for initializing the RTC before a GNSS fix is available, or for setting time on TPL5111-based (RSPB) builds where the pseudo RTC chain needs a starting value.
+
+**Request:** `timestamp` (uint, Unix epoch seconds, must be > 0).
+
+```
+$RTCW#00A;1708444800\r
+```
+
+**Response:** OK (no payload).
+
+```
+$O;RTCW#000;\r
+```
+
+**Behavior:**
+
+- The RTC is set immediately (offset-based, no delay).
+- On `EXTERNAL_WAKEUP` builds (TPL5111/RSPB), the `LAST_KNOWN_RTC` (PWP06) parameter is also updated and saved to flash. This seeds the pseudo RTC chain so that subsequent boot cycles can maintain approximate time even without a GNSS fix.
+- The current RTC value can be read back via the `SYT01` status parameter: `$STATR#005;SYT01\r`
+
+**Error:**
+- Returns error 7 (VALUE_OUT_OF_RANGE) if timestamp is 0.
+- Returns error 5 (INCORRECT_DATA) if the RTC hardware is not available.
+- Returns error 8 (MISSING_ARGUMENT) if no argument is provided.

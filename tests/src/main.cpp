@@ -16,6 +16,7 @@
 #include "battery.hpp"
 #include "debug.hpp"
 #include "gpio_buzzer.hpp"
+#include "gps.hpp"
 
 #include "CppUTest/CommandLineTestRunner.h"
 #include "CppUTest/TestRegistry.h"
@@ -36,6 +37,7 @@ Led *ext_status_led;
 MemoryAccess *memory_access;
 RTC *rtc;
 BatteryMonitor *battery_monitor;
+GPSDevice *gps_device;
 BaseDebugMode g_debug_mode;
 Buzzer *buzzer_ctl;
 

@@ -214,6 +214,83 @@ indefinitely if something goes wrong (e.g., satellite TX keeps failing).
 
 ---
 
+## Pseudo RTC (Timekeeping Without Battery Backup)
+
+The TPL5111 architecture means the MCU loses all RAM state at each power-off, including the
+real-time clock. There is no battery-backed RTC crystal on the RSPB board. To maintain
+approximate time between wakeups, the firmware implements a **pseudo RTC chain** using a
+flash-persisted parameter.
+
+### How It Works
+
+```
+  Boot N                                       Boot N+1
+  ======                                       ========
+
+  Read LAST_KNOWN_RTC from flash               Read LAST_KNOWN_RTC from flash
+  (e.g., 1708444800)                           (e.g., 1708451100)
+       |                                            |
+       v                                            v
+  Add WAKEUP_PERIOD                            Add WAKEUP_PERIOD
+  (+ 6300 seconds)                             (+ 6300 seconds)
+       |                                            |
+       v                                            v
+  rtc->settime(1708451100)                     rtc->settime(1708457400)
+  "Approximate time set"                       "Approximate time set"
+       |                                            |
+       v                                            v
+  ... GNSS fix acquired ...                    ... GNSS fix acquired ...
+  Exact time from satellite!                   Exact time from satellite!
+       |                                            |
+       v                                            v
+  Save LAST_KNOWN_RTC to flash                 Save LAST_KNOWN_RTC to flash
+  (real timestamp from GNSS)                   (real timestamp from GNSS)
+```
+
+### Chain Initialization
+
+The pseudo RTC chain needs a starting value. There are two ways to seed it:
+
+1. **First GNSS fix:** When the device gets its first GPS fix, `LAST_KNOWN_RTC` is
+   automatically saved to flash during the power-off phase. Subsequent boots use this
+   as the base.
+
+2. **Manual seed via RTCW command:** Before deployment, send the current Unix timestamp
+   via DTE:
+   ```
+   $RTCW#00A;1708444800\r
+   ```
+   This sets the RTC immediately and also saves `LAST_KNOWN_RTC` to flash, seeding
+   the chain without needing a GNSS fix first.
+
+### Accuracy
+
+The pseudo RTC drifts by the difference between the configured `WAKEUP_PERIOD` and
+the actual TPL5111 timer interval. Typical drift is a few seconds per cycle. Each
+successful GNSS fix corrects the drift completely.
+
+If the device fails to get a GNSS fix for several cycles, the time will gradually
+drift but remain usable for pass prediction and timestamping.
+
+### Related Parameters
+
+| Parameter | DTE Key | Description |
+|-----------|---------|-------------|
+| LAST_KNOWN_RTC | PWP06 | Flash-persisted Unix timestamp. Updated on GNSS fix and RTCW. |
+| WAKEUP_PERIOD | PWP04 | TPL5111 period in seconds (~6300s). Added to LAST_KNOWN_RTC at boot. |
+| RTC_CURRENT_TIME | SYT01 | Live RTC value readable via STATR. |
+
+### Reading Current RTC
+
+To check the current RTC time:
+```
+$STATR#005;SYT01\r
+$O;STATR#010;SYT01=1708451100\r
+```
+
+
+---
+
 ## Complete Session Timeline
 
 ### Normal mode example (RSPB deployment config):

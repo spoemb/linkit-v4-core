@@ -93,6 +93,36 @@ $N;SATTX#001;5\r
 
 ---
 
+## SATDP -- Satellite Doppler Calibration
+
+Start a periodic Doppler TX calibration mode. The device sends Doppler packets (battery voltage only, 3 bytes, LDA2 modulation) at the `TR_NOM` interval continuously until the device is reset. This is used for Doppler frequency calibration and testing of the satellite uplink.
+
+**Request:** No arguments.
+
+```
+$SATDP#000;\r
+```
+
+**Behavior:**
+
+- On SMD builds (`ARGOS_SMD=1`), the satellite module is activated and the first Doppler packet is sent immediately.
+- After each successful TX, the next transmission is scheduled at `TR_NOM` seconds (read from configuration).
+- The initial OK response is sent asynchronously after the first TX completes successfully.
+- The mode stays active until the device is reset (`RSTBW`). There is no stop command.
+- The satellite idle timeout is disabled (module stays powered on).
+
+**Response (async, after first TX):**
+
+```
+$O;SATDP#000;\r
+```
+
+**Error:** Returns error 5 (INCORRECT_DATA) if:
+- SATDP is already active (send `RSTBW` to reset first)
+- No SMD satellite module is available (non-SMD builds)
+
+---
+
 ## SMDDFU -- SMD Satellite DFU
 
 Manage firmware updates on the SMD (Satellite Module for ARGOS) via SPI. Only available on RSPB+SMD builds (`ARGOS_SMD=1`).

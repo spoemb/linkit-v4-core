@@ -1,6 +1,6 @@
 # Parameter Reference
 
-Complete reference of all 178 configurable parameters. Parameters are grouped by function.
+Complete reference of all configurable parameters. Parameters are grouped by function.
 
 ## Key Format
 
@@ -73,6 +73,7 @@ Each parameter has a 5-character DTE key (3-letter prefix + 2-digit number) used
 | 127 | GNSS_ASSISTNOW_OFFLINE_EN | GNP27 | BOOL | - | false | RW | |
 | 147 | GNSS_TRIGGER_COLD_START_ON_SURFACED | GNP28 | BOOL | - | false | RW | |
 | 176 | GNSS_SESSION_SINGLE_FIX | GNP30 | BOOL | - | false | RW | |
+| 178 | GNSS_TOKEN | GNP31 | TEXT | - | "" | RW | u-blox AssistNow authentication token |
 
 ### Underwater Detection
 
@@ -218,6 +219,7 @@ Each parameter has a 5-character DTE key (3-letter prefix + 2-digit number) used
 | 90 | BOOT_COUNTER_MODULO | PWP03 | UINT | 2-1000 | 2 | RW | EXTERNAL_WAKEUP |
 | 91 | WAKEUP_PERIOD | PWP04 | UINT | 0-86400 | 6300 | R | EXTERNAL_WAKEUP |
 | 174 | SHUTDOWN_NTIME_SAT | PWP05 | UINT | 0-65535 | 0 | RW | EXTERNAL_WAKEUP |
+| 179 | LAST_KNOWN_RTC | PWP06 | UINT | 0-MAX | 0 | R | EXTERNAL_WAKEUP | Last known Unix timestamp, persisted to flash for pseudo RTC chain |
 
 ### LED
 
@@ -247,3 +249,9 @@ Each parameter has a 5-character DTE key (3-letter prefix + 2-digit number) used
 |----|------|---------|------|-------|---------|----|-------------|
 | 172 | ARGOS_SECKEY | IDP13 | TEXT | - | "" | RW | ARGOS_SMD |
 | 173 | ARGOS_RADIOCONF | IDP14 | TEXT | - | "" | RW | ARGOS_SMD |
+
+### System Status (Read-only via STATR)
+
+| ID | Name | DTE Key | Type | Range | Default | RW | Enable Flag |
+|----|------|---------|------|-------|---------|----|-------------|
+| 180 | RTC_CURRENT_TIME | SYT01 | UINT | - | 0 | R | | Live RTC value (Unix timestamp), refreshed on each STATR read |

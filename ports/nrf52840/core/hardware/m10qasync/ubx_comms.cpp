@@ -310,7 +310,12 @@ void UBXComms::run_expect_filter(const UBX::HeaderAndPayloadCRC * const msg) {
 	} else if (msg->msgClass == MessageClass::MSG_CLASS_CFG && msg->msgId == UBX::CFG::ID_VALGET) {
 		m_expect.enable = false;
 		notify(UBXCommsEventCfgValget((uint8_t *)msg->payload, msg->msgLength));
-		
+	} else if (msg->msgClass == MessageClass::MSG_CLASS_MON && msg->msgId == UBX::MON::ID_VER) {
+		m_expect.enable = false;
+		notify(UBXCommsEventMonVer((uint8_t *)msg->payload, msg->msgLength));
+	} else if (msg->msgClass == MessageClass::MSG_CLASS_SEC && msg->msgId == UBX::SEC::ID_UNIQID) {
+		m_expect.enable = false;
+		notify(UBXCommsEventSecUniqId((uint8_t *)msg->payload, msg->msgLength));
 	} else {
 		m_expect.enable = false;
 		notify(UBXCommsEventAckNack(true));

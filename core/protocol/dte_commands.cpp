@@ -155,7 +155,7 @@ const DTECommandMap command_map[] = {
 					.encoding = BaseEncoding::HEXADECIMAL,
 					.min_value = 0U,
 					.max_value = 0U,
-					.permitted_values = { 1U, 3U, 4U },
+					.permitted_values = { 1U, 2U, 3U, 4U },
 					.is_implemented = false,
 					.is_writable = false
 				},
@@ -395,6 +395,42 @@ const DTECommandMap command_map[] = {
 		.name = "SATDP",
 		.command = DTECommand::SATDP_REQ,
 		.prototype = {}
+	},
+	// GNSSI - GNSS device info (no arguments)
+	// Usage: $GNSSI#000;\r
+	// Returns unique ID, SW version, HW version from GNSS module
+	{
+		.name = "GNSSI",
+		.command = DTECommand::GNSSI_REQ,
+		.prototype = {}
+	},
+	// GNSSA - GNSS almanac file validation (no arguments)
+	// Usage: $GNSSA#000;\r
+	// Returns almanac file presence, size, record counts, staleness
+	{
+		.name = "GNSSA",
+		.command = DTECommand::GNSSA_REQ,
+		.prototype = {}
+	},
+	// RTCW - RTC manual write (set time before GNSS fix)
+	// Usage: $RTCW#00A;<unix_timestamp>\r
+	// Sets the RTC to the given unix timestamp value
+	{
+		.name = "RTCW",
+		.command = DTECommand::RTCW_REQ,
+		.prototype =
+		{
+			{
+				.name = "timestamp",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 0U,  // No max limit for unix timestamp
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
 	},
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	// SMD DFU command - allows firmware update of SMD satellite module
@@ -948,6 +984,108 @@ const DTECommandMap command_map[] = {
 	{
 		.name = "SATDP",
 		.command = DTECommand::SATDP_RESP,
+		.prototype = {}
+	},
+	// GNSSI response - unique ID, SW version, HW version
+	{
+		.name = "GNSSI",
+		.command = DTECommand::GNSSI_RESP,
+		.prototype =
+		{
+			{
+				.name = "unique_id",
+				.key = "",
+				.encoding = BaseEncoding::TEXT,
+				.min_value = "",
+				.max_value = "",
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "sw_version",
+				.key = "",
+				.encoding = BaseEncoding::TEXT,
+				.min_value = "",
+				.max_value = "",
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "hw_version",
+				.key = "",
+				.encoding = BaseEncoding::TEXT,
+				.min_value = "",
+				.max_value = "",
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	},
+	// GNSSA response - almanac file status
+	{
+		.name = "GNSSA",
+		.command = DTECommand::GNSSA_RESP,
+		.prototype =
+		{
+			{
+				.name = "present",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 1U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "file_size",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 0U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "total_records",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 0U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "valid_records",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 0U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "stale",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 1U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	},
+	// RTCW response - simple acknowledgement
+	{
+		.name = "RTCW",
+		.command = DTECommand::RTCW_RESP,
 		.prototype = {}
 	},
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)

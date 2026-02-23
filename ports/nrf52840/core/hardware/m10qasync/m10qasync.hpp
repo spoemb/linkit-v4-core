@@ -33,6 +33,12 @@ private:
 	bool m_unrecoverable_error;
 	bool m_database_overflow;
 
+	// GNSS device info (cached from configure phase)
+	char m_gnss_sw_version[30];
+	char m_gnss_hw_version[10];
+	uint8_t m_gnss_unique_id[5];
+	bool m_gnss_info_valid;
+
 	// ISR-to-scheduler data buffers (replaces static locals to avoid data races)
 	UBXCommsEventNavReport m_pending_nav;
 	UBXCommsEventSatReport m_pending_sat;
@@ -125,6 +131,8 @@ private:
 	void disable_nav_status_message();
     void disable_nav_sat_message();
 	void fetch_navigation_database();
+	void query_mon_ver();
+	void query_sec_uniqid();
 	void sync_baud_rate(unsigned int baud);
 	void dump_navigation_database(unsigned int);
 
@@ -144,6 +152,12 @@ private:
 	void react(const UBXCommsEventNavReport&) override;
 	void react(const UBXCommsEventMgaAck&) override;
 	void react(const UBXCommsEventMgaDBD&) override;
+	void react(const UBXCommsEventMonVer&) override;
+	void react(const UBXCommsEventSecUniqId&) override;
 	void react(const UBXCommsEventDebug&) override;
 	void react(const UBXCommsEventError&) override;
+
+public:
+	GNSSDeviceInfo get_device_info() const override;
+	GNSSAlmanacStatus get_almanac_status() const override;
 };

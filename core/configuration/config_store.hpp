@@ -326,6 +326,9 @@ protected:
 		/* [175] LB_SHUTDOWN_NTIME_SAT */ 0U,
 		/* [176] GNSS_SESSION_SINGLE_FIX */ (bool)false,
 		/* [177] PRESSURE_SENSOR_FULL_SCALE */ BasePressureSensorFullScale::FS_1260,
+		/* [178] GNSS_TOKEN */ std::string(""),
+		/* [179] LAST_KNOWN_RTC */ 0U,
+		/* [180] RTC_CURRENT_TIME */ 0U,
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,
