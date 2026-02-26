@@ -110,6 +110,10 @@ void PMU::powerdown() {
 #endif
 #endif // EXTERNAL_WAKEUP
 
+#ifdef VSYS_SEL
+	GPIOPins::clear(VSYS_SEL);  // Switch to 1.8V before power down
+#endif
+
 #if defined(POWER_CONTROL_PIN)
 	DEBUG_TRACE("Attempt power off using power pin");
 	GPIOPins::clear(POWER_CONTROL_PIN);

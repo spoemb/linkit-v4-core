@@ -62,6 +62,36 @@
 			"group": "build"
 		},
 		// =====================================================================
+		// LinkIt V4 SMD Board Tasks
+		// =====================================================================
+		{
+			"type": "shell",
+			"label": "LinkItV4-SMD: clean build (Debug)",
+			"command": "rm -rf ports/nrf52840/build/LINKIT_SMD && mkdir -p ports/nrf52840/build/LINKIT_SMD && cd ports/nrf52840/build/LINKIT_SMD && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=LINKIT -DCMAKE_BUILD_TYPE=Debug -DMODEL=UW -DARGOS_SMD=ON -DENABLE_AXL_SENSOR=ON ../.. && make -j20",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
+		},
+		{
+			"type": "shell",
+			"label": "LinkItV4-SMD: flash (Debug)",
+			"detail": "Flash Debug build with SoftDevice (no bootloader)",
+			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/drivers/nRF5_SDK_17.0.2/components/softdevice/s140/hex/s140_nrf52_7.2.0_softdevice.hex --sectorerase && nrfjprog -f nrf52 --program ports/nrf52840/build/LINKIT_SMD/LinkIt_UW_board.hex --sectorerase && nrfjprog -f nrf52 --reset",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
+		},
+		// =====================================================================
 		// RSPB Board Tasks (with SMD satellite module)
 		// =====================================================================
 		{

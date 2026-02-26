@@ -81,9 +81,9 @@ void NrfSwitch::stop() {
 }
 
 void NrfSwitch::update_state(bool state) {
-	//DEBUG_TRACE("NrfSwitch::update_state: state=%u old=%u", state, m_current_state);
 	// Call state change handler if state has changed
 	if (state != m_current_state) {
+		DEBUG_TRACE("NrfSwitch::update_state: %u -> %u", m_current_state, state);
 		m_current_state = state;
 		if (m_state_change_handler)
 			m_state_change_handler(state);
@@ -92,12 +92,23 @@ void NrfSwitch::update_state(bool state) {
 
 void NrfSwitch::process_event(bool state) {
 	uint64_t now = system_timer->get_counter();
-	DEBUG_TRACE("NrfSwitch::process_event: state=%u hysteresis=%u timer=%lu", state, m_hysteresis_time_ms, now);
-	// Each time we get a new event we trigger the timer to post it after the hysteresis time.
-	// If we receive another event, we cancel the previous task and start a new one.
-	system_timer->cancel_schedule(m_timer_handle);
-	m_timer_handle = system_timer->add_schedule([this, state]() {
-		update_state(state == m_active_state);
+
+	// On first edge: disable GPIOTE to suppress all bounce interrupts,
+	// then schedule a single readback after the hysteresis period.
+	// Subsequent edges during debounce are silently ignored.
+	if (m_debouncing)
+		return;
+
+	m_debouncing = true;
+	nrfx_gpiote_in_event_disable(BSP::GPIO_Inits[m_pin].pin_number);
+
+	m_timer_handle = system_timer->add_schedule([this]() {
+		// Read the actual settled pin state after debounce
+		bool settled = (GPIOPins::value(m_pin) == m_active_state);
+		update_state(settled);
+		// Re-enable GPIOTE for next edge
+		m_debouncing = false;
+		nrfx_gpiote_in_event_enable(BSP::GPIO_Inits[m_pin].pin_number, true);
 	}, now + m_hysteresis_time_ms);
 }
 

@@ -8,6 +8,7 @@ class NrfSwitchManager;
 class NrfSwitch : public Switch {
 private:
 	Timer::TimerHandle m_timer_handle;
+	bool m_debouncing = false;  // True while GPIOTE is disabled during debounce
 
 	void process_event(bool state);
 	void update_state(bool state);

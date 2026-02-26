@@ -125,9 +125,13 @@ if(${BOARD} MATCHES RSPB)
     endif()
 else()
     set(TARGET_NAME ${PROJECT_NAME}_${MODEL}_board)
-    set(BOARD_DIR "${PROJ_DIR}/bsp/gentracker_v1.0")
-    set(ARGOS_SMD_ENABLED 0)
-    set(BOOTLOADER "bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex")
+    set(BOARD_DIR "${PROJ_DIR}/bsp/linkitv4_v1.0")
+    if(ARGOS_SMD)
+        set(ARGOS_SMD_ENABLED 1)
+    else()
+        set(ARGOS_SMD_ENABLED 0)
+    endif()
+    set(BOOTLOADER "bootloader/gentracker_secure_bootloader/linkitv4_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex")
 endif()
 
 if(NOT DEFINED DEBUG_LEVEL)
@@ -333,6 +337,7 @@ target_sources(${TARGET_NAME} PRIVATE
     ${CORE_DIR}/services/argos_tx_service.cpp
     ${CORE_DIR}/services/argos_rx_service.cpp
     ${CORE_DIR}/services/uwdetector_service.cpp
+    $<$<NOT:$<STREQUAL:${BOARD},RSPB>>:${CMAKE_CURRENT_SOURCE_DIR}/../../core/services/sws_analog_service.cpp>
     ${CORE_DIR}/logging/logger.cpp
     ${CORE_DIR}/util/haversine.cpp
     ${CORE_DIR}/filesystem/ota_flash_file_updater.cpp
@@ -484,7 +489,7 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     $<$<STREQUAL:${BOARD},RSPB>:BOARD_RSPB_V1>
     $<$<STREQUAL:${BOARD},RSPB>:BOARD_RSPB>
     $<$<STREQUAL:${BOARD},RSPB>:EXTERNAL_WAKEUP>
-    $<$<NOT:$<STREQUAL:${BOARD},RSPB>>:BOARD_PCA10059>
+    $<$<NOT:$<STREQUAL:${BOARD},RSPB>>:BOARD_LINKIT_V4>
     BOARD_${BOARD}
     CONFIG_GPIO_AS_PINRESET
     CONFIG_NFCT_PINS_AS_GPIOS
