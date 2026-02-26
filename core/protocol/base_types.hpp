@@ -122,7 +122,7 @@ enum class ParamID {
 	ZONE_ENABLE_ACTIVATION_DATE              = 67,
 	ZONE_ACTIVATION_DATE                     = 68,
 	ZONE_ARGOS_DEPTH_PILE                    = 69,
-	ZONE_ARGOS_POWER                         = 70,
+	_RESERVED_70                             = 70,
 	ZONE_ARGOS_REPETITION_SECONDS            = 71,
 	ZONE_ARGOS_MODE                          = 72,
 	ZONE_ARGOS_DUTY_CYCLE                    = 73,

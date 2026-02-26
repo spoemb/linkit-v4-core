@@ -1997,7 +1997,7 @@ TEST(ArgosScheduler, SchedulingShortPacketOutOfZoneFlag)
 	BaseArgosDepthPile zone_argos_depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
 	fake_config_store->write_param(ParamID::ZONE_ARGOS_DEPTH_PILE, zone_argos_depth_pile);
 	BaseArgosPower zone_argos_power = BaseArgosPower::POWER_200_MW;
-	fake_config_store->write_param(ParamID::ZONE_ARGOS_POWER, zone_argos_power);
+	fake_config_store->write_param(ParamID::_RESERVED_70, zone_argos_power);
 	unsigned int zone_argos_time_repetition_seconds = 240;
 	fake_config_store->write_param(ParamID::ZONE_ARGOS_REPETITION_SECONDS, zone_argos_time_repetition_seconds);
 	BaseArgosMode zone_argos_mode = BaseArgosMode::LEGACY;
@@ -2117,7 +2117,7 @@ TEST(ArgosScheduler, SchedulingLongPacketOutOfZoneFlag)
 	BaseArgosDepthPile zone_argos_depth_pile = BaseArgosDepthPile::DEPTH_PILE_4;
 	fake_config_store->write_param(ParamID::ZONE_ARGOS_DEPTH_PILE, zone_argos_depth_pile);
 	BaseArgosPower zone_argos_power = BaseArgosPower::POWER_200_MW;
-	fake_config_store->write_param(ParamID::ZONE_ARGOS_POWER, zone_argos_power);
+	fake_config_store->write_param(ParamID::_RESERVED_70, zone_argos_power);
 	unsigned int zone_argos_time_repetition_seconds = 240;
 	fake_config_store->write_param(ParamID::ZONE_ARGOS_REPETITION_SECONDS, zone_argos_time_repetition_seconds);
 	BaseArgosMode zone_argos_mode = BaseArgosMode::LEGACY;
@@ -2756,7 +2756,7 @@ TEST(ArgosScheduler, OutOfZoneModeChangeLegacy)
 	BaseArgosDepthPile zone_argos_depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
 	fake_config_store->write_param(ParamID::ZONE_ARGOS_DEPTH_PILE, zone_argos_depth_pile);
 	BaseArgosPower zone_argos_power = BaseArgosPower::POWER_200_MW;
-	fake_config_store->write_param(ParamID::ZONE_ARGOS_POWER, zone_argos_power);
+	fake_config_store->write_param(ParamID::_RESERVED_70, zone_argos_power);
 	unsigned int zone_argos_time_repetition_seconds = 60;
 	fake_config_store->write_param(ParamID::ZONE_ARGOS_REPETITION_SECONDS, zone_argos_time_repetition_seconds);
 	BaseArgosMode zone_argos_mode = BaseArgosMode::PASS_PREDICTION;
@@ -2919,7 +2919,7 @@ TEST(ArgosScheduler, OutOfZoneModeChangePrepass)
 	BaseArgosDepthPile zone_argos_depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
 	fake_config_store->write_param(ParamID::ZONE_ARGOS_DEPTH_PILE, zone_argos_depth_pile);
 	BaseArgosPower zone_argos_power = BaseArgosPower::POWER_200_MW;
-	fake_config_store->write_param(ParamID::ZONE_ARGOS_POWER, zone_argos_power);
+	fake_config_store->write_param(ParamID::_RESERVED_70, zone_argos_power);
 	unsigned int zone_argos_time_repetition_seconds = 60;
 	fake_config_store->write_param(ParamID::ZONE_ARGOS_REPETITION_SECONDS, zone_argos_time_repetition_seconds);
 	BaseArgosMode zone_argos_mode = BaseArgosMode::LEGACY;

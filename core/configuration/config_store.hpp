@@ -187,7 +187,7 @@ protected:
 		/* ZONE_ENABLE_ACTIVATION_DATE */ (bool)true,
 		/* ZONE_ACTIVATION_DATE */ static_cast<std::time_t>(1577836800U), // 01/01/2020 00:00:00
 		/* ZONE_ARGOS_DEPTH_PILE */ BaseArgosDepthPile::DEPTH_PILE_1,
-		/* ZONE_ARGOS_POWER */ BaseArgosPower::POWER_350_MW,
+		/* _RESERVED_70 */ BaseArgosPower::POWER_350_MW,
 
 #if MODEL_SB
 		/* ZONE_ARGOS_REPETITION_SECONDS */ 60U,

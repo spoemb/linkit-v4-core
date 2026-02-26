@@ -87,7 +87,7 @@ const BaseMap param_map[] = {
 	{ "ZONE_ENABLE_ACTIVATION_DATE", "ZOP05", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "ZONE_ACTIVATION_DATE", "ZOP06", BaseEncoding::DATESTRING, 0, 0, {}, true, true },
 	{ "ZONE_ARGOS_DEPTH_PILE", "ZOP08", BaseEncoding::DEPTHPILE, 0U, 0U, {1U, 2U, 3U, 4U, 8U, 9U, 10U, 11U, 12U}, true, true },
-	{ "_RESERVED_ZONE_ARGOS_POWER", "", BaseEncoding::ARGOSPOWER, 0U, 0U, { 0, 1, 2, 3 }, false, false },  // Obsolete: RADIOCONF controls power
+	{ "_RESERVED_70", "", BaseEncoding::ARGOSPOWER, 0U, 0U, { 0, 1, 2, 3 }, false, false },
 	{ "ZONE_ARGOS_REPETITION_SECONDS", "ZOP10", BaseEncoding::UINT, 30U, 1200U, {}, true, true },
 	{ "ZONE_ARGOS_MODE", "ZOP11", BaseEncoding::ARGOSMODE, 0U, 0U, { 0U, 1U, 2U, 3U, 4U }, true, true },
 	{ "ZONE_ARGOS_DUTY_CYCLE", "ZOP12", BaseEncoding::UINT, 0U, 0xFFFFFFU, {}, true, true },
