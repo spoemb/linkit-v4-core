@@ -20,7 +20,7 @@
 
 // Default values if configuration is invalid (work for both resolutions)
 #define DEFAULT_THRESHOLD_MIN 100
-#define DEFAULT_THRESHOLD_MAX 3000
+#define DEFAULT_THRESHOLD_MAX 8000
 #define DEFAULT_HYSTERESIS_PERCENT 14     // Optimized from Monte Carlo: balance transitions/stability
 #define DEFAULT_CALIB_INTERVAL_SEC 3600
 #define DEFAULT_MAX_DIVE_TIME_SEC 7200
@@ -132,7 +132,7 @@ void SWSAnalogService::service_init() {
     m_time_in_current_state = 0;
     m_consecutive_samples = 0;
     m_min_adc_during_dive = 0xFFFF;
-    m_time_in_hysteresis = 0;
+    m_hysteresis_start_time = 0;
 
     // Initialize surface readings buffer
     m_surface_readings_idx = 0;
@@ -239,6 +239,7 @@ bool SWSAnalogService::validate_calibration_data() {
 void SWSAnalogService::calibrate_air_baseline() {
     const int NUM_SAMPLES = 10;
     uint32_t sum = 0;
+    int valid_count = 0;
 
     DEBUG_INFO("SWSAnalog: Starting air baseline calibration (%d samples)", NUM_SAMPLES);
 
@@ -247,13 +248,19 @@ void SWSAnalogService::calibrate_air_baseline() {
         uint16_t value = read_analog_sws();
         if (is_value_valid(value)) {
             sum += value;
+            valid_count++;
         } else {
             DEBUG_WARN("SWSAnalog: Invalid sample %u during air calibration", value);
         }
         PMU::delay_ms(100);  // Small delay between samples
     }
 
-    m_calib.threshold_air = (uint16_t)(sum / NUM_SAMPLES);
+    if (valid_count == 0) {
+        DEBUG_ERROR("SWSAnalog: No valid samples during air calibration | keeping previous baseline");
+        return;
+    }
+
+    m_calib.threshold_air = (uint16_t)(sum / valid_count);
 
     // If water threshold not yet set, use a reasonable default
     if (m_calib.threshold_water == 0 || m_calib.threshold_water <= m_calib.threshold_air) {
@@ -528,30 +535,54 @@ bool SWSAnalogService::detector_state() {
                 m_decreasing_trend_count, total_drop_percent, m_cumulative_drop_percent,
                 m_variance_sum_sq, trend_suggests_surface, variance_suggests_surface);
 
-    // === ADAPTIVE AIR BASELINE RECALIBRATION (Biofouling compensation) ===
-    // When at surface for extended time with elevated readings, adapt air baseline
+    // === CONTINUOUS AIR BASELINE TRACKING ===
+    // While at surface, accumulate ADC readings into a circular buffer.
+    // This replaces the old blocking 10-sample burst recalibration:
+    //   - No blocking delays (uses the readings we already take during normal sampling)
+    //   - Works regardless of how long the animal stays at surface
+    //   - When calib interval expires, recompute air baseline from accumulated readings
+    //   - Also detects biofouling (elevated surface readings) for immediate adaptation
     if (!m_current_state && m_time_in_current_state > MIN_SURFACE_TIME_FOR_ADAPT) {
-        // Add to surface readings buffer
+        // Add to surface readings buffer (circular, overwrites oldest)
         m_surface_readings[m_surface_readings_idx] = filtered_value;
         m_surface_readings_idx = (m_surface_readings_idx + 1) % SURFACE_BUFFER_SIZE;
         if (m_surface_readings_count < SURFACE_BUFFER_SIZE) {
             m_surface_readings_count++;
         }
 
-        // Check if readings are elevated (biofouling detected)
-        if (m_surface_readings_count >= SURFACE_BUFFER_SIZE / 2 &&
-            m_time_in_current_state % 10 == 0) {  // Check every 10 seconds
-
+        // Compute average of accumulated surface readings
+        if (m_surface_readings_count >= SURFACE_BUFFER_SIZE / 2) {
             uint32_t sum = 0;
             for (int i = 0; i < m_surface_readings_count; i++) {
                 sum += m_surface_readings[i];
             }
             uint16_t avg_surface = (uint16_t)(sum / m_surface_readings_count);
 
-            // If surface readings significantly above air baseline, adapt
-            if (avg_surface > (uint16_t)(m_calib.threshold_air * SURFACE_ADAPT_THRESHOLD)) {
+            // === PERIODIC RECALIBRATION (non-blocking) ===
+            // When calib interval has elapsed, update air baseline from accumulated readings
+            if (should_recalibrate()) {
                 uint16_t old_air = m_calib.threshold_air;
-                // Gradual adaptation (10% per update)
+                m_calib.threshold_air = avg_surface;
+                update_dynamic_threshold();
+
+                // Update CRC and reset calibration timer
+                m_calib.last_calibration_time = PMU::get_timestamp_ms() / 1000;
+                m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
+                                             sizeof(m_calib) - sizeof(m_calib.crc),
+                                             nullptr);
+
+                DEBUG_INFO("SWSAnalog: Air recalib from %u surface samples: %u -> %u",
+                           m_surface_readings_count, old_air, m_calib.threshold_air);
+
+                // Reset buffer for next interval
+                m_surface_readings_count = 0;
+                m_surface_readings_idx = 0;
+            }
+            // === BIOFOULING DETECTION (immediate adaptation) ===
+            // If surface readings are significantly elevated, adapt gradually
+            else if (avg_surface > (uint16_t)(m_calib.threshold_air * SURFACE_ADAPT_THRESHOLD)) {
+                uint16_t old_air = m_calib.threshold_air;
+                // Gradual adaptation (10% per update) to avoid overcorrection
                 m_calib.threshold_air = (uint16_t)(m_calib.threshold_air * 0.9f + avg_surface * 0.1f);
                 update_dynamic_threshold();
                 DEBUG_INFO("SWSAnalog: Adaptive air recalib %u -> %u (biofouling)", old_air, m_calib.threshold_air);
@@ -668,7 +699,7 @@ bool SWSAnalogService::detector_state() {
         // Force surface detection based on trend/variance
         new_state = false;
         m_consecutive_samples = 0;
-        m_time_in_hysteresis = 0;
+        m_hysteresis_start_time = 0;
         // Flag: rapid detection confirmed - bypass confirmation on subsequent samples
         // within the same parent batch (m_current_state hasn't been updated yet)
         m_rapid_surface_confirmed = true;
@@ -678,11 +709,11 @@ bool SWSAnalogService::detector_state() {
         // we're at surface. Return false immediately without confirmation delay.
         new_state = false;
         m_consecutive_samples = 0;
-        m_time_in_hysteresis = 0;
+        m_hysteresis_start_time = 0;
     } else if (filtered_value > threshold_high) {
         // Above threshold - potential underwater
         m_consecutive_samples++;
-        m_time_in_hysteresis = 0;  // Reset hysteresis counter
+        m_hysteresis_start_time = 0;  // Left hysteresis zone
         m_rapid_surface_confirmed = false;  // Clear rapid flag if going back underwater
 
         if (m_consecutive_samples >= m_max_samples) {
@@ -691,7 +722,7 @@ bool SWSAnalogService::detector_state() {
         }
     } else if (filtered_value < threshold_low) {
         // Below threshold - potential surface
-        m_time_in_hysteresis = 0;  // Reset hysteresis counter
+        m_hysteresis_start_time = 0;  // Left hysteresis zone
 
         if (m_current_state) {
             // Currently underwater, need confirmation for surface
@@ -707,11 +738,18 @@ bool SWSAnalogService::detector_state() {
     } else {
         // === IN HYSTERESIS ZONE ===
         m_consecutive_samples = 0;
-        m_time_in_hysteresis++;
+        uint64_t now_sec = PMU::get_timestamp_ms() / 1000;
+
+        // Record when we entered the hysteresis zone
+        if (m_hysteresis_start_time == 0) {
+            m_hysteresis_start_time = now_sec;
+        }
+
+        uint32_t time_in_hysteresis_sec = (uint32_t)(now_sec - m_hysteresis_start_time);
 
         // If stuck in hysteresis zone too long, recalibrate air baseline
-        if (m_time_in_hysteresis > HYSTERESIS_STUCK_TIMEOUT_SEC &&
-            m_time_in_hysteresis % 15 == 0) {  // Check every 15 seconds
+        if (time_in_hysteresis_sec > HYSTERESIS_STUCK_TIMEOUT_SEC &&
+            (time_in_hysteresis_sec % 15) == 0) {  // Check every 15 seconds
             uint16_t old_air = m_calib.threshold_air;
             // Move air baseline up toward current reading
             uint16_t new_air = (uint16_t)(filtered_value * 0.75f);
@@ -723,7 +761,7 @@ bool SWSAnalogService::detector_state() {
         }
 
         DEBUG_TRACE("SWSAnalog: In hysteresis zone (%us) | maintaining state=%u",
-                    m_time_in_hysteresis, new_state);
+                    time_in_hysteresis_sec, new_state);
     }
 
     // Track minimum ADC during dive for biofouling detection
@@ -797,7 +835,7 @@ bool SWSAnalogService::detector_state() {
         m_time_in_current_state = 0;
         m_consecutive_samples = 0;
         m_min_adc_during_dive = 0xFFFF;  // Reset min ADC tracking
-        m_time_in_hysteresis = 0;
+        m_hysteresis_start_time = 0;
 
         // Reset trend and variance tracking on state change
         m_trend_buffer_count = 0;
@@ -814,11 +852,9 @@ bool SWSAnalogService::detector_state() {
                    m_current_state, new_state, filtered_value, m_calib.threshold_current);
     }
 
-    // Periodic recalibration check (only when at surface)
-    if (!new_state && should_recalibrate()) {
-        DEBUG_INFO("SWSAnalog: Periodic recalibration triggered");
-        calibrate_air_baseline();
-    }
+    // NOTE: Periodic air recalibration is now handled non-blocking in the
+    // "CONTINUOUS AIR BASELINE TRACKING" section above, using accumulated
+    // surface readings from normal sampling. No blocking burst needed here.
 
     // Update status snapshot for DTE diagnostic readout
     m_status.threshold_air = m_calib.threshold_air;

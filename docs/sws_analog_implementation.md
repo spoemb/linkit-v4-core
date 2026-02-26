@@ -136,6 +136,7 @@ Each call to `detector_state()` executes these steps in order:
 │    - Surface readings buffer (10 samples)                │
 │    - If mean > 1.3x air_baseline → recalibrate           │
 │    - Gradual adaptation (10% per update)                 │
+│    - Air calibration uses valid_count (skips invalid)    │
 ├──────────────────────────────────────────────────────────┤
 │ 6. RAPID TRANSITION DETECTION (TIER 1/2/3)               │
 │    - Drop % calculated on raw_value (not filtered!)      │
@@ -175,7 +176,7 @@ ADC
  |  |  ──── threshold_current = air + ratio% × (water - air)
  |  |                           ratio = 35%
  |  |  ──── threshold_low  = threshold_current - hysteresis
- |  |                         hysteresis = 10% of threshold
+ |  |                         hysteresis = 14% of threshold (Monte Carlo optimized)
  |  |
  |  └─── threshold_air (calibrated in air, adapts to biofouling)
  |
@@ -381,8 +382,9 @@ Gives the electrodes time to stabilize at the surface.
 
 ### Hysteresis Stuck Recalibration (30s in hysteresis zone)
 
-If the ADC stays in the hysteresis zone for > 30s, progressively recalibrates
-the air baseline toward the current value.
+If the ADC stays in the hysteresis zone for > 30s (tracked via timestamp, not sample
+counter), every 15s the air baseline is recalibrated upward toward the current value
+(`new_air = filtered_value * 0.75`, applied only if > 1.2x current air baseline).
 
 ### ADC Validation
 
@@ -401,8 +403,8 @@ If invalid, the previous state is maintained.
 | Parameter | ParamID | Default | Description |
 |-----------|---------|---------|-------------|
 | `SWS_ANALOG_THRESHOLD_MIN` | UNP20 | 100 | Minimum valid ADC |
-| `SWS_ANALOG_THRESHOLD_MAX` | UNP21 | 3000 | Maximum valid ADC |
-| `SWS_ANALOG_HYSTERESIS` | UNP22 | 10% | Hysteresis in % |
+| `SWS_ANALOG_THRESHOLD_MAX` | UNP21 | 8000 | Maximum valid ADC (14-bit range) |
+| `SWS_ANALOG_HYSTERESIS` | UNP22 | 14% | Hysteresis in % (Monte Carlo optimized) |
 | `SWS_ANALOG_CALIB_INTERVAL` | UNP23 | 3600s | Recalibration interval |
 | `UW_MAX_DIVE_TIME` | UNP24 | 7200s | Max dive time (0=disabled) |
 | `UW_MIN_SURFACE_TIME` | UNP25 | 10s | Min surface time |
@@ -609,8 +611,8 @@ Beyond 15 months (drop < 8%), the algorithm falls back to:
 ---
 
 *Source files*:
-- `core/services/sws_analog_service.hpp` - Header (187 lines)
-- `core/services/sws_analog_service.cpp` - Implementation (826 lines)
+- `core/services/sws_analog_service.hpp` - Header (203 lines)
+- `core/services/sws_analog_service.cpp` - Implementation (856 lines)
 - `tests/src/sws_analog_test.cpp` - Unit tests (746 lines, 14 tests)
 
-*Last updated: 2026-02-17*
+*Last updated: 2026-02-26*
