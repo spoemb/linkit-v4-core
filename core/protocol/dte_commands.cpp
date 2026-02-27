@@ -432,6 +432,26 @@ const DTECommandMap command_map[] = {
 			}
 		}
 	},
+	// SWSTST - SWS test mode start/stop
+	// Usage: $SWSTST#001;1\r (start) or $SWSTST#001;0\r (stop)
+	// Response: $O;SWSTST#001;<running>\r
+	{
+		.name = "SWSTST",
+		.command = DTECommand::SWSTST_REQ,
+		.prototype =
+		{
+			{
+				.name = "action",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 1U,  // 0=stop, 1=start
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	},
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	// SMD DFU command - allows firmware update of SMD satellite module
 	// Usage: $SMDDFU#001;<action>\r
@@ -1087,6 +1107,24 @@ const DTECommandMap command_map[] = {
 		.name = "RTCW",
 		.command = DTECommand::RTCW_RESP,
 		.prototype = {}
+	},
+	// SWSTST response - SWS test mode running state
+	{
+		.name = "SWSTST",
+		.command = DTECommand::SWSTST_RESP,
+		.prototype =
+		{
+			{
+				.name = "running",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 1U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
 	},
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	// SMD DFU response

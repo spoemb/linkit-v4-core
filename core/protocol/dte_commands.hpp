@@ -30,6 +30,7 @@ enum class DTECommand {
 	GNSSI_REQ,     // GNSS device info (unique ID, SW/HW version)
 	GNSSA_REQ,     // GNSS almanac file validation
 	RTCW_REQ,      // RTC manual write (set time before GNSS fix)
+	SWSTST_REQ,    // SWS test mode start/stop
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	SMDDFU_REQ,    // SMD satellite module DFU command
 	SMDTST_REQ,    // SMD satellite module SPI applicative test
@@ -60,6 +61,7 @@ enum class DTECommand {
 	GNSSI_RESP,    // GNSS device info response
 	GNSSA_RESP,    // GNSS almanac file validation response
 	RTCW_RESP,     // RTC manual write response
+	SWSTST_RESP,   // SWS test mode response
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	SMDDFU_RESP,   // SMD satellite module DFU response
 	SMDTST_RESP,   // SMD satellite module SPI applicative test response

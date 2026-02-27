@@ -35,7 +35,13 @@ public:
 
     static Status get_status();
 
+    // Test mode API: allows DTE SWSTST command to start/stop SWS independently of config
+    static void start_test_mode();
+    static void stop_test_mode();
+    static bool is_test_running();
+
     SWSAnalogService() : UWDetectorService("SWSAnalog") {
+        s_instance = this;
         m_adc_history_idx = 0;
         m_last_state_change_time = 0;
         m_time_in_current_state = 0;
@@ -47,6 +53,9 @@ public:
 private:
     // Live status snapshot (updated each detector_state() call)
     static Status m_status;
+    // Test mode support
+    static SWSAnalogService* s_instance;
+    static bool m_test_mode;
     // Calibration data structure (stored in noinit RAM to survive resets)
     struct CalibrationData {
         uint16_t threshold_air;          // Baseline ADC value in air (low conductivity)

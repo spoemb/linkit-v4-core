@@ -1,6 +1,7 @@
 #include "bsp.hpp"
 #include "pmu.hpp"
 #include "gpio.hpp"
+#include "nrf_timer.hpp"
 #include "nrf_nvic.h"
 #include "nrf_pwr_mgmt.h"
 #include "nrf_delay.h"
@@ -239,6 +240,10 @@ static const char *reset_type_to_string(PMULogType t) {
 	default:
 		return "UNKNOWN";
 	}
+}
+
+uint64_t PMU::get_timestamp_ms() {
+	return NrfTimer::get_instance().get_counter();
 }
 
 void PMU::print_stack() {

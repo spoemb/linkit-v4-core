@@ -1,4 +1,4 @@
-#include "sws_service.hpp"
+#include "sws_analog_service.hpp"
 #include "gnss_detector_service.hpp"
 #if ENABLE_PRESSURE_SENSOR
 #include "pressure_detector_service.hpp"
@@ -660,8 +660,8 @@ int main()
 	OTAFlashFileUpdater ota_flash_file_updater(&lfs_file_system, &is25_flash, IS25_BLOCK_COUNT - OTA_UPDATE_RESERVED_BLOCKS, OTA_UPDATE_RESERVED_BLOCKS);
 	ota_updater = &ota_flash_file_updater;
 
-	DEBUG_TRACE("SWS...");
-	SWSService sws;
+	DEBUG_TRACE("SWS Analog...");
+	static SWSAnalogService sws_analog;
 
 
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)

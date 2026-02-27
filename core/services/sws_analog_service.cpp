@@ -15,11 +15,11 @@
 #define ADC_GAIN_1_4 (1.0f/4.0f)       // Gain 1/4 for SWS channel
 
 // ADC validation limits for 14-bit ADC (0-16383)
-#define ADC_INVALID_MIN 50             // Minimum valid ADC value
+#define ADC_INVALID_MIN 0              // Air reads ~0 on LinkIt V4 hardware (open circuit)
 #define ADC_INVALID_MAX 16383          // Maximum valid ADC value (14-bit)
 
 // Default values if configuration is invalid (work for both resolutions)
-#define DEFAULT_THRESHOLD_MIN 100
+#define DEFAULT_THRESHOLD_MIN 0
 #define DEFAULT_THRESHOLD_MAX 8000
 #define DEFAULT_HYSTERESIS_PERCENT 14     // Optimized from Monte Carlo: balance transitions/stability
 #define DEFAULT_CALIB_INTERVAL_SEC 3600
@@ -75,9 +75,31 @@
 SWSAnalogService::CalibrationData SWSAnalogService::m_calib;
 uint16_t SWSAnalogService::m_calib_crc;
 SWSAnalogService::Status SWSAnalogService::m_status = {};
+SWSAnalogService* SWSAnalogService::s_instance = nullptr;
+bool SWSAnalogService::m_test_mode = false;
 
 SWSAnalogService::Status SWSAnalogService::get_status() {
     return m_status;
+}
+
+void SWSAnalogService::start_test_mode() {
+    m_test_mode = true;
+    if (s_instance) {
+        DEBUG_INFO("SWSAnalog: Test mode started");
+        s_instance->start();
+    }
+}
+
+void SWSAnalogService::stop_test_mode() {
+    if (s_instance) {
+        s_instance->stop();
+        DEBUG_INFO("SWSAnalog: Test mode stopped");
+    }
+    m_test_mode = false;
+}
+
+bool SWSAnalogService::is_test_running() {
+    return m_test_mode;
 }
 
 // SAADC event handler (required but not used for blocking mode)
@@ -99,7 +121,7 @@ void SWSAnalogService::service_init() {
     m_min_surface_time_sec = service_read_param<unsigned int>(ParamID::UW_MIN_SURFACE_TIME);
 
     // Validate configuration parameters
-    if (m_threshold_min < ADC_INVALID_MIN || m_threshold_min >= m_threshold_max) {
+    if (m_threshold_min >= m_threshold_max) {
         DEBUG_WARN("SWSAnalog: Invalid threshold_min | using default");
         m_threshold_min = DEFAULT_THRESHOLD_MIN;
     }
@@ -167,9 +189,9 @@ void SWSAnalogService::service_init() {
 }
 
 bool SWSAnalogService::service_is_enabled() {
+    if (m_test_mode) return true;
     bool enabled = service_read_param<bool>(ParamID::UNDERWATER_EN);
     BaseUnderwaterDetectSource src = service_read_param<BaseUnderwaterDetectSource>(ParamID::UNDERWATER_DETECT_SOURCE);
-    // Enable if source is SWS or SWS_GNSS (we'll assume SWS uses analog for now)
     return enabled && (src == BaseUnderwaterDetectSource::SWS || src == BaseUnderwaterDetectSource::SWS_GNSS);
 }
 
@@ -381,9 +403,8 @@ uint16_t SWSAnalogService::add_to_history_and_filter(uint16_t value) {
 }
 
 bool SWSAnalogService::is_value_valid(uint16_t value) const {
-    // Check if value is within valid range (not saturated or zero)
-    // Upper limit is the configured maximum threshold (works for both 12-bit and 14-bit ADC)
-    return (value >= ADC_INVALID_MIN && value <= m_threshold_max);
+    // Check if value is within valid ADC range (not saturated)
+    return (value <= ADC_INVALID_MAX);
 }
 
 bool SWSAnalogService::should_recalibrate() const {

@@ -936,6 +936,32 @@ std::string DTEHandler::SWSST_REQ(int error_code) {
 #endif
 }
 
+std::string DTEHandler::SWSTST_REQ(int error_code, std::vector<BaseType>& arg_list) {
+	if (error_code) {
+		return DTEEncoder::encode(DTECommand::SWSTST_RESP, error_code);
+	}
+
+	if (arg_list.size() < 1) {
+		return DTEEncoder::encode(DTECommand::SWSTST_RESP, (int)DTEError::MISSING_ARGUMENT);
+	}
+
+	unsigned int action = std::get<unsigned int>(arg_list[0]);
+
+#ifdef SWS_ADC
+	if (action == 1) {
+		SWSAnalogService::start_test_mode();
+	} else {
+		SWSAnalogService::stop_test_mode();
+	}
+
+	unsigned int running = SWSAnalogService::is_test_running() ? 1U : 0U;
+	return DTEEncoder::encode(DTECommand::SWSTST_RESP, (int)DTEError::OK, running);
+#else
+	(void)action;
+	return DTEEncoder::encode(DTECommand::SWSTST_RESP, (int)DTEError::PARAM_KEY_UNRECOGNISED);
+#endif
+}
+
 // Helper to format and return GNSSI response from cached info
 static std::string format_gnssi_response(const GNSSDeviceInfo& info) {
 	char uid_hex[11];
@@ -1196,6 +1222,9 @@ DTEAction DTEHandler::handle_dte_message(const std::string& req, std::string& re
 		break;
 	case DTECommand::SWSST_REQ:
 		resp = SWSST_REQ(error_code);
+		break;
+	case DTECommand::SWSTST_REQ:
+		resp = SWSTST_REQ(error_code, arg_list);
 		break;
 	case DTECommand::GNSSI_REQ:
 		resp = GNSSI_REQ(error_code);

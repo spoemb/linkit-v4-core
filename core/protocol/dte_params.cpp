@@ -179,7 +179,7 @@ const BaseMap param_map[] = {
 	{ "UW_PIN_SAMPLE_DELAY", "UNP08", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 
 	// SWS Analog parameters
-	{ "SWS_ANALOG_THRESHOLD_MIN", "UNP20", BaseEncoding::UINT, 50U, 16383U, {}, true, true },
+	{ "SWS_ANALOG_THRESHOLD_MIN", "UNP20", BaseEncoding::UINT, 0U, 16383U, {}, true, true },
 	{ "SWS_ANALOG_THRESHOLD_MAX", "UNP21", BaseEncoding::UINT, 50U, 16383U, {}, true, true },
 	{ "SWS_ANALOG_HYSTERESIS", "UNP22", BaseEncoding::UINT, 0U, 50U, {}, true, true },
 	{ "SWS_ANALOG_CALIB_INTERVAL", "UNP23", BaseEncoding::UINT, 60U, 0xFFFFFFFFU, {}, true, true },
