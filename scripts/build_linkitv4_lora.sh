@@ -1,0 +1,189 @@
+#!/bin/bash
+
+# =============================================================================
+# LinkIt V4 LoRa RAK3172 Build Script
+# =============================================================================
+# This script builds the LinkIt V4 firmware with RAK3172-SiP LoRa module.
+#
+# IMPORTANT: Update build_config.sh with your toolchain paths
+# =============================================================================
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Load build configuration
+if [ -f "$PROJECT_ROOT/build_config.sh" ]; then
+    source "$PROJECT_ROOT/build_config.sh"
+else
+    echo "ERROR: build_config.sh not found!"
+    echo "Please create build_config.sh in the project root."
+    echo "You can copy build_config.sh.example as a template."
+    exit 1
+fi
+
+# Verify required tools are available
+echo "Checking build tools..."
+
+if ! command -v arm-none-eabi-gcc &> /dev/null; then
+    echo "ERROR: arm-none-eabi-gcc not found in PATH!"
+    echo ""
+    echo "Please update build_config.sh with the correct path:"
+    echo "  ARM_TOOLCHAIN_PATH=\"/path/to/your/gcc-arm-none-eabi/bin\""
+    echo ""
+    exit 1
+fi
+
+if ! command -v nrfutil &> /dev/null; then
+    echo "ERROR: nrfutil not found in PATH!"
+    echo ""
+    echo "Please update build_config.sh with the correct path:"
+    echo "  NRFUTIL_PATH=\"/path/to/your/nrfutil/bin\""
+    echo ""
+    exit 1
+fi
+
+if ! command -v mergehex &> /dev/null; then
+    echo "WARNING: mergehex not found in PATH!"
+    echo "The build may fail during hex file merging."
+    echo ""
+fi
+
+if ! command -v make &> /dev/null; then
+    echo "ERROR: make not found in PATH!"
+    echo "Please install build-essential: sudo apt-get install build-essential"
+    exit 1
+fi
+
+echo "  arm-none-eabi-gcc found: $(which arm-none-eabi-gcc)"
+echo "  nrfutil found: $(which nrfutil)"
+if command -v mergehex &> /dev/null; then
+    echo "  mergehex found: $(which mergehex)"
+fi
+echo ""
+
+# Parse MODEL from arguments (default: UW)
+MODEL=${1:-UW}
+
+cd "$PROJECT_ROOT"
+
+mkdir -p ports/nrf52840/build/LINKIT_LORA
+cd ports/nrf52840/build/LINKIT_LORA
+git show-ref --tags -d | grep ^`git rev-parse HEAD` | sed -e "s,.* refs/tags/,," -e "s/\\^{}//" > TAG_NAME
+if [ -z "$(cat TAG_NAME)" ]; then
+    git describe --dirty > TAG_NAME
+fi
+
+# LinkIt V4 LoRa build configuration
+# - LORA_RAK3172=ON: Use RAK3172-SiP LoRa module
+# - ENABLE_AXL_SENSOR=ON: Enable BMA400 accelerometer
+ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR:-ON}
+
+echo "Building LinkIt V4 LoRa RAK3172 (MODEL=${MODEL}) with configuration:"
+echo "  LORA_RAK3172=ON"
+echo "  ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR}"
+echo ""
+
+cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
+      -DDEBUG_LEVEL=4 \
+      -DBOARD=LINKIT \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DMODEL=${MODEL} \
+      -DLORA_RAK3172=ON \
+      -DENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR} \
+      ../..
+
+make -j 20
+
+TARGET_NAME="LinkIt_${MODEL}_board"
+
+# Check if build succeeded
+if [ ! -f "${TARGET_NAME}.elf" ]; then
+    echo "ERROR: Build failed - ${TARGET_NAME}.elf not found"
+    exit 1
+fi
+
+# Generate hex file if it doesn't exist
+if [ ! -f "${TARGET_NAME}.hex" ]; then
+    echo "Generating hex file..."
+    arm-none-eabi-objcopy -O ihex ${TARGET_NAME}.elf ${TARGET_NAME}.hex
+fi
+
+echo ""
+echo "Build succeeded!"
+echo ""
+
+# Bootloader path
+BOOTLOADER_HEX="../../bootloader/gentracker_secure_bootloader/linkitv4_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex"
+SOFTDEVICE_HEX="../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/hex/s140_nrf52_7.2.0_softdevice.hex"
+KEY_FILE="../../nrfutil_pkg_key.pem"
+
+# Check if bootloader and required files exist for merged hex generation
+CAN_MERGE=true
+
+if [ ! -f "$BOOTLOADER_HEX" ]; then
+    echo "WARNING: Bootloader not found at: $BOOTLOADER_HEX"
+    echo "         Skipping merged hex generation."
+    CAN_MERGE=false
+fi
+
+if [ ! -f "$KEY_FILE" ]; then
+    echo "WARNING: nrfutil key file not found at: $KEY_FILE"
+    echo "         Skipping merged hex generation."
+    CAN_MERGE=false
+fi
+
+if [ "$CAN_MERGE" = true ]; then
+    echo "Generating settings and merged hex files..."
+
+    nrfutil settings generate --family NRF52840 \
+        --application ${TARGET_NAME}.hex \
+        --application-version 0 \
+        --bootloader-version 1 \
+        --bl-settings-version 2 \
+        --app-boot-validation VALIDATE_ECDSA_P256_SHA256 \
+        --sd-boot-validation VALIDATE_ECDSA_P256_SHA256 \
+        --softdevice "$SOFTDEVICE_HEX" \
+        --key-file "$KEY_FILE" \
+        settings.hex
+
+    if [ $? -eq 0 ]; then
+        mergehex -m "$BOOTLOADER_HEX" ${TARGET_NAME}.hex -o m1.hex
+        mergehex -m m1.hex settings.hex -o ${TARGET_NAME}_merged.hex
+        rm -f m1.hex settings.hex
+        echo "Merged hex generated"
+    else
+        echo "WARNING: nrfutil settings generation failed"
+        CAN_MERGE=false
+    fi
+fi
+
+# Rename output files with version tag
+rm -f ${TARGET_NAME}-* ${TARGET_NAME}_dfu-* ${TARGET_NAME}_merged-*
+
+cp ${TARGET_NAME}.elf ${TARGET_NAME}-`cat TAG_NAME`.elf
+mv ${TARGET_NAME}.hex ${TARGET_NAME}-`cat TAG_NAME`.hex
+
+if [ -f "${TARGET_NAME}_dfu.zip" ]; then
+    mv ${TARGET_NAME}_dfu.zip ${TARGET_NAME}_dfu-`cat TAG_NAME`.zip
+fi
+if [ -f "${TARGET_NAME}.img" ]; then
+    mv ${TARGET_NAME}.img ${TARGET_NAME}-`cat TAG_NAME`.img
+fi
+if [ -f "${TARGET_NAME}_merged.hex" ]; then
+    mv ${TARGET_NAME}_merged.hex ${TARGET_NAME}_merged-`cat TAG_NAME`.hex
+fi
+
+echo ""
+echo "Build complete!"
+echo "Output files in: ports/nrf52840/build/LINKIT_LORA/"
+echo ""
+echo "Files generated:"
+ls -la ${TARGET_NAME}-* 2>/dev/null || true
+ls -la ${TARGET_NAME}_dfu-* 2>/dev/null || true
+ls -la ${TARGET_NAME}_merged-* 2>/dev/null || true
+
+if [ "$CAN_MERGE" = false ]; then
+    echo ""
+    echo "NOTE: Merged hex was not generated (see warnings above)"
+fi

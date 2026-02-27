@@ -86,7 +86,7 @@ enum class ConfigMode {
 class ConfigurationStore {
 
 protected:
-	static inline const unsigned int m_config_version_code = 0x1c07e800 | 0x15;
+	static inline const unsigned int m_config_version_code = 0x1c07e800 | 0x16;
 	static inline const unsigned int m_config_version_code_aop = 0x1c07e800 | 0x03;
 	static inline const std::array<BaseType,MAX_CONFIG_ITEMS> default_params { {
 		/* ARGOS_DECID */ 0U,
@@ -329,6 +329,20 @@ protected:
 		/* [178] GNSS_TOKEN */ std::string(""),
 		/* [179] LAST_KNOWN_RTC */ 0U,
 		/* [180] RTC_CURRENT_TIME */ 0U,
+		/* [181] LORA_DEVEUI */ std::string(""),
+		/* [182] LORA_APPEUI */ std::string(""),
+		/* [183] LORA_APPKEY */ std::string(""),
+		/* [184] LORA_DEVADDR */ std::string(""),
+		/* [185] LORA_APPSKEY */ std::string(""),
+		/* [186] LORA_NWKSKEY */ std::string(""),
+		/* [187] LORA_NJM */ 1U,          // Default: OTAA
+		/* [188] LORA_BAND */ 4U,         // Default: EU868
+		/* [189] LORA_CLASS */ 0U,        // Default: Class A
+		/* [190] LORA_DR */ 0U,           // Default: SF12/125kHz (longest range)
+		/* [191] LORA_ADR */ (bool)true,  // Default: ADR enabled
+		/* [192] LORA_TXP */ 0U,          // Default: Max TX power
+		/* [193] LORA_CFM */ (bool)false,  // Default: Unconfirmed messages
+		/* [194] LORA_FPORT */ 2U,        // Default: Application port 2
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,
@@ -419,6 +433,15 @@ public:
 			} else if (param_id == ParamID::ARGOS_SECKEY) {
 				b_is_valid = true;
 			} else if (param_id == ParamID::ARGOS_RADIOCONF) {
+				b_is_valid = true;
+#endif
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+			} else if (param_id == ParamID::LORA_DEVEUI ||
+			           param_id == ParamID::LORA_APPEUI ||
+			           param_id == ParamID::LORA_APPKEY ||
+			           param_id == ParamID::LORA_DEVADDR ||
+			           param_id == ParamID::LORA_APPSKEY ||
+			           param_id == ParamID::LORA_NWKSKEY) {
 				b_is_valid = true;
 #endif
 			} else if (param_id == ParamID::DEVICE_MODEL) {

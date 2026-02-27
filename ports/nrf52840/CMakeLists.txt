@@ -15,6 +15,7 @@ set(LIB_DIR       ../../libraries)
 
 set(BOARD "LINKIT" CACHE STRING "Board to compile for")
 option(ARGOS_SMD "Use SMD satellite module" OFF)
+option(LORA_RAK3172 "Use RAK3172-SiP LoRa module instead of satellite" OFF)
 
 # Configure GPIO5 device (default: CAM)
 if(NOT DEFINED EXT_GPIO5_DEVICE)
@@ -123,6 +124,7 @@ if(${BOARD} MATCHES RSPB)
     else()
         set(ARGOS_SMD_ENABLED 0)
     endif()
+    set(LORA_RAK3172_ENABLED 0)
 else()
     set(TARGET_NAME ${PROJECT_NAME}_${MODEL}_board)
     set(BOARD_DIR "${PROJ_DIR}/bsp/linkitv4_v1.0")
@@ -130,6 +132,11 @@ else()
         set(ARGOS_SMD_ENABLED 1)
     else()
         set(ARGOS_SMD_ENABLED 0)
+    endif()
+    if(LORA_RAK3172)
+        set(LORA_RAK3172_ENABLED 1)
+    else()
+        set(LORA_RAK3172_ENABLED 0)
     endif()
     set(BOOTLOADER "bootloader/gentracker_secure_bootloader/linkitv4_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex")
 endif()
@@ -360,8 +367,8 @@ target_sources(${TARGET_NAME} PRIVATE
     $<$<BOOL:${ENABLE_SEA_TEMP_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/oem_rtd/oem_rtd.cpp>
     $<$<BOOL:${ENABLE_SEA_TEMP_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/ezo_rtd/ezo_rtd.cpp>
     $<$<BOOL:${ENABLE_SEA_TEMP_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/tsys01/TSYS01.cpp>
-    $<$<NOT:$<BOOL:${ARGOS_SMD_ENABLED}>>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/kim2/kim2.cpp>
-    $<$<NOT:$<BOOL:${ARGOS_SMD_ENABLED}>>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/kim2/kim2_comm.cpp>
+    $<$<AND:$<NOT:$<BOOL:${ARGOS_SMD_ENABLED}>>,$<NOT:$<BOOL:${LORA_RAK3172_ENABLED}>>>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/kim2/kim2.cpp>
+    $<$<AND:$<NOT:$<BOOL:${ARGOS_SMD_ENABLED}>>,$<NOT:$<BOOL:${LORA_RAK3172_ENABLED}>>>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/kim2/kim2_comm.cpp>
     ${PROJ_DIR}/core/hardware/nrf_timer.cpp
     ${PROJ_DIR}/core/hardware/nrf_rtc.cpp
     ${PROJ_DIR}/core/hardware/nrf_spim.cpp
@@ -445,6 +452,17 @@ if(ARGOS_SMD)
     )
 endif()
 
+# LoRa RAK3172-SiP module (conditional)
+if(LORA_RAK3172)
+    target_sources(${TARGET_NAME} PRIVATE
+        ${PROJ_DIR}/core/hardware/lora_rak3172/lora_rak3172.cpp
+        ${PROJ_DIR}/core/hardware/lora_rak3172/lora_rak3172_comm.cpp
+    )
+    target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
+        ${PROJ_DIR}/core/hardware/lora_rak3172
+    )
+endif()
+
 # Thermistor NTC sensor (conditional)
 if(ENABLE_THERMISTOR_SENSOR EQUAL 1)
     target_sources(${TARGET_NAME} PRIVATE
@@ -474,6 +492,7 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR}
     ENABLE_THERMISTOR_SENSOR=${ENABLE_THERMISTOR_SENSOR}
     ARGOS_SMD=${ARGOS_SMD_ENABLED}
+    $<$<BOOL:${LORA_RAK3172_ENABLED}>:LORA_RAK3172=1>
     # Battery monitor type defines
     $<$<STREQUAL:${BATTERY_MONITOR_TYPE},ANALOG>:BATTERY_MONITOR_ANALOG>
     $<$<STREQUAL:${BATTERY_MONITOR_TYPE},FAKE>:BATTERY_MONITOR_FAKE>

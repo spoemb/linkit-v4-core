@@ -92,7 +92,9 @@
 
 // Always use M10Q GPS module
 #include "m10qasync.hpp"
-#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+#include "lora_rak3172.hpp"
+#elif defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 #include "smd_sat.hpp"
 #else
 #include "kim2.hpp"
@@ -664,7 +666,15 @@ int main()
 	static SWSAnalogService sws_analog;
 
 
-#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+	DEBUG_TRACE("LoRa RAK3172...");
+	try {
+		static LoRaDevice lora_rak3172;
+		static ArgosTxService argos_tx_service(lora_rak3172);
+	} catch (...) {
+		DEBUG_TRACE("LoRa RAK3172 not detected");
+	}
+#elif defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	DEBUG_TRACE("SMD Satellite...");
 	try {
 		static SmdSat argos_smd;

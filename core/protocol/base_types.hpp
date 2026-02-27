@@ -42,6 +42,10 @@ extern "C" {
 #define ENABLE_AXL_SENSOR 1
 #endif
 
+#ifndef LORA_RAK3172
+#define LORA_RAK3172 0
+#endif
+
 #define BASE_TEXT_MAX_LENGTH  128
 #define BASE_MAX_PAYLOAD_LENGTH 0xFFF
 #define KEY_LENGTH            5
@@ -288,8 +292,25 @@ enum class ParamID {
 #endif
 	// === System status (slot 180 always reserved) ===
 	RTC_CURRENT_TIME                         = 180,
+	// === LoRa RAK3172 parameters (slots 181-194 always reserved) ===
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+	LORA_DEVEUI                              = 181,
+	LORA_APPEUI                              = 182,
+	LORA_APPKEY                              = 183,
+	LORA_DEVADDR                             = 184,
+	LORA_APPSKEY                             = 185,
+	LORA_NWKSKEY                             = 186,
+	LORA_NJM                                 = 187,
+	LORA_BAND                                = 188,
+	LORA_CLASS                               = 189,
+	LORA_DR                                  = 190,
+	LORA_ADR                                 = 191,
+	LORA_TXP                                 = 192,
+	LORA_CFM                                 = 193,
+	LORA_FPORT                               = 194,
+#endif
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 181,
+	__PARAM_SIZE                             = 195,
 	__NULL_PARAM                             = 0xFFFF
 };
 
