@@ -11,6 +11,7 @@ DTEHandler::DTEHandler() {
 	m_dumpd_mmm = 0;
 	m_dumpd_d_type = 0xFFFFFFFF;  // Invalid initial value
 	m_sat_device_active = false;
+	m_lora_tx_active = false;
 	m_doppler_cal_active = false;
 	m_doppler_cal_first_tx = false;
 	m_gnssi_pending = false;
@@ -711,6 +712,47 @@ std::string DTEHandler::ARGOSTX_REQ(int error_code, std::vector<BaseType>& arg_l
 	return DTEEncoder::encode(DTECommand::ARGOSTX_RESP, error_code);
 }
 
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+std::string DTEHandler::LORATX_REQ(int error_code, std::vector<BaseType>& arg_list) {
+	if (error_code) {
+		return DTEEncoder::encode(DTECommand::LORATX_RESP, error_code);
+	}
+
+	if (arg_list.size() < 1) {
+		return DTEEncoder::encode(DTECommand::LORATX_RESP, (int)DTEError::MISSING_ARGUMENT);
+	}
+
+	unsigned int num_bytes = std::get<unsigned int>(arg_list[0]);
+
+	DEBUG_INFO("DTEHandler::LORATX_REQ: size=%u bytes", num_bytes);
+
+	if (!lora_device_instance) {
+		DEBUG_WARN("DTEHandler::LORATX_REQ: LoRa device not available");
+		return DTEEncoder::encode(DTECommand::LORATX_RESP, (int)DTEError::INCORRECT_DATA);
+	}
+
+	try {
+		if (!m_sat_device_active) {
+			lora_device_instance->subscribe(*this);
+			m_sat_device_active = true;
+		}
+		m_lora_tx_active = true;
+
+		// Build test payload (all 0xFF bytes)
+		KineisPacket packet(num_bytes, 0xFF);
+		lora_device_instance->send(KineisModulation::LDA2, packet, 8 * num_bytes);
+
+		// Async response — wait for KineisEventTxComplete/DeviceError
+		return {};
+	} catch (...) {
+		m_lora_tx_active = false;
+		error_code = (int)DTEError::INCORRECT_DATA;
+	}
+
+	return DTEEncoder::encode(DTECommand::LORATX_RESP, error_code);
+}
+#endif
+
 
 std::string DTEHandler::SENSR_REQ(int error_code, std::vector<BaseType>& arg_list) {
 	// Response values (initialized to defaults/invalid)
@@ -865,6 +907,8 @@ std::string DTEHandler::PWRON_REQ(int error_code, std::vector<BaseType>& arg_lis
 		GPIOPins::acquire_sensors_pwr();
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 		GPIOPins::set(SAT_PWR_EN);
+#elif defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+		GPIOPins::set(SAT_PWR_EN);
 #endif
 		break;
 
@@ -891,6 +935,8 @@ std::string DTEHandler::PWRON_REQ(int error_code, std::vector<BaseType>& arg_lis
 		GPIOPins::acquire_sensors_pwr();
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 		GPIOPins::set(SAT_PWR_EN);
+#elif defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+		GPIOPins::set(SAT_PWR_EN);
 #endif
 		break;
 
@@ -901,6 +947,8 @@ std::string DTEHandler::PWRON_REQ(int error_code, std::vector<BaseType>& arg_lis
 			gps_device->power_off();
 		}
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+		GPIOPins::clear(SAT_PWR_EN);
+#elif defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
 		GPIOPins::clear(SAT_PWR_EN);
 #endif
 		GPIOPins::release_sensors_pwr();
@@ -1249,6 +1297,11 @@ DTEAction DTEHandler::handle_dte_message(const std::string& req, std::string& re
 	case DTECommand::SATDP_REQ:
 		resp = SATDP_REQ(error_code, arg_list);
 		break;
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+	case DTECommand::LORATX_REQ:
+		resp = LORATX_REQ(error_code, arg_list);
+		break;
+#endif
 	default:
 		break;
 	}
@@ -1275,9 +1328,15 @@ void DTEHandler::react(KineisEventTxComplete const& ) {
 		// Periodic Doppler TX completed — schedule next one
 		schedule_doppler_cal_tx();
 	} else {
-		// Regular ARGOSTX async response
+		// Regular ARGOSTX/LORATX async response
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+		DTECommand resp_cmd = m_lora_tx_active ? DTECommand::LORATX_RESP : DTECommand::ARGOSTX_RESP;
+		m_lora_tx_active = false;
+#else
+		DTECommand resp_cmd = DTECommand::ARGOSTX_RESP;
+#endif
 		if (m_async_write) {
-			std::string resp = DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::OK);
+			std::string resp = DTEEncoder::encode(resp_cmd, (int)DTEError::OK);
 			DEBUG_TRACE("DTEHandler::react: async responding: %s", resp.c_str());
 			m_async_write(resp);
 		}
@@ -1297,9 +1356,15 @@ void DTEHandler::react(KineisEventDeviceError const& ) {
 		DEBUG_WARN("DTEHandler: SATDP periodic TX failed | will retry");
 		schedule_doppler_cal_tx();
 	} else {
-		// Regular ARGOSTX async error response
+		// Regular ARGOSTX/LORATX async error response
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+		DTECommand resp_cmd = m_lora_tx_active ? DTECommand::LORATX_RESP : DTECommand::ARGOSTX_RESP;
+		m_lora_tx_active = false;
+#else
+		DTECommand resp_cmd = DTECommand::ARGOSTX_RESP;
+#endif
 		if (m_async_write) {
-			std::string resp = DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::INCORRECT_DATA);
+			std::string resp = DTEEncoder::encode(resp_cmd, (int)DTEError::INCORRECT_DATA);
 			DEBUG_TRACE("DTEHandler::react: async responding: %s", resp.c_str());
 			m_async_write(resp);
 		}

@@ -363,7 +363,15 @@ void LoRaDevice::state_configure()
             break;
 
         case 10:
-            // Configuration complete - check if already joined
+            // Configuration complete
+            if (m_config.njm == 0) {
+                // ABP mode: no join procedure needed, go directly to idle
+                DEBUG_INFO("LoRaDevice: ABP mode - no join required");
+                m_joined = true;
+                LORA_STATE_CHANGE(configure, idle);
+                return;
+            }
+            // OTAA mode: check if already joined from a previous session
             at_error = send_AT(AT_GET_NJS);
             if (!at_error && m_lora_comm.m_last_value == "1") {
                 DEBUG_INFO("LoRaDevice: already joined from previous session");
@@ -404,7 +412,15 @@ void LoRaDevice::state_configure_exit() {
 
 void LoRaDevice::state_joining_enter()
 {
-    DEBUG_INFO("LoRaDevice::state_joining_enter");
+    DEBUG_INFO("LoRaDevice::state_joining_enter: NJM=%u", m_config.njm);
+
+    // ABP mode should never reach here, but handle gracefully
+    if (m_config.njm == 0) {
+        DEBUG_INFO("LoRaDevice: ABP mode - skipping join");
+        m_joined = true;
+        return;
+    }
+
     m_joined = false;
     m_join_failed = false;
     m_is_error = false;

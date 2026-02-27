@@ -529,6 +529,27 @@ const DTECommandMap command_map[] = {
 		}
 	},
 #endif
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+	// LoRa test transmission
+	// Usage: $LORATX#001;<size>\r
+	{
+		.name = "LORATX",
+		.command = DTECommand::LORATX_REQ,
+		.prototype =
+		{
+			{
+				.name = "size",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 1U,
+				.max_value = 222U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	},
+#endif
 	{
 		.name = "PARML",
 		.command = DTECommand::PARML_RESP,
@@ -1200,6 +1221,13 @@ const DTECommandMap command_map[] = {
 		.prototype =
 		{
 		}
+	},
+#endif
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+	{
+		.name = "LORATX",
+		.command = DTECommand::LORATX_RESP,
+		.prototype = {}
 	},
 #endif
 };

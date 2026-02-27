@@ -40,7 +40,7 @@ unsigned int LoRaPacketBuilder::convert_longitude(double x) {
 }
 
 unsigned int LoRaPacketBuilder::convert_heading(double x) {
-	return x / 1.42f;
+	return (unsigned int)(x / 1.42);
 }
 
 unsigned int LoRaPacketBuilder::convert_altitude(double x) {

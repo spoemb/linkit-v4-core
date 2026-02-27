@@ -36,6 +36,9 @@ enum class DTECommand {
 	SMDTST_REQ,    // SMD satellite module SPI applicative test
 	SMDCD_REQ,
 #endif
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+	LORATX_REQ,    // LoRa test transmission
+#endif
 	__NUM_REQ,
 	PARML_RESP = RESP_CMD_BASE,
 	PARMR_RESP,
@@ -66,6 +69,9 @@ enum class DTECommand {
 	SMDDFU_RESP,   // SMD satellite module DFU response
 	SMDTST_RESP,   // SMD satellite module SPI applicative test response
 	SMDCD_RESP,
+#endif
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+	LORATX_RESP,   // LoRa test transmission response
 #endif
 	__NUM_RESP
 };

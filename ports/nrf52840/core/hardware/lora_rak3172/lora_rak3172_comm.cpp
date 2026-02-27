@@ -242,15 +242,8 @@ RespType LoRaComm::parse_rx_line(const std::string& line)
                 std::string payload = trimmed.substr(last_colon + 1);
                 size_t prev_colon = trimmed.rfind(':', last_colon - 1);
                 if (prev_colon != std::string::npos) {
-                    int port = 0;
-                    try {
-                        port = std::stoi(trimmed.substr(prev_colon + 1, last_colon - prev_colon - 1));
-                    } catch (...) {
-                        port = 0;
-                    }
                     m_last_value = payload;
-                    // Store port:payload for retrieval
-                    DEBUG_TRACE("LoRaComm: RX port=%d payload=%s", port, payload.c_str());
+                    DEBUG_TRACE("LoRaComm: RX payload=%s", payload.c_str());
                 }
             }
             return RESP_EVT_RX;
@@ -324,6 +317,7 @@ void LoRaComm::handle_rx_buffer(uint8_t * buffer, uint8_t length)
             case RESP_VALUE:
                 // Value stored in m_last_value, OK will follow
                 break;
+            case RESP_UNKNOWN:
             default:
                 break;
         }

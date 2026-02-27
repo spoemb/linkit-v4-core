@@ -24,6 +24,11 @@
 extern SmdSat *smd_sat_instance;
 #endif
 
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+#include "lora_rak3172.hpp"
+extern LoRaDevice *lora_device_instance;
+#endif
+
 // External sensor access for SENSR command
 extern BatteryMonitor *battery_monitor;
 extern GPSDevice *gps_device;
@@ -105,6 +110,7 @@ private:
 	unsigned int m_dumpd_mmm;
 	unsigned int m_dumpd_d_type;  // Track current dump type to detect mid-stream changes
 	bool m_sat_device_active;
+	bool m_lora_tx_active;         // Current async TX is LoRa (vs Argos/SMD)
 	bool m_doppler_cal_active;     // Periodic Doppler TX mode active (until reset)
 	bool m_doppler_cal_first_tx;   // Waiting for first TX result
 	bool m_gnssi_pending;          // Waiting for GNSS device info (autonomous GNSSI)
@@ -159,6 +165,10 @@ public:
 	static std::string SMDDFU_REQ(int error_code, std::vector<BaseType>& arg_list);
 	static std::string SMDTST_REQ(int error_code, std::vector<BaseType>& arg_list);
 	std::string SMDCD_REQ(int error_code, std::vector<BaseType>& arg_list);
+#endif
+
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+	std::string LORATX_REQ(int error_code, std::vector<BaseType>& arg_list);
 #endif
 
 	DTEAction handle_dte_message(const std::string& req, std::string& resp);
