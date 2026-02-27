@@ -55,7 +55,7 @@ protected:
 			void operator()(BaseArgosPower &s) {
 				std::memcpy(entry_buffer, &s, sizeof(s));
 			};
-			void operator()(BaseArgosDepthPile &s) {
+			void operator()(BaseDepthPile &s) {
 				std::memcpy(entry_buffer, &s, sizeof(s));
 			};
 			void operator()(bool &s) {
@@ -158,7 +158,7 @@ protected:
 		}
 		case BaseEncoding::DEPTHPILE:
 		{
-			BaseArgosDepthPile value = *(BaseArgosDepthPile *)param_value;
+			BaseDepthPile value = *(BaseDepthPile *)param_value;
 			m_params.at(index) = value;
 			break;
 		}

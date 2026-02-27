@@ -496,7 +496,7 @@ inline unsigned int argos_power_to_integer(BaseArgosPower power) {
 	}
 }
 
-enum class BaseArgosDepthPile {
+enum class BaseDepthPile {
 	DEPTH_PILE_1 = 1,
 	DEPTH_PILE_2,
 	DEPTH_PILE_3,
@@ -507,6 +507,7 @@ enum class BaseArgosDepthPile {
 	DEPTH_PILE_20 = 20,
 	DEPTH_PILE_24 = 24
 };
+using BaseArgosDepthPile = BaseDepthPile;
 
 enum class BaseDeltaTimeLoc {
 	DELTA_T_10MIN = 1,
@@ -640,7 +641,7 @@ using BaseName = std::string;
 using BaseConstraint = std::variant<unsigned int, int, double, std::string>;
 
 // !!! Do not change the ordering of variants and also make sure std::string is the first entry !!!
-using BaseType = std::variant<std::string, unsigned int, int, double, std::time_t, BaseRawData, BaseArgosMode, BaseArgosPower, BaseArgosDepthPile, bool, BaseGNSSFixMode, BaseGNSSDynModel, BaseLEDMode, BaseZoneType, BaseArgosModulation, BaseUnderwaterDetectSource, BaseDebugMode, BasePressureSensorLoggingMode, BasePressureSensorFullScale, BaseSensorEnableTxMode>;
+using BaseType = std::variant<std::string, unsigned int, int, double, std::time_t, BaseRawData, BaseArgosMode, BaseArgosPower, BaseDepthPile, bool, BaseGNSSFixMode, BaseGNSSDynModel, BaseLEDMode, BaseZoneType, BaseArgosModulation, BaseUnderwaterDetectSource, BaseDebugMode, BasePressureSensorLoggingMode, BasePressureSensorFullScale, BaseSensorEnableTxMode>;
 
 struct BaseMap {
 	BaseName 	   name;

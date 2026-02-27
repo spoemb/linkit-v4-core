@@ -457,6 +457,7 @@ if(LORA_RAK3172)
     target_sources(${TARGET_NAME} PRIVATE
         ${PROJ_DIR}/core/hardware/lora_rak3172/lora_rak3172.cpp
         ${PROJ_DIR}/core/hardware/lora_rak3172/lora_rak3172_comm.cpp
+        ${CORE_DIR}/services/lora_tx_service.cpp
     )
     target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
         ${PROJ_DIR}/core/hardware/lora_rak3172

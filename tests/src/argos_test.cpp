@@ -71,7 +71,7 @@ TEST_GROUP(ArgosScheduler)
 
 TEST(ArgosScheduler, LegacyModeSchedulingShortPacket)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0U;
 	double frequency = 900.11;
@@ -167,7 +167,7 @@ TEST(ArgosScheduler, LegacyModeSchedulingShortPacket)
 
 TEST(ArgosScheduler, DutyCycleModeSchedulingShortPacket)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0xAAAAAAU; // Every other hour
 	double frequency = 900.22;
@@ -263,7 +263,7 @@ TEST(ArgosScheduler, DutyCycleModeSchedulingShortPacket)
 
 TEST(ArgosScheduler, SchedulingLongPacket)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_4;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_4;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0xAAAAAAU; // Every other hour
 	double frequency = 900.33;
@@ -411,7 +411,7 @@ TEST(ArgosScheduler, SchedulingLongPacket)
 
 TEST(ArgosScheduler, PrepassSchedulingShortPacket)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0x0U; // Not used
 	double frequency = 900.22;
@@ -531,7 +531,7 @@ TEST(ArgosScheduler, PrepassSchedulingShortPacket)
 
 TEST(ArgosScheduler, PrepassSchedulingLongPacket)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_4;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_4;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0x0U; // Not used
 	double frequency = 900.22;
@@ -721,7 +721,7 @@ TEST(ArgosScheduler, PrepassSchedulingLongPacket)
 
 TEST(ArgosScheduler, DutyCycleModeManyShortPackets)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0xAAAAAAU; // Every other hour
 	double frequency = 900.22;
@@ -798,7 +798,7 @@ TEST(ArgosScheduler, DutyCycleModeManyShortPackets)
 
 TEST(ArgosScheduler, DutyCycleWithSaltwaterSwitchEvents)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0xFFFFFFU; // Every hour
 	double frequency = 900.22;
@@ -982,7 +982,7 @@ TEST(ArgosScheduler, DutyCycleWithSaltwaterSwitchEvents)
 
 TEST(ArgosScheduler, PrepassWithSaltwaterSwitchEvents)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0x0U; // Every other hour
 	double frequency = 900.22;
@@ -1140,7 +1140,7 @@ TEST(ArgosScheduler, PrepassWithSaltwaterSwitchEvents)
 
 TEST(ArgosScheduler, SchedulingShortPacketWithNonZeroAltitude)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0U;
 	double frequency = 900.11;
@@ -1230,7 +1230,7 @@ TEST(ArgosScheduler, SchedulingShortPacketWithNonZeroAltitude)
 
 TEST(ArgosScheduler, SchedulingShortPacketWithMaxTruncatedAltitude)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0U;
 	double frequency = 900.11;
@@ -1321,7 +1321,7 @@ TEST(ArgosScheduler, SchedulingShortPacketWithMaxTruncatedAltitude)
 
 TEST(ArgosScheduler, SchedulingShortPacketWithMinTruncatedAltitude)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0U;
 	double frequency = 900.11;
@@ -1409,7 +1409,7 @@ TEST(ArgosScheduler, SchedulingShortPacketWithMinTruncatedAltitude)
 
 TEST(ArgosScheduler, SchedulingCheckGpsBurstCountInfiniteInDutyCycleMode)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_4;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_4;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0xFFFFFFU; // Every hour
 	double frequency = 900.33;
@@ -1557,7 +1557,7 @@ TEST(ArgosScheduler, SchedulingCheckGpsBurstCountInfiniteInDutyCycleMode)
 
 TEST(ArgosScheduler, SchedulingCheckGpsBurstCountInfiniteInLegacyMode)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_4;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_4;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0xFFFFFFU; // Every hour
 	double frequency = 900.33;
@@ -1706,7 +1706,7 @@ TEST(ArgosScheduler, SchedulingCheckGpsBurstCountInfiniteInLegacyMode)
 
 TEST(ArgosScheduler, SchedulingLongPacketLowBatteryFlag)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_4;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_4;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0xFFFFFFU; // Every other hour
 	double frequency = 900.33;
@@ -1858,7 +1858,7 @@ TEST(ArgosScheduler, SchedulingLongPacketLowBatteryFlag)
 
 TEST(ArgosScheduler, SchedulingShortPacketLowBatteryFlag)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0xFFFFFFU; // Every other hour
 	double frequency = 900.33;
@@ -1946,7 +1946,7 @@ TEST(ArgosScheduler, SchedulingShortPacketLowBatteryFlag)
 
 TEST(ArgosScheduler, SchedulingShortPacketOutOfZoneFlag)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0xFFFFFFU; // Every other hour
 	double frequency = 900.33;
@@ -1994,7 +1994,7 @@ TEST(ArgosScheduler, SchedulingShortPacketOutOfZoneFlag)
 	fake_config_store->write_param(ParamID::ZONE_ENABLE_ACTIVATION_DATE, zone_enable_activation_date);
 	unsigned int zone_delta_arg_loc_argos_seconds = 3600;
 	fake_config_store->write_param(ParamID::ZONE_GNSS_DELTA_ARG_LOC_ARGOS_SECONDS, zone_delta_arg_loc_argos_seconds);
-	BaseArgosDepthPile zone_argos_depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile zone_argos_depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	fake_config_store->write_param(ParamID::ZONE_ARGOS_DEPTH_PILE, zone_argos_depth_pile);
 	BaseArgosPower zone_argos_power = BaseArgosPower::POWER_200_MW;
 	fake_config_store->write_param(ParamID::_RESERVED_70, zone_argos_power);
@@ -2066,7 +2066,7 @@ TEST(ArgosScheduler, SchedulingShortPacketOutOfZoneFlag)
 
 TEST(ArgosScheduler, SchedulingLongPacketOutOfZoneFlag)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_4;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_4;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0xFFFFFFU; // Every other hour
 	double frequency = 900.33;
@@ -2114,7 +2114,7 @@ TEST(ArgosScheduler, SchedulingLongPacketOutOfZoneFlag)
 	fake_config_store->write_param(ParamID::ZONE_ENABLE_ACTIVATION_DATE, zone_enable_activation_date);
 	unsigned int zone_delta_arg_loc_argos_seconds = 3600;
 	fake_config_store->write_param(ParamID::ZONE_GNSS_DELTA_ARG_LOC_ARGOS_SECONDS, zone_delta_arg_loc_argos_seconds);
-	BaseArgosDepthPile zone_argos_depth_pile = BaseArgosDepthPile::DEPTH_PILE_4;
+	BaseDepthPile zone_argos_depth_pile = BaseDepthPile::DEPTH_PILE_4;
 	fake_config_store->write_param(ParamID::ZONE_ARGOS_DEPTH_PILE, zone_argos_depth_pile);
 	BaseArgosPower zone_argos_power = BaseArgosPower::POWER_200_MW;
 	fake_config_store->write_param(ParamID::_RESERVED_70, zone_argos_power);
@@ -2256,7 +2256,7 @@ TEST(ArgosScheduler, SchedulingLongPacketOutOfZoneFlag)
 
 TEST(ArgosScheduler, TimeSyncBurstTransmissionIsSent)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0U;
 	double frequency = 900.11;
@@ -2334,7 +2334,7 @@ TEST(ArgosScheduler, TimeSyncBurstTransmissionIsSent)
 
 TEST(ArgosScheduler, LegacyModeSchedulingShortPacketInfiniteBurst)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0U;
 	double frequency = 900.11;
@@ -2411,7 +2411,7 @@ TEST(ArgosScheduler, LegacyModeSchedulingShortPacketInfiniteBurst)
 
 TEST(ArgosScheduler, LegacyModeSchedulingShortPacketInfiniteBurstWithTimeSyncro)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_16;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_16;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0U;
 	double frequency = 900.11;
@@ -2509,7 +2509,7 @@ TEST(ArgosScheduler, LegacyModeSchedulingShortPacketInfiniteBurstWithTimeSyncro)
 
 TEST(ArgosScheduler, SchedulingNonPrepassTxJitter)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0U;
 	double frequency = 900.11;
@@ -2590,7 +2590,7 @@ TEST(ArgosScheduler, SchedulingNonPrepassTxJitter)
 
 TEST(ArgosScheduler, PrepassSchedulingShortPacketTXJitter)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0x0U; // Not used
 	double frequency = 900.22;
@@ -2711,7 +2711,7 @@ TEST(ArgosScheduler, PrepassSchedulingShortPacketTXJitter)
 
 TEST(ArgosScheduler, OutOfZoneModeChangeLegacy)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0U;
 	double frequency = 900.11;
@@ -2753,7 +2753,7 @@ TEST(ArgosScheduler, OutOfZoneModeChangeLegacy)
 	fake_config_store->write_param(ParamID::ZONE_ENABLE_ACTIVATION_DATE, zone_enable_activation_date);
 	unsigned int zone_delta_arg_loc_argos_seconds = 3600;
 	fake_config_store->write_param(ParamID::ZONE_GNSS_DELTA_ARG_LOC_ARGOS_SECONDS, zone_delta_arg_loc_argos_seconds);
-	BaseArgosDepthPile zone_argos_depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile zone_argos_depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	fake_config_store->write_param(ParamID::ZONE_ARGOS_DEPTH_PILE, zone_argos_depth_pile);
 	BaseArgosPower zone_argos_power = BaseArgosPower::POWER_200_MW;
 	fake_config_store->write_param(ParamID::_RESERVED_70, zone_argos_power);
@@ -2874,7 +2874,7 @@ TEST(ArgosScheduler, OutOfZoneModeChangeLegacy)
 
 TEST(ArgosScheduler, OutOfZoneModeChangePrepass)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0U;
 	double frequency = 900.11;
@@ -2916,7 +2916,7 @@ TEST(ArgosScheduler, OutOfZoneModeChangePrepass)
 	fake_config_store->write_param(ParamID::ZONE_ENABLE_ACTIVATION_DATE, zone_enable_activation_date);
 	unsigned int zone_delta_arg_loc_argos_seconds = 3600;
 	fake_config_store->write_param(ParamID::ZONE_GNSS_DELTA_ARG_LOC_ARGOS_SECONDS, zone_delta_arg_loc_argos_seconds);
-	BaseArgosDepthPile zone_argos_depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile zone_argos_depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	fake_config_store->write_param(ParamID::ZONE_ARGOS_DEPTH_PILE, zone_argos_depth_pile);
 	BaseArgosPower zone_argos_power = BaseArgosPower::POWER_200_MW;
 	fake_config_store->write_param(ParamID::_RESERVED_70, zone_argos_power);
@@ -3035,7 +3035,7 @@ TEST(ArgosScheduler, OutOfZoneModeChangePrepass)
 
 TEST(ArgosScheduler, LegacyModeSchedulingShortPacketInfiniteBurstWithNonZeroSensorLog)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0U;
 	double frequency = 900.11;
@@ -3121,7 +3121,7 @@ TEST(ArgosScheduler, LegacyModeSchedulingShortPacketInfiniteBurstWithNonZeroSens
 
 TEST(ArgosScheduler, LegacyModeSchedulingShortPacketInfiniteBurstConfirmDepthPile16)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_16;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_16;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0U;
 	double frequency = 900.11;
@@ -3232,7 +3232,7 @@ TEST(ArgosScheduler, LegacyModeSchedulingShortPacketInfiniteBurstConfirmDepthPil
 
 TEST(ArgosScheduler, TestDownlinkReceive)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0x0U; // Not used
 	double frequency = 900.22;
@@ -3392,7 +3392,7 @@ TEST(ArgosScheduler, TestDownlinkReceive)
 
 TEST(ArgosScheduler, TestDownlinkWithAOPUpdatePeriod)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0x0U; // Not used
 	double frequency = 900.22;
@@ -3656,7 +3656,7 @@ TEST(ArgosScheduler, TestDownlinkWithAOPUpdatePeriod)
 
 TEST(ArgosScheduler, GNSSOffLegacySchedulingDopplerPacket)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0U;
 	double frequency = 900.11;
@@ -3735,7 +3735,7 @@ TEST(ArgosScheduler, GNSSOffLegacySchedulingDopplerPacket)
 
 TEST(ArgosScheduler, GNSSOffDutyCycleSchedulingDopplerPacket)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0xAAAAAAU;
 	double frequency = 900.11;
@@ -3819,7 +3819,7 @@ TEST(ArgosScheduler, GNSSOffDutyCycleSchedulingDopplerPacket)
 
 TEST(ArgosScheduler, TestAOPUpdateWithOutOfServiceSatellite)
 {
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0x0U; // Not used
 	double frequency = 900.22;

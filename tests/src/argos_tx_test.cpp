@@ -136,7 +136,7 @@ TEST_GROUP(ArgosTxService)
 
 TEST(ArgosTxService, DepthPileFillsAndEmpties)
 {
-	ArgosDepthPile<GPSLogEntry> dp;
+	DepthPile<GPSLogEntry> dp;
 	std::vector<GPSLogEntry*> v;
 	GPSLogEntry e;
 
@@ -177,7 +177,7 @@ TEST(ArgosTxService, DepthPileFillsAndEmpties)
 
 TEST(ArgosTxService, DepthPile1)
 {
-	ArgosDepthPile<GPSLogEntry> dp;
+	DepthPile<GPSLogEntry> dp;
 	std::vector<GPSLogEntry*> v;
 	GPSLogEntry e;
 
@@ -408,7 +408,7 @@ TEST(ArgosTxService, TimeSyncBurstPosFix)
 	double frequency = 900.22;
 	BaseArgosMode mode = BaseArgosMode::LEGACY;
 	BaseArgosPower power = BaseArgosPower::POWER_1000_MW;
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int argos_hexid = 0x01234567U;
 	unsigned int lb_threshold = 0U;
 	bool lb_en = false;
@@ -458,7 +458,7 @@ TEST(ArgosTxService, TimeSyncBurstNoPosFix)
 	double frequency = 900.22;
 	BaseArgosMode mode = BaseArgosMode::LEGACY;
 	BaseArgosPower power = BaseArgosPower::POWER_1000_MW;
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int argos_hexid = 0x01234567U;
 	unsigned int lb_threshold = 0U;
 	bool lb_en = false;
@@ -503,7 +503,7 @@ TEST(ArgosTxService, TimeSyncBurstNoPosOrTimeFix)
 	double frequency = 900.22;
 	BaseArgosMode mode = BaseArgosMode::LEGACY;
 	BaseArgosPower power = BaseArgosPower::POWER_1000_MW;
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int argos_hexid = 0x01234567U;
 	unsigned int lb_threshold = 0U;
 	bool lb_en = false;
@@ -534,7 +534,7 @@ TEST(ArgosTxService, LegacyTxServiceInv)
 	double frequency = 900.22;
 	BaseArgosMode mode = BaseArgosMode::LEGACY;
 	BaseArgosPower power = BaseArgosPower::POWER_1000_MW;
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_4;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_4;
 	unsigned int argos_hexid = 0x01234567U;
 	unsigned int lb_threshold = 0U;
 	bool lb_en = false;
@@ -586,7 +586,7 @@ TEST(ArgosTxService, LegacyTxLowBattery)
 	double frequency = 900.22;
 	BaseArgosMode mode = BaseArgosMode::LEGACY;
 	BaseArgosPower power = BaseArgosPower::POWER_1000_MW;
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_4;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_4;
 	unsigned int argos_hexid = 0x01234567U;
 	unsigned int lb_threshold = 20U;
 	bool lb_en = true;
@@ -642,7 +642,7 @@ TEST(ArgosTxService, LegacyTxOutOfZone)
 	double frequency = 900.22;
 	BaseArgosMode mode = BaseArgosMode::LEGACY;
 	BaseArgosPower power = BaseArgosPower::POWER_1000_MW;
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_4;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_4;
 	unsigned int argos_hexid = 0x01234567U;
 	unsigned int lb_threshold = 0U;
 	bool lb_en = false;
@@ -695,7 +695,7 @@ TEST(ArgosTxService, TxServiceCancelledByUnderwaterBeforeTx)
 	double frequency = 900.22;
 	BaseArgosMode mode = BaseArgosMode::LEGACY;
 	BaseArgosPower power = BaseArgosPower::POWER_1000_MW;
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_4;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_4;
 	unsigned int argos_hexid = 0x01234567U;
 	unsigned int lb_threshold = 0U;
 	bool lb_en = false;
@@ -758,7 +758,7 @@ TEST(ArgosTxService, TxServiceCancelledDuringTx)
 	double frequency = 900.22;
 	BaseArgosMode mode = BaseArgosMode::LEGACY;
 	BaseArgosPower power = BaseArgosPower::POWER_1000_MW;
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_4;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_4;
 	unsigned int argos_hexid = 0x01234567U;
 	unsigned int lb_threshold = 0U;
 	bool lb_en = false;
@@ -826,7 +826,7 @@ TEST(ArgosTxService, LegacyTxServiceDepthPile1)
 	double frequency = 900.22;
 	BaseArgosMode mode = BaseArgosMode::LEGACY;
 	BaseArgosPower power = BaseArgosPower::POWER_1000_MW;
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int argos_hexid = 0x01234567U;
 	unsigned int lb_threshold = 0U;
 	bool lb_en = false;
@@ -877,7 +877,7 @@ TEST(ArgosTxService, UnderwaterFor24HoursBeforeTx)
 	double frequency = 900.22;
 	BaseArgosMode mode = BaseArgosMode::LEGACY;
 	BaseArgosPower power = BaseArgosPower::POWER_1000_MW;
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_4;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_4;
 	unsigned int argos_hexid = 0x01234567U;
 	unsigned int lb_threshold = 0U;
 	bool lb_en = false;
@@ -940,7 +940,7 @@ TEST(ArgosTxService, LastTxIsUpdated)
 	double frequency = 900.22;
 	BaseArgosMode mode = BaseArgosMode::LEGACY;
 	BaseArgosPower power = BaseArgosPower::POWER_1000_MW;
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int argos_hexid = 0x01234567U;
 	unsigned int lb_threshold = 0U;
 	bool lb_en = false;
@@ -982,7 +982,7 @@ TEST(ArgosTxService, LastTxIsUpdated)
 
 TEST(ArgosTxService, DPHardFaultPartialDepthPile)
 {
-	ArgosDepthPile<GPSLogEntry> dp;
+	DepthPile<GPSLogEntry> dp;
 	std::vector<GPSLogEntry*> v;
 	GPSLogEntry e;
 
@@ -992,9 +992,9 @@ TEST(ArgosTxService, DPHardFaultPartialDepthPile)
 		dp.store(e, 99999999);
 	}
 
-	v = dp.retrieve((unsigned int)BaseArgosDepthPile::DEPTH_PILE_16);
+	v = dp.retrieve((unsigned int)BaseDepthPile::DEPTH_PILE_16);
 	CHECK_EQUAL(4, v.size());
-	v = dp.retrieve((unsigned int)BaseArgosDepthPile::DEPTH_PILE_16);
+	v = dp.retrieve((unsigned int)BaseDepthPile::DEPTH_PILE_16);
 	CHECK_EQUAL(2, v.size());
 }
 
@@ -1003,7 +1003,7 @@ TEST(ArgosTxService, UnderwaterFor24HoursDryTimeZero)
 	double frequency = 900.22;
 	BaseArgosMode mode = BaseArgosMode::LEGACY;
 	BaseArgosPower power = BaseArgosPower::POWER_1000_MW;
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	unsigned int argos_hexid = 0x01234567U;
 	unsigned int lb_threshold = 0U;
 	bool lb_en = false;
@@ -1075,7 +1075,7 @@ TEST(ArgosTxService, DepthPileManagerSensorTimeout)
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	ArgosDepthPileManager man;
+	DepthPileManager man;
 
 	ServiceEvent e;
 	GPSLogEntry log;
@@ -1114,7 +1114,7 @@ TEST(ArgosTxService, DepthPileManagerSensorRx)
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	ArgosDepthPileManager man;
+	DepthPileManager man;
 
 	ServiceEvent e;
 	GPSLogEntry log;
@@ -1153,7 +1153,7 @@ TEST(ArgosTxService, DepthPileManagerTestSensorValueConversion)
 	fake_config_store->write_param(ParamID::SEA_TEMP_SENSOR_ENABLE, enable);
 	fake_config_store->write_param(ParamID::SEA_TEMP_SENSOR_ENABLE_TX_MODE, mode);
 
-	ArgosDepthPileManager man;
+	DepthPileManager man;
 
 	ServiceEvent e;
 	GPSLogEntry log;
@@ -1269,7 +1269,7 @@ TEST(ArgosTxService, DepthPileManagerTestThermistorConversion)
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 
-	ArgosDepthPileManager man;
+	DepthPileManager man;
 
 	ServiceEvent e;
 	GPSLogEntry log;
@@ -1356,7 +1356,7 @@ IGNORE_TEST(ArgosTxService, PassPredictWithSensorDataPayload)
 	double frequency = 900.22;
 	BaseArgosMode mode = BaseArgosMode::PASS_PREDICTION;
 	BaseArgosPower power = BaseArgosPower::POWER_1000_MW;
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_4;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_4;
 	unsigned int argos_hexid = 0x01234567U;
 	unsigned int tr_nom = 10;
 	bool time_sync_en = false;

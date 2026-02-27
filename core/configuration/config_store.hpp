@@ -47,7 +47,7 @@ struct ArgosConfig {
 	BaseArgosMode mode;
 	unsigned int ntry_per_message;
 	unsigned int duty_cycle;
-	BaseArgosDepthPile depth_pile;
+	BaseDepthPile depth_pile;
 	BaseDeltaTimeLoc delta_time_loc;
 	unsigned int dry_time_before_tx;
 	unsigned int argos_id;
@@ -124,9 +124,9 @@ protected:
 #endif
 
 #if MODEL_UW
-		/* ARGOS_DEPTH_PILE */ BaseArgosDepthPile::DEPTH_PILE_1,
+		/* ARGOS_DEPTH_PILE */ BaseDepthPile::DEPTH_PILE_1,
 #else
-		/* ARGOS_DEPTH_PILE */ BaseArgosDepthPile::DEPTH_PILE_16,
+		/* ARGOS_DEPTH_PILE */ BaseDepthPile::DEPTH_PILE_16,
 #endif
 		/* _RESERVED_20 */ 0U,
 		/* GLONASS_CONST_SELECT */ 0U, // Not implemented
@@ -154,7 +154,7 @@ protected:
 		/* LB_GNSS_EN */ (bool)true,
 		/* DLOC_ARG_LB */ 60*60U,
 		/* LB_GNSS_HDOPFILT_THR */ 2U,
-		/* LB_ARGOS_DEPTH_PILE */ BaseArgosDepthPile::DEPTH_PILE_1,
+		/* LB_ARGOS_DEPTH_PILE */ BaseDepthPile::DEPTH_PILE_1,
 		/* LB_GNSS_ACQ_TIMEOUT */ 120U,
 		/* SAMPLING_SURF_FREQ */ 60U,
 		/* PP_MIN_ELEVATION */ 15.0,
@@ -186,7 +186,7 @@ protected:
 		/* ZONE_ENABLE_OUT_OF_ZONE_DETECTION_MODE */ (bool)false,
 		/* ZONE_ENABLE_ACTIVATION_DATE */ (bool)true,
 		/* ZONE_ACTIVATION_DATE */ static_cast<std::time_t>(1577836800U), // 01/01/2020 00:00:00
-		/* ZONE_ARGOS_DEPTH_PILE */ BaseArgosDepthPile::DEPTH_PILE_1,
+		/* ZONE_ARGOS_DEPTH_PILE */ BaseDepthPile::DEPTH_PILE_1,
 		/* _RESERVED_70 */ BaseArgosPower::POWER_350_MW,
 
 #if MODEL_SB
@@ -713,7 +713,7 @@ public:
 			argos_config.time_sync_burst_en = read_param<bool>(ParamID::ARGOS_TIME_SYNC_BURST_EN);
 			argos_config.tx_counter = read_param<unsigned int>(ParamID::TX_COUNTER);
 			argos_config.mode = read_param<BaseArgosMode>(ParamID::LB_ARGOS_MODE);
-			argos_config.depth_pile = read_param<BaseArgosDepthPile>(ParamID::LB_ARGOS_DEPTH_PILE);
+			argos_config.depth_pile = read_param<BaseDepthPile>(ParamID::LB_ARGOS_DEPTH_PILE);
 			argos_config.duty_cycle = read_param<unsigned int>(ParamID::LB_ARGOS_DUTY_CYCLE);
 			argos_config.ntry_per_message = read_param<unsigned int>(ParamID::LB_NTRY_PER_MESSAGE);
 			argos_config.tr_nom = read_param<unsigned int>(ParamID::TR_LB);
@@ -743,7 +743,7 @@ public:
 			argos_config.time_sync_burst_en = read_param<bool>(ParamID::ARGOS_TIME_SYNC_BURST_EN);
 			argos_config.tx_counter = read_param<unsigned int>(ParamID::TX_COUNTER);
 			argos_config.mode = read_param<BaseArgosMode>(ParamID::ZONE_ARGOS_MODE);
-			argos_config.depth_pile = read_param<BaseArgosDepthPile>(ParamID::ZONE_ARGOS_DEPTH_PILE);
+			argos_config.depth_pile = read_param<BaseDepthPile>(ParamID::ZONE_ARGOS_DEPTH_PILE);
 			argos_config.duty_cycle = read_param<unsigned int>(ParamID::ZONE_ARGOS_DUTY_CYCLE);
 			argos_config.ntry_per_message = read_param<unsigned int>(ParamID::ZONE_ARGOS_NTRY_PER_MESSAGE);
 			argos_config.tr_nom = read_param<unsigned int>(ParamID::ZONE_ARGOS_REPETITION_SECONDS);
@@ -774,7 +774,7 @@ public:
 			argos_config.time_sync_burst_en = read_param<bool>(ParamID::ARGOS_TIME_SYNC_BURST_EN);
 			argos_config.tx_counter = read_param<unsigned int>(ParamID::TX_COUNTER);
 			argos_config.mode = read_param<BaseArgosMode>(ParamID::ARGOS_MODE);
-			argos_config.depth_pile = read_param<BaseArgosDepthPile>(ParamID::ARGOS_DEPTH_PILE);
+			argos_config.depth_pile = read_param<BaseDepthPile>(ParamID::ARGOS_DEPTH_PILE);
 			argos_config.duty_cycle = read_param<unsigned int>(ParamID::DUTY_CYCLE);
 			argos_config.ntry_per_message = read_param<unsigned int>(ParamID::NTRY_PER_MESSAGE);
 			argos_config.tr_nom = read_param<unsigned int>(ParamID::TR_NOM);

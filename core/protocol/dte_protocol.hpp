@@ -451,25 +451,25 @@ protected:
 	static inline void encode(std::string& output, const ParamID &value) {
 		output.append(param_map[(int)value].key);
 	}
-	static inline void encode(std::string& output, const BaseArgosDepthPile& value) {
+	static inline void encode(std::string& output, const BaseDepthPile& value) {
 		unsigned int depth_pile = 0;
-		if (value == BaseArgosDepthPile::DEPTH_PILE_1)
+		if (value == BaseDepthPile::DEPTH_PILE_1)
 			depth_pile = 1;
-		else if (value == BaseArgosDepthPile::DEPTH_PILE_2)
+		else if (value == BaseDepthPile::DEPTH_PILE_2)
 			depth_pile = 2;
-		else if (value == BaseArgosDepthPile::DEPTH_PILE_3)
+		else if (value == BaseDepthPile::DEPTH_PILE_3)
 			depth_pile = 3;
-		else if (value == BaseArgosDepthPile::DEPTH_PILE_4)
+		else if (value == BaseDepthPile::DEPTH_PILE_4)
 			depth_pile = 4;
-		else if (value == BaseArgosDepthPile::DEPTH_PILE_8)
+		else if (value == BaseDepthPile::DEPTH_PILE_8)
 			depth_pile = 8;
-		else if (value == BaseArgosDepthPile::DEPTH_PILE_12)
+		else if (value == BaseDepthPile::DEPTH_PILE_12)
 			depth_pile = 9;
-		else if (value == BaseArgosDepthPile::DEPTH_PILE_16)
+		else if (value == BaseDepthPile::DEPTH_PILE_16)
 			depth_pile = 10;
-		else if (value == BaseArgosDepthPile::DEPTH_PILE_20)
+		else if (value == BaseDepthPile::DEPTH_PILE_20)
 			depth_pile = 11;
-		else if (value == BaseArgosDepthPile::DEPTH_PILE_24)
+		else if (value == BaseDepthPile::DEPTH_PILE_24)
 			depth_pile = 12;
 		encode(output, depth_pile);
 	}
@@ -600,7 +600,7 @@ protected:
 	}
 	static void validate(const BaseMap &, const BaseGNSSDynModel&) {
 	}
-	static void validate(const BaseMap &, const BaseArgosDepthPile&) {
+	static void validate(const BaseMap &, const BaseDepthPile&) {
 	}
 	static void validate(const BaseMap &, const BaseArgosMode&) {
 	}
@@ -1164,25 +1164,25 @@ private:
 		}
 	}
 
-	static BaseArgosDepthPile decode_depth_pile(const std::string& s) {
+	static BaseDepthPile decode_depth_pile(const std::string& s) {
 		if (s == "1") {
-			return BaseArgosDepthPile::DEPTH_PILE_1;
+			return BaseDepthPile::DEPTH_PILE_1;
 		} else if (s == "2") {
-			return BaseArgosDepthPile::DEPTH_PILE_2;
+			return BaseDepthPile::DEPTH_PILE_2;
 		} else if (s == "3") {
-			return BaseArgosDepthPile::DEPTH_PILE_3;
+			return BaseDepthPile::DEPTH_PILE_3;
 		} else if (s == "4") {
-			return BaseArgosDepthPile::DEPTH_PILE_4;
+			return BaseDepthPile::DEPTH_PILE_4;
 		} else if (s == "8") {
-			return BaseArgosDepthPile::DEPTH_PILE_8;
+			return BaseDepthPile::DEPTH_PILE_8;
 		} else if (s == "9") {
-			return BaseArgosDepthPile::DEPTH_PILE_12;
+			return BaseDepthPile::DEPTH_PILE_12;
 		} else if (s == "10") {
-			return BaseArgosDepthPile::DEPTH_PILE_16;
+			return BaseDepthPile::DEPTH_PILE_16;
 		} else if (s == "11") {
-			return BaseArgosDepthPile::DEPTH_PILE_20;
+			return BaseDepthPile::DEPTH_PILE_20;
 		} else if (s == "12") {
-			return BaseArgosDepthPile::DEPTH_PILE_24;
+			return BaseDepthPile::DEPTH_PILE_24;
 		} else {
 			DEBUG_ERROR("DTE_PROTOCOL_VALUE_OUT_OF_RANGE in %s(%s)", __FUNCTION__, s.c_str());
 			throw DTE_PROTOCOL_VALUE_OUT_OF_RANGE;
@@ -1402,7 +1402,7 @@ private:
 						}
 						case BaseEncoding::DEPTHPILE:
 						{
-							BaseArgosDepthPile x = decode_depth_pile(value);
+							BaseDepthPile x = decode_depth_pile(value);
 							key_value.value = x;
 							val.push_back(key_value);
 							break;

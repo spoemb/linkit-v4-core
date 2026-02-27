@@ -485,8 +485,8 @@ void ArgosScheduler::notify_sensor_log_update() {
 
 			// If the number of GPS entries exceeds the max depth pile then delete the oldest entry from the GPS map so it
 			// doesn't keep growing in size.
-			if (m_num_gps_entries > (unsigned int)BaseArgosDepthPile::DEPTH_PILE_24) {
-				unsigned int index = m_num_gps_entries - (unsigned int)BaseArgosDepthPile::DEPTH_PILE_24 - 1;
+			if (m_num_gps_entries > (unsigned int)BaseDepthPile::DEPTH_PILE_24) {
+				unsigned int index = m_num_gps_entries - (unsigned int)BaseDepthPile::DEPTH_PILE_24 - 1;
 				DEBUG_TRACE("ArgosScheduler::notify_sensor_log_update: erasing entry %u from depth pile", index);
 				m_gps_entry_burst_counter.erase(index);
 				m_gps_log_entry.erase(index);

@@ -1007,54 +1007,54 @@ void ArgosTxScheduler::notify_tx_complete() {
 	m_last_schedule_abs = m_curr_schedule_abs;
 }
 
-ArgosDepthPileManager::ArgosDepthPileManager() {
+DepthPileManager::DepthPileManager() {
 	ArgosConfig argos_config;
 	configuration_store->get_argos_configuration(argos_config);
 	m_sensor_tx_enable = argos_config.sensor_tx_enable | (1 << (int)ServiceIdentifier::GNSS_SENSOR);
 	m_sensor_tx_current = 0;
 }
 
-void ArgosDepthPileManager::notify_peer_event(ServiceEvent& e) {
+void DepthPileManager::notify_peer_event(ServiceEvent& e) {
 
 	if (e.event_source == ServiceIdentifier::GNSS_SENSOR &&
 		e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
 		GPSLogEntry& entry = std::get<GPSLogEntry>(e.event_data);
 		if (!entry.info.valid) {
-			DEBUG_TRACE("ArgosDepthPileManager::notify_peer_event: GNSS cache skipped (invalid fix)");
+			DEBUG_TRACE("DepthPileManager::notify_peer_event: GNSS cache skipped (invalid fix)");
 			return;
 		}
-		DEBUG_TRACE("ArgosDepthPileManager::notify_peer_event: GNSS cache set");
+		DEBUG_TRACE("DepthPileManager::notify_peer_event: GNSS cache set");
 		m_gps_cache = entry;
 		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::GNSS_SENSOR);
 	} else if (e.event_source == ServiceIdentifier::ALS_SENSOR &&
 			e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
-		DEBUG_TRACE("ArgosDepthPileManager::notify_peer_event: ALS cache set");
+		DEBUG_TRACE("DepthPileManager::notify_peer_event: ALS cache set");
 		ServiceSensorData& entry = std::get<ServiceSensorData>(e.event_data);
 		m_als_cache.port[0] = entry.port[0];
 		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::ALS_SENSOR);
 	} else if (e.event_source == ServiceIdentifier::PH_SENSOR &&
 			e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
-		DEBUG_TRACE("ArgosDepthPileManager::notify_peer_event: PH cache set");
+		DEBUG_TRACE("DepthPileManager::notify_peer_event: PH cache set");
 		ServiceSensorData& entry = std::get<ServiceSensorData>(e.event_data);
 		m_ph_cache.port[0] = (unsigned int)(entry.port[0] * 1000U);
 		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::PH_SENSOR);
 	} else if (e.event_source == ServiceIdentifier::PRESSURE_SENSOR &&
 			e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
-		DEBUG_TRACE("ArgosDepthPileManager::notify_peer_event: PRESSURE cache set");
+		DEBUG_TRACE("DepthPileManager::notify_peer_event: PRESSURE cache set");
 		ServiceSensorData& entry = std::get<ServiceSensorData>(e.event_data);
 		m_pressure_cache.port[0] = (unsigned int)(entry.port[0] * 1000U);
 		m_pressure_cache.port[1] = (unsigned int)((entry.port[1] + 40.0) * 100U);
 		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::PRESSURE_SENSOR);
 	} else if (e.event_source == ServiceIdentifier::SEA_TEMP_SENSOR &&
 			e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
-		DEBUG_TRACE("ArgosDepthPileManager::notify_peer_event: SEA_TEMP cache set");
+		DEBUG_TRACE("DepthPileManager::notify_peer_event: SEA_TEMP cache set");
 		ServiceSensorData& entry = std::get<ServiceSensorData>(e.event_data);
 		m_sea_temp_cache.port[0] = (unsigned int)((entry.port[0] + 126.0) * 1000U);
 		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::SEA_TEMP_SENSOR);
 #if ENABLE_THERMISTOR_SENSOR
 	} else if (e.event_source == ServiceIdentifier::THERMISTOR_SENSOR &&
 			e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
-		DEBUG_TRACE("ArgosDepthPileManager::notify_peer_event: THERMISTOR cache set");
+		DEBUG_TRACE("DepthPileManager::notify_peer_event: THERMISTOR cache set");
 		ServiceSensorData& entry = std::get<ServiceSensorData>(e.event_data);
 		m_sea_temp_cache.port[0] = (unsigned int)((entry.port[0] + 40.0) * 100U);
 		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::THERMISTOR_SENSOR);
@@ -1062,7 +1062,7 @@ void ArgosDepthPileManager::notify_peer_event(ServiceEvent& e) {
 #if ENABLE_AXL_SENSOR
 	} else if (e.event_source == ServiceIdentifier::AXL_SENSOR &&
 			e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
-		DEBUG_TRACE("ArgosDepthPileManager::notify_peer_event: AXL cache set");
+		DEBUG_TRACE("DepthPileManager::notify_peer_event: AXL cache set");
 		ServiceSensorData& entry = std::get<ServiceSensorData>(e.event_data);
 		// Read configured g-range (register value 0-3) and convert to actual g value
 		unsigned int range_reg = configuration_store->read_param<unsigned int>(ParamID::AXL_SENSOR_MEASUREMENT_RANGE);
@@ -1082,7 +1082,7 @@ void ArgosDepthPileManager::notify_peer_event(ServiceEvent& e) {
 		// a timeout to force dummy values into the depth pile
 		if ((m_sensor_tx_current & m_sensor_tx_enable) != m_sensor_tx_enable) {
 			m_timeout_task = system_scheduler->post_task_prio([this]() {
-				DEBUG_TRACE("ArgosDepthPileManager: sensor timeout: curr=%08x enable=%08x", m_sensor_tx_current, m_sensor_tx_enable);
+				DEBUG_TRACE("DepthPileManager: sensor timeout: curr=%08x enable=%08x", m_sensor_tx_current, m_sensor_tx_enable);
 				if (((1 << (int)ServiceIdentifier::ALS_SENSOR) & m_sensor_tx_enable) &&
 					((1 << (int)ServiceIdentifier::ALS_SENSOR) & m_sensor_tx_current) == 0) {
 					m_als_cache.port[0] = 0xFFFFFFFF;
@@ -1125,7 +1125,7 @@ void ArgosDepthPileManager::notify_peer_event(ServiceEvent& e) {
 	update_depth_pile();
 }
 
-void ArgosDepthPileManager::update_depth_pile() {
+void DepthPileManager::update_depth_pile() {
 
 	if ((m_sensor_tx_current & m_sensor_tx_enable) == m_sensor_tx_enable) {
 
