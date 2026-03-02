@@ -751,6 +751,39 @@ std::string DTEHandler::LORATX_REQ(int error_code, std::vector<BaseType>& arg_li
 
 	return DTEEncoder::encode(DTECommand::LORATX_RESP, error_code);
 }
+
+std::string DTEHandler::LORABR_REQ(int error_code, std::vector<BaseType>& arg_list) {
+	if (error_code) {
+		return DTEEncoder::encode(DTECommand::LORABR_RESP, error_code);
+	}
+
+	if (arg_list.size() < 1) {
+		return DTEEncoder::encode(DTECommand::LORABR_RESP, (int)DTEError::MISSING_ARGUMENT);
+	}
+
+	unsigned int action = std::get<unsigned int>(arg_list[0]);
+
+	if (!lora_device_instance) {
+		DEBUG_WARN("DTEHandler::LORABR_REQ: LoRa device not available");
+		return DTEEncoder::encode(DTECommand::LORABR_RESP, (int)DTEError::INCORRECT_DATA);
+	}
+
+	if (action == 1) {
+		// Start bridge: raw UART RX → USB CDC via async_write
+		auto write_fn = m_async_write;
+		lora_device_instance->start_bridge([write_fn](const uint8_t* data, size_t len) {
+			if (write_fn) {
+				write_fn(std::string(reinterpret_cast<const char*>(data), len));
+			}
+		});
+		DEBUG_INFO("DTEHandler::LORABR_REQ: bridge STARTED — type +++ to exit");
+	} else {
+		lora_device_instance->stop_bridge();
+		DEBUG_INFO("DTEHandler::LORABR_REQ: bridge STOPPED");
+	}
+
+	return DTEEncoder::encode(DTECommand::LORABR_RESP, (int)DTEError::OK);
+}
 #endif
 
 
@@ -978,7 +1011,14 @@ std::string DTEHandler::SWSST_REQ(int error_code) {
 		(unsigned int)st.last_filtered_adc,
 		(unsigned int)st.is_calibrated,
 		(unsigned int)st.is_underwater,
-		(unsigned int)st.time_in_state_sec);
+		(unsigned int)st.time_in_state_sec,
+		(unsigned int)st.last_detect_method,
+		(unsigned int)st.last_drop_percent,
+		(unsigned int)st.last_drop_absolute,
+		(unsigned int)st.trend_count,
+		(unsigned int)st.consecutive_samples,
+		(unsigned int)st.contrast_ratio_x10,
+		(unsigned int)st.midpoint);
 #else
 	return DTEEncoder::encode(DTECommand::SWSST_RESP, (int)DTEError::PARAM_KEY_UNRECOGNISED);
 #endif
@@ -1008,6 +1048,39 @@ std::string DTEHandler::SWSTST_REQ(int error_code, std::vector<BaseType>& arg_li
 	(void)action;
 	return DTEEncoder::encode(DTECommand::SWSTST_RESP, (int)DTEError::PARAM_KEY_UNRECOGNISED);
 #endif
+}
+
+std::string DTEHandler::GNSSBR_REQ(int error_code, std::vector<BaseType>& arg_list) {
+	if (error_code) {
+		return DTEEncoder::encode(DTECommand::GNSSBR_RESP, error_code);
+	}
+
+	if (arg_list.size() < 1) {
+		return DTEEncoder::encode(DTECommand::GNSSBR_RESP, (int)DTEError::MISSING_ARGUMENT);
+	}
+
+	unsigned int action = std::get<unsigned int>(arg_list[0]);
+
+	if (!gps_device) {
+		DEBUG_WARN("DTEHandler::GNSSBR_REQ: GNSS device not available");
+		return DTEEncoder::encode(DTECommand::GNSSBR_RESP, (int)DTEError::INCORRECT_DATA);
+	}
+
+	if (action == 1) {
+		// Start bridge: raw UART RX → USB CDC via async_write
+		auto write_fn = m_async_write;
+		gps_device->start_bridge([write_fn](const uint8_t* data, size_t len) {
+			if (write_fn) {
+				write_fn(std::string(reinterpret_cast<const char*>(data), len));
+			}
+		});
+		DEBUG_INFO("DTEHandler::GNSSBR_REQ: bridge STARTED — type +++ to exit");
+	} else {
+		gps_device->stop_bridge();
+		DEBUG_INFO("DTEHandler::GNSSBR_REQ: bridge STOPPED");
+	}
+
+	return DTEEncoder::encode(DTECommand::GNSSBR_RESP, (int)DTEError::OK);
 }
 
 // Helper to format and return GNSSI response from cached info
@@ -1274,6 +1347,9 @@ DTEAction DTEHandler::handle_dte_message(const std::string& req, std::string& re
 	case DTECommand::SWSTST_REQ:
 		resp = SWSTST_REQ(error_code, arg_list);
 		break;
+	case DTECommand::GNSSBR_REQ:
+		resp = GNSSBR_REQ(error_code, arg_list);
+		break;
 	case DTECommand::GNSSI_REQ:
 		resp = GNSSI_REQ(error_code);
 		break;
@@ -1300,6 +1376,9 @@ DTEAction DTEHandler::handle_dte_message(const std::string& req, std::string& re
 #if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
 	case DTECommand::LORATX_REQ:
 		resp = LORATX_REQ(error_code, arg_list);
+		break;
+	case DTECommand::LORABR_REQ:
+		resp = LORABR_REQ(error_code, arg_list);
 		break;
 #endif
 	default:

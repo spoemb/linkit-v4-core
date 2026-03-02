@@ -2,7 +2,10 @@
 #include "debug.hpp"
 #include "gpio.hpp"
 #include "pmu.hpp"
+#include "rgb_led.hpp"
 #include "nrfx_saadc.h"
+
+extern RGBLed *status_led;
 
 #ifndef CPPUTEST
 #include "crc16.h"
@@ -21,23 +24,23 @@
 // Default values if configuration is invalid (work for both resolutions)
 #define DEFAULT_THRESHOLD_MIN 0
 #define DEFAULT_THRESHOLD_MAX 8000
-#define DEFAULT_HYSTERESIS_PERCENT 14     // Optimized from Monte Carlo: balance transitions/stability
+#define DEFAULT_HYSTERESIS_PERCENT 10     // Reduced: faster transition, rapid detection handles noise
 #define DEFAULT_CALIB_INTERVAL_SEC 3600
 #define DEFAULT_MAX_DIVE_TIME_SEC 7200
 #define DEFAULT_MIN_SURFACE_TIME_SEC 10
 
 // Optimized parameters for FAST SURFACE DETECTION (priority: surface over underwater)
-#define DEFAULT_THRESHOLD_RATIO_PERCENT 35  // Lower: threshold closer to air = faster surface detect
+#define DEFAULT_THRESHOLD_RATIO_PERCENT 32  // Balanced: fast surface via tiers, stable underwater via threshold
 #define DEFAULT_ALPHA_PERCENT 19            // 0.19 - fast EMA adaptation
 #define DEFAULT_MAX_SAMPLES 1               // Immediate dive detection
 #define DEFAULT_MIN_DRY_SAMPLES 2           // Ultra-fast surface confirmation (2 samples = 2s)
 
 // Biofouling detection thresholds
 #define HYSTERESIS_STUCK_TIMEOUT_SEC 30     // Recalibrate if stuck in zone for 30s
-#define SURFACE_ADAPT_THRESHOLD 1.3f        // Trigger air recalib if readings 30% above baseline
-#define MIN_SURFACE_TIME_FOR_ADAPT 10       // Minimum surface time before adapting air baseline
-#define EXTENDED_DIVE_RECALIB_START_SEC 60  // Start checking for biofouling after 60s underwater
-#define EXTENDED_DIVE_RECALIB_INTERVAL_SEC 30  // Check every 30s during extended dive
+#define SURFACE_ADAPT_THRESHOLD 1.2f        // Trigger air recalib if readings 20% above baseline (faster biofouling adapt)
+#define MIN_SURFACE_TIME_FOR_ADAPT 8        // Minimum surface time before adapting air baseline
+#define EXTENDED_DIVE_RECALIB_START_SEC 30  // Start checking for biofouling after 30s underwater (was 60)
+#define EXTENDED_DIVE_RECALIB_INTERVAL_SEC 15  // Check every 15s during extended dive (was 30)
 
 // Water baseline protection - prevents biofouling surface readings from corrupting calibration
 #define ABSOLUTE_MIN_WATER_ADC 2000         // True seawater on 14-bit ADC is typically > 2000
@@ -45,11 +48,11 @@
 
 // Trend-based surface detection - detects surface by ADC decreasing trend (drying)
 // OPTIMIZED FOR FAST SURFACE DETECTION
-#define TREND_DECREASE_THRESHOLD_PERCENT 2  // 2% decrease threshold
-#define TREND_DECREASE_ABSOLUTE_MIN 8       // Lowered: 8 ADC counts min for faster detection
-#define TREND_CONSECUTIVE_DECREASE_MIN 3    // Reduced: 3 consecutive decreases (was 4)
-#define TREND_TOTAL_DROP_PERCENT 10         // Reduced: 10% total drop (was 15%)
-#define CUMULATIVE_DROP_PERCENT 15          // Reduced: 15% cumulative drop (was 20%)
+#define TREND_DECREASE_THRESHOLD_PERCENT 1  // 1% decrease threshold (was 2%) - catches slow drying better
+#define TREND_DECREASE_ABSOLUTE_MIN 20      // 20 ADC counts min (raised from 8 to reject noise, lowered % compensates)
+#define TREND_CONSECUTIVE_DECREASE_MIN 2    // 2 consecutive decreases for faster trend detection
+#define TREND_TOTAL_DROP_PERCENT 8          // 8% total drop in trend window (was 10%)
+#define CUMULATIVE_DROP_PERCENT 12          // 12% cumulative drop from peak (was 15%)
 
 // Variance-based surface detection - high variance = drying surface, low variance = stable underwater
 #define VARIANCE_HIGH_THRESHOLD 10000       // Variance above this suggests surface (drying)
@@ -63,12 +66,19 @@
 // a large ADC drop. Even with heavy biofouling (salt/biofilm), the RELATIVE
 // drop is always significant because the conductivity path through water is broken.
 // These thresholds enable <2s surface detection in all conditions.
-#define RAPID_DROP_TIER1_PERCENT 25         // Single sample: >25% drop → immediate surface
-#define RAPID_DROP_TIER1_ABSOLUTE 300       // AND >300 ADC absolute drop
-#define RAPID_DROP_TIER2_PERCENT 12         // Two consecutive: >12% drop → surface
-#define RAPID_DROP_TIER2_ABSOLUTE 150       // AND >150 ADC absolute drop
-#define RAPID_DROP_TIER3_PERCENT 8          // Sustained trend: >8% with trend → surface
-#define RAPID_DROP_TIER3_ABSOLUTE 100       // AND >100 ADC absolute drop
+#define RAPID_DROP_TIER1_PERCENT 18         // Single sample: >18% drop → immediate surface
+#define RAPID_DROP_TIER1_ABSOLUTE 200       // AND >200 ADC absolute drop
+#define RAPID_DROP_TIER2_PERCENT 7          // Two consecutive: >7% drop → surface (was 9%)
+#define RAPID_DROP_TIER2_ABSOLUTE 80        // AND >80 ADC absolute drop (was 100)
+#define RAPID_DROP_TIER3_PERCENT 5          // Sustained trend: >5% with trend → surface
+#define RAPID_DROP_TIER3_ABSOLUTE 60        // AND >60 ADC absolute drop
+// TIER 4: Sliding window slope detection for gradual biofouling drying
+// With heavy biofouling, salt/biofilm retains moisture → the ADC drop is gradual
+// (3-4% per sample) rather than a sharp cliff. T1-T3 check single-sample drops
+// and miss this pattern. T4 accumulates the drop over a window of samples.
+#define RAPID_DROP_TIER4_PERCENT 8          // >8% total drop over window → surface (was 10%)
+#define RAPID_DROP_TIER4_ABSOLUTE 200       // AND >200 ADC absolute drop over window (raised for safety without midpoint guard)
+#define RAPID_DROP_TIER4_WINDOW 4           // Look back 4 samples (4s at 1s gap)
 #define BIOFOULING_OVERRIDE_MIN_TIME_SEC 3  // Minimum time underwater before biofouling override (was 15)
 
 // Initialize static members in noinit section
@@ -94,6 +104,9 @@ void SWSAnalogService::stop_test_mode() {
     if (s_instance) {
         s_instance->stop();
         DEBUG_INFO("SWSAnalog: Test mode stopped");
+    }
+    if (status_led) {
+        status_led->off();
     }
     m_test_mode = false;
 }
@@ -142,6 +155,9 @@ void SWSAnalogService::service_init() {
 
     // Initialize or validate calibration data
     if (!validate_calibration_data()) {
+        // CRITICAL: Zero out calibration struct to prevent garbage noinit values
+        // (e.g., threshold_water=8000 from random RAM) from surviving into calibrate_air_baseline()
+        memset(&m_calib, 0, sizeof(m_calib));
         DEBUG_INFO("SWSAnalog: Performing initial air calibration");
         calibrate_air_baseline();
     } else {
@@ -196,6 +212,7 @@ bool SWSAnalogService::service_is_enabled() {
 }
 
 uint16_t SWSAnalogService::read_analog_sws() {
+#ifdef SWS_ADC
     nrf_saadc_value_t raw = 0;
 
     // Enable SWS sender pin (apply voltage to electrode)
@@ -224,6 +241,10 @@ uint16_t SWSAnalogService::read_analog_sws() {
     DEBUG_TRACE("SWSAnalog: Raw ADC value = %d", raw);
 
     return (uint16_t)(raw < 0 ? 0 : raw);
+#else
+    // No SWS ADC channel on this board — always report dry
+    return 0;
+#endif
 }
 
 bool SWSAnalogService::validate_calibration_data() {
@@ -329,7 +350,7 @@ void SWSAnalogService::calibrate_water_baseline(uint16_t value) {
     // 4. AND value is within expected water range OR higher (salinity increase is OK)
 
     uint16_t threshold_with_margin = m_calib.threshold_current + m_calib.hysteresis_value;
-    uint16_t min_expected_water = (uint16_t)(m_calib.threshold_water * 0.85f);  // Allow 15% drop max
+    uint16_t min_expected_water = (uint16_t)(m_calib.threshold_water * 0.95f);  // Allow 5% drop max (tighter to prevent drying curve corruption)
 
     // CRITICAL: These absolute thresholds prevent biofouling corruption
     uint16_t absolute_min_water = ABSOLUTE_MIN_WATER_ADC;
@@ -340,10 +361,39 @@ void SWSAnalogService::calibrate_water_baseline(uint16_t value) {
     bool significantly_above_air = value >= min_above_air;
     bool within_expected_range = value >= min_expected_water;
     bool salinity_increase = value > m_calib.threshold_water;
+    // Guard: do NOT update water baseline when ADC is trending down (drying curve)
+    // During electrode drying, values like 3920 still pass all checks but pull water baseline down
+    bool not_in_drying_trend = (m_decreasing_trend_count < 2);
+
+    // Detect if water baseline needs fast convergence:
+    // Case 1: Initial estimate (< ABSOLUTE_MIN_WATER_ADC, e.g. air*3=12)
+    // Case 2: Stale/wrong baseline — reading is >50% above current water (e.g. water=2109, reading=4350)
+    bool water_at_initial_estimate = (m_calib.threshold_water < absolute_min_water);
+    bool water_far_below_reading = (value > (uint16_t)(m_calib.threshold_water * 1.5f));
 
     // ALL conditions must be met to update water baseline
-    if (clearly_underwater && above_absolute_min && significantly_above_air &&
-        (within_expected_range || salinity_increase)) {
+    if ((water_at_initial_estimate || water_far_below_reading) &&
+        above_absolute_min && significantly_above_air && clearly_underwater) {
+        // Fast bootstrap: accept reading directly (or with high alpha for large jumps)
+        if (water_at_initial_estimate) {
+            // First real reading ever — accept directly
+            DEBUG_INFO("SWSAnalog: Bootstrap water baseline %u -> %u (first real reading)",
+                       m_calib.threshold_water, value);
+            m_calib.threshold_water = value;
+        } else {
+            // Stale baseline — use high alpha (0.5) for fast convergence
+            uint16_t new_water = (uint16_t)(0.5f * value + 0.5f * m_calib.threshold_water);
+            DEBUG_INFO("SWSAnalog: Fast water convergence %u -> %u (value=%u, alpha=0.5)",
+                       m_calib.threshold_water, new_water, value);
+            m_calib.threshold_water = new_water;
+        }
+        update_dynamic_threshold();
+
+        m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
+                                     sizeof(m_calib) - sizeof(m_calib.crc),
+                                     nullptr);
+    } else if (clearly_underwater && above_absolute_min && significantly_above_air &&
+        not_in_drying_trend && (within_expected_range || salinity_increase)) {
 
         uint16_t new_water = (uint16_t)(alpha * value + (1.0f - alpha) * m_calib.threshold_water);
 
@@ -450,6 +500,11 @@ bool SWSAnalogService::check_safety_timeouts(bool current_state) {
 }
 
 bool SWSAnalogService::detector_state() {
+    // Detection method tracking for IHM diagnostics
+    uint8_t detect_method = SWSAnalogService::DETECT_NONE;
+    uint8_t detect_drop_percent = 0;
+    uint16_t detect_drop_absolute = 0;
+
     // Read ADC value
     uint16_t raw_value = read_analog_sws();
 
@@ -473,8 +528,9 @@ bool SWSAnalogService::detector_state() {
         prev_trend_value = m_trend_buffer[prev_idx];
     }
 
-    // Add to trend buffer
-    m_trend_buffer[m_trend_buffer_idx] = filtered_value;
+    // Add to trend buffer - use RAW value for sharper drop detection
+    // The moving average dampens transitions, making rapid drops appear smaller
+    m_trend_buffer[m_trend_buffer_idx] = raw_value;
     m_trend_buffer_idx = (m_trend_buffer_idx + 1) % TREND_BUFFER_SIZE;
     if (m_trend_buffer_count < TREND_BUFFER_SIZE) {
         m_trend_buffer_count++;
@@ -493,14 +549,14 @@ bool SWSAnalogService::detector_state() {
         }
     }
 
-    // Check if value is decreasing (more sensitive: 2% or 10 ADC counts minimum for slow drying)
+    // Check if value is decreasing (more sensitive: 2% or 8 ADC counts minimum for slow drying)
+    // Compare RAW vs RAW (both from trend buffer) for consistent drop detection
     bool is_decreasing = false;
-    if (prev_trend_value > 0) {
-        // Lowered threshold for better sensitivity with slow biofouling drying
+    if (prev_trend_value > 0 && prev_trend_value > raw_value) {
         uint16_t percent_threshold = (uint16_t)(prev_trend_value * TREND_DECREASE_THRESHOLD_PERCENT / 100);
         uint16_t decrease_threshold = (percent_threshold > TREND_DECREASE_ABSOLUTE_MIN) ?
                                        percent_threshold : TREND_DECREASE_ABSOLUTE_MIN;
-        is_decreasing = (prev_trend_value > filtered_value + decrease_threshold);
+        is_decreasing = (prev_trend_value > raw_value + decrease_threshold);
     }
 
     // More tolerant: decrement by 1 instead of reset to 0
@@ -546,7 +602,7 @@ bool SWSAnalogService::detector_state() {
     bool consecutive_trend = (m_decreasing_trend_count >= TREND_CONSECUTIVE_DECREASE_MIN &&
                               total_drop_percent >= TREND_TOTAL_DROP_PERCENT);
     bool cumulative_trend = (m_cumulative_drop_percent >= CUMULATIVE_DROP_PERCENT &&
-                             m_time_in_current_state > 10);  // Reduced: 10s (was 20s) for faster detection
+                             m_time_in_current_state > 5);  // 5s: gentle biofouling slopes need fast cumul detection
     bool trend_suggests_surface = consecutive_trend || cumulative_trend;
 
     // Variance-based surface detection flag
@@ -619,6 +675,9 @@ bool SWSAnalogService::detector_state() {
     bool new_state = m_current_state;
     uint16_t threshold_high = m_calib.threshold_current + m_calib.hysteresis_value;
     uint16_t threshold_low = m_calib.threshold_current - m_calib.hysteresis_value;
+    // Midpoint of air-water range: guard for sensitive rapid detection tiers (T3/T4)
+    // Prevents false surface triggers from normal underwater ADC fluctuations
+    uint16_t midpoint_air_water = (m_calib.threshold_air + m_calib.threshold_water) / 2;
 
     // === RAPID TRANSITION DETECTION (immediate surface on significant ADC drop) ===
     // When a turtle surfaces, the electrode loses water contact instantly.
@@ -626,10 +685,11 @@ bool SWSAnalogService::detector_state() {
     // the conductivity path through water is broken.
     // This enables <2s surface detection in ALL conditions including heavy biofouling.
     //
-    // Three tiers of detection:
-    // TIER 1: Single massive drop (>25% AND >300 abs) → 1 sample = 1s detection
-    // TIER 2: Moderate confirmed drop (>12% x2 samples) → 2 samples = 2s detection
-    // TIER 3: Small sustained drop with trend (>8% with trend>=2) → backup detection
+    // Four tiers of detection (optimized for fastest surface detection):
+    // TIER 1: Single significant drop (>18% AND >200 abs) → 1 sample = 1s detection
+    // TIER 2: Moderate confirmed drop (>9% x2 samples) → 2 samples = 2s detection
+    // TIER 3: Small sustained drop with trend (>5% with trend>=2) → backup detection
+    // TIER 4: Sliding window (>10% over 4 samples) → 4s detection for gradual biofouling drying
     bool fast_drop_detected = false;
     if (m_current_state && prev_trend_value > 0 && raw_value < prev_trend_value) {
         // Use RAW value (not filtered) for drop calculation.
@@ -638,14 +698,19 @@ bool SWSAnalogService::detector_state() {
         uint16_t drop_percent = (uint16_t)((prev_trend_value - raw_value) * 100 / prev_trend_value);
         uint16_t absolute_drop = prev_trend_value - raw_value;
 
-        // Safety check for TIER 2/3: raw value should be below water baseline
-        bool below_water_baseline = (raw_value < (uint16_t)(m_calib.threshold_water * 0.85f));
+        // Safety check for TIER 2: raw value should be below water baseline
+        // Relaxed to 0.92 (was 0.85) for biofouling: water baseline may drift down
+        bool below_water_baseline = (raw_value < (uint16_t)(m_calib.threshold_water * 0.92f));
 
         // TIER 1: Massive single-sample drop → immediate surface (1s detection)
-        // No below_water_baseline check needed - a 25%+ raw drop is unambiguous
+        // below_water_baseline guard: prevents false trigger from large underwater fluctuations
         if (drop_percent >= RAPID_DROP_TIER1_PERCENT &&
-            absolute_drop >= RAPID_DROP_TIER1_ABSOLUTE) {
+            absolute_drop >= RAPID_DROP_TIER1_ABSOLUTE &&
+            below_water_baseline) {
             fast_drop_detected = true;
+            detect_method = DETECT_RAPID_T1;
+            detect_drop_percent = (uint8_t)drop_percent;
+            detect_drop_absolute = absolute_drop;
             DEBUG_INFO("SWSAnalog: RAPID T1! %u%% drop (raw=%u prev=%u) SURFACE",
                        drop_percent, raw_value, prev_trend_value);
         }
@@ -655,16 +720,54 @@ bool SWSAnalogService::detector_state() {
                  m_decreasing_trend_count >= 1 &&
                  below_water_baseline) {
             fast_drop_detected = true;
+            detect_method = DETECT_RAPID_T2;
+            detect_drop_percent = (uint8_t)drop_percent;
+            detect_drop_absolute = absolute_drop;
             DEBUG_INFO("SWSAnalog: RAPID T2! %u%% x2 (raw=%u prev=%u) trend=%u SURFACE",
                        drop_percent, raw_value, prev_trend_value, m_decreasing_trend_count);
         }
         // TIER 3: Smaller drop with sustained decreasing trend (backup)
+        // midpoint guard: only fire when value is in surface half of air-water range
         else if (drop_percent >= RAPID_DROP_TIER3_PERCENT &&
                  absolute_drop >= RAPID_DROP_TIER3_ABSOLUTE &&
-                 m_decreasing_trend_count >= 2) {
+                 m_decreasing_trend_count >= 2 &&
+                 raw_value < midpoint_air_water) {
             fast_drop_detected = true;
+            detect_method = DETECT_RAPID_T3;
+            detect_drop_percent = (uint8_t)drop_percent;
+            detect_drop_absolute = absolute_drop;
             DEBUG_INFO("SWSAnalog: RAPID T3! %u%% trend=%u (raw=%u prev=%u) SURFACE",
                        drop_percent, m_decreasing_trend_count, raw_value, prev_trend_value);
+        }
+    }
+
+    // TIER 4: Sliding window slope detection (gradual biofouling drying)
+    // With heavy biofouling, salt/biofilm retains moisture → ADC drops gradually
+    // (3-4% per sample) instead of sharply. T1-T3 check single-sample drops and
+    // miss this gentle slope. T4 accumulates the total drop over a window.
+    // Outside the raw < prev check: noisy samples may briefly increase but the
+    // overall window trend is still downward.
+    if (!fast_drop_detected && m_current_state &&
+        m_trend_buffer_count >= (RAPID_DROP_TIER4_WINDOW + 1)) {
+        // trend_buffer stores raw values; idx was already incremented after adding current
+        uint8_t window_start_idx = (m_trend_buffer_idx + TREND_BUFFER_SIZE
+                                     - (RAPID_DROP_TIER4_WINDOW + 1)) % TREND_BUFFER_SIZE;
+        uint16_t window_start_value = m_trend_buffer[window_start_idx];
+        if (window_start_value > raw_value) {
+            uint16_t window_drop_pct = (uint16_t)(
+                (window_start_value - raw_value) * 100 / window_start_value);
+            uint16_t window_abs_drop = window_start_value - raw_value;
+            if (window_drop_pct >= RAPID_DROP_TIER4_PERCENT &&
+                window_abs_drop >= RAPID_DROP_TIER4_ABSOLUTE &&
+                m_decreasing_trend_count >= 2) {
+                fast_drop_detected = true;
+                detect_method = DETECT_RAPID_T4;
+                detect_drop_percent = (uint8_t)window_drop_pct;
+                detect_drop_absolute = window_abs_drop;
+                DEBUG_INFO("SWSAnalog: RAPID T4! %u%% over %u samples (raw=%u start=%u trend=%u) SURFACE",
+                           window_drop_pct, RAPID_DROP_TIER4_WINDOW, raw_value,
+                           window_start_value, m_decreasing_trend_count);
+            }
         }
     }
 
@@ -692,22 +795,37 @@ bool SWSAnalogService::detector_state() {
             }
 
             // Recalibrate air baseline using raw value (represents actual air reading)
-            if (raw_value > m_calib.threshold_air) {
+            // Guard: new air must stay below threshold_current and below water/2
+            if (raw_value > m_calib.threshold_air &&
+                raw_value < m_calib.threshold_current &&
+                raw_value < (m_calib.threshold_water / 2)) {
                 uint16_t old_air = m_calib.threshold_air;
                 m_calib.threshold_air = (uint16_t)(raw_value * 0.8f);
                 update_dynamic_threshold();
                 DEBUG_INFO("SWSAnalog: Air recalib after rapid drop %u -> %u", old_air, m_calib.threshold_air);
             }
         } else if ((trend_suggests_surface || variance_suggests_surface) &&
-                   filtered_value < ABSOLUTE_MIN_WATER_ADC) {
-            // Trend/variance based detection: still requires absolute check
-            // to avoid false triggers when truly underwater in seawater
+                   filtered_value < (uint16_t)(m_calib.threshold_water * 0.85f)) {
+            // Trend/variance based detection: adaptive check using water baseline
+            // instead of fixed ABSOLUTE_MIN_WATER_ADC. With heavy biofouling the
+            // water baseline drifts down (e.g., 2200) and surface readings can stay
+            // above the old fixed 2000 cutoff, blocking detection. Using 85% of
+            // water baseline adapts to actual conditions.
             biofouling_surface_override = true;
-            DEBUG_INFO("SWSAnalog: Trend/var surface override (trend=%u var=%u ADC=%u)",
-                       trend_suggests_surface, variance_suggests_surface, filtered_value);
+            if (detect_method == DETECT_NONE) {
+                detect_method = DETECT_TREND;
+            }
+            DEBUG_INFO("SWSAnalog: Trend/var surface override (trend=%u var=%u ADC=%u water85=%u)",
+                       trend_suggests_surface, variance_suggests_surface, filtered_value,
+                       (uint16_t)(m_calib.threshold_water * 0.85f));
 
             // Recalibrate air baseline to current trend minimum
-            if (trend_min > m_calib.threshold_air && trend_min < ABSOLUTE_MIN_WATER_ADC) {
+            // Guards: trend_min must be (1) above current air, (2) below current threshold
+            // (prevents drying-curve values from pushing air into the water range),
+            // and (3) below 50% of water baseline (sanity: air should be well below water)
+            if (trend_min > m_calib.threshold_air &&
+                trend_min < m_calib.threshold_current &&
+                trend_min < (m_calib.threshold_water / 2)) {
                 uint16_t old_air = m_calib.threshold_air;
                 m_calib.threshold_air = (uint16_t)(trend_min * 0.9f);
                 update_dynamic_threshold();
@@ -739,6 +857,7 @@ bool SWSAnalogService::detector_state() {
 
         if (m_consecutive_samples >= m_max_samples) {
             new_state = true;  // UNDERWATER confirmed
+            if (detect_method == DETECT_NONE) detect_method = DETECT_THRESHOLD;
             calibrate_water_baseline(filtered_value);
         }
     } else if (filtered_value < threshold_low) {
@@ -750,6 +869,7 @@ bool SWSAnalogService::detector_state() {
             m_consecutive_samples++;
             if (m_consecutive_samples >= m_min_dry_samples) {
                 new_state = false;  // SURFACE confirmed
+                if (detect_method == DETECT_NONE) detect_method = DETECT_THRESHOLD;
             }
         } else {
             // Already at surface, stay there
@@ -800,13 +920,13 @@ bool SWSAnalogService::detector_state() {
             // If minimum ADC is way above air threshold but below water threshold,
             // this indicates the air baseline has shifted up significantly (biofouling)
             if (m_min_adc_during_dive != 0xFFFF &&
-                m_min_adc_during_dive > (uint16_t)(m_calib.threshold_air * 3) &&
+                m_min_adc_during_dive > (uint16_t)(m_calib.threshold_air * 2) &&
                 m_min_adc_during_dive < (uint16_t)(m_calib.threshold_water * 0.7f)) {
 
                 uint16_t new_air = (uint16_t)(m_min_adc_during_dive * 0.85f);
 
-                // Only apply if significant shift (>50% increase)
-                if (new_air > (uint16_t)(m_calib.threshold_air * 1.5f)) {
+                // Only apply if significant shift (>30% increase, was 50%)
+                if (new_air > (uint16_t)(m_calib.threshold_air * 1.3f)) {
                     uint16_t old_air = m_calib.threshold_air;
                     m_calib.threshold_air = new_air;
                     update_dynamic_threshold();
@@ -836,6 +956,7 @@ bool SWSAnalogService::detector_state() {
             DEBUG_WARN("SWSAnalog: Max dive recalib %u -> %u (biofouling suspected)", old_air, m_calib.threshold_air);
         }
         new_state = false;  // Force surface state
+        detect_method = DETECT_SAFETY;
 
         // CRITICAL: Set surface lockout to prevent immediate re-submersion
         m_surface_lockout_remaining = SURFACE_LOCKOUT_DURATION_SEC;
@@ -869,8 +990,16 @@ bool SWSAnalogService::detector_state() {
         m_peak_adc_since_underwater = 0;
         m_cumulative_drop_percent = 0;
 
+        // Reset rapid surface confirmation flag for clean state
+        m_rapid_surface_confirmed = false;
+
         DEBUG_INFO("SWSAnalog: State change %u -> %u (value=%u | thresh=%u)",
                    m_current_state, new_state, filtered_value, m_calib.threshold_current);
+
+        // LED feedback in test mode only: BLUE=underwater, YELLOW=surface
+        if (m_test_mode && status_led) {
+            status_led->set(new_state ? RGBLedColor::BLUE : RGBLedColor::YELLOW);
+        }
     }
 
     // NOTE: Periodic air recalibration is now handled non-blocking in the
@@ -887,6 +1016,17 @@ bool SWSAnalogService::detector_state() {
     m_status.is_calibrated = m_calib.is_calibrated;
     m_status.is_underwater = new_state;
     m_status.time_in_state_sec = (uint32_t)m_time_in_current_state;
+    // Detection diagnostics for IHM
+    if (detect_method != DETECT_NONE) {
+        m_status.last_detect_method = detect_method;
+        m_status.last_drop_percent = detect_drop_percent;
+        m_status.last_drop_absolute = detect_drop_absolute;
+    }
+    m_status.trend_count = m_decreasing_trend_count;
+    m_status.consecutive_samples = m_consecutive_samples;
+    m_status.midpoint = (m_calib.threshold_air + m_calib.threshold_water) / 2;
+    m_status.contrast_ratio_x10 = (m_calib.threshold_air > 0) ?
+        (uint16_t)(m_calib.threshold_water * 10 / m_calib.threshold_air) : 0;
 
     return new_state;
 }

@@ -12,9 +12,14 @@
  * Communicates via UART AT commands (RUI3 firmware) with the RAK3172-SiP module.
  *
  * State machine:
- *   power_off → power_on → configure → joining → idle → transmit → idle
+ *   power_off → power_on → configure → joining → idle → transmit → idle → standby
+ *                                                  ↑                         │
+ *                                                  └── wake (~10ms) ─────────┘
  *                                                         ↓
  *                                                       error → power_off
+ *
+ * After first TX cycle, the module stays in standby (LPM Stop2, ~1.7µA)
+ * instead of full power-off. Wake from standby via UART is ~10ms vs ~2.5s reboot.
  */
 class LoRaDevice : public LoRaCommEventListener, public KineisDevice {
 private:
@@ -35,6 +40,13 @@ public:
     // LoRa-specific public API
     bool is_joined() const { return m_joined; }
 
+    // Bridge/passthrough mode: direct USB ↔ UART access for RUI3 AT commands
+    bool start_bridge(LoRaComm::PassthroughCallback rx_callback);
+    void stop_bridge();
+    bool is_bridge_active() const { return m_bridge_active; }
+    bool bridge_send(const uint8_t* data, size_t len);
+    void bridge_process_rx();  // Call periodically to pump UART RX
+
     // LoRa configuration (set before power_on or during idle)
     struct LoRaConfig {
         std::string deveui;     // 16 hex chars - empty = read from module
@@ -51,6 +63,7 @@ public:
         uint8_t cfm   = LoRa::DEFAULT_CFM;       // 0=unconfirmed, 1=confirmed
         uint8_t fport = LoRa::DEFAULT_FPORT;     // Application port
         uint8_t device_class = 'A';              // A, B, or C
+        uint8_t lp_mode = 1;                     // 0=shutdown (0µA, 2.5s wake), 1=standby (1.7µA, 10ms wake)
     };
 
     LoRaConfig m_config;
@@ -63,6 +76,7 @@ private:
         configure,
         joining,
         idle,
+        standby,    // Module powered, LPM Stop2 (~1.7µA), wake via UART ~10ms
         transmit,
         error
     };
@@ -83,8 +97,9 @@ private:
     // TX state
     std::string m_packet_buffer;    // Hex-encoded payload waiting to be sent
 
-    // Configuration step tracking
+    // Configuration tracking
     unsigned int m_config_step;
+    bool m_is_configured;       // true after first successful full configuration
 
     // State machine methods
     void state_machine();
@@ -110,6 +125,10 @@ private:
     void state_idle();
     void state_idle_exit();
 
+    void state_standby_enter();
+    void state_standby();
+    void state_standby_exit();
+
     void state_transmit_enter();
     void state_transmit();
     void state_transmit_exit();
@@ -126,6 +145,9 @@ private:
     void react(const LoRaCommEventTxDone&) override;
     void react(const LoRaCommEventRxData&) override;
     void react(const LoRaCommEventUartError&) override;
+
+    // Bridge state
+    bool m_bridge_active = false;
 
     // Helpers
     bool send_AT(LoRa::ATCmd cmd, const std::optional<std::string>& params = std::nullopt);

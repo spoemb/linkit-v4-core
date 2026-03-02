@@ -28,6 +28,12 @@
 #include "usb_interface.hpp"
 #endif
 
+// LoRa device instance (for bridge mode in process_usb_data)
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+#include "lora_rak3172.hpp"
+extern LoRaDevice *lora_device_instance;
+#endif
+
 // LED hardware access for forced LED off before powerdown
 extern RGBLed *status_led;
 extern Led *ext_status_led;
@@ -499,6 +505,77 @@ void ConfigurationState::schedule_usb_poll() {
 
 void ConfigurationState::process_usb_data() {
 	auto& usb = UsbInterface::get_instance();
+
+	// GNSS UART bridge mode: forward USB ↔ GNSS UART directly (binary UBX)
+	if (gps_device && gps_device->is_bridge_active()) {
+		// Process UART RX → USB (via passthrough callback)
+		gps_device->bridge_process_rx();
+
+		// Process USB → UART (raw bytes, no line parsing — UBX is binary)
+		if (usb.has_data()) {
+			char buf[256];
+			int n = NrfUSB::read(buf, sizeof(buf));
+			if (n > 0) {
+				restart_inactivity_timeout();
+				PMU::kick_watchdog();
+
+				// Check for exit sequence "+++" (text typed in terminal)
+				if (n == 3 && buf[0] == '+' && buf[1] == '+' && buf[2] == '+') {
+					gps_device->stop_bridge();
+					usb.write("\r\n[BRIDGE OFF]\r\n");
+					schedule_usb_poll();
+					return;
+				}
+				// Also check with line ending
+				if (n >= 3 && buf[0] == '+' && buf[1] == '+' && buf[2] == '+' &&
+				    (n == 3 || buf[3] == '\r' || buf[3] == '\n')) {
+					gps_device->stop_bridge();
+					usb.write("\r\n[BRIDGE OFF]\r\n");
+					schedule_usb_poll();
+					return;
+				}
+
+				gps_device->bridge_send(
+					reinterpret_cast<const uint8_t*>(buf), n);
+			}
+		}
+
+		schedule_usb_poll();
+		return;
+	}
+
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+	// LoRa UART bridge mode: forward USB ↔ RAK3172 UART directly
+	if (lora_device_instance && lora_device_instance->is_bridge_active()) {
+		// Process UART RX → USB (via passthrough callback)
+		lora_device_instance->bridge_process_rx();
+
+		// Process USB → UART
+		if (usb.has_data()) {
+			auto line = usb.read_line();
+			if (line.size()) {
+				restart_inactivity_timeout();
+				PMU::kick_watchdog();
+
+				// Check for exit sequence "+++"
+				if (line == "+++") {
+					lora_device_instance->stop_bridge();
+					usb.write("\r\n[BRIDGE OFF]\r\n");
+					schedule_usb_poll();
+					return;
+				}
+
+				// Forward to RAK3172 UART with \r\n termination
+				std::string data = line + "\r\n";
+				lora_device_instance->bridge_send(
+					reinterpret_cast<const uint8_t*>(data.c_str()), data.size());
+			}
+		}
+
+		schedule_usb_poll();
+		return;
+	}
+#endif
 
 	// Check if USB has data
 	if (usb.has_data()) {

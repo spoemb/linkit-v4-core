@@ -3,6 +3,7 @@
 #include "bsp.hpp"
 #include "error.hpp"
 #include "debug.hpp"
+#include "interrupt_lock.hpp"
 #include <list>
 #include <cstring>
 
@@ -14,7 +15,7 @@ static void lora_nrf_libuarte_async_evt_handler(void * context, nrf_libuarte_asy
     if (p_evt->type == NRF_LIBUARTE_ASYNC_EVT_TX_DONE) {
         obj->handle_tx_done();
     } else if (p_evt->type == NRF_LIBUARTE_ASYNC_EVT_RX_DATA) {
-        obj->handle_rx_buffer(p_evt->data.rxtx.p_data, (uint8_t)p_evt->data.rxtx.length);
+        obj->handle_rx_buffer(p_evt->data.rxtx.p_data, (uint16_t)p_evt->data.rxtx.length);
     } else if (p_evt->type == NRF_LIBUARTE_ASYNC_EVT_ERROR) {
         obj->handle_error((unsigned int)p_evt->data.errorsrc);
     } else if (p_evt->type == NRF_LIBUARTE_ASYNC_EVT_ALLOC_ERROR) {
@@ -28,7 +29,10 @@ LoRaComm::LoRaComm(unsigned int instance) :
     m_uart_instance(instance),
     m_is_init(false),
     m_is_send_busy(false),
-    m_uart_config{}
+    m_uart_config{},
+    m_isr_buf_len(0),
+    m_isr_error(false),
+    m_isr_error_type(0)
 {
 }
 
@@ -50,6 +54,9 @@ void LoRaComm::init(void) {
     nrf_libuarte_async_start_rx(BSP::UARTAsync_Inits[m_uart_instance].uart);
     m_is_init = true;
     m_is_rx_started = true;
+    m_isr_buf_len = 0;
+    m_isr_error = false;
+    m_rx_buffer.clear();
 }
 
 void LoRaComm::deinit(void)
@@ -77,6 +84,34 @@ bool LoRaComm::send(ATCmd cmd, const std::optional<std::string>& params)
     }
     m_is_send_busy = true;
     return send_at_cmd(cmd, params);
+}
+
+bool LoRaComm::send_raw(const uint8_t* data, size_t len)
+{
+    if (!m_is_init || len == 0)
+        return false;
+
+    if (!m_is_rx_started) {
+        nrf_libuarte_async_start_rx(BSP::UARTAsync_Inits[m_uart_instance].uart);
+        m_is_rx_started = true;
+    }
+
+    ret_code_t ret = nrf_libuarte_async_tx(BSP::UARTAsync_Inits[m_uart_instance].uart,
+                                            const_cast<uint8_t*>(data), len);
+    return (ret == NRF_SUCCESS);
+}
+
+void LoRaComm::set_passthrough(bool active, PassthroughCallback callback)
+{
+    {
+        InterruptLock lock;
+        m_passthrough_active = active;
+        m_isr_buf_len = 0;
+    }
+    m_passthrough_callback = callback;
+    if (active) {
+        m_rx_buffer.clear();
+    }
 }
 
 struct ATCmd_list {
@@ -156,9 +191,11 @@ bool LoRaComm::send_at_cmd(ATCmd cmd, const std::optional<std::string>& params)
 
     m_tx_buffer = at_cmd->value;
 
-    if (at_cmd->expected_params && params.has_value())
+    if (at_cmd->expected_params)
     {
-        m_tx_buffer.append(params.value());
+        if (params.has_value()) {
+            m_tx_buffer.append(params.value());
+        }
         m_tx_buffer += "\r\n";
     }
 
@@ -218,7 +255,7 @@ RespType LoRaComm::parse_rx_line(const std::string& line)
         return RESP_NO_NETWORK;
 
     // Check for async events
-    if (trimmed.compare(0, EVT_PREFIX.size(), EVT_PREFIX) == 0)
+    if (trimmed.compare(0, EVT_PREFIX_LEN, EVT_PREFIX) == 0)
     {
         if (trimmed == EVT_JOINED)
             return RESP_EVT_JOINED;
@@ -232,18 +269,20 @@ RespType LoRaComm::parse_rx_line(const std::string& line)
             return RESP_EVT_SEND_CONFIRMED_FAILED;
 
         // Check for RX data: +EVT:RX_1:<rssi>:<snr>:UNICAST:<port>:<payload>
-        if (trimmed.compare(0, EVT_RX_PREFIX.size(), EVT_RX_PREFIX) == 0)
+        if (trimmed.compare(0, EVT_RX_PREFIX_LEN, EVT_RX_PREFIX) == 0)
         {
-            // Parse RX event - find port and payload
-            // Format: +EVT:RX_X:<rssi>:<snr>:UNICAST:<port>:<payload>
-            // We look for the last two colon-separated fields
+            // Parse RX event - extract port and payload from last two colon-separated fields
             size_t last_colon = trimmed.rfind(':');
             if (last_colon != std::string::npos && last_colon > 0) {
                 std::string payload = trimmed.substr(last_colon + 1);
                 size_t prev_colon = trimmed.rfind(':', last_colon - 1);
                 if (prev_colon != std::string::npos) {
+                    std::string port_str = trimmed.substr(prev_colon + 1, last_colon - prev_colon - 1);
+                    int port = 0;
+                    try { port = std::stoi(port_str); } catch (...) {}
                     m_last_value = payload;
-                    DEBUG_TRACE("LoRaComm: RX payload=%s", payload.c_str());
+                    DEBUG_TRACE("LoRaComm: RX port=%d payload=%s", port, payload.c_str());
+                    return RESP_EVT_RX;
                 }
             }
             return RESP_EVT_RX;
@@ -264,12 +303,78 @@ void LoRaComm::handle_tx_done(void)
     m_is_send_busy = false;
 }
 
-void LoRaComm::handle_rx_buffer(uint8_t * buffer, uint8_t length)
+/**
+ * ISR callback: copy raw data to ISR buffer and free DMA buffer.
+ * No string operations or notifications here — all processing is deferred
+ * to process_rx() which runs in main context.
+ */
+void LoRaComm::handle_rx_buffer(uint8_t * buffer, uint16_t length)
 {
-    // Append received data to RX buffer
-    m_rx_buffer.append(reinterpret_cast<const char*>(buffer), length);
+    uint16_t cur_len = m_isr_buf_len;
+    uint16_t space = LoRa::ISR_BUF_SIZE - cur_len;
+    uint16_t copy_len = (length < space) ? length : space;
+    memcpy(m_isr_buf + cur_len, buffer, copy_len);
+    m_isr_buf_len = (uint16_t)(cur_len + copy_len);
 
-    // Process complete lines (terminated by \n)
+    nrf_libuarte_async_rx_free(BSP::UARTAsync_Inits[m_uart_instance].uart, buffer, length);
+}
+
+/**
+ * ISR callback: set error flag for deferred handling.
+ */
+void LoRaComm::handle_error(unsigned int error_type) {
+    nrf_libuarte_async_stop_rx(BSP::UARTAsync_Inits[m_uart_instance].uart);
+    m_is_rx_started = false;
+    m_isr_error = true;
+    m_isr_error_type = error_type;
+}
+
+/**
+ * Process ISR-buffered data in main context.
+ * Must be called periodically (e.g., in send_AT polling loop or state machine).
+ */
+void LoRaComm::process_rx()
+{
+    // Check for UART error (deferred from ISR)
+    if (m_isr_error) {
+        unsigned int err_type = m_isr_error_type;
+        m_isr_error = false;
+        m_rx_buffer.clear();
+        m_isr_buf_len = 0;
+        notify(LoRaCommEventUartError(err_type));
+        return;
+    }
+
+    // Copy ISR buffer under interrupt lock to prevent race
+    if (m_isr_buf_len == 0)
+        return;
+
+    uint8_t local_buf[LoRa::ISR_BUF_SIZE];
+    uint16_t local_len;
+    {
+        InterruptLock lock;
+        local_len = m_isr_buf_len;
+        memcpy(local_buf, m_isr_buf, local_len);
+        m_isr_buf_len = 0;
+    }
+
+    // In passthrough mode, forward raw data directly to callback
+    if (m_passthrough_active && m_passthrough_callback) {
+        m_passthrough_callback(local_buf, local_len);
+        return;
+    }
+
+    // Append to line accumulator and process complete lines
+    m_rx_buffer.append(reinterpret_cast<const char*>(local_buf), local_len);
+    process_rx_lines();
+}
+
+/**
+ * Parse complete lines from m_rx_buffer and emit events.
+ * Runs in main context only.
+ */
+void LoRaComm::process_rx_lines()
+{
     size_t pos;
     while ((pos = m_rx_buffer.find('\n')) != std::string::npos)
     {
@@ -310,10 +415,25 @@ void LoRaComm::handle_rx_buffer(uint8_t * buffer, uint8_t length)
             case RESP_EVT_SEND_CONFIRMED_FAILED:
                 notify(LoRaCommEventRespError(RESP_EVT_SEND_CONFIRMED_FAILED));
                 break;
-            case RESP_EVT_RX:
-                // RX data event - m_last_value contains payload
-                notify(LoRaCommEventRxData(0, m_last_value));
+            case RESP_EVT_RX: {
+                // Parse port from RX event for notification
+                // m_last_value already set by parse_rx_line
+                int port = 0;
+                // Re-parse port from the original line
+                std::string t = line;
+                while (!t.empty() && (t.back() == '\r' || t.back() == '\n'))
+                    t.pop_back();
+                size_t last_colon = t.rfind(':');
+                if (last_colon != std::string::npos) {
+                    size_t prev_colon = t.rfind(':', last_colon - 1);
+                    if (prev_colon != std::string::npos) {
+                        std::string port_str = t.substr(prev_colon + 1, last_colon - prev_colon - 1);
+                        try { port = std::stoi(port_str); } catch (...) {}
+                    }
+                }
+                notify(LoRaCommEventRxData(port, m_last_value));
                 break;
+            }
             case RESP_VALUE:
                 // Value stored in m_last_value, OK will follow
                 break;
@@ -322,12 +442,4 @@ void LoRaComm::handle_rx_buffer(uint8_t * buffer, uint8_t length)
                 break;
         }
     }
-
-    nrf_libuarte_async_rx_free(BSP::UARTAsync_Inits[m_uart_instance].uart, buffer, length);
-}
-
-void LoRaComm::handle_error(unsigned int error_type) {
-    nrf_libuarte_async_stop_rx(BSP::UARTAsync_Inits[m_uart_instance].uart);
-    m_is_rx_started = false;
-    notify(LoRaCommEventUartError(error_type));
 }

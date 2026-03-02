@@ -38,6 +38,7 @@ MemoryAccess *memory_access;
 RTC *rtc;
 BatteryMonitor *battery_monitor;
 GPSDevice *gps_device;
+LoRaDevice *lora_device_instance = nullptr;
 BaseDebugMode g_debug_mode;
 Buzzer *buzzer_ctl;
 

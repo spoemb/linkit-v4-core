@@ -610,9 +610,62 @@ Beyond 15 months (drop < 8%), the algorithm falls back to:
 
 ---
 
-*Source files*:
-- `core/services/sws_analog_service.hpp` - Header (203 lines)
-- `core/services/sws_analog_service.cpp` - Implementation (856 lines)
-- `tests/src/sws_analog_test.cpp` - Unit tests (746 lines, 14 tests)
+## Test Mode
 
-*Last updated: 2026-02-26*
+### DTE Command
+
+The SWS test mode is activated via the `SWSTST` DTE command, allowing real-time
+SWS testing independently of the device's operational configuration.
+
+```
+Start:  $SWSTST#001;1\r   → $O;SWSTST#001;1\r
+Stop:   $SWSTST#001;0\r   → $O;SWSTST#001;0\r
+```
+
+When started, the SWS service is force-enabled (`service_is_enabled()` returns
+`true` regardless of `UNDERWATER_EN` / `UNDERWATER_DETECT_SOURCE` config) and
+begins periodic sampling immediately.
+
+### LED Feedback (Test Mode Only)
+
+During test mode, the RGB status LED provides visual feedback on state transitions:
+
+| State transition | LED color | RGBLedColor enum |
+|------------------|-----------|------------------|
+| Underwater detected | Blue | `BLUE` |
+| Surface detected | Yellow | `YELLOW` |
+| Test mode stopped | Off | `off()` |
+
+The LED is set **only on state change** (not on every sample) and **only when
+`m_test_mode == true`**. This does not affect normal operational LED behavior
+controlled by the LED state machine (`LEDState` / `ledsm.cpp`).
+
+**Implementation** (in `detector_state()`, at state change block):
+
+```cpp
+if (m_test_mode && status_led) {
+    status_led->set(new_state ? RGBLedColor::BLUE : RGBLedColor::YELLOW);
+}
+```
+
+When test mode is stopped (`stop_test_mode()`), the LED is turned off to
+restore control to the LED state machine.
+
+### Diagnostic Readout
+
+Use `SWSST` (without the T) to read live calibration and detection status
+during testing:
+
+```
+$SWSST#000;\r
+→ $O;SWSST#LEN;air,water,threshold,hysteresis,raw_adc,filtered_adc,calibrated,underwater,time_in_state\r
+```
+
+---
+
+*Source files*:
+- `core/services/sws_analog_service.hpp` - Header
+- `core/services/sws_analog_service.cpp` - Implementation
+- `tests/src/sws_analog_test.cpp` - Unit tests (14 tests)
+
+*Last updated: 2026-03-01*

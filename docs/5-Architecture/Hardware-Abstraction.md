@@ -92,3 +92,55 @@ Abstract interface for power operations:
 - GPIOPins::set() / clear() / read()
 - acquire_sensors_pwr() / release_sensors_pwr() - VSENSORS management
 - Named pins defined in BSP (GPS_POWER, GPS_RST, SAT_PWR_EN, etc.)
+
+## LED Abstraction
+
+### Single-Color LED
+Location: `core/hardware/led.hpp`, `core/hardware/gpio_led.hpp`
+
+```cpp
+class Led {
+    virtual void on() = 0;
+    virtual void off() = 0;
+    virtual bool get_state() = 0;
+    virtual void flash(unsigned int period_ms) = 0;
+    virtual bool is_flashing() = 0;
+};
+```
+
+Implementation: `GPIOLed` (GPIO-based) and `NrfLed` (nRF52840 with scheduler-based flash).
+
+### RGB LED
+Location: `core/hardware/rgb_led.hpp`
+
+```cpp
+enum class RGBLedColor { BLACK, RED, GREEN, BLUE, CYAN, MAGENTA, YELLOW, WHITE };
+
+class RGBLed {
+    virtual void set(RGBLedColor color) = 0;
+    virtual void off() = 0;
+    virtual void flash(RGBLedColor color, unsigned int period_ms = 500) = 0;
+    virtual void flash_alternate(RGBLedColor color1, RGBLedColor color2, unsigned int period_ms = 250) = 0;
+    virtual bool is_flashing() = 0;
+    virtual RGBLedColor get_state() = 0;
+};
+```
+
+Implementation: `NrfRGBLed` (`ports/nrf52840/core/hardware/nrf_rgb_led.hpp`) -- active-low, timer-based flash.
+
+### LED Pins (all board variants)
+
+| Pin | GPIO | Function |
+|-----|------|----------|
+| GPIO_LED_RED | P1.07 | Red channel (active low) |
+| GPIO_LED_GREEN | P1.10 | Green channel (active low) |
+| GPIO_LED_BLUE | P1.04 | Blue channel (active low) |
+
+### Global LED Instances
+
+```cpp
+extern RGBLed *status_led;       // RGB status LED (main)
+extern Led *ext_status_led;      // Optional external single-color LED
+```
+
+The LED state machine (`core/sm/ledsm.hpp`) controls `status_led` during normal operation. Services (e.g., SWS test mode) can temporarily override LED state by writing to `status_led` directly.

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstring>
 #include <type_traits>
+#include <functional>
 #include "ubx.hpp"
 #include "events.hpp"
 #include "error.hpp"
@@ -130,6 +131,17 @@ public:
 	void init();
 	void deinit();
 
+	// Send raw bytes to UART (for bridge/passthrough mode)
+	bool send_raw(const uint8_t* data, size_t len);
+
+	// Bridge/passthrough mode: forward raw UART RX to callback instead of parsing UBX
+	using PassthroughCallback = std::function<void(const uint8_t*, size_t)>;
+	void set_passthrough(bool active, PassthroughCallback callback = nullptr);
+	bool is_passthrough() const { return m_passthrough_active; }
+
+	// Call from main context to forward ISR-buffered passthrough data
+	void process_passthrough_rx();
+
 	template <typename T>
 	void send_packet(UBX::MessageClass cls, uint8_t id, T content) {
 
@@ -172,6 +184,12 @@ public:
 	}
 
 private:
+	// Passthrough/bridge state
+	volatile bool m_passthrough_active = false;
+	PassthroughCallback m_passthrough_callback;
+	uint8_t m_pt_isr_buf[1024];        // ISR buffer for passthrough mode
+	volatile uint16_t m_pt_isr_buf_len = 0;
+
 	UBXCommsEventNavReport m_nav_report;
     UBXCommsEventSatReport m_sat_report;
 	unsigned int m_instance;

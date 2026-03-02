@@ -155,6 +155,7 @@ public:
 	std::string PWRON_REQ(int error_code, std::vector<BaseType>& arg_list);
 	static std::string SWSST_REQ(int error_code);
 	static std::string SWSTST_REQ(int error_code, std::vector<BaseType>& arg_list);
+	std::string GNSSBR_REQ(int error_code, std::vector<BaseType>& arg_list);
 	std::string GNSSI_REQ(int error_code);
 	static std::string GNSSA_REQ(int error_code);
 	static std::string RTCW_REQ(int error_code, std::vector<BaseType>& arg_list);
@@ -169,6 +170,7 @@ public:
 
 #if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
 	std::string LORATX_REQ(int error_code, std::vector<BaseType>& arg_list);
+	std::string LORABR_REQ(int error_code, std::vector<BaseType>& arg_list);
 #endif
 
 	DTEAction handle_dte_message(const std::string& req, std::string& resp);

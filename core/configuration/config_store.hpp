@@ -338,11 +338,12 @@ protected:
 		/* [187] LORA_NJM */ 1U,          // Default: OTAA
 		/* [188] LORA_BAND */ 4U,         // Default: EU868
 		/* [189] LORA_CLASS */ 0U,        // Default: Class A
-		/* [190] LORA_DR */ 0U,           // Default: SF12/125kHz (longest range)
-		/* [191] LORA_ADR */ (bool)true,  // Default: ADR enabled
+		/* [190] LORA_DR */ 3U,           // Default: SF9/125kHz (best speed/range for marine)
+		/* [191] LORA_ADR */ (bool)false, // Default: ADR OFF (mandatory for mobile devices)
 		/* [192] LORA_TXP */ 0U,          // Default: Max TX power
 		/* [193] LORA_CFM */ (bool)false,  // Default: Unconfirmed messages
 		/* [194] LORA_FPORT */ 2U,        // Default: Application port 2
+		/* [195] LORA_LP_MODE */ 1U,      // Default: 1=standby (fast wake ~10ms), 0=shutdown (0µA, slow wake ~2.5s)
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,

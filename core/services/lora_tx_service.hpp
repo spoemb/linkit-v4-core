@@ -11,14 +11,17 @@
 #include "depth_pile.hpp"
 
 
-// LoRa payload limits by data rate (EU868)
+// LoRa payload limits by data rate
+// NOTE: These values are for EU868. US915/AS923/other bands have different limits
+// (e.g., US915 DR0 = 11 bytes). If multi-band support is needed, make this band-aware.
+// With ADR enabled, the network server may change DR dynamically — use DR0 as safe fallback.
 struct LoRaPayloadLimits {
-	static constexpr unsigned int DR0_MAX_BYTES = 51;
-	static constexpr unsigned int DR1_MAX_BYTES = 51;
-	static constexpr unsigned int DR2_MAX_BYTES = 51;
-	static constexpr unsigned int DR3_MAX_BYTES = 115;
-	static constexpr unsigned int DR4_MAX_BYTES = 222;
-	static constexpr unsigned int DR5_MAX_BYTES = 222;
+	static constexpr unsigned int DR0_MAX_BYTES = 51;   // SF12/125kHz
+	static constexpr unsigned int DR1_MAX_BYTES = 51;   // SF11/125kHz
+	static constexpr unsigned int DR2_MAX_BYTES = 51;   // SF10/125kHz
+	static constexpr unsigned int DR3_MAX_BYTES = 115;  // SF9/125kHz
+	static constexpr unsigned int DR4_MAX_BYTES = 222;  // SF8/125kHz
+	static constexpr unsigned int DR5_MAX_BYTES = 222;  // SF7/125kHz
 
 	static unsigned int max_payload_for_dr(uint8_t dr) {
 		switch (dr) {
@@ -28,7 +31,7 @@ struct LoRaPayloadLimits {
 			case 3: return DR3_MAX_BYTES;
 			case 4: return DR4_MAX_BYTES;
 			case 5: return DR5_MAX_BYTES;
-			default: return DR0_MAX_BYTES;
+			default: return DR0_MAX_BYTES;  // Safe fallback for unknown DR
 		}
 	}
 };

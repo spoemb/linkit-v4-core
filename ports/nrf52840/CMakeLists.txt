@@ -344,7 +344,7 @@ target_sources(${TARGET_NAME} PRIVATE
     ${CORE_DIR}/services/argos_tx_service.cpp
     ${CORE_DIR}/services/argos_rx_service.cpp
     ${CORE_DIR}/services/uwdetector_service.cpp
-    $<$<NOT:$<STREQUAL:${BOARD},RSPB>>:${CMAKE_CURRENT_SOURCE_DIR}/../../core/services/sws_analog_service.cpp>
+    ${CORE_DIR}/services/sws_analog_service.cpp
     ${CORE_DIR}/logging/logger.cpp
     ${CORE_DIR}/util/haversine.cpp
     ${CORE_DIR}/filesystem/ota_flash_file_updater.cpp

@@ -256,7 +256,7 @@ const BaseMap param_map[] = {
 	// [180] Current RTC time (live, refreshed on STATR read)
 	{ "RTC_CURRENT_TIME", "SYT01", BaseEncoding::UINT, 0U, 0U, {}, true, false },
 	// [181-194] LoRa RAK3172 parameters (slots always reserved)
-	{ "LORA_DEVEUI", "LRP01", BaseEncoding::TEXT, "", "", {}, (LORA_RAK3172 == 1), true },
+	{ "LORA_DEVEUI", "LRP01", BaseEncoding::TEXT, "", "", {}, (LORA_RAK3172 == 1), false },
 	{ "LORA_APPEUI", "LRP02", BaseEncoding::TEXT, "", "", {}, (LORA_RAK3172 == 1), true },
 	{ "LORA_APPKEY", "LRP03", BaseEncoding::TEXT, "", "", {}, (LORA_RAK3172 == 1), true },
 	{ "LORA_DEVADDR", "LRP04", BaseEncoding::TEXT, "", "", {}, (LORA_RAK3172 == 1), true },
@@ -270,6 +270,7 @@ const BaseMap param_map[] = {
 	{ "LORA_TXP", "LRP12", BaseEncoding::UINT, 0U, 14U, {}, (LORA_RAK3172 == 1), true },
 	{ "LORA_CFM", "LRP13", BaseEncoding::BOOLEAN, 0, 0, {}, (LORA_RAK3172 == 1), true },
 	{ "LORA_FPORT", "LRP14", BaseEncoding::UINT, 1U, 223U, {}, (LORA_RAK3172 == 1), true },
+	{ "LORA_LP_MODE", "LRP15", BaseEncoding::UINT, 0U, 1U, {}, (LORA_RAK3172 == 1), true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

@@ -72,6 +72,7 @@ $N;COMMAND#LEN;ERROR_CODE\r
 | SCALR | Request | Read sensor calibration value | [Sensor Commands](Sensor-Commands.md) |
 | PWRON | Request | Power on/off components | [Sensor Commands](Sensor-Commands.md) |
 | SWSST | Request | Read SWS analog calibration status | [Sensor Commands](Sensor-Commands.md) |
+| SWSTST | Request | Start/stop SWS test mode (with LED feedback) | [Sensor Commands](Sensor-Commands.md) |
 | GNSSI | Request | Read GNSS module device info | [Sensor Commands](Sensor-Commands.md) |
 | GNSSA | Request | Read GNSS almanac file status | [Sensor Commands](Sensor-Commands.md) |
 | RTCW | Request | Set device RTC (unix timestamp) | [Device Commands](Device-Commands.md) |

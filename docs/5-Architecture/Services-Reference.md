@@ -87,7 +87,8 @@ Defined in ServiceIdentifier enum (core/logging/messages.hpp via service.hpp).
 ### SWSAnalogService
 - **File**: core/services/sws_analog_service.hpp
 - **Purpose**: Analog SWS with auto-calibration, hysteresis, trend detection
-- **Features**: Persistent calibration in noinit RAM, automatic air/water baseline learning
+- **Features**: Persistent calibration in noinit RAM, automatic air/water baseline learning, 3-tier rapid transition detection, biofouling adaptation
+- **Test Mode**: `SWSTST` DTE command enables standalone testing with RGB LED feedback (BLUE=underwater, YELLOW=surface). See [SWS Analog Implementation](../sws_analog_implementation.md#test-mode)
 - **Key Params**: UNP20-UNP23
 
 ### PressureDetectorService

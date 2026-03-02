@@ -618,6 +618,7 @@ void LoRaTxService::process_gps_burst() {
 		m_device.send(KineisModulation::LDA2, packet, size_bits);
 	} else {
 		DEBUG_WARN("LoRaTxService::process_gps_burst: no eligible entries in depth pile");
+		m_is_tx_pending = false;
 		service_complete();
 	}
 }
@@ -655,6 +656,7 @@ void LoRaTxService::process_sensor_burst() {
 		m_device.send(KineisModulation::LDA2, packet, size_bits);
 	} else {
 		DEBUG_WARN("LoRaTxService::process_sensor_burst: no eligible entries in depth pile");
+		m_is_tx_pending = false;
 		service_complete();
 	}
 }

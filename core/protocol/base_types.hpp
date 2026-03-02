@@ -308,9 +308,10 @@ enum class ParamID {
 	LORA_TXP                                 = 192,
 	LORA_CFM                                 = 193,
 	LORA_FPORT                               = 194,
+	LORA_LP_MODE                             = 195,  // 0=shutdown (0µA), 1=standby (~1.7µA, fast wake)
 #endif
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 195,
+	__PARAM_SIZE                             = 196,
 	__NULL_PARAM                             = 0xFFFF
 };
 
