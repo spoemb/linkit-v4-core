@@ -31,6 +31,9 @@ public:
         bool     is_calibrated;       // Calibration valid
         bool     is_underwater;       // Current state (true=underwater)
         uint32_t time_in_state_sec;   // Seconds in current state
+        uint8_t  surface_level;       // Last detection level (0=none, 1-5=L1-L5)
+        uint16_t contrast_x10;       // Water/air contrast ratio x10 (e.g. 47 = 4.7x)
+        uint16_t observed_peak;      // Highest ADC value actually observed (dynamic cap)
     };
 
     static Status get_status();
@@ -39,6 +42,10 @@ public:
     static void start_test_mode();
     static void stop_test_mode();
     static bool is_test_running();
+
+    // Async notify: push SWSST status on each sample during test mode
+    static void set_status_notify(std::function<void(const Status&)> fn);
+    static void clear_status_notify();
 
     SWSAnalogService() : UWDetectorService("SWSAnalog") {
         s_instance = this;
@@ -56,6 +63,7 @@ private:
     // Test mode support
     static SWSAnalogService* s_instance;
     static bool m_test_mode;
+    static std::function<void(const Status&)> m_status_notify;
     // Calibration data structure (stored in noinit RAM to survive resets)
     struct CalibrationData {
         uint16_t threshold_air;          // Baseline ADC value in air (low conductivity)
@@ -70,6 +78,11 @@ private:
     // Static calibration data in noinit RAM section (survives reset)
     static CalibrationData m_calib __attribute__((section(".noinit")));
     static uint16_t m_calib_crc __attribute__((section(".noinit")));
+
+    // Dynamic peak ADC tracker: highest ADC value actually observed (noinit for persistence)
+    // Used to cap water baseline estimates when calibrating from air with wet electrodes
+    static uint16_t m_observed_peak_adc __attribute__((section(".noinit")));
+    static uint16_t m_observed_peak_crc __attribute__((section(".noinit")));
 
     // History buffer for moving average filter
     // Optimized: smaller buffer = faster response
@@ -92,28 +105,33 @@ private:
     uint8_t m_surface_readings_idx;
     uint8_t m_surface_readings_count;
 
-    // Trend detection buffer (for derivative-based surface detection)
-    static constexpr int TREND_BUFFER_SIZE = 8;  // Track last 8 readings for trend
-    uint16_t m_trend_buffer[TREND_BUFFER_SIZE];
+    // === MULTI-LEVEL SURFACE DETECTION STATE ===
+
+    // Level 1 & 2: Fast raw drop detection
+    uint16_t m_prev_raw;               // Previous raw ADC value
+    uint16_t m_drop_reference;         // Raw value when consecutive drops started
+    uint8_t m_consecutive_raw_drops;   // Count of consecutive raw drops
+
+    // Level 3: Trend MA3 detection
+    static constexpr int TREND_MA_SIZE = 3;
+    uint16_t m_trend_buffer[TREND_MA_SIZE]; // Ring buffer for MA3 computation
     uint8_t m_trend_buffer_idx;
     uint8_t m_trend_buffer_count;
-    uint8_t m_decreasing_trend_count;  // Consecutive decreasing samples
+    uint16_t m_prev_ma3;               // Previous 3-sample moving average
+    uint16_t m_ma3_trend_start;        // MA3 value when trend started
+    uint8_t m_ma3_trend_count;         // Consecutive MA3 decreases
 
-    // Cumulative drop tracking (more robust than consecutive-only for slow biofouling drying)
-    uint16_t m_peak_adc_since_underwater;  // Track peak ADC since going "underwater"
-    uint16_t m_cumulative_drop_percent;    // Drop from peak to current
+    // Level 4 & 5: Relative and cumulative drop
+    uint16_t m_peak_adc_since_underwater;
 
-    // Surface lockout after max dive time (prevent immediate re-submersion)
-    uint32_t m_surface_lockout_remaining;  // Seconds remaining in lockout
+    // Level 1: Recent peak for fast drop detection (decays with drift)
+    uint16_t m_recent_peak;              // Tracks recent max, slowly decays to follow drift
 
-    // Variance detection (high variance = surface drying, low variance = stable underwater)
-    uint32_t m_variance_sum_sq;  // Sum of squared differences for variance calc
-    uint16_t m_variance_mean;    // Running mean for variance calc
+    // Safety
+    uint32_t m_surface_lockout_remaining;
 
-    // Rapid detection confirmation bypass: when rapid drop is detected,
-    // subsequent samples don't need the m_consecutive_samples confirmation.
-    // Cleared when parent updates m_current_state at end-of-batch.
-    bool m_rapid_surface_confirmed;
+    // First-sample coherence check
+    bool m_first_sample_done;
 
     // Configuration parameters (loaded from config store)
     uint16_t m_threshold_min;

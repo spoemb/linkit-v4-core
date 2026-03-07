@@ -1,16 +1,17 @@
-# SWS Analog - Surface/Underwater Detection Algorithm with Biofouling
+# SWS Analog - Surface/Underwater Detection Algorithm
 
 ## Table of Contents
 
 1. [Context and Problem Statement](#context-and-problem-statement)
-2. [Parent-Child Architecture](#parent-child-architecture)
-3. [Detection Algorithm](#detection-algorithm)
-4. [Rapid Transition Detection (3 Tiers)](#rapid-transition-detection-3-tiers)
-5. [Dynamic Biofouling Adaptation](#dynamic-biofouling-adaptation)
-6. [Safeties and Timeouts](#safeties-and-timeouts)
-7. [Parameters and Constants](#parameters-and-constants)
-8. [Unit Tests](#unit-tests)
-9. [Lifecycle Performance](#lifecycle-performance)
+2. [Hardware: RC Discrimination](#hardware-rc-discrimination)
+3. [Architecture](#architecture)
+4. [Detection Algorithm](#detection-algorithm)
+5. [5-Level Surface Detection](#5-level-surface-detection)
+6. [Calibration System](#calibration-system)
+7. [Dynamic Peak ADC Tracking](#dynamic-peak-adc-tracking)
+8. [Safety Mechanisms](#safety-mechanisms)
+9. [Parameters Reference](#parameters-reference)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -24,41 +25,78 @@ Two electrodes measure the conductivity of the medium via a 14-bit ADC (0-16383)
 ```
      VDD
       |
-   [Electrode TX] ---> [salt water = conductor] ---> [Electrode RX]
-                                                          |
-                                                       ADC 14-bit
-                                                     (0 = air, ~3000 = water)
+   [Electrode TX] ──SWS_ENABLE_PIN──> [salt water] ──> [Electrode RX]
+                                                             |
+                                                          100nF cap
+                                                             |
+                                                          ADC 14-bit
+                                                             |
+                                                          1M pull-down
+                                                             |
+                                                            GND
 ```
 
-- **Dry air**: ADC ~ 100-300 (low conductivity)
-- **Salt water**: ADC ~ 2500-4000 (high conductivity)
+### The Two Problems
 
-### The Problem: Biofouling
-
-After months of deployment at sea, salt and biofilm accumulate on the electrodes:
+**1. Biofouling** — After months at sea, salt/biofilm accumulate on electrodes:
 
 ```
-Month 0  (clean)    : Air = 200,  Water = 3000  → gap = 2800  (93% drop)
-Month 3  (light)    : Air = 600,  Water = 2800  → gap = 2200  (78% drop)
-Month 6  (moderate) : Air = 1000, Water = 2500  → gap = 1500  (60% drop)
-Month 9  (heavy)    : Air = 1400, Water = 2300  → gap = 900   (39% drop)
-Month 12 (severe)   : Air = 1700, Water = 2100  → gap = 400   (19% drop)
+Month 0  (clean)    : Air ~200,   Water ~3000  -> contrast 15x
+Month 6  (moderate) : Air ~1000,  Water ~2500  -> contrast 2.5x
+Month 12 (severe)   : Air ~1700,  Water ~2100  -> contrast 1.2x
 ```
 
-A fixed threshold inevitably fails. The algorithm must be **adaptive** and detect the surface
-**in under 2 seconds** even with extreme biofouling.
+A fixed threshold inevitably fails. The algorithm must adapt dynamically.
+
+**2. Wet electrode after exit** — When the tracker exits water, the electrode stays
+wet. Without RC discrimination, a wet electrode reads the same as submerged water,
+making surface detection impossible.
 
 ### Fundamental Insight
 
-Even with extreme biofouling, when the turtle exits the water, the electrode **loses contact
-with the water immediately**. The salt/biofilm layer remains conductive, but the break in the
-conductivity path through the water always causes a **significant relative drop** in the ADC.
-
-It is this **rate of change** (not the absolute value) that the algorithm exploits.
+The algorithm exploits **RC time constant discrimination**: water and wet film have
+different resistances, so a capacitor charges at different rates through each medium.
+By reading the ADC at a precise time (1ms), we can distinguish them.
 
 ---
 
-## Parent-Child Architecture
+## Hardware: RC Discrimination
+
+A 100nF capacitor at the ADC pin charges through the medium's resistance when
+the SWS electrode is enabled. The 1M pull-down resistor discharges it between reads.
+
+### Time Constants
+
+```
+Medium          | Resistance  | tau = RC         | @1ms charge | @2ms charge
+----------------|-------------|------------------|-------------|------------
+Seawater        | ~10k ohm    | 1ms              | 63%         | 86%
+Wet film        | ~50k ohm    | 5ms              | 18%         | 33%
+Light biofouling| ~100k ohm   | 10ms             | 10%         | 18%
+Air             | infinity    | infinity         | 0%          | 0%
+```
+
+### Why 1ms Pin Sample Delay
+
+At 1ms, the ratio between water (63%) and wet film (18%) is **3.5x** — excellent
+discrimination. This is the KEY parameter that makes the system work.
+
+Increasing this delay loses discrimination:
+- At 5ms: water=99%, film=63% -> ratio 1.6x (poor)
+- At 15ms: water=100%, film=95% -> ratio 1.05x (useless)
+
+### Capacitor Discharge Between Samples
+
+The 1M pull-down discharges the 100nF cap: tau = 100ms.
+Full discharge (5*tau) = 500ms. With 1s sampling interval, the cap is fully
+discharged before each reading.
+
+**The pin_sample_delay must remain fixed at 1ms** — it is a physical constant of the
+circuit, not a tunable parameter. Changing it changes what is being measured.
+
+---
+
+## Architecture
 
 ### Class Hierarchy
 
@@ -71,548 +109,468 @@ SWSAnalogService (child)
 ```
 
 **Files**:
-- `core/services/uwdetector_service.hpp/.cpp` - Batch management and scheduling
-- `core/services/sws_analog_service.hpp/.cpp` - Detection algorithm
+- `core/services/uwdetector_service.hpp/.cpp` — Scheduling and batch management
+- `core/services/sws_analog_service.hpp/.cpp` — Detection algorithm
 
 ### Batch Operation
 
-The parent (`UWDetectorService`) manages a batch system:
+The parent manages sampling cycles:
 
 ```
-                    Batch (3 samples)
-         ┌─────────────┼──────────────┐
-         v             v              v
-    detector_state() detector_state() detector_state()
-         |             |              |
-         v             v              v
-    sample 1        sample 2       sample 3
-         |             |              |
-         └─────────────┼──────────────┘
-                       v
-              m_current_state updated
-              (ONLY time state changes)
+service_next_schedule_in_ms() -> SAMPLING_SURF_FREQ (surface) or SAMPLING_UNDER_FREQ (underwater)
+        |
+        v
+service_initiate() -> detector_state() called UW_MAX_SAMPLES times
+        |               spaced by UW_SAMPLE_GAP ms
+        v
+If all samples = underwater -> confirmed underwater
+If UW_MIN_DRY_SAMPLES = surface -> confirmed surface (early termination)
 ```
 
-**Critical detail**: `m_current_state` is updated **only at the end of the batch**.
-During a batch, `detector_state()` is called 3 times (`UW_MAX_SAMPLES`), but all
-3 calls see the SAME `m_current_state` (the value from the end of the previous batch).
-
-This has a major consequence for rapid detection: if the first call detects
-the surface (rapid drop), the next two calls still see `m_current_state = true`
-(underwater). Without special handling, they could return `true` (underwater)
-and cancel the rapid detection.
-
-**Implemented solution**: the `m_rapid_surface_confirmed` flag (see next section).
+With `UW_MAX_SAMPLES=1` (default), each cycle is a single call to `detector_state()`.
 
 ---
 
 ## Detection Algorithm
 
-### Overview
+### Overview: detector_state() Flow
 
 Each call to `detector_state()` executes these steps in order:
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│ 1. ADC READ                                              │
-│    raw_value = read_analog_sws()                         │
-│    Validation: 50 <= raw <= threshold_max                │
-├──────────────────────────────────────────────────────────┤
-│ 2. FILTERING                                             │
-│    filtered_value = moving_average(raw, history_size=2)  │
-├──────────────────────────────────────────────────────────┤
-│ 3. TREND DETECTION                                       │
-│    - Circular buffer (8 samples)                         │
-│    - Consecutive decrease counter                        │
-│    - Total drop calculation (max - min of buffer)        │
-│    - Cumulative drop calculation (from peak underwater)  │
-├──────────────────────────────────────────────────────────┤
-│ 4. VARIANCE DETECTION                                    │
-│    - Mean and sum of squared deviations                  │
-│    - High variance = surface (unstable drying)           │
-│    - Low variance = underwater (stable)                  │
-├──────────────────────────────────────────────────────────┤
-│ 5. ADAPTIVE AIR RECALIBRATION (if at surface > 10s)      │
-│    - Surface readings buffer (10 samples)                │
-│    - If mean > 1.3x air_baseline → recalibrate           │
-│    - Gradual adaptation (10% per update)                 │
-│    - Air calibration uses valid_count (skips invalid)    │
-├──────────────────────────────────────────────────────────┤
-│ 6. RAPID TRANSITION DETECTION (TIER 1/2/3)               │
-│    - Drop % calculated on raw_value (not filtered!)      │
-│    - 3 sensitivity levels (see next section)             │
-├──────────────────────────────────────────────────────────┤
-│ 7. BIOFOULING SURFACE OVERRIDE                           │
-│    - If rapid drop OR (trend + variance) → force surface │
-│    - Reset ADC buffer after rapid detection              │
-│    - Automatic air baseline recalibration                │
-├──────────────────────────────────────────────────────────┤
-│ 8. HYSTERESIS DECISION                                   │
-│    - If biofouling_override → surface                    │
-│    - If rapid_surface_confirmed → surface (bypass)       │
-│    - If filtered > threshold_high → underwater           │
-│    - If filtered < threshold_low → surface               │
-│    - Otherwise → maintain previous state                 │
-├──────────────────────────────────────────────────────────┤
-│ 9. SAFETIES                                              │
-│    - Max dive time → force surface                       │
-│    - Surface lockout → prevent re-submersion             │
-│    - Extended dive recalibration → adjust baselines      │
-└──────────────────────────────────────────────────────────┘
+ 1. READ ADC
+    raw_value = read_analog_sws()
+    Enable SWS pin -> wait 1ms -> read 14-bit ADC -> disable SWS pin
+
+ 2. FIRST-SAMPLE COHERENCE CHECK (once after boot)
+    If stored calibration is incoherent with first reading -> recalibrate
+
+ 3. UPDATE OBSERVED PEAK ADC
+    Track highest ADC ever seen (persistent in noinit RAM)
+
+ 4. FILTERING
+    filtered_value = moving_average(raw, history_size=2)
+
+ 5. TIME TRACKING
+    Update time_in_current_state, check max dive timeout
+
+ 6. 5-LEVEL SURFACE DETECTION (see next section)
+    Evaluate L1-L5, with proximity guard
+
+ 7. RECENT PEAK & DIVE PEAK TRACKING
+    Update m_recent_peak (decaying), m_peak_adc_since_underwater
+
+ 8. SURFACE BASELINE TRACKING
+    If at surface > 10s: collect readings, adapt air baseline up or down
+
+ 9. STATE DETERMINATION (hysteresis threshold)
+    filtered > threshold_high -> underwater (+ update water baseline via EMA)
+    filtered < threshold_low  -> surface (after min_dry_samples)
+    in between -> maintain current state
+
+10. APPLY SURFACE OVERRIDE (L1-L5)
+    If any level triggered: force surface, recalibrate air, apply lockout
+
+11. MAX DIVE TIMEOUT
+    If underwater > max_dive_time -> force surface + lockout
+
+12. SURFACE LOCKOUT
+    If lockout active -> force surface regardless
+
+13. STATE CHANGE
+    If state changed: reset all tracking variables, log transition
 ```
 
 ### Dynamic Threshold
 
-The threshold is positioned between the air baseline and the water baseline:
-
 ```
 ADC
  ^
- |
- |  ┌─── threshold_water (EMA, alpha=0.19)
+ |  +--- threshold_water (EMA, alpha=19%)
  |  |
- |  |  ──── threshold_high = threshold_current + hysteresis
+ |  |  -- threshold_high = threshold_current + hysteresis
  |  |
- |  |  ──── threshold_current = air + ratio% × (water - air)
- |  |                           ratio = 35%
- |  |  ──── threshold_low  = threshold_current - hysteresis
- |  |                         hysteresis = 14% of threshold (Monte Carlo optimized)
+ |  |  -- threshold_current = air + ratio * (water - air)
  |  |
- |  └─── threshold_air (calibrated in air, adapts to biofouling)
+ |  |  -- threshold_low = threshold_current - hysteresis
+ |  |
+ |  +--- threshold_air (calibrated, adaptive)
  |
- 0 ──────────────────────────────────────────> time
+ 0 ----------------------------------------------------> time
 ```
 
-The 35% ratio places the threshold closer to air than to water.
-This favors **rapid surface detection** at the expense of slightly slower
-submersion detection (acceptable for the turtle use case).
+**Ratio** varies with contrast (water/air):
+
+| Contrast | Ratio | Meaning |
+|----------|-------|---------|
+| >= 8x    | 35%   | Clean electrode: threshold close to air for fast surface detection |
+| >= 4x    | 50%   | Moderate biofouling: midpoint balance |
+| < 4x     | 40%   | Low contrast (wet electrodes or severe biofouling): closer to air to ensure underwater detection |
+
+**Hysteresis** = 4% of threshold_current (minimum 10 ADC counts).
+
+Both threshold+hysteresis are capped at the observed peak ADC to prevent
+the threshold from exceeding values the ADC can actually produce.
 
 ---
 
-## Rapid Transition Detection (3 Tiers)
+## 5-Level Surface Detection
 
-### Principle
+All levels require:
+- Currently underwater (`m_current_state = true`)
+- At least 1 second underwater (`OVERRIDE_MIN_TIME_SEC`)
+- Proximity guard OK: `filtered_value < max(water_baseline, peak_during_dive) * 95%`
 
-Instead of waiting for the filtered ADC to drop below the threshold (slow with biofouling),
-we detect the **instantaneous rate of change** of the raw ADC (unfiltered).
+The proximity guard prevents false surface detection from normal underwater ADC noise.
 
-```
-ADC
- ^
- |  3000 ●─────────── underwater ────────────────●
- |                                             │
- |                                             │ DROP 60%
- |                                             │ (1 sample)
- |                                             │
- |  1200                                       ●─── surface (biofouling)
- |
- |   200 ─────────── threshold (with high biofouling)
- |
- 0 ──────────────────────────────────────────> time
-          ^                                ^
-          |        classic detection       |
-          |        would take 15+ sec      |
-          |                                |
-          |   RAPID T1 detects in 1 sample |
-```
-
-### The 3 Tiers
-
-The algorithm uses the **raw_value** (not filtered) to calculate the drop:
+### Level 1 — INSTANT (1 sample)
 
 ```
-drop_percent = (prev_trend_value - raw_value) * 100 / prev_trend_value
-absolute_drop = prev_trend_value - raw_value
+Condition: raw_value < recent_peak * (1 - 5%)
+Latency:   1 sample (~1s)
+Use case:  Clean/moderate electrode, sharp water exit
 ```
 
-| Tier | Min drop % | Min abs drop | Additional condition | Latency |
-|------|-----------|-------------|-------------------------|---------|
-| **T1** | >= 25% | >= 300 | None | **1 sample** |
-| **T2** | >= 12% | >= 150 | trend_count >= 1 AND below_water_baseline | **2 samples** |
-| **T3** | >= 8% | >= 100 | trend_count >= 2 | **3+ samples** |
+`m_recent_peak` decays 5% per sample toward the current reading. This makes L1
+track drift without false triggers: if readings slowly decrease (drift), the peak
+follows. Only a SUDDEN drop exceeds the 5% gap.
 
-**Conditions for rapid detection to activate**:
-- `m_current_state == true` (currently "underwater")
-- `prev_trend_value > 0` (we have a previous sample)
-- `raw_value < prev_trend_value` (ADC has decreased)
+Example: water at 3000, turtle exits -> reading drops to 2700.
+Drop = (3000-2700)/3000 = 10% > 5% -> **L1 triggers immediately**.
 
-### Post-Detection: ADC Buffer Reset
+### Level 2 — FAST (2 samples)
 
-After rapid detection, the ADC history buffer is **reset** with
-the current raw_value:
-
-```cpp
-// CRITICAL: without this reset, the moving average filter retains
-// the old underwater values, producing a high filtered_value
-// on the next call. Since m_current_state is not yet updated
-// (end of batch), the next detector_state() would see
-// filtered > threshold → return "underwater", cancelling the detection.
-for (int i = 0; i < ADC_HISTORY_SIZE; i++) {
-    m_adc_history[i] = raw_value;
-}
+```
+Condition: 2 consecutive raw drops AND cumulative drop > 3% from first drop
+Latency:   2 samples (~2s)
+Use case:  Gradual exit where individual drops are < 5% (no L1 trigger)
 ```
 
-### Post-Detection: `m_rapid_surface_confirmed` Flag
+Example: 3000 -> 2960 -> 2900. Individual drops are 1.3% and 2% (no L1).
+Cumulative from 2960: (2960-2900)/2960 = 2% (no L2 yet).
+Next: 2960 -> 2900 -> 2850. Cumulative = (2960-2850)/2960 = 3.7% -> **L2 triggers**.
 
-When the biofouling_surface_override triggers, the `m_rapid_surface_confirmed`
-flag is set to `true`. Subsequent calls to `detector_state()` within the SAME batch
-check this flag:
+### Level 3 — TREND (3+ MA3 decreases)
 
-```cpp
-if (biofouling_surface_override) {
-    new_state = false;                    // Surface!
-    m_rapid_surface_confirmed = true;     // Flag for remaining batch samples
-} else if (m_rapid_surface_confirmed && filtered_value < threshold_high) {
-    new_state = false;                    // Confirm surface without re-verification
-} else if (filtered_value > threshold_high) {
-    m_rapid_surface_confirmed = false;    // Clear if back underwater
-    // ... classic detection
-}
+```
+Condition: MA3 decreased 3+ consecutive times AND total MA3 drop > 5%
+Latency:   ~5-6 samples
+Use case:  Noisy signal where bounces break L2's consecutive requirement
 ```
 
-This mechanism solves the batch problem:
-1. Batch sample 1: rapid drop detected → `m_rapid_surface_confirmed = true`, returns `false`
-2. Batch sample 2: `m_current_state` is still `true` (not yet updated), but the flag
-   bypasses verification → returns `false`
-3. Batch sample 3: same
-4. End of batch: parent sees 3x `false` → `m_current_state = false`
+Computes a 3-sample moving average of filtered values. If each new MA3 is lower
+than the previous, the trend counter increments. A single increase only decrements
+the counter by 1 (noise tolerance), preventing a complete reset.
+
+Useful when the signal bounces: 3000, 2950, 2980, 2920, 2970, 2880...
+L2 resets on each bounce, but the MA3 trend still decreases overall.
+
+### Level 4 — ABSOLUTE (variable latency)
+
+```
+Condition: filtered_value < water_baseline * 85%
+Latency:   Variable (depends on how fast readings drop)
+Use case:  Reliable absolute reference when water baseline is well-calibrated
+```
+
+Independent of recent history. Directly compares to the calibrated water baseline.
+With water=3000: triggers when filtered < 2550.
+
+### Level 5 — SAFETY NET (>10s underwater)
+
+```
+Condition: (peak_during_dive - filtered) / peak_during_dive > 15%
+           AND time underwater > 10s
+Latency:   >10s (intentionally slow, last resort)
+Use case:  All baselines have drifted, nothing else triggered
+```
+
+Uses the peak ADC observed since dive start (not the calibrated water baseline).
+The 10s minimum prevents early false triggers from initial stabilization.
+
+### Detection Hierarchy
+
+```
+Speed:    L1 (1s) > L2 (2s) > L3 (~5s) > L4 (variable) > L5 (>10s)
+
+L1: instant drop from recent peak      -> catches sharp exits
+L2: cumulative 2-sample drop            -> catches gradual exits
+L3: MA3 trend                           -> catches noisy gradual exits
+L4: absolute vs water baseline          -> catches any exit when baseline is good
+L5: peak-relative with time gate        -> last resort safety net
+```
 
 ---
 
-## Dynamic Biofouling Adaptation
+## Calibration System
 
-### 5 Adaptation Mechanisms
+### Initial Air Calibration (at boot)
 
-The algorithm has 5 mechanisms that progressively adapt to biofouling:
+Takes 10 ADC samples, 100ms apart. If average > 2500: assumes device booted
+in water and swaps air/water estimates. Otherwise, `air = average`,
+`water = air * 3` (capped at observed peak ADC if available).
 
-#### 1. EMA Water Baseline (continuous)
+### Water Baseline (EMA, continuous)
 
-The water baseline adapts continuously via an exponential moving average:
-
-```
-threshold_water = alpha * value + (1 - alpha) * threshold_water
-alpha = 0.19 (19%)
-```
-
-**Strict conditions** to avoid corruption by biofouling:
-- Value > threshold_current + hysteresis (clearly underwater)
-- Value >= 2000 (absolute minimum for sea water)
-- Value >= 5 x air_baseline (minimum water/air ratio)
-- Value within expected range (+-15% of water_baseline)
-
-#### 2. Adaptive Air Recalibration (at surface > 10s)
-
-When at the surface for > 10 seconds, ADC readings are stored in a buffer.
-If the average exceeds 1.3x the current air baseline → biofouling detected:
+When confirmed underwater (filtered > threshold_high), the water baseline adapts:
 
 ```
-new_air = 0.9 * old_air + 0.1 * avg_surface_reading
+new_water = 0.19 * value + 0.81 * old_water
 ```
 
-Gradual adaptation (10% per update) to avoid false adjustments.
+**Protection conditions** (all must be true):
+- Value > threshold_current + hysteresis
+- Value >= 2000 (absolute minimum for seawater)
+- Value >= air * 3 (or air >= 1000, to allow recovery from corrupted calibration)
+- Value >= 85% of current water_baseline OR > water_baseline
+- Not in surface lockout period
 
-#### 3. Extended Dive Recalibration (underwater > 60s)
+Water baseline is also capped at observed peak ADC.
 
-Every 30 seconds after 60s underwater, checks whether minimum readings
-suggest biofouling (air baseline too low for reality):
+### Air Baseline Adaptation
 
-```
-Condition: min_adc_during_dive > 3 * air_baseline
-           AND min_adc < 0.7 * water_baseline
-           AND shift > 50%
+Three modes, checked when at surface > 10 seconds:
 
-Action: air_baseline = min_adc * 0.85
-```
+| Mode | Condition | Action | Speed |
+|------|-----------|--------|-------|
+| Timed recalibration | Elapsed > CALIB_INTERVAL (3600s) | air = average of surface readings | Immediate |
+| Upward adaptation | avg > air * 1.3 AND avg < threshold | air = 0.9*air + 0.1*avg | Slow (10%) |
+| Downward adaptation | avg < air * 0.7 | air = 0.8*air + 0.2*avg | Fast (20%) |
 
-#### 4. Rapid Detection Air Recalibration (immediate)
+Downward adaptation is faster because an inflated air baseline (from wet electrode
+calibration) is more damaging than a low one.
 
-When a rapid drop is detected and the raw_value is above the air baseline:
+### Surface Override Air Recalibration
 
-```
-air_baseline = raw_value * 0.8
-```
+When a L1-L5 surface override triggers, if the current filtered value is > 2x air
+baseline AND < 80% of water baseline, it immediately sets air = filtered_value.
+This handles the wet electrode at exit: the reading is high but dropping, so
+recalibrating air to this value prevents immediate re-trigger on the next sample.
 
-This allows the threshold to adapt immediately after the first rapid detection.
+### First-Sample Coherence Check
 
-#### 5. Max Dive Timeout Recalibration (safety)
+On the first ADC read after boot, if the stored calibration is wildly inconsistent
+with the actual reading (e.g., stored air=1000 but reading=4800, or stored air=3000
+but reading=500), the calibration is invalidated and rebuilt from the current reading.
 
-If max dive time is reached, it's likely a biofouling issue.
-Forces recalibration:
+### Calibration Persistence
 
-```
-Condition: min_adc_during_dive > 2 * air_baseline
-Action: air_baseline = min_adc * 0.8
-```
-
-### Threshold Evolution Over 12 Months
-
-With adaptive mechanisms active, here is the measured evolution from tests:
-
-```
-Stage              | air_baseline | water_baseline | threshold | detection
-───────────────────┼──────────────┼────────────────┼───────────┼──────────
-Month 0  (clean)   |     200      |     3000       |    499    | T1, 1 sample
-Month 3  (light)   |     480*     |     2800       |    628    | T1, 1 sample
-Month 6  (moderate)|     800*     |     2500       |    733    | T1, 1 sample
-Month 9  (heavy)   |    1120*     |     2300       |   1077    | T1, 1 sample
-Month 12 (severe)  |    1360*     |     2100       |   1617    | T2, 2 samples
-```
-
-(*) Baselines automatically recalibrated by adaptive mechanisms.
+All calibration data (air, water, threshold, hysteresis, timestamp) is stored in
+noinit RAM with CRC16 validation. Survives MCU soft resets but not power cycles
+(unless backed by retained RAM).
 
 ---
 
-## Safeties and Timeouts
+## Dynamic Peak ADC Tracking
 
-### Max Dive Time (default: 7200s = 2h)
+### Problem
 
-If the tracker stays "underwater" longer than `UW_MAX_DIVE_TIME`:
-1. Forces surface state
-2. Recalibrates air baseline (biofouling suspected)
-3. Activates a **surface lockout** of 30s (prevents immediate return to underwater)
+When calibrating in air with wet electrodes:
+- Air reads ~1200 (wet film, not true air)
+- Water estimated as air * 3 = 3600
+- But actual water ADC is only ~3000
+- Threshold + hysteresis = 3647 > actual water readings -> never detects underwater
 
-### Min Surface Time (default: 10s)
+### Solution: m_observed_peak_adc
 
-Prevents false returns to underwater if just surfaced.
+A persistent tracker (noinit RAM + CRC) records the highest ADC value actually
+observed during operation. This value caps:
 
-### Surface Lockout (30s after max dive timeout)
+1. **Water baseline estimation**: `air * 3` capped at observed peak
+2. **EMA water updates**: new_water capped at observed peak
+3. **Threshold + hysteresis**: if threshold_current + hysteresis > observed peak,
+   both are reduced proportionally
 
-After a force-surface by timeout, prevents underwater re-detection for 30s.
-Gives the electrodes time to stabilize at the surface.
-
-### Hysteresis Stuck Recalibration (30s in hysteresis zone)
-
-If the ADC stays in the hysteresis zone for > 30s (tracked via timestamp, not sample
-counter), every 15s the air baseline is recalibrated upward toward the current value
-(`new_air = filtered_value * 0.75`, applied only if > 1.2x current air baseline).
-
-### ADC Validation
-
-Every ADC reading is validated:
-- `value >= 50` (not zero/noise)
-- `value <= threshold_max` (not saturated)
-
-If invalid, the previous state is maintained.
+The peak updates continuously from raw readings. On first boot (peak=0), no capping
+is applied — the peak is learned from the first immersion.
 
 ---
 
-## Parameters and Constants
+## Safety Mechanisms
+
+### Max Dive Timeout (default: 7200s = 2h)
+
+If underwater longer than `UW_MAX_DIVE_TIME`:
+- Forces surface state
+- Does NOT recalibrate air baseline (would corrupt it with underwater values)
+- Activates 30s surface lockout
+
+### Surface Lockout
+
+After a surface override (L1-L5) or max dive timeout:
+- `UW_MIN_SURFACE_TIME` seconds of forced surface (default 2s)
+- After max dive timeout: 30s lockout (`SURFACE_LOCKOUT_DURATION_SEC`)
+- During lockout, water baseline is NOT updated (readings are surface, not water)
+
+### Proximity Guard
+
+All L1-L5 surface overrides are blocked if:
+```
+filtered_value >= max(water_baseline, peak_during_dive) * 95%
+```
+
+This prevents false surface detection from normal underwater ADC noise/drift.
+Using `max(water_baseline, peak_during_dive)` handles the case where water EMA
+has drifted below actual readings.
+
+---
+
+## Parameters Reference
 
 ### Configurable Parameters (DTE / Config Store)
 
-| Parameter | ParamID | Default | Description |
-|-----------|---------|---------|-------------|
-| `SWS_ANALOG_THRESHOLD_MIN` | UNP20 | 100 | Minimum valid ADC |
-| `SWS_ANALOG_THRESHOLD_MAX` | UNP21 | 8000 | Maximum valid ADC (14-bit range) |
-| `SWS_ANALOG_HYSTERESIS` | UNP22 | 14% | Hysteresis in % (Monte Carlo optimized) |
-| `SWS_ANALOG_CALIB_INTERVAL` | UNP23 | 3600s | Recalibration interval |
-| `UW_MAX_DIVE_TIME` | UNP24 | 7200s | Max dive time (0=disabled) |
-| `UW_MIN_SURFACE_TIME` | UNP25 | 10s | Min surface time |
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `UW_PIN_SAMPLE_DELAY` | **1 ms** | RC charge time before ADC read. Fixed at 1ms for optimal water/film discrimination. Do not change. |
+| `UW_MAX_SAMPLES` | **1** | Samples per detection cycle. 1 = immediate dive detection. |
+| `UW_MIN_DRY_SAMPLES` | **1** | Consecutive dry samples to confirm surface via threshold. |
+| `UW_SAMPLE_GAP` | **1000 ms** | Interval between sub-samples within a batch (when MAX_SAMPLES > 1). |
+| `SWS_ANALOG_THRESHOLD_MIN` | **0** | Minimum valid ADC reading. |
+| `SWS_ANALOG_THRESHOLD_MAX` | **8000** | Maximum valid ADC (legacy, superseded by observed peak). |
+| `SWS_ANALOG_HYSTERESIS` | **4%** | Hysteresis as % of threshold. Higher = more stable but slower detection. |
+| `SWS_ANALOG_CALIB_INTERVAL` | **3600 s** | Air baseline timed recalibration interval (1h). |
+| `UW_MAX_DIVE_TIME` | **7200 s** | Force surface after this time underwater (2h). 0 = disabled. |
+| `UW_MIN_SURFACE_TIME` | **2 s** | Lockout after surface override. Prevents oscillation. |
+| `SAMPLING_UNDER_FREQ` | **10 s** | Sampling period when underwater. |
+| `SAMPLING_SURF_FREQ` | **10 s** | Sampling period when at surface. |
 
-### Internal Constants (defined in sws_analog_service.cpp)
+### Internal Constants (sws_analog_service.cpp)
 
-#### Detection
+#### ADC
 
-| Constant | Value | Role |
-|----------|-------|------|
-| `ADC_HISTORY_SIZE` | 2 | Moving average buffer size (small = fast) |
-| `DEFAULT_THRESHOLD_RATIO_PERCENT` | 35% | Threshold position between air and water |
-| `DEFAULT_ALPHA_PERCENT` | 19% | EMA water baseline adaptation speed |
-| `DEFAULT_MAX_SAMPLES` | 1 | Submersion confirmation (1 = immediate) |
-| `DEFAULT_MIN_DRY_SAMPLES` | 2 | Surface confirmation (2 samples) |
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `ADC_INVALID_MAX` | 16383 | 14-bit ADC maximum |
+| `ADC_HISTORY_SIZE` | 2 | Moving average filter window (small = fast response) |
 
-#### Rapid Transition
+#### Detection Tuning
 
-| Constant | Value | Role |
-|----------|-------|------|
-| `RAPID_DROP_TIER1_PERCENT` | 25% | T1 threshold: single-sample drop |
-| `RAPID_DROP_TIER1_ABSOLUTE` | 300 | T1: minimum absolute drop |
-| `RAPID_DROP_TIER2_PERCENT` | 12% | T2 threshold: 2x confirmed drop |
-| `RAPID_DROP_TIER2_ABSOLUTE` | 150 | T2: minimum absolute drop |
-| `RAPID_DROP_TIER3_PERCENT` | 8% | T3 threshold: trend-supported drop |
-| `RAPID_DROP_TIER3_ABSOLUTE` | 100 | T3: minimum absolute drop |
-| `BIOFOULING_OVERRIDE_MIN_TIME_SEC` | 3s | Min time underwater before override |
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `DEFAULT_THRESHOLD_RATIO_PERCENT` | 35% | Threshold position between air and water (clean electrode) |
+| `DEFAULT_ALPHA_PERCENT` | 19% | EMA alpha for water baseline adaptation |
+| `DEFAULT_HYSTERESIS_PERCENT` | 4% | Fallback hysteresis if config is invalid |
+| `DEFAULT_MAX_SAMPLES` | 1 | Default samples per cycle |
+| `DEFAULT_MIN_DRY_SAMPLES` | 1 | Default dry samples to confirm surface |
 
-#### Biofouling Adaptation
+#### Water Baseline Protection
 
-| Constant | Value | Role |
-|----------|-------|------|
-| `ABSOLUTE_MIN_WATER_ADC` | 2000 | Absolute minimum for sea water |
-| `MIN_WATER_AIR_RATIO` | 5 | Minimum water/air ratio |
-| `SURFACE_ADAPT_THRESHOLD` | 1.3 | Air recalibration trigger threshold at surface |
-| `MIN_SURFACE_TIME_FOR_ADAPT` | 10s | Min surface time before adaptation |
-| `EXTENDED_DIVE_RECALIB_START_SEC` | 60s | Start biofouling check underwater |
-| `EXTENDED_DIVE_RECALIB_INTERVAL_SEC` | 30s | Biofouling check frequency |
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `ABSOLUTE_MIN_WATER_ADC` | 2000 | Reject water readings below this (not seawater) |
+| `MIN_WATER_AIR_RATIO` | 3 | Water must be >= 3x air (bypassed if air >= 1000) |
 
-#### Trend and Variance
+#### Surface Baseline Adaptation
 
-| Constant | Value | Role |
-|----------|-------|------|
-| `TREND_BUFFER_SIZE` | 8 | Trend buffer size |
-| `TREND_DECREASE_THRESHOLD_PERCENT` | 2% | Threshold to count a decrease |
-| `TREND_DECREASE_ABSOLUTE_MIN` | 8 | Absolute minimum to count decrease |
-| `TREND_CONSECUTIVE_DECREASE_MIN` | 3 | Consecutive decreases for trend |
-| `TREND_TOTAL_DROP_PERCENT` | 10% | Min total drop for surface trend |
-| `CUMULATIVE_DROP_PERCENT` | 15% | Cumulative drop for surface |
-| `VARIANCE_HIGH_THRESHOLD` | 10000 | High variance = surface |
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `SURFACE_ADAPT_THRESHOLD` | 1.3x | Upward air adaptation trigger (avg > air * 1.3) |
+| `MIN_SURFACE_TIME_FOR_ADAPT` | 10 s | Minimum surface time before air adaptation starts |
+| Downward threshold | 0.7x | Downward air adaptation trigger (avg < air * 0.7) |
 
----
+#### 5-Level Surface Detection
 
-## Unit Tests
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `L1_DROP_PERCENT` | 5% | Drop from recent peak to trigger L1 (instant) |
+| `L2_DROP_PERCENT` | 3% | Cumulative 2-sample drop to trigger L2 |
+| `L2_MIN_CONSECUTIVE` | 2 | Minimum consecutive raw drops for L2 |
+| `L3_DROP_PERCENT` | 5% | Total MA3 trend drop to trigger L3 |
+| `L3_MIN_CONSECUTIVE` | 3 | Consecutive MA3 decreases for L3 |
+| `L4_DROP_PERCENT` | 15% | Drop below water baseline for L4 |
+| `L5_DROP_PERCENT` | 15% | Drop from dive peak for L5 |
+| `L5_MIN_TIME_SEC` | 10 s | Minimum underwater time before L5 activates |
 
-### Test Suite (14/14 passing)
+#### Safety
 
-**File**: `tests/src/sws_analog_test.cpp`
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `OVERRIDE_MIN_TIME_SEC` | 1 s | Minimum underwater time before any L-override |
+| `PROXIMITY_GUARD_PERCENT` | 95% | L-overrides blocked if filtered >= 95% of peak |
+| `SURFACE_LOCKOUT_DURATION_SEC` | 30 s | Lockout after max dive timeout |
+| `WATER_DETECT_HEURISTIC` | 2500 | Air calibration: if avg > this, assume in water |
 
-#### Basic Functional Tests
+#### Dynamic Threshold Ratio
 
-| # | Test | ADC | Validation |
-|---|------|-----|------------|
-| 1 | `InitialAirCalibration` | 200 (air) | Initial calibration correct |
-| 2 | `SurfaceDetection` | 150 (surface) | Surface detection OK |
-| 3 | `UnderwaterDetection` | 200→2500 | Submersion detection OK |
-| 4 | `HysteresisPreventOscillation` | 260 (hysteresis zone) | No oscillation |
-| 5 | `SalinityAdaptation` | 2500→2800 | Salinity adaptation OK |
-| 6 | `MaxDiveTimeSafety` | 2500 for >5s | Force surface after timeout |
-| 7 | `InvalidADCValuesHandling` | 3500 (invalid) | Out-of-range value rejected |
+| Contrast (water/air) | Ratio | Effect |
+|----------------------|-------|--------|
+| >= 8x (clean) | 35% | Threshold close to air, fast surface detection |
+| >= 4x (moderate biofouling) | 50% | Balanced midpoint |
+| < 4x (wet electrodes / severe) | 40% | Closer to air to ensure underwater detection |
 
-#### Rapid Detection Tests
+#### Peak ADC Capping (in update_dynamic_threshold)
 
-| # | Test | ADC water→air | Drop | Tier | Samples |
-|---|------|-------------|------|------|---------|
-| 8 | `RapidSurfaceDetection_CleanSensor` | 3000→150 | 95% | T1 | <= 3 |
-| 9 | `RapidSurfaceDetection_ModerateBiofouling` | 3000→1200 | 60% | T1 | <= 3 |
-| 10 | `RapidSurfaceDetection_HeavyBiofouling` | 2800→1800 | 35% | T1 | <= 3 |
-
-#### False Positive Prevention Tests
-
-| # | Test | Scenario | Validation |
-|---|------|----------|------------|
-| 11 | `NoFalsePositive_UnderwaterFluctuation` | ADC +-10% underwater | Stays underwater |
-| 12 | `NoFalsePositive_GradualSalinityChange` | 3000→2500 gradual | Stays underwater |
-
-#### Progressive Degradation Tests
-
-| # | Test | Scenario | Validation |
-|---|------|----------|------------|
-| 13 | `ProgressiveBiofouling_MultiCycleDegradation` | 5 biofouling stages | Detection <= 3 samples at EVERY stage |
-| 14 | `ExtremeBiofouling_SmallGap` | 1800→1500 (16% drop) | Detection <= 5 samples |
-
-### Execution
-
-```bash
-cd tests/build
-cmake .. -DFETCHCONTENT_SOURCE_DIR_CPPUTEST=/tmp/cpputest_cache
-make -j$(nproc)
-
-# All SWS tests
-./CLSGenTrackerTests -g SWSAnalog
-
-# A specific test
-./CLSGenTrackerTests -g SWSAnalog -n ProgressiveBiofouling_MultiCycleDegradation -v
-```
+When `threshold_current + hysteresis > observed_peak_adc`:
+- If threshold >= peak: threshold = peak * 90%, hysteresis = peak * 5%
+- If threshold < peak: hysteresis = peak - threshold
 
 ---
 
-## Lifecycle Performance
+## Troubleshooting
 
-### Test Results (actual measurements)
+### Device never detects underwater (always surface)
 
-```
-Output from ProgressiveBiofouling_MultiCycleDegradation test:
+**Check**: `$SWSST` command -> look at `threshold_high` (= threshold + hysteresis)
+vs `raw_adc` when submerged.
 
-Stage              | water→air   | Drop % | Tier | Latency  | Adapted threshold
-───────────────────┼─────────────┼────────┼──────┼──────────┼──────────────────
-Month 0  (clean)   | 3000→200    |  93%   | T1   | 1 sample | 499 → 628
-Month 3  (light)   | 2800→600    |  78%   | T1   | 1 sample | 1083 → 1286
-Month 6  (moderate)| 2500→1000   |  60%   | T1   | 1 sample | 1267 → 1409
-Month 9  (heavy)   | 2300→1400   |  39%   | T1   | 1 sample | 1409 → 1617
-Month 12 (severe)  | 2100→1700   |  19%   | T2   | 2 samples| 1617 → 1773
+**Common causes**:
+- `threshold_high > raw_adc`: threshold too high. Check if air baseline is inflated
+  (wet electrode calibration). The downward air adaptation should fix this over time.
+- `observed_peak` = 0: first boot, no peak learned yet. First immersion will set it.
+- Very low contrast (water/air < 2x): check electrode connections, verify conductivity.
 
-Output from ExtremeBiofouling_SmallGap test:
-Extreme            | 1800→1500   |  16%   | T2   | 2 samples| 1573
-```
+### Device never detects surface (always underwater)
 
-### Theoretical Limits
+**Check**: `$SWSST` -> look at `surface_level`. If always 0, no L-override triggers.
 
-| Drop % | Abs drop | Tier | Latency | Equivalent biofouling |
-|--------|----------|------|---------|-----------------------|
-| >= 25% | >= 300 | T1 | 1s | Up to ~9 months |
-| >= 12% | >= 150 | T2 | 2s | Up to ~15 months |
-| >= 8% | >= 100 | T3 | 3s+ | Extreme case |
-| < 8% | < 100 | Trend/timeout | 15-30s | Nearly dead electrodes |
+**Common causes**:
+- Pin sample delay too high: must be 1ms. Higher values lose water/film discrimination.
+- Proximity guard blocking: if readings stay within 5% of peak, L-overrides are blocked.
+  This is correct behavior for underwater drift, but indicates the electrode may not be
+  exiting water cleanly.
+- Air baseline too low: threshold is far below water, readings stay in hysteresis zone.
 
-Beyond 15 months (drop < 8%), the algorithm falls back to:
-- Decreasing trend detection (TREND_CONSECUTIVE_DECREASE_MIN = 3)
-- Variance detection (VARIANCE_HIGH_THRESHOLD = 10000)
-- Max dive timeout as last resort (default 2h)
+### Slow surface detection (>5s)
 
-### Complete Decision Diagram
+- Increase sampling frequency: lower `SAMPLING_UNDER_FREQ` to 1s
+- L1 (instant) should trigger for any drop > 5% from recent peak
+- If L1 doesn't trigger, readings are drifting slowly -> L2/L3 should catch it in 2-5s
+- Check if proximity guard is blocking (readings very close to water baseline)
 
-```
-                    detector_state() called
-                           |
-                    ┌──────┴──────┐
-                    │ Read ADC    │
-                    │ raw_value   │
-                    └──────┬──────┘
-                           |
-                    ┌──────┴──────┐
-                    │ Valid?      │──── No ──→ return m_current_state
-                    └──────┬──────┘
-                           | Yes
-                    ┌──────┴──────┐
-                    │ Filter      │
-                    │ (MA size=2) │
-                    └──────┬──────┘
-                           |
-                    ┌──────┴──────┐
-                    │ Trend +     │
-                    │ Variance    │
-                    └──────┬──────┘
-                           |
-              ┌────────────┴────────────┐
-              │ Currently underwater    │
-              │ (m_current_state=true)  │
-              └────────────┬────────────┘
-                      Yes  |  No
-                    ┌──────┴──────┐      ┌──────────────┐
-                    │ RAW drop?   │      │ Adaptation   │
-                    └──┬──────┬───┘      │ air baseline │
-                 Yes   |      | No       └──────┬───────┘
-           ┌───────────┘      └──────┐          |
-    ┌──────┴──────┐          ┌───────┴────┐     |
-    │ T1/T2/T3?   │          │ Trend/Var? │     |
-    └──────┬──────┘          └───────┬────┘     |
-           | Yes                     | Yes      |
-    ┌──────┴──────────┐      ┌───────┴────┐     |
-    │ RAPID OVERRIDE  │      │ BIOFOULING │     |
-    │ Reset ADC buf   │      │ OVERRIDE   │     |
-    │ Recalib air     │      └───────┬────┘     |
-    │ Set flag        │              |           |
-    └──────┬──────────┘              |           |
-           └──────────┬──────────────┘           |
-                      v                          |
-              ┌───────────────┐                  |
-              │ new_state =   │                  |
-              │ false (SURFACE)│                 |
-              └───────┬───────┘                  |
-                      |                          |
-                      └──────────┬───────────────┘
-                                 v
-                      ┌──────────────────┐
-                      │ Hysteresis check │
-                      │ + Safety timeout │
-                      └────────┬─────────┘
-                               v
-                        return new_state
-```
+### Threshold/hysteresis exceed actual water readings
+
+- The `observed_peak_adc` should prevent this. Check its value in `$SWSST`.
+- If peak = 0 (first boot), it hasn't been learned yet. Do one immersion cycle.
+- If peak is correct but threshold still too high: check air baseline — if inflated,
+  the ratio calculation produces an inflated threshold.
+
+### Calibration corrupted after reset
+
+- Calibration is in noinit RAM with CRC16. If CRC fails, fresh calibration runs.
+- Power cycle (not soft reset) clears noinit RAM -> full recalibration at boot.
+- `observed_peak_adc` has its own CRC and persists independently of calibration.
+
+---
+
+## DTE Test Commands
+
+### $SWSST — Read SWS Status
+
+Returns: `air, water, threshold, hysteresis, raw_adc, filtered_adc, calibrated, underwater, time_in_state, surface_level, contrast_x10, observed_peak`
+
+### $SWSTST — Start/Stop Test Mode
+
+- `$SWSTST,1` — Start test mode (continuous sampling with async SWSST push)
+- `$SWSTST,0` — Stop test mode
+
+In test mode, SWSST data is pushed on every sample regardless of state change.
+Useful for real-time monitoring and calibration verification.
 
 ---
 
 *Source files*:
-- `core/services/sws_analog_service.hpp` - Header (203 lines)
-- `core/services/sws_analog_service.cpp` - Implementation (856 lines)
-- `tests/src/sws_analog_test.cpp` - Unit tests (746 lines, 14 tests)
+- `core/services/sws_analog_service.hpp` — Header (231 lines)
+- `core/services/sws_analog_service.cpp` — Implementation (~865 lines)
+- `core/services/uwdetector_service.hpp/.cpp` — Parent class (scheduling)
 
-*Last updated: 2026-02-26*
+*Last updated: 2026-03-07*

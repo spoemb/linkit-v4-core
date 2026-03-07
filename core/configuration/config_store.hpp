@@ -144,7 +144,7 @@ protected:
 		/* UNDERWATER_EN */ (bool)false,
 #endif
 		/* DRY_TIME_BEFORE_TX */ 0U,
-		/* SAMPLING_UNDER_FREQ */ 60U,
+		/* SAMPLING_UNDER_FREQ */ 10U,
 		/* LB_EN */ (bool)false,
 		/* LB_THRESHOLD */ 10U,
 		/* LB_ARGOS_POWER */ BaseArgosPower::POWER_350_MW,
@@ -156,7 +156,7 @@ protected:
 		/* LB_GNSS_HDOPFILT_THR */ 2U,
 		/* LB_ARGOS_DEPTH_PILE */ BaseArgosDepthPile::DEPTH_PILE_1,
 		/* LB_GNSS_ACQ_TIMEOUT */ 120U,
-		/* SAMPLING_SURF_FREQ */ 60U,
+		/* SAMPLING_SURF_FREQ */ 10U,
 		/* PP_MIN_ELEVATION */ 15.0,
 		/* PP_MAX_ELEVATION */ 90.0,
 		/* PP_MIN_DURATION */ 30U,
@@ -260,28 +260,16 @@ protected:
 		/* [125] PRESSURE_SENSOR_PERIODIC */ 0U,
 		/* DEBUG_OUTPUT_MODE */ BaseDebugMode::USB_CDC,  // Default: USB CDC (was UART on Linkit V3)
 		/* GNSS_ASSISTNOW_OFFLINE_EN */ (bool)false,
-#if MODEL_UW
-		/* UW_MAX_SAMPLES */ 10U,
-#else
-		/* UW_MAX_SAMPLES */ 5U,
-#endif
-#if MODEL_UW
-		/* UW_MIN_DRY_SAMPLES */ 3U,
-#else
+		/* UW_MAX_SAMPLES */ 1U,
 		/* UW_MIN_DRY_SAMPLES */ 1U,
-#endif
 		/* UW_SAMPLE_GAP */ 1000U,
-#if MODEL_UW
-		/* UW_PIN_SAMPLE_DELAY */ 10U,
-#else
 		/* UW_PIN_SAMPLE_DELAY */ 1U,
-#endif
 		/* SWS_ANALOG_THRESHOLD_MIN */ 0U,
 		/* SWS_ANALOG_THRESHOLD_MAX */ 8000U,
-		/* SWS_ANALOG_HYSTERESIS */ 10U,
+		/* SWS_ANALOG_HYSTERESIS */ 4U,
 		/* SWS_ANALOG_CALIB_INTERVAL */ 3600U,
 		/* UW_MAX_DIVE_TIME */ 7200U,
-		/* UW_MIN_SURFACE_TIME */ 10U,
+		/* UW_MIN_SURFACE_TIME */ 2U,
 		/* UW_DIVE_MODE_ENABLE */ (bool)false,
 		/* UW_DIVE_MODE_START_TIME */ 0U,
 		/* UW_GNSS_DRY_SAMPLING */ 4U * 3600U,

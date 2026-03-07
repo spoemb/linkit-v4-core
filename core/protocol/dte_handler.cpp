@@ -930,7 +930,10 @@ std::string DTEHandler::SWSST_REQ(int error_code) {
 		(unsigned int)st.last_filtered_adc,
 		(unsigned int)st.is_calibrated,
 		(unsigned int)st.is_underwater,
-		(unsigned int)st.time_in_state_sec);
+		(unsigned int)st.time_in_state_sec,
+		(unsigned int)st.surface_level,
+		(unsigned int)st.contrast_x10,
+		(unsigned int)st.observed_peak);
 #else
 	return DTEEncoder::encode(DTECommand::SWSST_RESP, (int)DTEError::PARAM_KEY_UNRECOGNISED);
 #endif
@@ -949,9 +952,29 @@ std::string DTEHandler::SWSTST_REQ(int error_code, std::vector<BaseType>& arg_li
 
 #ifdef SWS_ADC
 	if (action == 1) {
+		// Start test mode and register async push callback
+		auto write_fn = m_async_write;
+		SWSAnalogService::set_status_notify([write_fn](const SWSAnalogService::Status& st) {
+			if (write_fn) {
+				write_fn(DTEEncoder::encode(DTECommand::SWSST_RESP, (int)DTEError::OK,
+					(unsigned int)st.threshold_air,
+					(unsigned int)st.threshold_water,
+					(unsigned int)st.threshold_current,
+					(unsigned int)st.hysteresis,
+					(unsigned int)st.last_raw_adc,
+					(unsigned int)st.last_filtered_adc,
+					(unsigned int)st.is_calibrated,
+					(unsigned int)st.is_underwater,
+					(unsigned int)st.time_in_state_sec,
+					(unsigned int)st.surface_level,
+					(unsigned int)st.contrast_x10,
+					(unsigned int)st.observed_peak));
+			}
+		});
 		SWSAnalogService::start_test_mode();
 	} else {
 		SWSAnalogService::stop_test_mode();
+		SWSAnalogService::clear_status_notify();
 	}
 
 	unsigned int running = SWSAnalogService::is_test_running() ? 1U : 0U;

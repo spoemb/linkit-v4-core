@@ -268,11 +268,13 @@ namespace BSP
             },
             {
                 // ADC_CHANNEL_1: SWS analog on AIN0 (P0.02)
+                // Gain 1/6: V_max = 0.6V/0.167 = 3.6V (full VDD range)
+                // AcqTime 40us: stable for high-impedance SWS electrode
                 .resistor_p = NRF_SAADC_RESISTOR_DISABLED,
                 .resistor_n = NRF_SAADC_RESISTOR_DISABLED,
-                .gain = NRF_SAADC_GAIN1_4,
+                .gain = NRF_SAADC_GAIN1_6,
                 .reference = NRF_SAADC_REFERENCE_INTERNAL,
-                .acq_time = NRF_SAADC_ACQTIME_10US,
+                .acq_time = NRF_SAADC_ACQTIME_40US,
                 .mode = NRF_SAADC_MODE_SINGLE_ENDED,
                 .burst = NRF_SAADC_BURST_DISABLED,
                 .pin_p = NRF_SAADC_INPUT_AIN0,
