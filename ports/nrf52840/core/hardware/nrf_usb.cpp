@@ -27,6 +27,17 @@ volatile bool NrfUSB::m_line_ready = false;
 // Temporary buffer for USB CDC reads
 static char s_usb_rx_temp[USB_CDC_READ_SIZE];
 
+// Track whether a read is currently armed on the OUT endpoint
+static volatile bool s_read_armed = false;
+
+// Deferred diagnostic flags — set in callbacks, printed from process()
+static volatile uint8_t s_diag_evt_started = 0;
+static volatile uint8_t s_diag_port_open = 0;
+static volatile uint8_t s_diag_port_close = 0;
+static volatile uint8_t s_diag_rx_done = 0;
+static volatile size_t  s_diag_rx_size = 0;
+static volatile uint32_t s_diag_arm_fail_ret = 0;
+
 static void cdc_acm_user_ev_handler(app_usbd_class_inst_t const * p_inst,
                                     app_usbd_cdc_acm_user_event_t event);
 
@@ -49,13 +60,24 @@ APP_USBD_CDC_ACM_GLOBAL_DEF(m_app_cdc_acm,
  */
 static void start_usb_read(void)
 {
-    if (NrfUSB::is_port_open()) {
-        app_usbd_cdc_acm_read(&m_app_cdc_acm, s_usb_rx_temp, USB_CDC_READ_SIZE);
+    if (!s_read_armed) {
+        // Use read_any() so RX_DONE fires on the first received packet,
+        // not after accumulating USB_CDC_READ_SIZE bytes.
+        ret_code_t ret = app_usbd_cdc_acm_read_any(&m_app_cdc_acm, s_usb_rx_temp, USB_CDC_READ_SIZE);
+        if (ret == NRF_ERROR_IO_PENDING || ret == NRF_SUCCESS) {
+            s_read_armed = true;
+        } else {
+            if (s_diag_arm_fail_ret == 0) {
+                s_diag_arm_fail_ret = ret;
+            }
+        }
     }
 }
 
 /**
  * @brief User event handler @ref app_usbd_cdc_acm_user_ev_handler_t
+ * NOTE: No printf here! printf calls NrfUSB::write which calls
+ * _NRF_USB_QUEUE_PROCESS causing reentrant crash.
  * */
 static void cdc_acm_user_ev_handler(app_usbd_class_inst_t const * p_inst,
                                     app_usbd_cdc_acm_user_event_t event)
@@ -63,24 +85,29 @@ static void cdc_acm_user_ev_handler(app_usbd_class_inst_t const * p_inst,
     switch (event)
     {
         case APP_USBD_CDC_ACM_USER_EVT_PORT_OPEN:
+            s_diag_port_open = 1;
             NrfUSB::set_port_open(true);
-            // Start first read operation
             start_usb_read();
             break;
         case APP_USBD_CDC_ACM_USER_EVT_PORT_CLOSE:
+            s_diag_port_close = 1;
             NrfUSB::set_port_open(false);
+            s_read_armed = false;
             break;
         case APP_USBD_CDC_ACM_USER_EVT_TX_DONE:
             break;
         case APP_USBD_CDC_ACM_USER_EVT_RX_DONE:
         {
-            // Get the number of bytes received
+            s_read_armed = false;
+            if (!NrfUSB::is_port_open()) {
+                NrfUSB::set_port_open(true);
+            }
             size_t rx_size = app_usbd_cdc_acm_rx_size(&m_app_cdc_acm);
+            s_diag_rx_done = 1;
+            s_diag_rx_size = rx_size;
             if (rx_size > 0) {
-                // Add received data to the ring buffer
                 NrfUSB::on_rx_data(s_usb_rx_temp, rx_size);
             }
-            // Start next read operation
             start_usb_read();
             break;
         }
@@ -100,6 +127,7 @@ static void usbd_user_ev_handler(app_usbd_event_type_t event)
         case APP_USBD_EVT_DRV_RESUME:
             break;
         case APP_USBD_EVT_STARTED:
+            s_diag_evt_started = 1;
             break;
         case APP_USBD_EVT_STOPPED:
             app_usbd_disable();
@@ -261,6 +289,33 @@ std::string NrfUSB::read_line()
 void NrfUSB::process(void)
 {
     _NRF_USB_QUEUE_PROCESS();
+
+    // Re-arm read if port is open (DTR set) but no read pending
+    if (m_port_open) {
+        start_usb_read();
+    }
+
+    // Print deferred diagnostics (safe — we're outside USB event callbacks)
+    if (s_diag_evt_started) {
+        s_diag_evt_started = 0;
+        printf("[USB_DIAG] EVT_STARTED\n");
+    }
+    if (s_diag_port_open) {
+        s_diag_port_open = 0;
+        printf("[USB_DIAG] PORT_OPEN (DTR asserted)\n");
+    }
+    if (s_diag_port_close) {
+        s_diag_port_close = 0;
+        printf("[USB_DIAG] PORT_CLOSE\n");
+    }
+    if (s_diag_rx_done) {
+        s_diag_rx_done = 0;
+        printf("[USB_DIAG] RX_DONE %u bytes\n", (unsigned)s_diag_rx_size);
+    }
+    if (s_diag_arm_fail_ret) {
+        printf("[USB_DIAG] read_any arm failed: ret=0x%08lX\n", (unsigned long)s_diag_arm_fail_ret);
+        s_diag_arm_fail_ret = 0;
+    }
 }
 
 void NrfUSB::set_port_open(bool is_open)

@@ -92,7 +92,6 @@
 
 // Initialize static members
 SWSAnalogService::CalibrationData SWSAnalogService::m_calib;
-uint16_t SWSAnalogService::m_calib_crc;
 uint16_t SWSAnalogService::m_observed_peak_adc;
 uint16_t SWSAnalogService::m_observed_peak_crc;
 SWSAnalogService::Status SWSAnalogService::m_status = {};
@@ -188,9 +187,6 @@ void SWSAnalogService::service_init() {
     m_last_state_change_time = 0;
     m_time_in_current_state = 0;
     m_consecutive_samples = 0;
-    m_min_adc_during_dive = 0xFFFF;
-    m_hysteresis_start_time = 0;
-
     // Surface readings buffer
     m_surface_readings_idx = 0;
     m_surface_readings_count = 0;
@@ -652,8 +648,6 @@ bool SWSAnalogService::detector_state() {
             // Decay: recent_peak moves 5% toward current reading each sample
             m_recent_peak = (uint16_t)(m_recent_peak * 0.95f + raw_value * 0.05f);
         }
-        if (filtered_value < m_min_adc_during_dive)
-            m_min_adc_during_dive = filtered_value;
     }
 
     if (surface_level == 0 && m_current_state &&
@@ -713,6 +707,8 @@ bool SWSAnalogService::detector_state() {
                 uint16_t old = m_calib.threshold_air;
                 m_calib.threshold_air = (uint16_t)(m_calib.threshold_air * 0.9f + avg * 0.1f);
                 update_dynamic_threshold();
+                m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
+                                             sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
                 DEBUG_INFO("SWSAnalog: Adaptive air UP %u -> %u", old, m_calib.threshold_air);
             }
             else if (avg < (uint16_t)(m_calib.threshold_air * 0.70f)) {
@@ -736,19 +732,20 @@ bool SWSAnalogService::detector_state() {
     // === 7. STATE DETERMINATION ===
     bool new_state = m_current_state;
     uint16_t threshold_high = m_calib.threshold_current + m_calib.hysteresis_value;
-    uint16_t threshold_low = m_calib.threshold_current - m_calib.hysteresis_value;
+    uint16_t threshold_low = (m_calib.hysteresis_value >= m_calib.threshold_current)
+        ? 0 : m_calib.threshold_current - m_calib.hysteresis_value;
 
     // Basic threshold detection
     if (filtered_value > threshold_high) {
         new_state = true;
         m_consecutive_samples = 0;
-        m_hysteresis_start_time = 0;
+
         // Don't update water baseline during surface lockout (readings are surface, not water)
         if (m_surface_lockout_remaining == 0) {
             calibrate_water_baseline(filtered_value);
         }
     } else if (filtered_value < threshold_low) {
-        m_hysteresis_start_time = 0;
+
         if (m_current_state) {
             m_consecutive_samples++;
             if (m_consecutive_samples >= m_min_dry_samples)
@@ -815,8 +812,6 @@ bool SWSAnalogService::detector_state() {
         m_last_state_change_time = PMU::get_timestamp_ms() / 1000;
         m_time_in_current_state = 0;
         m_consecutive_samples = 0;
-        m_min_adc_during_dive = 0xFFFF;
-        m_hysteresis_start_time = 0;
         m_peak_adc_since_underwater = 0;
         m_recent_peak = 0;
 
@@ -860,7 +855,3 @@ bool SWSAnalogService::detector_state() {
     return new_state;
 }
 
-uint16_t SWSAnalogService::calculate_calibration_crc() const {
-    return crc16_compute((const uint8_t *)&m_calib,
-                         sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
-}

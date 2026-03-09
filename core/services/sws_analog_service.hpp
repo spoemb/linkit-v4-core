@@ -47,6 +47,19 @@ public:
     static void set_status_notify(std::function<void(const Status&)> fn);
     static void clear_status_notify();
 
+#ifdef CPPUTEST
+    // Reset static calibration data for test isolation
+    static void reset_noinit_data() {
+        memset(&m_calib, 0, sizeof(m_calib));
+        m_observed_peak_adc = 0;
+        m_observed_peak_crc = 0;
+        m_status = {};
+        s_instance = nullptr;
+        m_test_mode = false;
+        m_status_notify = nullptr;
+    }
+#endif
+
     SWSAnalogService() : UWDetectorService("SWSAnalog") {
         s_instance = this;
         m_adc_history_idx = 0;
@@ -77,7 +90,6 @@ private:
 
     // Static calibration data in noinit RAM section (survives reset)
     static CalibrationData m_calib __attribute__((section(".noinit")));
-    static uint16_t m_calib_crc __attribute__((section(".noinit")));
 
     // Dynamic peak ADC tracker: highest ADC value actually observed (noinit for persistence)
     // Used to cap water baseline estimates when calibrating from air with wet electrodes
@@ -96,8 +108,6 @@ private:
 
     // Sample confirmation counters (for robust detection)
     uint8_t m_consecutive_samples;      // Consecutive samples in same direction
-    uint16_t m_min_adc_during_dive;     // Track min ADC for biofouling detection
-    uint64_t m_hysteresis_start_time;   // Timestamp (seconds) when entered hysteresis zone (0 = not in zone)
 
     // Surface readings buffer for adaptive air baseline
     static constexpr int SURFACE_BUFFER_SIZE = 10;
@@ -203,12 +213,6 @@ private:
      * @return true if timeout override is needed
      */
     bool check_safety_timeouts(bool current_state);
-
-    /**
-     * @brief Calculate CRC16 for calibration data integrity
-     * @return CRC16 value
-     */
-    uint16_t calculate_calibration_crc() const;
 
 protected:
     /**
