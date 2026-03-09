@@ -97,7 +97,7 @@
 		{
 			"type": "shell",
 			"label": "LinkItV4-LoRa: clean build (Debug)",
-			"command": "rm -rf ports/nrf52840/build/LINKIT_LORA && mkdir -p ports/nrf52840/build/LINKIT_LORA && cd ports/nrf52840/build/LINKIT_LORA && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=LINKIT -DCMAKE_BUILD_TYPE=Debug -DMODEL=UW -DLORA_RAK3172=ON -DENABLE_AXL_SENSOR=ON ../.. && make -j20",
+			"command": "rm -rf ports/nrf52840/build/LINKIT_LORA && mkdir -p ports/nrf52840/build/LINKIT_LORA && cd ports/nrf52840/build/LINKIT_LORA && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=LINKIT -DCMAKE_BUILD_TYPE=Debug -DMODEL=UW -DLORA_RAK3172=ON -DENABLE_AXL_SENSOR=ON -DGPS_FAKE_POSITION=1 ../.. && make -j20",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"

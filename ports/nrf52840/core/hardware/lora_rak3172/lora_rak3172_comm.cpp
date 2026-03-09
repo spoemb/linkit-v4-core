@@ -39,6 +39,12 @@ LoRaComm::LoRaComm(unsigned int instance) :
 void LoRaComm::init(void) {
     if (m_is_init) return;
 
+    // Pre-reserve string buffers to avoid heap reallocation during processing.
+    m_rx_buffer.reserve(256);
+    m_tx_buffer.reserve(128);
+    m_line_buffer.reserve(128);
+    m_last_value.reserve(64);
+
     // Copy BSP config and override baudrate for RAK3172 (115200 baud)
     m_uart_config = BSP::UARTAsync_Inits[m_uart_instance].config;
     m_uart_config.baudrate = NRF_UARTE_BAUDRATE_115200;
@@ -230,71 +236,72 @@ bool LoRaComm::send_at_cmd(ATCmd cmd, const std::optional<std::string>& params)
  *   - "+EVT:RX_1:<rssi>:<snr>:UNICAST:<port>:<payload>\r\n" -> downlink
  *   - "<value>\r\n"                       -> value response (e.g., DEVEUI read)
  */
-RespType LoRaComm::parse_rx_line(const std::string& line)
+RespType LoRaComm::parse_rx_line(std::string& line)
 {
-    // Strip trailing CR/LF
-    std::string trimmed = line;
-    while (!trimmed.empty() && (trimmed.back() == '\r' || trimmed.back() == '\n'))
-        trimmed.pop_back();
+    // Strip trailing CR/LF in-place (no copy)
+    while (!line.empty() && (line.back() == '\r' || line.back() == '\n'))
+        line.pop_back();
 
-    if (trimmed.empty())
+    if (line.empty())
         return RESP_UNKNOWN;
 
     // Check for OK
-    if (trimmed == OK_RESP)
+    if (line == OK_RESP)
         return RESP_OK;
 
     // Check for errors
-    if (trimmed == ERR_RESP)
+    if (line == ERR_RESP)
         return RESP_ERROR;
-    if (trimmed == PARAM_ERR_RESP)
+    if (line == PARAM_ERR_RESP)
         return RESP_PARAM_ERROR;
-    if (trimmed == BUSY_ERR_RESP)
+    if (line == BUSY_ERR_RESP)
         return RESP_BUSY_ERROR;
-    if (trimmed == NO_NET_RESP)
+    if (line == NO_NET_RESP)
         return RESP_NO_NETWORK;
 
     // Check for async events
-    if (trimmed.compare(0, EVT_PREFIX_LEN, EVT_PREFIX) == 0)
+    if (line.compare(0, EVT_PREFIX.size(), EVT_PREFIX.data(), EVT_PREFIX.size()) == 0)
     {
-        if (trimmed == EVT_JOINED)
+        if (line == EVT_JOINED)
             return RESP_EVT_JOINED;
-        if (trimmed == EVT_JOIN_FAILED)
+        if (line == EVT_JOIN_FAILED)
             return RESP_EVT_JOIN_FAILED;
-        if (trimmed == EVT_TX_DONE)
+        if (line == EVT_TX_DONE)
             return RESP_EVT_TX_DONE;
-        if (trimmed == EVT_SEND_CONF_OK)
+        if (line == EVT_SEND_CONF_OK)
             return RESP_EVT_SEND_CONFIRMED_OK;
-        if (trimmed == EVT_SEND_CONF_FAIL)
+        if (line == EVT_SEND_CONF_FAIL)
             return RESP_EVT_SEND_CONFIRMED_FAILED;
 
         // Check for RX data: +EVT:RX_1:<rssi>:<snr>:UNICAST:<port>:<payload>
-        if (trimmed.compare(0, EVT_RX_PREFIX_LEN, EVT_RX_PREFIX) == 0)
+        if (line.compare(0, EVT_RX_PREFIX.size(), EVT_RX_PREFIX.data(), EVT_RX_PREFIX.size()) == 0)
         {
-            // Parse RX event - extract port and payload from last two colon-separated fields
-            size_t last_colon = trimmed.rfind(':');
+            // Extract port and payload from last two colon-separated fields
+            size_t last_colon = line.rfind(':');
             if (last_colon != std::string::npos && last_colon > 0) {
-                std::string payload = trimmed.substr(last_colon + 1);
-                size_t prev_colon = trimmed.rfind(':', last_colon - 1);
+                size_t prev_colon = line.rfind(':', last_colon - 1);
                 if (prev_colon != std::string::npos) {
-                    std::string port_str = trimmed.substr(prev_colon + 1, last_colon - prev_colon - 1);
-                    int port = 0;
-                    try { port = std::stoi(port_str); } catch (...) {}
-                    m_last_value = payload;
-                    DEBUG_TRACE("LoRaComm: RX port=%d payload=%s", port, payload.c_str());
-                    return RESP_EVT_RX;
+                    // Extract payload directly into m_last_value (reuses capacity)
+                    m_last_value.assign(line, last_colon + 1, std::string::npos);
+                    // Extract port number
+                    m_last_rx_port = 0;
+                    for (size_t i = prev_colon + 1; i < last_colon; i++) {
+                        if (line[i] >= '0' && line[i] <= '9')
+                            m_last_rx_port = m_last_rx_port * 10 + (line[i] - '0');
+                    }
+                    DEBUG_TRACE("LoRaComm: RX port=%d payload=%s", m_last_rx_port, m_last_value.c_str());
                 }
             }
             return RESP_EVT_RX;
         }
 
         // Unknown event - log it
-        DEBUG_TRACE("LoRaComm: unknown EVT: %s", trimmed.c_str());
+        DEBUG_TRACE("LoRaComm: unknown EVT: %s", line.c_str());
         return RESP_UNKNOWN;
     }
 
     // Otherwise it's a value response (e.g., DEVEUI, band number, etc.)
-    m_last_value = trimmed;
+    m_last_value.assign(line);
     return RESP_VALUE;
 }
 
@@ -378,19 +385,25 @@ void LoRaComm::process_rx_lines()
     size_t pos;
     while ((pos = m_rx_buffer.find('\n')) != std::string::npos)
     {
-        std::string line = m_rx_buffer.substr(0, pos + 1);
+        // Reuse m_line_buffer — assign() within reserved capacity is just memcpy
+        m_line_buffer.assign(m_rx_buffer, 0, pos + 1);
         m_rx_buffer.erase(0, pos + 1);
 
-        // Skip empty lines (blank line between value and OK)
-        std::string trimmed = line;
-        while (!trimmed.empty() && (trimmed.back() == '\r' || trimmed.back() == '\n'))
-            trimmed.pop_back();
-        if (trimmed.empty())
+        // Quick empty-line check without creating a copy
+        bool is_empty = true;
+        for (size_t i = 0; i < m_line_buffer.size(); i++) {
+            if (m_line_buffer[i] != '\r' && m_line_buffer[i] != '\n') {
+                is_empty = false;
+                break;
+            }
+        }
+        if (is_empty)
             continue;
 
-        DEBUG_TRACE("LoRaComm::rx< %s", trimmed.c_str());
+        // parse_rx_line trims in-place and compares against constexpr string_view constants
+        RespType resp = parse_rx_line(m_line_buffer);
 
-        RespType resp = parse_rx_line(line);
+        DEBUG_TRACE("LoRaComm::rx< %s", m_line_buffer.c_str());
 
         switch (resp) {
             case RESP_OK:
@@ -415,25 +428,10 @@ void LoRaComm::process_rx_lines()
             case RESP_EVT_SEND_CONFIRMED_FAILED:
                 notify(LoRaCommEventRespError(RESP_EVT_SEND_CONFIRMED_FAILED));
                 break;
-            case RESP_EVT_RX: {
-                // Parse port from RX event for notification
-                // m_last_value already set by parse_rx_line
-                int port = 0;
-                // Re-parse port from the original line
-                std::string t = line;
-                while (!t.empty() && (t.back() == '\r' || t.back() == '\n'))
-                    t.pop_back();
-                size_t last_colon = t.rfind(':');
-                if (last_colon != std::string::npos) {
-                    size_t prev_colon = t.rfind(':', last_colon - 1);
-                    if (prev_colon != std::string::npos) {
-                        std::string port_str = t.substr(prev_colon + 1, last_colon - prev_colon - 1);
-                        try { port = std::stoi(port_str); } catch (...) {}
-                    }
-                }
-                notify(LoRaCommEventRxData(port, m_last_value));
+            case RESP_EVT_RX:
+                // Port and payload already parsed by parse_rx_line
+                notify(LoRaCommEventRxData(m_last_rx_port, m_last_value));
                 break;
-            }
             case RESP_VALUE:
                 // Value stored in m_last_value, OK will follow
                 break;

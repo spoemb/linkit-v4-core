@@ -3,6 +3,7 @@
 #include "events.hpp"
 #include <stdint.h>
 #include <string>
+#include <string_view>
 #include <optional>
 #include <functional>
 #include "nrf_libuarte_async.h"
@@ -73,25 +74,21 @@ namespace LoRa {
         RESP_UNKNOWN
     };
 
-    // RAK3172 response strings (constexpr to avoid static init heap allocs)
-    constexpr const char* OK_RESP        = "OK";
-    constexpr const char* ERR_RESP       = "AT_ERROR";
-    constexpr const char* PARAM_ERR_RESP = "AT_PARAM_ERROR";
-    constexpr const char* BUSY_ERR_RESP  = "AT_BUSY_ERROR";
-    constexpr const char* NO_NET_RESP    = "AT_NO_NETWORK_JOINED";
+    // RAK3172 response strings (constexpr string_view — no heap allocation)
+    constexpr std::string_view OK_RESP        = "OK";
+    constexpr std::string_view ERR_RESP       = "AT_ERROR";
+    constexpr std::string_view PARAM_ERR_RESP = "AT_PARAM_ERROR";
+    constexpr std::string_view BUSY_ERR_RESP  = "AT_BUSY_ERROR";
+    constexpr std::string_view NO_NET_RESP    = "AT_NO_NETWORK_JOINED";
 
-    // Async event prefixes
-    constexpr const char* EVT_PREFIX           = "+EVT:";
-    constexpr const char* EVT_JOINED           = "+EVT:JOINED";
-    constexpr const char* EVT_JOIN_FAILED      = "+EVT:JOIN FAILED";
-    constexpr const char* EVT_TX_DONE          = "+EVT:TX_DONE";
-    constexpr const char* EVT_SEND_CONF_OK     = "+EVT:SEND CONFIRMED OK";
-    constexpr const char* EVT_SEND_CONF_FAIL   = "+EVT:SEND CONFIRMED FAILED";
-    constexpr const char* EVT_RX_PREFIX        = "+EVT:RX_";
-
-    // Prefix lengths for compare()
-    constexpr size_t EVT_PREFIX_LEN    = 5;   // strlen("+EVT:")
-    constexpr size_t EVT_RX_PREFIX_LEN = 8;   // strlen("+EVT:RX_")
+    // Async event prefixes (constexpr string_view — no heap allocation)
+    constexpr std::string_view EVT_PREFIX           = "+EVT:";
+    constexpr std::string_view EVT_JOINED           = "+EVT:JOINED";
+    constexpr std::string_view EVT_JOIN_FAILED      = "+EVT:JOIN FAILED";
+    constexpr std::string_view EVT_TX_DONE          = "+EVT:TX_DONE";
+    constexpr std::string_view EVT_SEND_CONF_OK     = "+EVT:SEND CONFIRMED OK";
+    constexpr std::string_view EVT_SEND_CONF_FAIL   = "+EVT:SEND CONFIRMED FAILED";
+    constexpr std::string_view EVT_RX_PREFIX        = "+EVT:RX_";
 
     // Default LoRaWAN configuration (optimized for marine GPS tracker)
     static constexpr uint8_t DEFAULT_NWM   = 1;     // LoRaWAN mode
@@ -148,6 +145,7 @@ public:
 class LoRaComm : public EventEmitter<LoRaCommEventListener> {
 public:
     std::string m_last_value;       // Last value response from a read command
+    int m_last_rx_port = 0;         // Last RX event port number
     bool m_is_rx_started = false;
 
     LoRaComm(unsigned int libuarte_async_instance = 1);
@@ -180,6 +178,7 @@ private:
     bool m_is_send_busy;
     std::string m_tx_buffer;
     std::string m_rx_buffer;        // Line accumulator (main context only)
+    std::string m_line_buffer;      // Reusable buffer for line extraction (avoids alloc)
     nrf_libuarte_async_config_t m_uart_config;
 
     // ISR-safe buffer: written by ISR, read by process_rx() under InterruptLock
@@ -189,6 +188,6 @@ private:
     volatile unsigned int m_isr_error_type;
 
     bool send_at_cmd(LoRa::ATCmd cmd, const std::optional<std::string>& params = std::nullopt);
-    LoRa::RespType parse_rx_line(const std::string& line);
+    LoRa::RespType parse_rx_line(std::string& line);
     void process_rx_lines();
 };

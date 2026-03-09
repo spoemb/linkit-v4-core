@@ -43,6 +43,8 @@ LoRaDevice::LoRaDevice()
     m_tx_done = false;
     m_config_step = 0;
     m_is_configured = false;
+    m_power_on_retry = 0;
+    m_nwm_reboot_pending = false;
     load_config_from_store();
     LORA_STATE_CHANGE(power_off, power_on);
 }
@@ -238,7 +240,7 @@ void LoRaDevice::power_off_immediate(void)
  */
 bool LoRaDevice::send_AT(ATCmd cmd, const std::optional<std::string>& params)
 {
-    uint16_t timeout_ms = 2000;
+    uint16_t timeout_ms = 1000;
 
     m_cmd_is_ok = false;
     m_is_error = false;
@@ -319,25 +321,33 @@ void LoRaDevice::state_power_on_enter()
     m_lora_comm.subscribe(*this);
     m_joined = false;
     m_join_failed = false;
-
-    // Wait for RAK3172 boot (typically ~1.5s)
-    PMU::delay_ms(2000);
+    m_power_on_retry = 0;
+    // Non-blocking: schedule first state_power_on() after module boot delay
 }
 
 void LoRaDevice::state_power_on()
 {
-    DEBUG_INFO("LoRaDevice::state_power_on");
+    if (m_power_on_retry == 0) {
+        // First call: wait for RAK3172 boot (typically ~1.5s)
+        m_power_on_retry = 1;
+        run_state_machine(2000);  // Non-blocking 2s boot wait
+        return;
+    }
 
-    // Ping module with AT command (retry up to 3 times)
-    for (int retry = 0; retry < 3; retry++)
+    DEBUG_INFO("LoRaDevice::state_power_on retry=%u", m_power_on_retry);
+
+    // Try AT ping
+    if (send_AT(AT_TEST) == LORA_COMM_OK)
     {
-        if (send_AT(AT_TEST) == LORA_COMM_OK)
-        {
-            DEBUG_TRACE("LoRaDevice: AT ping OK (attempt %d)", retry + 1);
-            LORA_STATE_CHANGE(power_on, configure);
-            return;
-        }
-        PMU::delay_ms(500);
+        DEBUG_TRACE("LoRaDevice: AT ping OK (attempt %u)", m_power_on_retry);
+        LORA_STATE_CHANGE(power_on, configure);
+        return;
+    }
+
+    if (m_power_on_retry < 4) {
+        m_power_on_retry++;
+        run_state_machine(500);  // Non-blocking 500ms retry delay
+        return;
     }
 
     DEBUG_ERROR("LoRaDevice: AT ping failed after 3 attempts");
@@ -357,9 +367,9 @@ void LoRaDevice::state_power_on_exit() {
 
 void LoRaDevice::state_configure_enter()
 {
+    m_nwm_reboot_pending = false;
     if (m_is_configured) {
-        // Fast path: RAK3172 already has all config in flash
-        // Skip to DEVEUI read (step 100) then join check (step 101)
+        // Fast path: RAK3172 persists config to flash, skip to DEVEUI read + join check
         m_config_step = 100;
         DEBUG_INFO("LoRaDevice: fast config (module already configured)");
     } else {
@@ -378,23 +388,60 @@ void LoRaDevice::state_configure()
         // ==== Full configuration (first boot only) ====
 
         case 0:
+        {
+            // Ensure LoRaWAN network mode (AT+NWM=1)
+            if (m_nwm_reboot_pending) {
+                m_nwm_reboot_pending = false;
+                at_error = send_AT(AT_TEST);
+                if (at_error) {
+                    DEBUG_ERROR("LoRaDevice: module not responding after NWM reboot");
+                }
+                break;
+            }
+            at_error = send_AT(AT_GET_NWM);
+            if (!at_error && m_lora_comm.m_last_value == "1") {
+                DEBUG_TRACE("LoRaDevice: already in LoRaWAN mode");
+                break;
+            }
+            DEBUG_INFO("LoRaDevice: setting NWM=1 (module will reboot)");
+            m_lora_comm.send(AT_SET_NWM, "1");
+            m_nwm_reboot_pending = true;
+            run_state_machine(3000);
+            return;
+        }
+
+        case 1:
             // Set join mode (OTAA or ABP)
             at_error = send_AT(AT_SET_NJM, std::to_string(m_config.njm));
             break;
 
-        case 1:
+        case 2:
             // Set frequency band
             at_error = send_AT(AT_SET_BAND, std::to_string(m_config.band));
             break;
 
-        case 2:
-            // Set Application EUI
-            if (!m_config.appeui.empty()) {
+        case 3:
+            // Set Device EUI (NOT pre-burned on RAK3172-SiP — must be configured)
+            if (m_config.deveui.empty()) {
+                DEBUG_WARN("LoRaDevice: DEVEUI not configured! Set LRP01 via DTE");
+                at_error = send_AT(AT_GET_DEVEUI);
+                if (!at_error) {
+                    m_config.deveui = m_lora_comm.m_last_value;
+                    DEBUG_INFO("LoRaDevice: module DEVEUI=%s", m_config.deveui.c_str());
+                }
+            } else {
+                at_error = send_AT(AT_SET_DEVEUI, m_config.deveui);
+            }
+            break;
+
+        case 4:
+            // Set Application EUI (OTAA only)
+            if (m_config.njm == 1 && !m_config.appeui.empty()) {
                 at_error = send_AT(AT_SET_APPEUI, m_config.appeui);
             }
             break;
 
-        case 3:
+        case 5:
             // Set Application Key (OTAA) or session keys (ABP)
             if (m_config.njm == 1 && !m_config.appkey.empty()) {
                 at_error = send_AT(AT_SET_APPKEY, m_config.appkey);
@@ -408,43 +455,45 @@ void LoRaDevice::state_configure()
             }
             break;
 
-        case 4:
-            // Set device class
+        case 6:
+            // Set device class (AT+CLASS=A/B/C)
             at_error = send_AT(AT_SET_CLASS, std::string(1, (char)m_config.device_class));
             break;
 
-        case 5:
+        case 7:
             // Set data rate
             at_error = send_AT(AT_SET_DR, std::to_string(m_config.dr));
             break;
 
-        case 6:
+        case 8:
             // Set ADR
             at_error = send_AT(AT_SET_ADR, std::to_string(m_config.adr));
             break;
 
-        case 7:
+        case 9:
             // Set TX power
             at_error = send_AT(AT_SET_TXP, std::to_string(m_config.txp));
             break;
 
-        case 8:
+        case 10:
             // Set confirmed/unconfirmed mode
             at_error = send_AT(AT_SET_CFM, std::to_string(m_config.cfm));
             break;
 
-        case 9:
-            // Set retry count
-            at_error = send_AT(AT_SET_RETY, std::to_string(LoRa::DEFAULT_RETY));
+        case 11:
+            // Set retry count (only relevant if CFM=1)
+            if (m_config.cfm) {
+                at_error = send_AT(AT_SET_RETY, std::to_string(LoRa::DEFAULT_RETY));
+            }
             break;
 
-        case 10:
-            // Enable low power mode (Stop2 ~1.7uA sleep between commands)
+        case 12:
+            // Enable low power mode
             at_error = send_AT(AT_SET_LPM, std::to_string(LoRa::DEFAULT_LPM));
             break;
 
-        case 11:
-            // Full config done — jump to common path (DEVEUI read + join check)
+        case 13:
+            // Full config done — mark configured, jump to common path
             m_is_configured = true;
             m_config_step = 99;  // Will be incremented to 100
             break;
@@ -452,7 +501,7 @@ void LoRaDevice::state_configure()
         // ==== Common path (runs every boot) ====
 
         case 100:
-            // Read Device EUI from module (factory-programmed, read-only in config)
+            // Read Device EUI from module and save to config store
             at_error = send_AT(AT_GET_DEVEUI);
             if (!at_error) {
                 m_config.deveui = m_lora_comm.m_last_value;
@@ -469,7 +518,6 @@ void LoRaDevice::state_configure()
                 LORA_STATE_CHANGE(configure, idle);
                 return;
             }
-            // OTAA: check if already joined from a previous session
             at_error = send_AT(AT_GET_NJS);
             if (!at_error && m_lora_comm.m_last_value == "1") {
                 DEBUG_INFO("LoRaDevice: already joined from previous session");
@@ -477,7 +525,6 @@ void LoRaDevice::state_configure()
                 LORA_STATE_CHANGE(configure, idle);
                 return;
             }
-            // Not joined - proceed to joining state
             LORA_STATE_CHANGE(configure, joining);
             return;
 
@@ -633,8 +680,20 @@ void LoRaDevice::state_transmit_enter()
 
     notify(KineisEventTxStarted({}));
 
-    // TX timeout: 30 seconds should be enough for any DR
-    initiate_timeout(30000);
+    // TX timeout based on data rate — low DRs have very long air times
+    // EU868 worst case: DR0 (SF12/125kHz) ~2.5s per byte, 51 bytes max = ~130s
+    // Add margin for RX windows (1s + 2s) and processing
+    static constexpr unsigned int tx_timeout_ms[] = {
+        150000,  // DR0 (SF12) — ~130s air time + RX windows
+        80000,   // DR1 (SF11) — ~65s air time
+        45000,   // DR2 (SF10) — ~35s air time
+        25000,   // DR3 (SF9)  — ~18s air time
+        15000,   // DR4 (SF8)  — ~10s air time
+        10000,   // DR5 (SF7)  — ~5s air time
+    };
+    unsigned int dr = m_config.dr;
+    unsigned int timeout = (dr < 6) ? tx_timeout_ms[dr] : 10000;
+    initiate_timeout(timeout);
 }
 
 void LoRaDevice::state_transmit()

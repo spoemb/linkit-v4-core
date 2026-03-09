@@ -99,7 +99,9 @@ private:
 
     // Configuration tracking
     unsigned int m_config_step;
-    bool m_is_configured;       // true after first successful full configuration
+    bool m_is_configured;               // true after first successful full configuration
+    unsigned int m_power_on_retry;      // AT ping retry counter during power_on
+    bool         m_nwm_reboot_pending;  // Waiting for module reboot after AT+NWM=1
 
     // State machine methods
     void state_machine();
