@@ -6,6 +6,7 @@
 #include "error.hpp"
 #include "gpio.hpp"
 #include "debug.hpp"
+#include "nrf_delay.h"
 
 OEM_RTD_Sensor::OEM_RTD_Sensor() : Sensor("RTD") {
 	readReg<uint8_t>(RegAddr::LED_CTRL);
@@ -52,9 +53,17 @@ double OEM_RTD_Sensor::read(unsigned int)
     uint8_t cnf = readReg<uint8_t>(RegAddr::CALIBRATION_CONFIRMATION);
     DEBUG_TRACE("CALIBRATION_CONFIRMATION: %02x", cnf);
 
-    // Poll the device waiting for a new reading
-    while (!readReg<uint8_t>(RegAddr::NEW_READING_AVAILABLE))
-    {}
+    // Poll the device waiting for a new reading (timeout: 5 seconds)
+    {
+        unsigned int timeout = 5000;
+        while (!readReg<uint8_t>(RegAddr::NEW_READING_AVAILABLE)) {
+            nrf_delay_ms(1);
+            if (--timeout == 0) {
+                DEBUG_ERROR("OEM_RTD: reading timeout");
+                throw ErrorCode::I2C_COMMS_ERROR;
+            }
+        }
+    }
 
     int32_t reading_u32 = readReg<int32_t>(RegAddr::RTD_READING);
 

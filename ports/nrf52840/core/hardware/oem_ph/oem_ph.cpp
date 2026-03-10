@@ -57,9 +57,17 @@ double OEM_PH_Sensor::read(unsigned int)
     // Put the device into active mode
     writeReg(RegAddr::ACTIVE_HIBERNATE, static_cast<uint8_t>(0x01));
 
-    // Poll the device waiting for a new reading
-    while (!readReg<uint8_t>(RegAddr::NEW_READING_AVAILABLE))
-    {}
+    // Poll the device waiting for a new reading (timeout: 5 seconds)
+    {
+        unsigned int timeout = 5000;
+        while (!readReg<uint8_t>(RegAddr::NEW_READING_AVAILABLE)) {
+            nrf_delay_ms(1);
+            if (--timeout == 0) {
+                DEBUG_ERROR("OEM_PH: reading timeout");
+                throw ErrorCode::I2C_COMMS_ERROR;
+            }
+        }
+    }
     uint32_t reading_u32 = readReg<uint32_t>(RegAddr::PH_READING);
 
     // Convert reading to uint16_t and return it

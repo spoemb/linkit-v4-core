@@ -6,8 +6,21 @@
 #include "debug.hpp"
 #include "binascii.hpp"
 #include "interrupt_lock.hpp"
+#include "pmu.hpp"
 
 using namespace UBX;
+
+void UBXComms::wait_tx_idle() {
+	if (!m_is_send_busy) return;
+	DEBUG_TRACE("UBXComms: send is busy...");
+	for (unsigned int i = 0; i < SEND_BUSY_TIMEOUT_MS && m_is_send_busy; ++i) {
+		PMU::delay_ms(1);
+	}
+	if (m_is_send_busy) {
+		DEBUG_ERROR("UBXComms: TX busy timeout - forcing clear");
+		m_is_send_busy = false;
+	}
+}
 
 class AsyncLowLevel {
 public:
@@ -177,7 +190,7 @@ void UBXComms::handle_rx_buffer(uint8_t * buffer, unsigned int length) {
 		run_dbd_filter(buffer, length);
 	} else {
 	    // Make sure we can accept this DMA buffer from the UART driver
-	    if (length < (sizeof(m_rx_buffer) - m_rx_buffer_offset)) {
+	    if (length > 0 && length <= (sizeof(m_rx_buffer) - m_rx_buffer_offset)) {
 	        HeaderAndPayloadCRC *msg;
 	        uint8_t *curr_buffer = m_rx_buffer;
 	        unsigned int curr_length;

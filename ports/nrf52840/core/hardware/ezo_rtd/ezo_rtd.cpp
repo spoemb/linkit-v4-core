@@ -73,7 +73,7 @@ void EZO_RTD_Sensor::calibration_write(const double temperature, const unsigned 
 	} else if (calibration_offset == 3) {
 		if (temperature >= -126 && temperature <= 1254) {
 			char command[255];
-			sprintf(command, "Cal,%f", temperature);
+			snprintf(command, sizeof(command), "Cal,%f", temperature);
 			write_command(command);
 			PMU::delay_ms(600);
 		} else
@@ -96,9 +96,10 @@ void EZO_RTD_Sensor::calibration_write(const double temperature, const unsigned 
 
 void EZO_RTD_Sensor::write_command(const char *command) {
 	char data[255];
-	strcpy(data, command); // I2C driver requires data to be in RAM region!
+	strncpy(data, command, sizeof(data) - 1); // I2C driver requires data to be in RAM region!
+	data[sizeof(data) - 1] = '\0';
 	DEBUG_TRACE("EZO_RTD_Sensor::write_command(%s)", command);
-	NrfI2C::write(EZO_RTD_DEVICE, EZO_RTD_DEVICE_ADDR, (const uint8_t *)data, strlen(command), false);
+	NrfI2C::write(EZO_RTD_DEVICE, EZO_RTD_DEVICE_ADDR, (const uint8_t *)data, strlen(data), false);
 }
 
 const char *EZO_RTD_Sensor::response_code_to_str(ResponseCode resp) {

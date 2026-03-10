@@ -559,7 +559,11 @@ KineisPacket ArgosPacketBuilder::build_gnss_packet(std::vector<GPSLogEntry*> &v,
 		bool is_low_battery,
 		BaseDeltaTimeLoc delta_time_loc,
 		unsigned int &size_bits) {
-	if (v.size() > 1) {
+	if (v.empty()) {
+		DEBUG_ERROR("ArgosPacketBuilder::build_gnss_packet: empty vector");
+		size_bits = 0;
+		return {};
+	} else if (v.size() > 1) {
 		std::reverse(v.begin(), v.end()); // Puts entries into chronological order
 		size_bits = LONG_PACKET_BITS;
 		return build_long_packet(v, is_out_of_zone, is_low_battery, delta_time_loc);

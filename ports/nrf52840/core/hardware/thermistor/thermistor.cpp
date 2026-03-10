@@ -119,6 +119,9 @@ double Thermistor::read(unsigned int offset)
 	(void)offset;
 	float adc = sample_adc();
 	double temperature = convert_temp(adc);
+	if (std::isnan(temperature)) {
+		throw ErrorCode::I2C_COMMS_ERROR;
+	}
 	DEBUG_INFO("THERMISTOR::%s: TempC = %.5lf", __func__, temperature);
 	m_last_temperature = temperature;
 	return temperature;

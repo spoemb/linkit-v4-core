@@ -10,7 +10,7 @@
 #include "gpio.hpp"
 #include "nrf_delay.h"
 #include "nrf_i2c.hpp"
-#include "error.hpp"
+#include "debug.hpp"
 
 
 void LTR303::readReg(uint8_t reg, uint8_t *data, size_t len)
@@ -52,10 +52,15 @@ double LTR303::read(unsigned int gain)
     writeReg(LTR303_ALS_CONTR_ADDR, register_value);
 
     uint8_t status_reg = 0;
+    unsigned int timeout = 2000;  // 2 second timeout
     do
     {
         nrf_delay_ms(1);
         readReg(LTR303_ALS_STATUS_ADDR, &status_reg, sizeof(status_reg));
+        if (--timeout == 0) {
+            DEBUG_ERROR("LTR303: data ready timeout");
+            throw ErrorCode::I2C_COMMS_ERROR;
+        }
     } while (!(status_reg & 0b0000100)); // Wait for new data
 
     uint8_t reg_ch0_data[2];

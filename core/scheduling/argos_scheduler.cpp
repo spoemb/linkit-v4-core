@@ -252,6 +252,13 @@ uint64_t ArgosScheduler::next_duty_cycle(unsigned int duty_cycle)
 
 	// A new TR_NOM schedule is required
 
+	// Guard against zero TR_NOM which would cause infinite loop
+	if (m_argos_config.tr_nom == 0) {
+		DEBUG_ERROR("ArgosScheduler::next_duty_cycle: tr_nom is 0!");
+		m_next_schedule_absolute = INVALID_SCHEDULE;
+		return INVALID_SCHEDULE;
+	}
+
 	// Set schedule based on last TR_NOM point (if there is one)
 	if (m_last_transmission_schedule == INVALID_SCHEDULE) {
 		// Use now as the initial TR_NOM -- we don't allow
@@ -455,6 +462,10 @@ void ArgosScheduler::notify_sensor_log_update() {
 			return;
 		}
 
+		if (logger->num_entries() == 0) {
+			DEBUG_WARN("ArgosScheduler::notify_sensor_log_update: logger is empty");
+			return;
+		}
 		unsigned int idx = logger->num_entries() - 1;  // Most recent entry in log
 		logger->read(&gps_entry, idx);
 
@@ -796,7 +807,7 @@ void ArgosScheduler::prepare_time_sync_burst() {
 	m_time_sync_burst_sent = true;
 	m_last_transmission_schedule = rtc->gettime() * MS_PER_SEC;
 
-	if (m_num_gps_entries) {
+	if (m_num_gps_entries && m_gps_log_entry.count(m_num_gps_entries - 1)) {
 		ArgosPacket packet;
 		unsigned int index = m_num_gps_entries - 1;
 
@@ -850,6 +861,8 @@ void ArgosScheduler::prepare_normal_burst() {
 		index = m_msg_index % max_index;
 		// Check to see if any GPS entry has a non-zero burst counter
 		for (unsigned int k = 0; k < span; k++) {
+			if (span * (index+1) > m_num_gps_entries + k)
+				break;
 			unsigned int idx = m_num_gps_entries - (span * (index+1)) + k;
 			if (m_gps_entry_burst_counter.count(idx)) {
 				if (m_gps_entry_burst_counter.at(idx)) {
@@ -894,7 +907,11 @@ void ArgosScheduler::prepare_normal_burst() {
 
 		std::vector<GPSLogEntry> gps_entries;
 		for (unsigned int k = 0; k < span; k++) {
+			if (span * (index+1) > m_num_gps_entries + k)
+				break;
 			unsigned int idx = m_num_gps_entries - (span * (index+1)) + k;
+			if (!m_gps_entry_burst_counter.count(idx) || !m_gps_log_entry.count(idx))
+				break;
 			DEBUG_TRACE("read gps_entry=%u bursts remaining %u", idx, m_gps_entry_burst_counter.at(idx));
 			gps_entries.push_back(m_gps_log_entry.at(idx));
 
@@ -934,7 +951,7 @@ void ArgosScheduler::start(std::function<void(ServiceEvent&)> data_notification_
 	configuration_store->get_argos_configuration(m_argos_config);
 
 	// Generate TX jitter value
-	m_rng = new std::mt19937(m_argos_config.argos_id);
+	m_rng = std::make_unique<std::mt19937>(m_argos_config.argos_id);
 	m_tx_jitter = 0;
 
 	// If GNSS_EN is off then we should schedule now as we won't receive
@@ -948,7 +965,7 @@ void ArgosScheduler::stop() {
 	m_is_running = false;
 	power_off_immediate();
 	deschedule();
-	delete m_rng;
+	m_rng.reset();
 }
 
 void ArgosScheduler::deschedule() {
@@ -956,7 +973,7 @@ void ArgosScheduler::deschedule() {
 }
 
 void ArgosScheduler::update_tx_jitter(int min, int max) {
-	if (m_argos_config.argos_tx_jitter_en) {
+	if (m_argos_config.argos_tx_jitter_en && m_rng) {
 		std::uniform_int_distribution<int> dist(min, max);
 		m_tx_jitter = dist(*m_rng);
 		DEBUG_TRACE("ArgosScheduler::update_tx_jitter: m_tx_jitter=%d", m_tx_jitter);

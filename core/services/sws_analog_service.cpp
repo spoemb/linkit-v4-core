@@ -421,16 +421,14 @@ void SWSAnalogService::update_dynamic_threshold() {
 uint16_t SWSAnalogService::add_to_history_and_filter(uint16_t value) {
     m_adc_history[m_adc_history_idx] = value;
     m_adc_history_idx = (m_adc_history_idx + 1) % ADC_HISTORY_SIZE;
+    if (m_adc_history_count < ADC_HISTORY_SIZE)
+        m_adc_history_count++;
 
     uint32_t sum = 0;
-    int count = 0;
-    for (int i = 0; i < ADC_HISTORY_SIZE; i++) {
-        if (m_adc_history[i] != 0) {
-            sum += m_adc_history[i];
-            count++;
-        }
+    for (int i = 0; i < m_adc_history_count; i++) {
+        sum += m_adc_history[i];
     }
-    return count > 0 ? (uint16_t)(sum / count) : value;
+    return (uint16_t)(sum / m_adc_history_count);
 }
 
 bool SWSAnalogService::is_value_valid(uint16_t value) const {
@@ -561,7 +559,7 @@ bool SWSAnalogService::detector_state() {
         // Drift: peak decays 5%/sample toward reading → no false trigger.
         // Real exit: reading drops 5%+ instantly → triggers immediately.
         if (m_recent_peak > 0 && raw_value < m_recent_peak) {
-            uint16_t peak_drop_pct = (uint16_t)((m_recent_peak - raw_value) * 100 / m_recent_peak);
+            uint16_t peak_drop_pct = (uint16_t)((uint32_t)(m_recent_peak - raw_value) * 100 / m_recent_peak);
             if (peak_drop_pct >= L1_DROP_PERCENT) {
                 surface_level = 1;
             }
@@ -575,7 +573,7 @@ bool SWSAnalogService::detector_state() {
                 }
                 m_consecutive_raw_drops++;
 
-                uint16_t cumul_pct = (uint16_t)((m_drop_reference - raw_value) * 100 / m_drop_reference);
+                uint16_t cumul_pct = (uint16_t)((uint32_t)(m_drop_reference - raw_value) * 100 / m_drop_reference);
                 if (m_consecutive_raw_drops >= L2_MIN_CONSECUTIVE && cumul_pct >= L2_DROP_PERCENT) {
                     surface_level = 2;
                 }
@@ -621,7 +619,7 @@ bool SWSAnalogService::detector_state() {
         }
 
         if (m_ma3_trend_count >= L3_MIN_CONSECUTIVE && m_ma3_trend_start > 0) {
-            uint16_t ma3_drop = (uint16_t)((m_ma3_trend_start - current_ma3) * 100 / m_ma3_trend_start);
+            uint16_t ma3_drop = (uint16_t)((uint32_t)(m_ma3_trend_start - current_ma3) * 100 / m_ma3_trend_start);
             if (ma3_drop >= L3_DROP_PERCENT) {
                 surface_level = 3;
             }
@@ -665,7 +663,7 @@ bool SWSAnalogService::detector_state() {
         // LEVEL 5: Cumulative drop from peak during this dive
         if (surface_level == 0 && m_peak_adc_since_underwater > 0 &&
             m_time_in_current_state > L5_MIN_TIME_SEC) {
-            uint16_t drop = (uint16_t)((m_peak_adc_since_underwater - filtered_value) * 100 /
+            uint16_t drop = (uint16_t)((uint32_t)(m_peak_adc_since_underwater - filtered_value) * 100 /
                                         m_peak_adc_since_underwater);
             if (drop >= L5_DROP_PERCENT) {
                 surface_level = 5;
@@ -715,7 +713,10 @@ bool SWSAnalogService::detector_state() {
                 // Downward adaptation: air was too high (wet electrode calibration)
                 // Adapt faster (20%) since readings are far below stored air
                 uint16_t old = m_calib.threshold_air;
-                m_calib.threshold_air = (uint16_t)(m_calib.threshold_air * 0.80f + avg * 0.20f);
+                uint16_t new_air = (uint16_t)(m_calib.threshold_air * 0.80f + avg * 0.20f);
+                // Enforce minimum air baseline to prevent collapse over long deployment
+                if (new_air < 5) new_air = 5;
+                m_calib.threshold_air = new_air;
                 update_dynamic_threshold();
                 m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
                                              sizeof(m_calib) - sizeof(m_calib.crc), nullptr);

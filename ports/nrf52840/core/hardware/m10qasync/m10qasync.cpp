@@ -504,8 +504,10 @@ void M10QAsyncReceiver::react(const UBXCommsEventMgaDBD& dbd) {
             m_database_overflow = true;
         initiate_timeout();
     } else if (STATE_EQUAL(senddatabase) || STATE_EQUAL(sendofflinedatabase)) {
-        std::memcpy(&m_navigation_database[m_mga_ack_count], dbd.database, dbd.length);
-        m_mga_ack_count += dbd.length;
+        if ((m_mga_ack_count + dbd.length) <= sizeof(m_navigation_database)) {
+            std::memcpy(&m_navigation_database[m_mga_ack_count], dbd.database, dbd.length);
+            m_mga_ack_count += dbd.length;
+        }
     }
 }
 
@@ -555,6 +557,8 @@ void M10QAsyncReceiver::on_timeout() {
 		DEBUG_ERROR("M10QAsyncReceiver::on_timeout: no NAV/SAT info received");
 		m_unrecoverable_error = true;
 		notify<GPSEventError>({});
+		// Force power off to prevent GPS staying powered indefinitely
+		check_for_power_off();
 	}
 }
 
@@ -781,7 +785,7 @@ void M10QAsyncReceiver::state_startreceive() {
 		} else if (m_op_state == OpState::PENDING) {
 			break;
 		} else {
-			if (--m_retries == 0) {
+			if (m_retries == 0 || --m_retries == 0) {
 				DEBUG_ERROR("M10QAsyncReceiver::state_start_receive: failed");
 				m_unrecoverable_error = true;
 				notify<GPSEventError>({});
@@ -809,7 +813,7 @@ void M10QAsyncReceiver::state_receive_enter() {
 
 void M10QAsyncReceiver::state_receive() {
     if (m_op_state == OpState::ERROR) {
-        if (--m_retries) {
+        if (m_retries > 0 && --m_retries) {
             // CommsError try to restart the receiver
             m_ubx_comms.set_baudrate(MAX_BAUDRATE);
             initiate_timeout(5000);

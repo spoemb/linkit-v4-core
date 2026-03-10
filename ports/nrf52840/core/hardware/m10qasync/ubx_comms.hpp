@@ -192,17 +192,9 @@ private:
     unsigned int m_rx_buffer_offset;
 	bool m_is_init;
 
-	// Bounded wait for previous TX to complete (~500ms at 64MHz)
-	static constexpr unsigned int SEND_BUSY_TIMEOUT = 10000000;
-	void wait_tx_idle() {
-		if (!m_is_send_busy) return;
-		DEBUG_TRACE("UBXComms: send is busy...");
-		for (unsigned int i = SEND_BUSY_TIMEOUT; i && m_is_send_busy; --i);
-		if (m_is_send_busy) {
-			DEBUG_ERROR("UBXComms: TX busy timeout - forcing clear");
-			m_is_send_busy = false;
-		}
-	}
+	// Bounded wait for previous TX to complete (max 100ms with 1ms polling)
+	static constexpr unsigned int SEND_BUSY_TIMEOUT_MS = 100;
+	void wait_tx_idle();
 
 	void handle_error(unsigned int);
 	void handle_tx_done();

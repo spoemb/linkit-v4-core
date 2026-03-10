@@ -4,6 +4,7 @@
 #include <array>
 #include <functional>
 #include <random>
+#include <memory>
 #include <ctime>
 
 #include <stdint.h>
@@ -84,7 +85,7 @@ private:
 	unsigned int m_msg_index;
 	unsigned int m_num_gps_entries;
 	int          m_tx_jitter;
-	std::mt19937 *m_rng;
+	std::unique_ptr<std::mt19937> m_rng;
 	double		 m_last_longitude;
 	double 		 m_last_latitude;
 	std::map<unsigned int, unsigned int> m_gps_entry_burst_counter;

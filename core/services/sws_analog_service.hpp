@@ -63,10 +63,32 @@ public:
     SWSAnalogService() : UWDetectorService("SWSAnalog") {
         s_instance = this;
         m_adc_history_idx = 0;
+        m_adc_history_count = 0;
         m_last_state_change_time = 0;
         m_time_in_current_state = 0;
+        m_consecutive_samples = 0;
+        m_surface_readings_idx = 0;
+        m_surface_readings_count = 0;
+        m_prev_raw = 0;
+        m_drop_reference = 0;
+        m_consecutive_raw_drops = 0;
+        m_trend_buffer_idx = 0;
+        m_trend_buffer_count = 0;
+        m_prev_ma3 = 0;
+        m_ma3_trend_start = 0;
+        m_ma3_trend_count = 0;
+        m_peak_adc_since_underwater = 0;
+        m_recent_peak = 0;
+        m_surface_lockout_remaining = 0;
+        m_first_sample_done = false;
         for (int i = 0; i < ADC_HISTORY_SIZE; i++) {
             m_adc_history[i] = 0;
+        }
+        for (int i = 0; i < TREND_MA_SIZE; i++) {
+            m_trend_buffer[i] = 0;
+        }
+        for (int i = 0; i < SURFACE_BUFFER_SIZE; i++) {
+            m_surface_readings[i] = 0;
         }
     }
 
@@ -101,6 +123,7 @@ private:
     static constexpr int ADC_HISTORY_SIZE = 2;  // Was 5, now 2 for fast response
     uint16_t m_adc_history[ADC_HISTORY_SIZE];
     uint8_t m_adc_history_idx;
+    uint8_t m_adc_history_count;
 
     // Timing tracking for safety timeouts
     uint64_t m_last_state_change_time;
@@ -120,7 +143,7 @@ private:
     // Level 1 & 2: Fast raw drop detection
     uint16_t m_prev_raw;               // Previous raw ADC value
     uint16_t m_drop_reference;         // Raw value when consecutive drops started
-    uint8_t m_consecutive_raw_drops;   // Count of consecutive raw drops
+    uint16_t m_consecutive_raw_drops;  // Count of consecutive raw drops
 
     // Level 3: Trend MA3 detection
     static constexpr int TREND_MA_SIZE = 3;
@@ -129,7 +152,7 @@ private:
     uint8_t m_trend_buffer_count;
     uint16_t m_prev_ma3;               // Previous 3-sample moving average
     uint16_t m_ma3_trend_start;        // MA3 value when trend started
-    uint8_t m_ma3_trend_count;         // Consecutive MA3 decreases
+    uint16_t m_ma3_trend_count;        // Consecutive MA3 decreases
 
     // Level 4 & 5: Relative and cumulative drop
     uint16_t m_peak_adc_since_underwater;

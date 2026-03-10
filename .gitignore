@@ -30,3 +30,4 @@ ports/nrf52840/build*/*
 ports/nrf52840/bsp/rspbtracker_v1.0/*.hex# Build artifacts
 ports/nrf52840/bootloader/gentracker_secure_bootloader/rspbtracker_v1.0/armgcc/_build/
 build_tests/*
+tests/build_tests/*

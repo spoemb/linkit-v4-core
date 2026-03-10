@@ -500,17 +500,9 @@ void ConfigurationState::schedule_usb_poll() {
 void ConfigurationState::process_usb_data() {
 	auto& usb = UsbInterface::get_instance();
 
-	// One-shot diagnostic: log USB port state
-	static bool usb_diag_done = false;
-	if (!usb_diag_done) {
-		DEBUG_INFO("USB DTE poll active, port_open=%d", usb.is_connected());
-		usb_diag_done = true;
-	}
-
 	// Check if USB has data
 	if (usb.has_data()) {
 		auto req = usb.read_line();
-		DEBUG_INFO("[USB_DIAG] has_data=1 read_line=%u bytes: '%s'", req.size(), req.c_str());
 
 		if (req.size()) {
 			// DTE protocol expects trailing \r which read_line() strips
@@ -525,7 +517,6 @@ void ConfigurationState::process_usb_data() {
 
 			do {
 				action = dte_handler->handle_dte_message(req, resp);
-				DEBUG_INFO("[USB_DIAG] DTE resp=%u bytes action=%d", resp.size(), (int)action);
 				if (resp.size()) {
 					usb.write(resp);
 
