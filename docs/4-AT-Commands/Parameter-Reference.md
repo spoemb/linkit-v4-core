@@ -250,6 +250,26 @@ Each parameter has a 5-character DTE key (3-letter prefix + 2-digit number) used
 | 172 | ARGOS_SECKEY | IDP13 | TEXT | - | "" | RW | ARGOS_SMD |
 | 173 | ARGOS_RADIOCONF | IDP14 | TEXT | - | "" | RW | ARGOS_SMD |
 
+### LoRa RAK3172 Configuration
+
+| ID | Name | DTE Key | Type | Range | Default | RW | Enable Flag |
+|----|------|---------|------|-------|---------|----|-------------|
+| 181 | LORA_DEVEUI | LRP01 | TEXT | 16 hex chars | "" | R | LORA_RAK3172 | Device EUI (read from module, read-only) |
+| 182 | LORA_APPEUI | LRP02 | TEXT | 16 hex chars | "" | RW | LORA_RAK3172 | Application EUI (JoinEUI) |
+| 183 | LORA_APPKEY | LRP03 | TEXT | 32 hex chars | "" | RW | LORA_RAK3172 | Application Key (OTAA) |
+| 184 | LORA_DEVADDR | LRP04 | TEXT | 8 hex chars | "" | RW | LORA_RAK3172 | Device Address (ABP) |
+| 185 | LORA_APPSKEY | LRP05 | TEXT | 32 hex chars | "" | RW | LORA_RAK3172 | Application Session Key (ABP) |
+| 186 | LORA_NWKSKEY | LRP06 | TEXT | 32 hex chars | "" | RW | LORA_RAK3172 | Network Session Key (ABP) |
+| 187 | LORA_NJM | LRP07 | UINT | 0-1 | 1 | RW | LORA_RAK3172 | Network Join Mode: 0=ABP, 1=OTAA |
+| 188 | LORA_BAND | LRP08 | UINT | 0-12 | 4 | RW | LORA_RAK3172 | Frequency band (4=EU868) |
+| 189 | LORA_CLASS | LRP09 | UINT | 0-2 | 0 | RW | LORA_RAK3172 | Device class: 0=A, 1=B, 2=C |
+| 190 | LORA_DR | LRP10 | UINT | 0-15 | 3 | RW | LORA_RAK3172 | Data rate (0=SF12, 3=SF9, 5=SF7 for EU868) |
+| 191 | LORA_ADR | LRP11 | BOOL | - | false | RW | LORA_RAK3172 | Adaptive Data Rate (OFF for mobile devices) |
+| 192 | LORA_TXP | LRP12 | UINT | 0-14 | 0 | RW | LORA_RAK3172 | TX power index |
+| 193 | LORA_CFM | LRP13 | BOOL | - | false | RW | LORA_RAK3172 | Confirmed messages |
+| 194 | LORA_FPORT | LRP14 | UINT | 1-223 | 2 | RW | LORA_RAK3172 | FPort for uplink messages |
+| 195 | LORA_LP_MODE | LRP15 | UINT | 0-1 | 1 | RW | LORA_RAK3172 | Low-power mode: 0=shutdown (0µA, ~2.5s wake), 1=standby (~1.7µA, ~10ms wake) |
+
 ### System Status (Read-only via STATR)
 
 | ID | Name | DTE Key | Type | Range | Default | RW | Enable Flag |

@@ -17,17 +17,43 @@
  * - Temporal filtering: Requires N consecutive samples for confirmation
  * - Safety timeouts: Max dive time and min surface time protection
  * - Persistent calibration: Survives device resets (stored in noinit RAM)
+ * - 3-tier rapid transition detection for <2s surface detection
+ * - Biofouling adaptation (air baseline, water baseline, trend, variance)
+ *
+ * @section test_mode Test Mode (DTE SWSTST command)
+ * Test mode allows standalone SWS testing via DTE, bypassing configuration.
+ * When active, the RGB status LED provides visual feedback:
+ * - BLUE: underwater detected (state transition)
+ * - YELLOW: surface detected (state transition)
+ * - LED off when test mode is stopped
+ *
+ * @see docs/sws_analog_implementation.md for full algorithm documentation
  */
 class SWSAnalogService : public UWDetectorService {
 public:
+    // Detection method IDs (for IHM visualization)
+    enum DetectMethod : uint8_t {
+        DETECT_NONE      = 0,  // No transition this sample
+        DETECT_THRESHOLD = 1,  // Simple threshold crossing
+        DETECT_RAPID_T1  = 2,  // Rapid Tier 1 - single sharp drop
+        DETECT_RAPID_T2  = 3,  // Rapid Tier 2 - confirmed moderate drop
+        DETECT_RAPID_T3  = 4,  // Rapid Tier 3 - trend-based small drop
+        DETECT_RAPID_T4  = 5,  // Rapid Tier 4 - sliding window gradual drop
+        DETECT_TREND     = 6,  // Trend/variance biofouling override
+        DETECT_SAFETY    = 7,  // Safety timeout override
+    };
+
     // Status snapshot for DTE SWSST command (read-only diagnostic)
     struct Status {
+        // Calibration state
         uint16_t threshold_air;       // Current air baseline ADC
         uint16_t threshold_water;     // Current water baseline ADC
         uint16_t threshold_current;   // Active threshold ADC
         uint16_t hysteresis;          // Hysteresis value (ADC counts)
+        // Live ADC
         uint16_t last_raw_adc;        // Last raw ADC reading
         uint16_t last_filtered_adc;   // Last filtered ADC reading
+        // State
         bool     is_calibrated;       // Calibration valid
         bool     is_underwater;       // Current state (true=underwater)
         uint32_t time_in_state_sec;   // Seconds in current state
@@ -38,7 +64,14 @@ public:
 
     static Status get_status();
 
-    // Test mode API: allows DTE SWSTST command to start/stop SWS independently of config
+    /**
+     * @brief Test mode API: start/stop SWS independently of config (DTE SWSTST command)
+     *
+     * start_test_mode() forces the service enabled and begins sampling.
+     * stop_test_mode() halts sampling and turns off the status LED.
+     * During test mode, detector_state() sets the RGB LED on state transitions:
+     * BLUE = underwater, YELLOW = surface.
+     */
     static void start_test_mode();
     static void stop_test_mode();
     static bool is_test_running();

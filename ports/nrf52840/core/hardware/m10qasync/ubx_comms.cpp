@@ -74,6 +74,48 @@ void UBXComms::deinit() {
     }
 }
 
+bool UBXComms::send_raw(const uint8_t* data, size_t len)
+{
+    if (!m_is_init || len == 0)
+        return false;
+
+    ret_code_t ret = nrf_libuarte_async_tx(BSP::UARTAsync_Inits[m_instance].uart,
+                                            const_cast<uint8_t*>(data), len);
+    return (ret == NRF_SUCCESS);
+}
+
+void UBXComms::set_passthrough(bool active, PassthroughCallback callback)
+{
+    {
+        InterruptLock lock;
+        m_passthrough_active = active;
+        m_pt_isr_buf_len = 0;
+    }
+    m_passthrough_callback = callback;
+    if (active) {
+        m_rx_buffer_offset = 0;
+    }
+}
+
+void UBXComms::process_passthrough_rx()
+{
+    if (!m_passthrough_active || m_pt_isr_buf_len == 0)
+        return;
+
+    uint8_t local_buf[sizeof(m_pt_isr_buf)];
+    uint16_t local_len;
+    {
+        InterruptLock lock;
+        local_len = m_pt_isr_buf_len;
+        std::memcpy(local_buf, m_pt_isr_buf, local_len);
+        m_pt_isr_buf_len = 0;
+    }
+
+    if (m_passthrough_callback) {
+        m_passthrough_callback(local_buf, local_len);
+    }
+}
+
 void UBXComms::cancel_expect() {
 	m_expect.enable = false;
 }
@@ -181,6 +223,17 @@ void UBXComms::handle_tx_done() {
 }
 
 void UBXComms::handle_rx_buffer(uint8_t * buffer, unsigned int length) {
+
+    // Passthrough mode: buffer raw data for main context forwarding (no UBX parsing)
+    if (m_passthrough_active) {
+        uint16_t cur_len = m_pt_isr_buf_len;
+        uint16_t space = sizeof(m_pt_isr_buf) - cur_len;
+        uint16_t copy_len = (length < space) ? length : space;
+        std::memcpy(m_pt_isr_buf + cur_len, buffer, copy_len);
+        m_pt_isr_buf_len = (uint16_t)(cur_len + copy_len);
+        nrf_libuarte_async_rx_free(BSP::UARTAsync_Inits[m_instance].uart, buffer, length);
+        return;
+    }
 
     if (m_debug_enable) {
         notify(UBXCommsEventDebug(buffer, length));

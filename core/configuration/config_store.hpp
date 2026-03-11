@@ -47,7 +47,7 @@ struct ArgosConfig {
 	BaseArgosMode mode;
 	unsigned int ntry_per_message;
 	unsigned int duty_cycle;
-	BaseArgosDepthPile depth_pile;
+	BaseDepthPile depth_pile;
 	BaseDeltaTimeLoc delta_time_loc;
 	unsigned int dry_time_before_tx;
 	unsigned int argos_id;
@@ -86,7 +86,7 @@ enum class ConfigMode {
 class ConfigurationStore {
 
 protected:
-	static inline const unsigned int m_config_version_code = 0x1c07e800 | 0x15;
+	static inline const unsigned int m_config_version_code = 0x1c07e800 | 0x16;
 	static inline const unsigned int m_config_version_code_aop = 0x1c07e800 | 0x03;
 	static inline const std::array<BaseType,MAX_CONFIG_ITEMS> default_params { {
 		/* ARGOS_DECID */ 0U,
@@ -124,9 +124,9 @@ protected:
 #endif
 
 #if MODEL_UW
-		/* ARGOS_DEPTH_PILE */ BaseArgosDepthPile::DEPTH_PILE_1,
+		/* ARGOS_DEPTH_PILE */ BaseDepthPile::DEPTH_PILE_1,
 #else
-		/* ARGOS_DEPTH_PILE */ BaseArgosDepthPile::DEPTH_PILE_16,
+		/* ARGOS_DEPTH_PILE */ BaseDepthPile::DEPTH_PILE_16,
 #endif
 		/* _RESERVED_20 */ 0U,
 		/* GLONASS_CONST_SELECT */ 0U, // Not implemented
@@ -154,7 +154,7 @@ protected:
 		/* LB_GNSS_EN */ (bool)true,
 		/* DLOC_ARG_LB */ 60*60U,
 		/* LB_GNSS_HDOPFILT_THR */ 2U,
-		/* LB_ARGOS_DEPTH_PILE */ BaseArgosDepthPile::DEPTH_PILE_1,
+		/* LB_ARGOS_DEPTH_PILE */ BaseDepthPile::DEPTH_PILE_1,
 		/* LB_GNSS_ACQ_TIMEOUT */ 120U,
 		/* SAMPLING_SURF_FREQ */ 10U,
 		/* PP_MIN_ELEVATION */ 15.0,
@@ -186,7 +186,7 @@ protected:
 		/* ZONE_ENABLE_OUT_OF_ZONE_DETECTION_MODE */ (bool)false,
 		/* ZONE_ENABLE_ACTIVATION_DATE */ (bool)true,
 		/* ZONE_ACTIVATION_DATE */ static_cast<std::time_t>(1577836800U), // 01/01/2020 00:00:00
-		/* ZONE_ARGOS_DEPTH_PILE */ BaseArgosDepthPile::DEPTH_PILE_1,
+		/* ZONE_ARGOS_DEPTH_PILE */ BaseDepthPile::DEPTH_PILE_1,
 		/* _RESERVED_70 */ BaseArgosPower::POWER_350_MW,
 
 #if MODEL_SB
@@ -317,6 +317,21 @@ protected:
 		/* [178] GNSS_TOKEN */ std::string(""),
 		/* [179] LAST_KNOWN_RTC */ 0U,
 		/* [180] RTC_CURRENT_TIME */ 0U,
+		/* [181] LORA_DEVEUI */ std::string(""),
+		/* [182] LORA_APPEUI */ std::string(""),
+		/* [183] LORA_APPKEY */ std::string(""),
+		/* [184] LORA_DEVADDR */ std::string(""),
+		/* [185] LORA_APPSKEY */ std::string(""),
+		/* [186] LORA_NWKSKEY */ std::string(""),
+		/* [187] LORA_NJM */ 1U,          // Default: OTAA
+		/* [188] LORA_BAND */ 4U,         // Default: EU868
+		/* [189] LORA_CLASS */ 0U,        // Default: Class A
+		/* [190] LORA_DR */ 3U,           // Default: SF9/125kHz (best speed/range for marine)
+		/* [191] LORA_ADR */ (bool)false, // Default: ADR OFF (mandatory for mobile devices)
+		/* [192] LORA_TXP */ 0U,          // Default: Max TX power
+		/* [193] LORA_CFM */ (bool)false,  // Default: Unconfirmed messages
+		/* [194] LORA_FPORT */ 2U,        // Default: Application port 2
+		/* [195] LORA_LP_MODE */ 1U,      // Default: 1=standby (fast wake ~10ms), 0=shutdown (0µA, slow wake ~2.5s)
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,
@@ -407,6 +422,15 @@ public:
 			} else if (param_id == ParamID::ARGOS_SECKEY) {
 				b_is_valid = true;
 			} else if (param_id == ParamID::ARGOS_RADIOCONF) {
+				b_is_valid = true;
+#endif
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+			} else if (param_id == ParamID::LORA_DEVEUI ||
+			           param_id == ParamID::LORA_APPEUI ||
+			           param_id == ParamID::LORA_APPKEY ||
+			           param_id == ParamID::LORA_DEVADDR ||
+			           param_id == ParamID::LORA_APPSKEY ||
+			           param_id == ParamID::LORA_NWKSKEY) {
 				b_is_valid = true;
 #endif
 			} else if (param_id == ParamID::DEVICE_MODEL) {
@@ -678,7 +702,7 @@ public:
 			argos_config.time_sync_burst_en = read_param<bool>(ParamID::ARGOS_TIME_SYNC_BURST_EN);
 			argos_config.tx_counter = read_param<unsigned int>(ParamID::TX_COUNTER);
 			argos_config.mode = read_param<BaseArgosMode>(ParamID::LB_ARGOS_MODE);
-			argos_config.depth_pile = read_param<BaseArgosDepthPile>(ParamID::LB_ARGOS_DEPTH_PILE);
+			argos_config.depth_pile = read_param<BaseDepthPile>(ParamID::LB_ARGOS_DEPTH_PILE);
 			argos_config.duty_cycle = read_param<unsigned int>(ParamID::LB_ARGOS_DUTY_CYCLE);
 			argos_config.ntry_per_message = read_param<unsigned int>(ParamID::LB_NTRY_PER_MESSAGE);
 			argos_config.tr_nom = read_param<unsigned int>(ParamID::TR_LB);
@@ -708,7 +732,7 @@ public:
 			argos_config.time_sync_burst_en = read_param<bool>(ParamID::ARGOS_TIME_SYNC_BURST_EN);
 			argos_config.tx_counter = read_param<unsigned int>(ParamID::TX_COUNTER);
 			argos_config.mode = read_param<BaseArgosMode>(ParamID::ZONE_ARGOS_MODE);
-			argos_config.depth_pile = read_param<BaseArgosDepthPile>(ParamID::ZONE_ARGOS_DEPTH_PILE);
+			argos_config.depth_pile = read_param<BaseDepthPile>(ParamID::ZONE_ARGOS_DEPTH_PILE);
 			argos_config.duty_cycle = read_param<unsigned int>(ParamID::ZONE_ARGOS_DUTY_CYCLE);
 			argos_config.ntry_per_message = read_param<unsigned int>(ParamID::ZONE_ARGOS_NTRY_PER_MESSAGE);
 			argos_config.tr_nom = read_param<unsigned int>(ParamID::ZONE_ARGOS_REPETITION_SECONDS);
@@ -739,7 +763,7 @@ public:
 			argos_config.time_sync_burst_en = read_param<bool>(ParamID::ARGOS_TIME_SYNC_BURST_EN);
 			argos_config.tx_counter = read_param<unsigned int>(ParamID::TX_COUNTER);
 			argos_config.mode = read_param<BaseArgosMode>(ParamID::ARGOS_MODE);
-			argos_config.depth_pile = read_param<BaseArgosDepthPile>(ParamID::ARGOS_DEPTH_PILE);
+			argos_config.depth_pile = read_param<BaseDepthPile>(ParamID::ARGOS_DEPTH_PILE);
 			argos_config.duty_cycle = read_param<unsigned int>(ParamID::DUTY_CYCLE);
 			argos_config.ntry_per_message = read_param<unsigned int>(ParamID::NTRY_PER_MESSAGE);
 			argos_config.tr_nom = read_param<unsigned int>(ParamID::TR_NOM);

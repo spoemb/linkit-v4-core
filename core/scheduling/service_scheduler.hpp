@@ -26,6 +26,7 @@ enum class ServiceIdentifier : unsigned int {
 	UNKNOWN,
 	ARGOS_TX,
 	ARGOS_RX,
+	LORA_TX,
 	GNSS_SENSOR,
 	CDT_SENSOR,
 	PRESSURE_SENSOR,

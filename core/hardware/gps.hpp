@@ -2,6 +2,7 @@
 
 #include <map>
 #include <cstdint>
+#include <functional>
 #include "base_types.hpp"
 #include "events.hpp"
 
@@ -108,10 +109,19 @@ public:
 
 class GPSDevice : public EventEmitter<GPSEventListener> {
 public:
+    using PassthroughCallback = std::function<void(const uint8_t*, size_t)>;
+
     virtual ~GPSDevice() {}
     // These methods are specific to the chipset and should be implemented by device-specific subclass
     virtual void power_off() = 0;
     virtual void power_on(const GPSNavSettings& nav_settings) = 0;
     virtual GNSSDeviceInfo get_device_info() const { return {}; }
     virtual GNSSAlmanacStatus get_almanac_status() const { return {}; }
+
+    // Bridge/passthrough mode (default: not supported)
+    virtual bool start_bridge(PassthroughCallback) { return false; }
+    virtual void stop_bridge() {}
+    virtual bool is_bridge_active() const { return false; }
+    virtual bool bridge_send(const uint8_t*, size_t) { return false; }
+    virtual void bridge_process_rx() {}
 };

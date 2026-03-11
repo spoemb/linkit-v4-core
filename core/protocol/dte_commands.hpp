@@ -31,10 +31,15 @@ enum class DTECommand {
 	GNSSA_REQ,     // GNSS almanac file validation
 	RTCW_REQ,      // RTC manual write (set time before GNSS fix)
 	SWSTST_REQ,    // SWS test mode start/stop
+	GNSSBR_REQ,    // GNSS UART bridge/passthrough (u-center access)
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	SMDDFU_REQ,    // SMD satellite module DFU command
 	SMDTST_REQ,    // SMD satellite module SPI applicative test
 	SMDCD_REQ,
+#endif
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+	LORATX_REQ,    // LoRa test transmission
+	LORABR_REQ,    // LoRa UART bridge/passthrough (RUI3 AT access)
 #endif
 	__NUM_REQ,
 	PARML_RESP = RESP_CMD_BASE,
@@ -62,10 +67,15 @@ enum class DTECommand {
 	GNSSA_RESP,    // GNSS almanac file validation response
 	RTCW_RESP,     // RTC manual write response
 	SWSTST_RESP,   // SWS test mode response
+	GNSSBR_RESP,   // GNSS UART bridge/passthrough response
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	SMDDFU_RESP,   // SMD satellite module DFU response
 	SMDTST_RESP,   // SMD satellite module SPI applicative test response
 	SMDCD_RESP,
+#endif
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+	LORATX_RESP,   // LoRa test transmission response
+	LORABR_RESP,   // LoRa UART bridge/passthrough response
 #endif
 	__NUM_RESP
 };

@@ -452,6 +452,25 @@ const DTECommandMap command_map[] = {
 			}
 		}
 	},
+	// GNSSBR - GNSS UART bridge/passthrough mode (direct u-blox access via USB)
+	// Usage: $GNSSBR#001;1\r (start) — exit by typing +++
+	{
+		.name = "GNSSBR",
+		.command = DTECommand::GNSSBR_REQ,
+		.prototype =
+		{
+			{
+				.name = "action",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 1U,  // 0=stop, 1=start
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	},
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	// SMD DFU command - allows firmware update of SMD satellite module
 	// Usage: $SMDDFU#001;<action>\r
@@ -522,6 +541,46 @@ const DTECommandMap command_map[] = {
 				.encoding = BaseEncoding::TEXT,
 				.min_value = "",
 				.max_value = "",
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	},
+#endif
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+	// LoRa test transmission
+	// Usage: $LORATX#001;<size>\r
+	{
+		.name = "LORATX",
+		.command = DTECommand::LORATX_REQ,
+		.prototype =
+		{
+			{
+				.name = "size",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 1U,
+				.max_value = 222U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	},
+	// LoRa UART bridge/passthrough mode (direct RUI3 AT access via USB)
+	// Usage: $LORABR#001;1\r (start) — exit by typing +++
+	{
+		.name = "LORABR",
+		.command = DTECommand::LORABR_REQ,
+		.prototype =
+		{
+			{
+				.name = "action",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 1U,  // 0=stop, 1=start
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false
@@ -1156,6 +1215,12 @@ const DTECommandMap command_map[] = {
 			}
 		}
 	},
+	// GNSSBR response - simple acknowledgement
+	{
+		.name = "GNSSBR",
+		.command = DTECommand::GNSSBR_RESP,
+		.prototype = {}
+	},
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	// SMD DFU response
 	// Response: $SMDDFU,<status>,<dfu_mode>,<progress>[,<info>]*<checksum>\r\n
@@ -1230,6 +1295,18 @@ const DTECommandMap command_map[] = {
 		.prototype =
 		{
 		}
+	},
+#endif
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+	{
+		.name = "LORATX",
+		.command = DTECommand::LORATX_RESP,
+		.prototype = {}
+	},
+	{
+		.name = "LORABR",
+		.command = DTECommand::LORABR_RESP,
+		.prototype = {}
 	},
 #endif
 };

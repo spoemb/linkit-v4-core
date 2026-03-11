@@ -92,7 +92,10 @@
 
 // Always use M10Q GPS module
 #include "m10qasync.hpp"
-#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+#include "lora_rak3172.hpp"
+#include "lora_tx_service.hpp"
+#elif defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 #include "smd_sat.hpp"
 #else
 #include "kim2.hpp"
@@ -122,6 +125,9 @@ BatteryMonitor *battery_monitor;
 GPSDevice *gps_device;
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 SmdSat *smd_sat_instance = nullptr;  // For SMD DFU OTA support
+#endif
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+LoRaDevice *lora_device_instance = nullptr;  // For LORATX DTE command
 #endif
 #if defined(BOARD_RSPB)
 BaseDebugMode g_debug_mode = BaseDebugMode::UART;     // Default debug output to UART on SWO pin for RSPB
@@ -664,7 +670,17 @@ int main()
 	static SWSAnalogService sws_analog;
 
 
-#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+	DEBUG_TRACE("LoRa RAK3172...");
+	try {
+		static LoRaDevice lora_rak3172;
+		lora_device_instance = &lora_rak3172;
+		static LoRaTxService lora_tx_service(lora_rak3172);
+	} catch (...) {
+		DEBUG_TRACE("LoRa RAK3172 not detected");
+		lora_device_instance = nullptr;
+	}
+#elif defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	DEBUG_TRACE("SMD Satellite...");
 	try {
 		static SmdSat argos_smd;

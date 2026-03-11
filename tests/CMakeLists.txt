@@ -46,6 +46,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     ENABLE_CDT_SENSOR=1
     ENABLE_AXL_SENSOR=1
     ENABLE_THERMISTOR_SENSOR=1
+    LORA_RAK3172=1
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE
@@ -134,6 +135,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     "${ROOT_DIR}/core/util"
     "${NRF_DIR}/core/hardware"
     "${NRF_DIR}/core/hardware/m10qasync"
+    "${NRF_DIR}/core/hardware/lora_rak3172"
     "${NRF_DIR}/core/hardware/ad5933"
     "${NRF_DIR}/core/hardware/ms58xx"
     "${NRF_DIR}/core/hardware/pressure_sensor"
@@ -170,6 +172,8 @@ target_sources(${PROJECT_NAME} PRIVATE
     "${NRF_DIR}/core/hardware/nrf_battery_mon.cpp"
     "${NRF_DIR}/core/hardware/m10qasync/m10qasync.cpp"
     "${NRF_DIR}/core/hardware/m10qasync/ubx_comms.cpp"
+    "${NRF_DIR}/core/hardware/lora_rak3172/lora_rak3172.cpp"
+    "${NRF_DIR}/core/hardware/lora_rak3172/lora_rak3172_comm.cpp"
     "${NRF_DIR}/core/hardware/cdt/cdt.cpp"
     "src/timer_test.cpp"
     "src/filesystem_test.cpp"

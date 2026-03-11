@@ -1805,3 +1805,56 @@ GNSSAlmanacStatus M10QAsyncReceiver::get_almanac_status() const {
 
 	return status;
 }
+
+bool M10QAsyncReceiver::start_bridge(PassthroughCallback rx_callback)
+{
+	if (m_bridge_active)
+		return true;
+
+	// Cancel any pending state machine task
+	cancel_timeout();
+	system_scheduler->cancel_task(m_state_machine_handle);
+
+	// Power on GNSS module and init UART (if not already on)
+	if (m_state == State::idle) {
+		exit_shutdown();
+	}
+
+	// Reset to default 9600 baud for u-center/NMEA compatibility
+	m_ubx_comms.set_baudrate(DEFAULT_BAUDRATE);
+
+	// Enable passthrough: raw UART RX goes to callback
+	m_ubx_comms.set_passthrough(true, rx_callback);
+	m_bridge_active = true;
+
+	DEBUG_INFO("M10QAsyncReceiver: bridge mode ACTIVE (9600 baud)");
+	return true;
+}
+
+void M10QAsyncReceiver::stop_bridge()
+{
+	if (!m_bridge_active)
+		return;
+
+	m_ubx_comms.set_passthrough(false);
+	m_bridge_active = false;
+
+	DEBUG_INFO("M10QAsyncReceiver: bridge mode STOPPED");
+
+	// Power off the GNSS and return to idle
+	enter_shutdown();
+	m_state = State::idle;
+}
+
+bool M10QAsyncReceiver::bridge_send(const uint8_t* data, size_t len)
+{
+	if (!m_bridge_active)
+		return false;
+	return m_ubx_comms.send_raw(data, len);
+}
+
+void M10QAsyncReceiver::bridge_process_rx()
+{
+	if (m_bridge_active)
+		m_ubx_comms.process_passthrough_rx();
+}

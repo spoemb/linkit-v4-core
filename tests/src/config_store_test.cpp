@@ -287,7 +287,7 @@ TEST(ConfigStore, CheckDefaultZoneSettings)
 	CHECK_FALSE(store->read_param<bool>(ParamID::ZONE_ENABLE_OUT_OF_ZONE_DETECTION_MODE));
 	CHECK_TRUE(store->read_param<bool>(ParamID::ZONE_ENABLE_ACTIVATION_DATE));
 	CHECK_TRUE(store->read_param<std::time_t>(ParamID::ZONE_ACTIVATION_DATE) == (std::time_t)1577836800U);
-	CHECK_TRUE(store->read_param<BaseArgosDepthPile>(ParamID::ZONE_ARGOS_DEPTH_PILE) == BaseArgosDepthPile::DEPTH_PILE_1);
+	CHECK_TRUE(store->read_param<BaseDepthPile>(ParamID::ZONE_ARGOS_DEPTH_PILE) == BaseDepthPile::DEPTH_PILE_1);
 	CHECK_TRUE(store->read_param<unsigned int>(ParamID::ZONE_ARGOS_REPETITION_SECONDS) == 240);
 	CHECK_TRUE(store->read_param<BaseArgosMode>(ParamID::ZONE_ARGOS_MODE) == BaseArgosMode::LEGACY);
 	CHECK_TRUE(store->read_param<unsigned int>(ParamID::ZONE_ARGOS_DUTY_CYCLE) == 0xFFFFFFU);
@@ -557,16 +557,16 @@ TEST(ConfigStore, PARAM_ARGOS_DEPTH_PILE)
 	store = new LFSConfigurationStore(*main_filesystem);
 	store->init();
 
-	BaseArgosDepthPile t = BaseArgosDepthPile::DEPTH_PILE_12;
+	BaseDepthPile t = BaseDepthPile::DEPTH_PILE_12;
 	store->write_param(ParamID::ARGOS_DEPTH_PILE, t);
 	store->save_params();
-	CHECK_TRUE(t == store->read_param<BaseArgosDepthPile>(ParamID::ARGOS_DEPTH_PILE));
+	CHECK_TRUE(t == store->read_param<BaseDepthPile>(ParamID::ARGOS_DEPTH_PILE));
 
 	delete store;
 	store = new LFSConfigurationStore(*main_filesystem);
 	store->init();
 
-	CHECK_TRUE(t == store->read_param<BaseArgosDepthPile>(ParamID::ARGOS_DEPTH_PILE));
+	CHECK_TRUE(t == store->read_param<BaseDepthPile>(ParamID::ARGOS_DEPTH_PILE));
 }
 
 TEST(ConfigStore, PARAM_GNSS_HDOPFILT_EN)
@@ -961,7 +961,7 @@ TEST(ConfigStore, RetrieveArgosConfigDefaultMode)
 	store->init();
 
 	// Set default params and LB params
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_12;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_12;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0xFFFFFFU;
 	BaseArgosMode mode = BaseArgosMode::DUTY_CYCLE;
@@ -969,7 +969,7 @@ TEST(ConfigStore, RetrieveArgosConfigDefaultMode)
 	unsigned int tr_nom = 60;
 	unsigned int tx_counter = 12;
 	bool lb_en = false;
-	BaseArgosDepthPile lb_depth_pile = BaseArgosDepthPile::DEPTH_PILE_4;
+	BaseDepthPile lb_depth_pile = BaseDepthPile::DEPTH_PILE_4;
 	unsigned int lb_duty_cycle = 0xAAAAAAU;
 	BaseArgosMode lb_mode = BaseArgosMode::LEGACY;
 	unsigned int lb_tr_nom = 120;
@@ -1007,7 +1007,7 @@ TEST(ConfigStore, RetrieveArgosConfigLBMode)
 	store->init();
 
 	// Set default params and LB params
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_12;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_12;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0xFFFFFFU;
 	BaseArgosMode mode = BaseArgosMode::DUTY_CYCLE;
@@ -1015,7 +1015,7 @@ TEST(ConfigStore, RetrieveArgosConfigLBMode)
 	unsigned int tr_nom = 60;
 	unsigned int tx_counter = 12;
 	bool lb_en = true;
-	BaseArgosDepthPile lb_depth_pile = BaseArgosDepthPile::DEPTH_PILE_4;
+	BaseDepthPile lb_depth_pile = BaseDepthPile::DEPTH_PILE_4;
 	unsigned int lb_duty_cycle = 0xAAAAAAU;
 	unsigned int lb_ntry_per_message = 5U;
 	BaseArgosMode lb_mode = BaseArgosMode::LEGACY;
@@ -1216,7 +1216,7 @@ TEST(ConfigStore, RetrieveArgosConfigZoneExclusionMode)
 	store->write_param(ParamID::ZONE_ARGOS_DUTY_CYCLE, zone_argos_duty_cycle);
 	unsigned int zone_argos_ntry_per_message = 4;
 	store->write_param(ParamID::ZONE_ARGOS_NTRY_PER_MESSAGE, zone_argos_ntry_per_message);
-	BaseArgosDepthPile zone_argos_depth_pile = BaseArgosDepthPile::DEPTH_PILE_1;
+	BaseDepthPile zone_argos_depth_pile = BaseDepthPile::DEPTH_PILE_1;
 	store->write_param(ParamID::ZONE_ARGOS_DEPTH_PILE, zone_argos_depth_pile);
 	BaseArgosMode zone_argos_mode = BaseArgosMode::LEGACY;
 	store->write_param(ParamID::ZONE_ARGOS_MODE, zone_argos_mode);
@@ -1224,7 +1224,7 @@ TEST(ConfigStore, RetrieveArgosConfigZoneExclusionMode)
 	store->write_param(ParamID::ZONE_ARGOS_REPETITION_SECONDS, zone_argos_time_repetition_seconds);
 
 	// Set default params
-	BaseArgosDepthPile depth_pile = BaseArgosDepthPile::DEPTH_PILE_12;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_12;
 	unsigned int dry_time_before_tx = 10;
 	unsigned int duty_cycle = 0xFFFFFFU;
 	BaseArgosMode mode = BaseArgosMode::DUTY_CYCLE;

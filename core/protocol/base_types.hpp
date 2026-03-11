@@ -42,6 +42,10 @@ extern "C" {
 #define ENABLE_AXL_SENSOR 1
 #endif
 
+#ifndef LORA_RAK3172
+#define LORA_RAK3172 0
+#endif
+
 #define BASE_TEXT_MAX_LENGTH  128
 #define BASE_MAX_PAYLOAD_LENGTH 0xFFF
 #define KEY_LENGTH            5
@@ -288,8 +292,26 @@ enum class ParamID {
 #endif
 	// === System status (slot 180 always reserved) ===
 	RTC_CURRENT_TIME                         = 180,
+	// === LoRa RAK3172 parameters (slots 181-194 always reserved) ===
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+	LORA_DEVEUI                              = 181,
+	LORA_APPEUI                              = 182,
+	LORA_APPKEY                              = 183,
+	LORA_DEVADDR                             = 184,
+	LORA_APPSKEY                             = 185,
+	LORA_NWKSKEY                             = 186,
+	LORA_NJM                                 = 187,
+	LORA_BAND                                = 188,
+	LORA_CLASS                               = 189,
+	LORA_DR                                  = 190,
+	LORA_ADR                                 = 191,
+	LORA_TXP                                 = 192,
+	LORA_CFM                                 = 193,
+	LORA_FPORT                               = 194,
+	LORA_LP_MODE                             = 195,  // 0=shutdown (0µA), 1=standby (~1.7µA, fast wake)
+#endif
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 181,
+	__PARAM_SIZE                             = 196,
 	__NULL_PARAM                             = 0xFFFF
 };
 
@@ -475,7 +497,7 @@ inline unsigned int argos_power_to_integer(BaseArgosPower power) {
 	}
 }
 
-enum class BaseArgosDepthPile {
+enum class BaseDepthPile {
 	DEPTH_PILE_1 = 1,
 	DEPTH_PILE_2,
 	DEPTH_PILE_3,
@@ -486,6 +508,7 @@ enum class BaseArgosDepthPile {
 	DEPTH_PILE_20 = 20,
 	DEPTH_PILE_24 = 24
 };
+using BaseArgosDepthPile = BaseDepthPile;
 
 enum class BaseDeltaTimeLoc {
 	DELTA_T_10MIN = 1,
@@ -619,7 +642,7 @@ using BaseName = std::string;
 using BaseConstraint = std::variant<unsigned int, int, double, std::string>;
 
 // !!! Do not change the ordering of variants and also make sure std::string is the first entry !!!
-using BaseType = std::variant<std::string, unsigned int, int, double, std::time_t, BaseRawData, BaseArgosMode, BaseArgosPower, BaseArgosDepthPile, bool, BaseGNSSFixMode, BaseGNSSDynModel, BaseLEDMode, BaseZoneType, BaseArgosModulation, BaseUnderwaterDetectSource, BaseDebugMode, BasePressureSensorLoggingMode, BasePressureSensorFullScale, BaseSensorEnableTxMode>;
+using BaseType = std::variant<std::string, unsigned int, int, double, std::time_t, BaseRawData, BaseArgosMode, BaseArgosPower, BaseDepthPile, bool, BaseGNSSFixMode, BaseGNSSDynModel, BaseLEDMode, BaseZoneType, BaseArgosModulation, BaseUnderwaterDetectSource, BaseDebugMode, BasePressureSensorLoggingMode, BasePressureSensorFullScale, BaseSensorEnableTxMode>;
 
 struct BaseMap {
 	BaseName 	   name;

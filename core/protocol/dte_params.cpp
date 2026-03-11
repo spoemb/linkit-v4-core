@@ -12,6 +12,11 @@
 #define ARGOS_SMD 0
 #endif
 
+// LORA_RAK3172 is only defined on targets with LoRa RAK3172 module
+#ifndef LORA_RAK3172
+#define LORA_RAK3172 0
+#endif
+
 const BaseMap param_map[] = {
 	{ "ARGOS_DECID", "IDP12", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true },
 	{ "ARGOS_HEXID", "IDT06", BaseEncoding::HEXADECIMAL, 0U, 0xFFFFFFFFU, {}, true, true },
@@ -250,6 +255,22 @@ const BaseMap param_map[] = {
 	{ "LAST_KNOWN_RTC", "PWP06", BaseEncoding::UINT, 0U, 0U, {}, HAS_EXTERNAL_WAKEUP, false },
 	// [180] Current RTC time (live, refreshed on STATR read)
 	{ "RTC_CURRENT_TIME", "SYT01", BaseEncoding::UINT, 0U, 0U, {}, true, false },
+	// [181-194] LoRa RAK3172 parameters (slots always reserved)
+	{ "LORA_DEVEUI", "LRP01", BaseEncoding::TEXT, "", "", {}, (LORA_RAK3172 == 1), false },
+	{ "LORA_APPEUI", "LRP02", BaseEncoding::TEXT, "", "", {}, (LORA_RAK3172 == 1), true },
+	{ "LORA_APPKEY", "LRP03", BaseEncoding::TEXT, "", "", {}, (LORA_RAK3172 == 1), true },
+	{ "LORA_DEVADDR", "LRP04", BaseEncoding::TEXT, "", "", {}, (LORA_RAK3172 == 1), true },
+	{ "LORA_APPSKEY", "LRP05", BaseEncoding::TEXT, "", "", {}, (LORA_RAK3172 == 1), true },
+	{ "LORA_NWKSKEY", "LRP06", BaseEncoding::TEXT, "", "", {}, (LORA_RAK3172 == 1), true },
+	{ "LORA_NJM", "LRP07", BaseEncoding::UINT, 0U, 1U, {}, (LORA_RAK3172 == 1), true },
+	{ "LORA_BAND", "LRP08", BaseEncoding::UINT, 0U, 12U, {}, (LORA_RAK3172 == 1), true },
+	{ "LORA_CLASS", "LRP09", BaseEncoding::UINT, 0U, 2U, {}, (LORA_RAK3172 == 1), true },
+	{ "LORA_DR", "LRP10", BaseEncoding::UINT, 0U, 15U, {}, (LORA_RAK3172 == 1), true },
+	{ "LORA_ADR", "LRP11", BaseEncoding::BOOLEAN, 0, 0, {}, (LORA_RAK3172 == 1), true },
+	{ "LORA_TXP", "LRP12", BaseEncoding::UINT, 0U, 14U, {}, (LORA_RAK3172 == 1), true },
+	{ "LORA_CFM", "LRP13", BaseEncoding::BOOLEAN, 0, 0, {}, (LORA_RAK3172 == 1), true },
+	{ "LORA_FPORT", "LRP14", BaseEncoding::UINT, 1U, 223U, {}, (LORA_RAK3172 == 1), true },
+	{ "LORA_LP_MODE", "LRP15", BaseEncoding::UINT, 0U, 1U, {}, (LORA_RAK3172 == 1), true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

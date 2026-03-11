@@ -207,6 +207,52 @@ $O;SWSST#LEN;2048,3500,2800,50,2750,2760,1,0,300\r
 
 ---
 
+## SWSTST -- SWS Test Mode
+
+Start or stop the Salt Water Switch (SWS) analog test mode. When active, the SWS service runs independently of the device configuration (`UNDERWATER_EN`, `UNDERWATER_DETECT_SOURCE`) and provides real-time LED feedback on state transitions.
+
+**Request:** `action` (uint, 0 or 1).
+
+| Value | Action |
+|-------|--------|
+| 0 | Stop test mode |
+| 1 | Start test mode |
+
+```
+$SWSTST#001;1\r
+```
+
+**Response:** `running` (uint) -- 1 if test mode is active, 0 if stopped.
+
+```
+$O;SWSTST#001;1\r
+```
+
+### LED Feedback
+
+During test mode, the RGB status LED indicates state transitions:
+
+| State | LED Color |
+|-------|-----------|
+| Underwater detected | Blue |
+| Surface detected | Yellow |
+| Test mode stopped | Off |
+
+The LED updates only on state changes, not on every sample. When test mode is stopped, the LED is turned off.
+
+### Typical Workflow
+
+```
+$SWSTST#001;1\r       # Start SWS test
+                       # → LED turns YELLOW (surface) or BLUE (underwater)
+                       # Dip electrodes in salt water → LED turns BLUE
+                       # Remove from water → LED turns YELLOW
+$SWSST#000;\r          # Read live calibration values
+$SWSTST#001;0\r        # Stop SWS test → LED off
+```
+
+---
+
 ## GNSSI -- GNSS Device Info
 
 Query the GNSS module (u-blox M10Q) for its unique hardware ID and firmware/hardware version strings. The information is cached after the first GNSS power-on cycle.

@@ -160,4 +160,14 @@ private:
 public:
 	GNSSDeviceInfo get_device_info() const override;
 	GNSSAlmanacStatus get_almanac_status() const override;
+
+	// Bridge/passthrough mode: direct USB ↔ GNSS UART access
+	bool start_bridge(PassthroughCallback rx_callback) override;
+	void stop_bridge() override;
+	bool is_bridge_active() const override { return m_bridge_active; }
+	bool bridge_send(const uint8_t* data, size_t len) override;
+	void bridge_process_rx() override;
+
+private:
+	bool m_bridge_active = false;
 };

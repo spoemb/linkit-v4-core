@@ -12,6 +12,8 @@
 #define BATTERY_ADC    BSP::ADC::ADC_CHANNEL_0
 #define GPS_POWER      BSP::GPIO::GPIO_GPS_PWR_EN
 #define GPS_RST        BSP::GPIO::GPIO_GPS_RST
+#define SAT_PWR_EN     BSP::GPIO::GPIO_SAT_EN
+#define SAT_EXTWAKEUP  BSP::GPIO::GPIO_SAT_WKUP
 
 #define ADC_GAIN              (1.0f/6.0f)  // 1/6 gain
 #define V_DIV_GAIN            2.0f
@@ -44,6 +46,8 @@ namespace BSP
         GPIO_GPS_PWR_EN,
         GPIO_GPS_RST,
         GPIO_GPS_EXT_INT,
+        GPIO_SAT_EN,
+        GPIO_SAT_WKUP,
 		GPIO_TOTAL_NUMBER
 	};
 
