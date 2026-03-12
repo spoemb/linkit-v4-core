@@ -300,7 +300,7 @@ TEST(Sm, CheckTransitionToConfigurationState)
 	CHECK_TRUE(fsm_handle::is_in_state<PreOperationalState>());
 
 	mock().enable();
-	mock().expectOneCall("set_device_name").onObject(mock_ble_service).withParameter("name", "SURFACEBOX 0");
+	mock().expectOneCall("set_device_name").onObject(mock_ble_service).withParameter("name", "LinkIt V4 0");
 	mock().expectOneCall("start").onObject(mock_ble_service).ignoreOtherParameters();
 	fake_reed_switch->invoke_gesture(ReedSwitchGesture::SHORT_HOLD);
 	fake_reed_switch->invoke_gesture(ReedSwitchGesture::RELEASE);
@@ -355,7 +355,7 @@ TEST(Sm, CheckBLEInactivityTimeout)
 
 	// Swipe gesture and hold for 3 seconds
 	mock().enable();
-	mock().expectOneCall("set_device_name").onObject(mock_ble_service).withParameter("name", "SURFACEBOX 0");
+	mock().expectOneCall("set_device_name").onObject(mock_ble_service).withParameter("name", "LinkIt V4 0");
 	mock().expectOneCall("start").onObject(mock_ble_service).ignoreOtherParameters();
 	fake_reed_switch->invoke_gesture(ReedSwitchGesture::SHORT_HOLD);
 	fake_reed_switch->invoke_gesture(ReedSwitchGesture::RELEASE);
@@ -384,7 +384,7 @@ TEST(Sm, CheckTransitionToConfigurationStateAndVerifyOTAUpdateEvents)
 	system_scheduler->run();
 	CHECK_TRUE(fsm_handle::is_in_state<PreOperationalState>());
 
-	mock().expectOneCall("set_device_name").onObject(mock_ble_service).withParameter("name", "SURFACEBOX 0");
+	mock().expectOneCall("set_device_name").onObject(mock_ble_service).withParameter("name", "LinkIt V4 0");
 	mock().expectOneCall("start").onObject(mock_ble_service).ignoreOtherParameters();
 	fake_reed_switch->invoke_gesture(ReedSwitchGesture::SHORT_HOLD);
 	fake_reed_switch->invoke_gesture(ReedSwitchGesture::RELEASE);

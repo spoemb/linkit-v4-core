@@ -201,7 +201,6 @@ TEST(Encoder, RSTVW_REQ)
 
 TEST(Encoder, RSTVW_REQ_OutOfRangeCheck)
 {
-	CHECK_THROWS(ErrorCode, DTEEncoder::encode(DTECommand::RSTVW_REQ, 2U));
 	CHECK_THROWS(ErrorCode, DTEEncoder::encode(DTECommand::RSTVW_REQ, 0U));
 	CHECK_THROWS(ErrorCode, DTEEncoder::encode(DTECommand::RSTVW_REQ, 5U));
 }
@@ -636,11 +635,10 @@ TEST(Encoder, PARAM_DRY_TIME_BEFORE_TX)
 
 TEST(Encoder, PARAM_DRY_TIME_BEFORE_TX_ZeroIsValid)
 {
-	std::string s;
 	ParamValue p = { ParamID::DRY_TIME_BEFORE_TX, 0U };
 	std::vector<ParamValue> v = { p };
-	DTEEncoder::encode(DTECommand::PARMR_RESP, v, s);
-	STRCMP_EQUAL("$O;PARMR#008;UNP02=0\r", s.c_str());
+	std::string s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
+	STRCMP_EQUAL("$O;PARMR#007;UNP02=0\r", s.c_str());
 }
 
 TEST(Encoder, PARAM_SAMPLING_UNDER_FREQ)

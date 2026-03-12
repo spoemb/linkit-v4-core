@@ -106,19 +106,19 @@ TEST(NrfBattery, CheckIsBatteryLevelLowIndication) {
 
 TEST(NrfBattery, CheckIsBatteryCriticalIndication) {
 	NrfBatteryMonitor batt_mon(BSP::ADC::ADC_CHANNEL_0, BATT_CHEM_NCR18650_3100_3400, 25, 10);
-	SAADC::set_adc_value(9088); // 4000 mV
+	SAADC::set_adc_value(9088); // ~3993 mV, ~81% SOC - not critical
 	batt_mon.update();
 	CHECK_FALSE(batt_mon.is_battery_critical());
-	SAADC::set_adc_value(4088); // 1796 mV
+	SAADC::set_adc_value(7500); // ~3295 mV, ~0% SOC - critical (< 25%)
 	batt_mon.update();
 	CHECK_TRUE(batt_mon.is_battery_critical());
-	SAADC::set_adc_value(5088); // 2235 mV - remain critical battery state
+	SAADC::set_adc_value(8100); // ~3559 mV, ~11% SOC - remain critical (< 28%)
 	batt_mon.update();
 	CHECK_TRUE(batt_mon.is_battery_critical());
-	SAADC::set_adc_value(6500); // 2856 mV - exit critical battery state
+	SAADC::set_adc_value(8500); // ~3734 mV, ~36% SOC - exit critical (>= 28%)
 	batt_mon.update();
 	CHECK_FALSE(batt_mon.is_battery_critical());
-	SAADC::set_adc_value(5088); // 2235 mV
+	SAADC::set_adc_value(8100); // ~3559 mV, ~11% SOC - critical again (< 25%)
 	batt_mon.update();
 	CHECK_TRUE(batt_mon.is_battery_critical());
 }
@@ -126,16 +126,16 @@ TEST(NrfBattery, CheckIsBatteryCriticalIndication) {
 TEST(NrfBattery, CheckIsBatteryCriticalEvents) {
 	NrfBatteryMonitor batt_mon(BSP::ADC::ADC_CHANNEL_0, BATT_CHEM_NCR18650_3100_3400, 25, 10);
 	BatteryCriticalHandler event_handler(batt_mon);
-	SAADC::set_adc_value(9088); // 4000 mV
+	SAADC::set_adc_value(9088); // ~3993 mV, ~81% SOC - not critical
 	batt_mon.update();
-	SAADC::set_adc_value(4088); // 1796 mV
+	SAADC::set_adc_value(7500); // ~3295 mV, ~0% SOC - critical
 	mock().expectOneCall("BatteryMonitorEventVoltageCritical").onObject(&event_handler);
 	batt_mon.update();
-	SAADC::set_adc_value(5088); // 2235 mV - remain critical battery state
+	SAADC::set_adc_value(8100); // ~3559 mV, ~11% SOC - remain critical
 	batt_mon.update();
-	SAADC::set_adc_value(6500); // 2856 mV - exit critical battery state
+	SAADC::set_adc_value(8500); // ~3734 mV, ~36% SOC - exit critical
 	batt_mon.update();
-	SAADC::set_adc_value(5088); // 2235 mV
+	SAADC::set_adc_value(8100); // ~3559 mV, ~11% SOC - critical again
 	mock().expectOneCall("BatteryMonitorEventVoltageCritical").onObject(&event_handler);
 	batt_mon.update();
 }

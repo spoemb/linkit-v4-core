@@ -44,6 +44,8 @@ TEST(NrfSwitch, SwitchTriggeringCallbackNoHysteresis) {
 	mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SWITCH).andReturnValue(0);
 	sw->start([&trigger_counter, &actual_state](bool state){ trigger_counter++; actual_state = state; });
 
+	// TOGGLE handler reads pin state, then debounce callback reads settled state
+	mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SWITCH).andReturnValue(1);
 	mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SWITCH).andReturnValue(1);
 	GPIOTE::trigger(BSP::GPIO::GPIO_SWITCH, NRF_GPIOTE_POLARITY_TOGGLE);
 	fake_timer->increment_counter(1);
@@ -51,6 +53,7 @@ TEST(NrfSwitch, SwitchTriggeringCallbackNoHysteresis) {
 	CHECK_EQUAL(1, trigger_counter);
 	CHECK_TRUE(actual_state);
 
+	mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SWITCH).andReturnValue(0);
 	mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SWITCH).andReturnValue(0);
 	GPIOTE::trigger(BSP::GPIO::GPIO_SWITCH, NRF_GPIOTE_POLARITY_TOGGLE);
 	fake_timer->increment_counter(1);
@@ -75,8 +78,10 @@ TEST(NrfSwitch, SwitchTriggeringCallbackWithHysteresis) {
 	mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SWITCH).andReturnValue(0);
 	sw->start([&trigger_counter, &actual_state](bool state){ trigger_counter++; actual_state = state; });
 
+	// 3 TOGGLE triggers read pin each time, plus debounce callback reads settled state
 	mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SWITCH).andReturnValue(1);
 	mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SWITCH).andReturnValue(0);
+	mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SWITCH).andReturnValue(1);
 	mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SWITCH).andReturnValue(1);
 
 	GPIOTE::trigger(BSP::GPIO::GPIO_SWITCH, NRF_GPIOTE_POLARITY_TOGGLE);  // 0->1
@@ -91,6 +96,7 @@ TEST(NrfSwitch, SwitchTriggeringCallbackWithHysteresis) {
 
 	mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SWITCH).andReturnValue(0);
 	mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SWITCH).andReturnValue(1);
+	mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SWITCH).andReturnValue(0);
 	mock().expectOneCall("value").withUnsignedIntParameter("pin", BSP::GPIO::GPIO_SWITCH).andReturnValue(0);
 
 	GPIOTE::trigger(BSP::GPIO::GPIO_SWITCH, NRF_GPIOTE_POLARITY_TOGGLE);  // 1->0

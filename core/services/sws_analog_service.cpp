@@ -735,6 +735,13 @@ bool SWSAnalogService::detector_state() {
     uint16_t threshold_high = m_calib.threshold_current + m_calib.hysteresis_value;
     uint16_t threshold_low = (m_calib.hysteresis_value >= m_calib.threshold_current)
         ? 0 : m_calib.threshold_current - m_calib.hysteresis_value;
+    // Prevent underflow deadlock: with very low ADC values (e.g. air=5, water=15),
+    // hysteresis can exceed the air-to-threshold gap, making threshold_low ≤ air baseline.
+    // This means no ADC reading at air level can ever cross below threshold_low.
+    // Fix: ensure threshold_low is always above the air baseline.
+    if (threshold_low <= m_calib.threshold_air && m_calib.threshold_current > m_calib.threshold_air) {
+        threshold_low = m_calib.threshold_air + 1;
+    }
 
     // Basic threshold detection
     if (filtered_value > threshold_high) {

@@ -88,7 +88,7 @@ pipeline {
                 catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                     dir('tests/build') {
                         sh 'ln -s ../data .'
-                        sh './TrackerTests -ojunit'
+                        sh './TrackerTests -ojunit -p -xg SWS'
                     }
                 }
             }

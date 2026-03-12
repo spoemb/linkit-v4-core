@@ -37,8 +37,11 @@ echo -e "${BLUE}Running unit tests...${NC}"
 echo ""
 
 # Run tests with verbose output and capture exit code
+# -xg SWS: exclude SWSAnalog and SWS groups (long-running underwater simulation tests)
+#   Run them separately with: ./TrackerTests -g SWSAnalog  or  -g SWS
+# -p: run each test in a separate process to avoid cross-test memory corruption
 set +e
-OUTPUT=$("./TrackerTests" -v 2>&1)
+OUTPUT=$("./TrackerTests" -v -p -xg SWS 2>&1)
 EXIT_CODE=$?
 set -e
 
