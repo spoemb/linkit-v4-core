@@ -4273,3 +4273,64 @@ TEST(ArgosScheduler, CertificationTXShortPacketA4FallsBackToA2)
 	fake_timer->set_counter(t*1000);
 	system_scheduler->run();
 }
+
+TEST(ArgosScheduler, PrepassModeNoGPSFallbackToDutyCycle)
+{
+	// When PASS_PREDICTION mode has no valid GPS fix yet, next_prepass() returns
+	// INVALID_SCHEDULE. The fallback should schedule using duty_cycle instead so
+	// the device keeps trying to TX rather than going silent indefinitely.
+
+	BaseArgosMode mode = BaseArgosMode::PASS_PREDICTION;
+	unsigned int duty_cycle = 0xFFFFFFU;  // All hours enabled -> guarantees a valid fallback schedule
+	double frequency = 900.22;
+	unsigned int ntry_per_message = 1;
+	BaseArgosPower power = BaseArgosPower::POWER_500_MW;
+	unsigned int argos_hexid = 0x01234567U;
+	bool tx_jitter_en = false;
+	bool lb_en = false;
+	unsigned int lb_threshold = 0U;
+	bool underwater_en = false;
+	bool sync_burst_en = false;
+	unsigned int dry_time_before_tx = 10;
+	unsigned int tr_nom = 60;
+	unsigned int tx_counter = 0;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
+
+	fake_config_store->write_param(ParamID::ARGOS_MODE, mode);
+	fake_config_store->write_param(ParamID::DUTY_CYCLE, duty_cycle);
+	fake_config_store->write_param(ParamID::ARGOS_FREQ, frequency);
+	fake_config_store->write_param(ParamID::NTRY_PER_MESSAGE, ntry_per_message);
+	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
+	fake_config_store->write_param(ParamID::ARGOS_HEXID, argos_hexid);
+	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, tx_jitter_en);
+	fake_config_store->write_param(ParamID::LB_EN, lb_en);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::UNDERWATER_EN, underwater_en);
+	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, sync_burst_en);
+	fake_config_store->write_param(ParamID::ARGOS_DEPTH_PILE, depth_pile);
+	fake_config_store->write_param(ParamID::DRY_TIME_BEFORE_TX, dry_time_before_tx);
+	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
+	fake_config_store->write_param(ParamID::TX_COUNTER, tx_counter);
+
+	// Start at fixed time (RTC already set in setup to 1580083200)
+	fake_rtc->settime(1580083200);
+	fake_timer->set_counter(1580083200ULL * 1000);
+
+	// Start scheduler -- gnss_en=true (default) so no immediate reschedule on start
+	argos_sched->start();
+
+	// Confirm no schedule posted yet (m_next_schedule_relative initialised to 0)
+	CHECK_EQUAL((uint64_t)0, argos_sched->get_next_schedule());
+
+	// Write an invalid GPS entry (valid=0) to the sensor log.
+	// notify_sensor_log_update() reads it, but since valid=0, m_last_latitude stays
+	// INVALID_GEODESIC -> next_prepass() will return INVALID_SCHEDULE -> fallback fires.
+	GPSLogEntry gps_entry{};
+	gps_entry.info.valid = 0;
+	fake_log->write(&gps_entry);
+	argos_sched->notify_sensor_log_update();
+
+	// The fallback to duty_cycle must have posted a schedule
+	CHECK_TRUE_TEXT(argos_sched->get_next_schedule() != (uint64_t)-1,
+		"PASS_PREDICTION with no GPS fix must fall back to duty_cycle schedule");
+}

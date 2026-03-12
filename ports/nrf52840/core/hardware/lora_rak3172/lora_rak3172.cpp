@@ -201,12 +201,18 @@ void LoRaDevice::start_device()
     if (m_state == State::standby) {
         // Quick wake from LPM Stop2 via AT ping (~10ms)
         // RAK3172 wakes on first UART byte, responds to AT within a few ms
-        if (send_AT(AT_TEST) == LORA_COMM_OK) {
+        // Retry up to 3 times before power cycling (module may be slow to wake)
+        bool wake_ok = false;
+        for (int attempt = 0; attempt < 3 && !wake_ok; attempt++) {
+            if (send_AT(AT_TEST) == LORA_COMM_OK)
+                wake_ok = true;
+        }
+        if (wake_ok) {
             DEBUG_TRACE("LoRa: wake from standby OK");
             LORA_STATE_CHANGE(standby, idle);
         } else {
-            // Module not responding — full power cycle
-            DEBUG_WARN("LoRa: standby wake failed, power cycling");
+            // Module not responding after 3 attempts — full power cycle
+            DEBUG_WARN("LoRa: standby wake failed after 3 attempts, power cycling");
             std::string saved_packet = m_packet_buffer;
             power_off_immediate();  // This clears m_packet_buffer
             m_packet_buffer = saved_packet;

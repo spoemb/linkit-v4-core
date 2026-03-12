@@ -186,6 +186,7 @@ private:
     volatile uint16_t m_isr_buf_len;
     volatile bool m_isr_error;
     volatile unsigned int m_isr_error_type;
+    volatile bool m_isr_overflow;  // Set when ISR buffer was full and data was dropped
 
     bool send_at_cmd(LoRa::ATCmd cmd, const std::optional<std::string>& params = std::nullopt);
     LoRa::RespType parse_rx_line(std::string& line);

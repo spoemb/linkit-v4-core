@@ -168,6 +168,12 @@ void ArgosScheduler::reschedule() {
 		schedule = next_duty_cycle(m_argos_config.duty_cycle);
 	} else if (m_argos_config.gnss_en && m_argos_config.mode == BaseArgosMode::PASS_PREDICTION) {
 		schedule = next_prepass();
+		if (INVALID_SCHEDULE == schedule) {
+			// No satellite pass found (no GPS fix yet or PREVIPASS failure) — fall back to duty cycle
+			// to ensure periodic TX attempts and eventual re-acquisition
+			DEBUG_WARN("ArgosScheduler: PASS_PREDICTION returned no pass, falling back to DUTY_CYCLE schedule");
+			schedule = next_duty_cycle(m_argos_config.duty_cycle);
+		}
 	} else {
 		DEBUG_WARN("ArgosScheduler: Invalid argos mode configuration");
 	}

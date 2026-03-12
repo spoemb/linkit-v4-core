@@ -1293,7 +1293,7 @@ void SmdSat::send(const KineisModulation mode, const KineisPacket& user_payload,
     unsigned int effective_payload_length = std::min(payload_length,
                                                      static_cast<unsigned int>(user_payload.size()));
     if (effective_payload_length > max_payload_size) {
-        DEBUG_TRACE("SmdSat::%s: Payload truncated from %u to %u bytes",
+        DEBUG_ERROR("SmdSat::%s: Payload truncated from %u to %u bytes",
                     __func__, effective_payload_length, max_payload_size);
         effective_payload_length = max_payload_size;
     }
@@ -2375,6 +2375,7 @@ SmdDfuResponse SmdSat::firmware_update(const uint8_t *firmware, size_t size,
 
 	// Step 6: Verify CRC32
 	DEBUG_INFO("SmdSat::%s: Verifying firmware CRC...", __func__);
+	PMU::kick_watchdog();  // CRC over ~200KB may take >200ms — prevent watchdog reset
 	uint32_t crc = calculate_crc32(firmware, size);
 	result = dfu_verify(crc);
 	if (result != DFU_RSP_OK) {

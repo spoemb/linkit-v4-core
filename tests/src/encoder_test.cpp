@@ -659,6 +659,63 @@ TEST(Encoder, PARAM_SAMPLING_UNDER_FREQ_OutOfRangeCheck)
 	CHECK_THROWS(ErrorCode, DTEEncoder::encode(DTECommand::PARMR_RESP, v));
 }
 
+TEST(Encoder, PARAM_SAMPLING_SURF_FREQ)
+{
+	std::string s;
+	ParamValue p = { ParamID::SAMPLING_SURF_FREQ, 10U };
+	std::vector<ParamValue> v = { p };
+	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
+	STRCMP_EQUAL("$O;PARMR#008;UNP04=10\r", s.c_str());
+}
+
+TEST(Encoder, PARAM_SAMPLING_SURF_FREQ_OutOfRangeCheck)
+{
+	ParamValue p = { ParamID::SAMPLING_SURF_FREQ, 0U };
+	std::vector<ParamValue> v = { p };
+	CHECK_THROWS(ErrorCode, DTEEncoder::encode(DTECommand::PARMR_RESP, v));
+}
+
+TEST(Encoder, PARAM_UW_MAX_SAMPLES)
+{
+	std::string s;
+	ParamValue p = { ParamID::UW_MAX_SAMPLES, 1U };
+	std::vector<ParamValue> v = { p };
+	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
+	STRCMP_EQUAL("$O;PARMR#007;UNP05=1\r", s.c_str());
+}
+
+TEST(Encoder, PARAM_UW_MAX_SAMPLES_OutOfRangeCheck)
+{
+	ParamValue p = { ParamID::UW_MAX_SAMPLES, 0U };
+	std::vector<ParamValue> v = { p };
+	CHECK_THROWS(ErrorCode, DTEEncoder::encode(DTECommand::PARMR_RESP, v));
+}
+
+TEST(Encoder, PARAM_SWS_ANALOG_HYSTERESIS)
+{
+	std::string s;
+	ParamValue p = { ParamID::SWS_ANALOG_HYSTERESIS, 4U };
+	std::vector<ParamValue> v = { p };
+	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
+	STRCMP_EQUAL("$O;PARMR#007;UNP22=4\r", s.c_str());
+}
+
+TEST(Encoder, PARAM_SWS_ANALOG_HYSTERESIS_OutOfRangeCheck)
+{
+	ParamValue p = { ParamID::SWS_ANALOG_HYSTERESIS, 51U };
+	std::vector<ParamValue> v = { p };
+	CHECK_THROWS(ErrorCode, DTEEncoder::encode(DTECommand::PARMR_RESP, v));
+}
+
+TEST(Encoder, PARAM_UW_MIN_SURFACE_TIME)
+{
+	std::string s;
+	ParamValue p = { ParamID::UW_MIN_SURFACE_TIME, 2U };
+	std::vector<ParamValue> v = { p };
+	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
+	STRCMP_EQUAL("$O;PARMR#007;UNP25=2\r", s.c_str());
+}
+
 TEST(Encoder, PARAM_LB_EN)
 {
 	std::string s;

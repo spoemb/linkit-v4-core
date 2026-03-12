@@ -32,7 +32,8 @@ LoRaComm::LoRaComm(unsigned int instance) :
     m_uart_config{},
     m_isr_buf_len(0),
     m_isr_error(false),
-    m_isr_error_type(0)
+    m_isr_error_type(0),
+    m_isr_overflow(false)
 {
 }
 
@@ -322,6 +323,8 @@ void LoRaComm::handle_rx_buffer(uint8_t * buffer, uint16_t length)
     uint16_t copy_len = (length < space) ? length : space;
     memcpy(m_isr_buf + cur_len, buffer, copy_len);
     m_isr_buf_len = (uint16_t)(cur_len + copy_len);
+    if (copy_len < length)
+        m_isr_overflow = true;
 
     nrf_libuarte_async_rx_free(BSP::UARTAsync_Inits[m_uart_instance].uart, buffer, length);
 }
@@ -350,6 +353,12 @@ void LoRaComm::process_rx()
         m_isr_buf_len = 0;
         notify(LoRaCommEventUartError(err_type));
         return;
+    }
+
+    // Check for ISR RX buffer overflow (deferred from ISR)
+    if (m_isr_overflow) {
+        m_isr_overflow = false;
+        DEBUG_ERROR("LoRaComm: ISR RX buffer overflow — data lost, AT response may be incomplete");
     }
 
     // Copy ISR buffer under interrupt lock to prevent race
