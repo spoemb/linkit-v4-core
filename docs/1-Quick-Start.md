@@ -1,46 +1,128 @@
 # 1 - Quick Start Guide
 
+## Platform
+
+- **Recommended**: Ubuntu/Debian Linux or WSL2 (Windows Subsystem for Linux)
+- **Windows**: Possible with adapted tools (ARM GCC for Windows, nRF Command Line Tools for Windows), but not officially supported. Use WSL2 for the best experience.
+- **Docker**: A `Dockerfile` is provided with all tools pre-installed (see below).
+
 ## Prerequisites
 
-- **ARM GCC Toolchain** (gcc-arm-none-eabi 10.3 or later)
-- **nRF5 SDK 17.1.0** (Nordic Semiconductor)
-- **CMake 3.15+**
-- **nrfjprog** (Nordic command-line tools) or J-Link Commander
-- **Python 3** (for build scripts)
+- **Git**
+- **ARM GCC Toolchain** (gcc-arm-none-eabi 10.3-2021.10)
+- **CMake** 3.13+
+- **nRF5 SDK 17.0.2** (included in `ports/nrf52840/drivers/`)
+- **nrfjprog + mergehex** (nRF Command Line Tools, for flashing)
+- **nrfutil** + nrf5sdk-tools plugin (for DFU package generation)
+- **J-Link** (for SWD flashing)
 
-## Clone and Build
+All tools above (except Git and J-Link hardware) can be installed automatically with the setup script (see below).
+
+## Setup
+
+### 1. Clone the Repository
 
 ```bash
 git clone <repository-url> linkit-v4-core
 cd linkit-v4-core
+```
 
-# Build for GenTracker board, UW model with pressure sensor
-cd ports/nrf52840
-mkdir build && cd build
-cmake -DMODEL=UW -DENABLE_PRESSURE_SENSOR=1 ..
+### 2. Run the Environment Setup
+
+The setup script detects, downloads, and configures everything needed:
+
+```bash
+./scripts/setup_environment.sh
+```
+
+Or for non-interactive (auto-install everything):
+
+```bash
+./scripts/setup_environment.sh --auto
+```
+
+This will:
+1. Install ARM GCC Toolchain 10.3 (downloaded from ARM, not apt)
+2. Install build tools (`make`, `cmake`, `ninja`, `crc32`, `xxd`)
+3. Install nrfutil + nrf5sdk-tools plugin (for DFU builds)
+4. Install nRF Command Line Tools (`nrfjprog`, `mergehex`)
+5. Generate `build_config.sh` with detected tool paths
+6. Update `.vscode/tasks.json` with correct PATH
+7. Update SDK `Makefile.posix` with toolchain paths
+
+### 3. Build
+
+Use the build scripts for each board variant:
+
+```bash
+# LinkIt V4 with KIM (default)
+./scripts/build_core.sh
+
+# LinkIt V4 with SMD
+./scripts/build_linkitv4_smd.sh
+
+# LinkIt V4 with LoRa
+./scripts/build_linkitv4_lora.sh
+
+# RSPB
+./scripts/build_rspb.sh
+```
+
+Or build manually with CMake (see [Building](https://github.com/arribada/linkit-v4-core/wiki/2-%E2%80%90-Building) for all options):
+
+```bash
+mkdir -p ports/nrf52840/build/LINKIT && cd ports/nrf52840/build/LINKIT
+cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
+  -DBOARD=LINKIT -DENABLE_AXL_SENSOR=ON \
+  -DCMAKE_BUILD_TYPE=Debug -DDEBUG_LEVEL=4 ../..
 make -j$(nproc)
 ```
 
-The output firmware is generated as a `.hex` file in the build directory.
+### 4. Build the Bootloader (first time only)
 
-## Flash the Firmware
+Each board has its own bootloader. Build it once before flashing:
 
 ```bash
-# Flash SoftDevice first (only needed once)
-nrfjprog --program s140_nrf52_7.2.0_softdevice.hex --chiperase --verify
-nrfjprog --reset
+# LinkIt V4 bootloader
+cd ports/nrf52840/bootloader/secure_bootloader/linkitv4_v1.0/armgcc
+make mergehex
 
-# Flash application
-nrfjprog --program linkit_v4.hex --sectorerase --verify
-nrfjprog --reset
+# RSPB bootloader
+cd ports/nrf52840/bootloader/secure_bootloader/rspbtracker_v1.0/armgcc
+make mergehex
 ```
 
-## First Connection
+Once the bootloader is built, the build scripts (step 3) automatically generate a **merged hex** file containing bootloader + SoftDevice + application in a single file.
 
-Connect to the device via UART (115200 baud, 8N1) or USB CDC:
+### 5. Flash
+
+The merged hex is the recommended way to flash -- a single file with everything:
+
+```bash
+# Flash merged hex (bootloader + SoftDevice + application)
+nrfjprog --recover
+nrfjprog -f nrf52 --program ports/nrf52840/build/LINKIT/LinkIt_board_merged-*.hex --sectorerase
+nrfjprog -f nrf52 --reset
+```
+
+Replace `LINKIT` with the appropriate build directory (`LINKIT_SMD`, `LINKIT_LORA`, `RSPB`) and adapt the file name accordingly (e.g., `LinkIt_RSPB_board_merged-*.hex`).
+
+For **development** (bootloader already on device, faster iteration):
+
+```bash
+# Flash application only (preserves bootloader + SoftDevice)
+nrfjprog -f nrf52 --program ports/nrf52840/build/LINKIT/LinkIt_board-*.hex --sectorerase
+nrfjprog -f nrf52 --reset
+```
+
+For **DFU update** over BLE (no J-Link needed), see [Programming](https://github.com/arribada/linkit-v4-core/wiki/3-%E2%80%90-Programming).
+
+### 6. First Connection
+
+Connect to the device via BLE using **pylinkit** or the **LinkIt GUI tool**. DTE commands follow this format:
 
 ```
-# List all parameters
+# List all parameter keys
 $PARML#000;
 
 # Read all parameters
@@ -53,20 +135,72 @@ $PARMR#00A;GNP01,ARP01
 $PARMW#010;GNP01=1,ARP01=2
 ```
 
-See [AT Commands Reference](4-AT-Commands/README.md) for the full command set.
+See [DTE Commands Reference](https://github.com/arribada/linkit-v4-core/wiki/5-%E2%80%90-DTE%E2%80%90Commands) for the full command set.
 
-## Build Tests
+## Build Scripts Summary
+
+| Script | Board | Communication | Build Dir |
+|--------|-------|--------------|-----------|
+| `scripts/build_core.sh` | LinkIt V4 | KIM (Argos) | `build/LINKIT/` |
+| `scripts/build_linkitv4_smd.sh` | LinkIt V4 | SMD (Argos) | `build/LINKIT_SMD/` |
+| `scripts/build_linkitv4_lora.sh` | LinkIt V4 | LoRa RAK3172 | `build/LINKIT_LORA/` |
+| `scripts/build_rspb.sh` | RSPB | SMD (Argos) | `build/RSPB/` |
+| `scripts/build_unit_tests.sh` | - | - | `tests/build/` |
+
+All build scripts source `build_config.sh` (generated by `setup_environment.sh`) for toolchain paths.
+
+## Unit Tests
 
 ```bash
-cd tests
-mkdir build && cd build
-cmake ..
-make -j$(nproc)
-ctest --output-on-failure
+./scripts/build_unit_tests.sh
+cd tests/build && ln -sf ../data . && ./TrackerTests -v
 ```
+
+Or with the test runner script:
+```bash
+./scripts/run_unit_tests.sh
+```
+
+## VSCode
+
+If using VSCode, all build/flash/test tasks are available via `Ctrl+Shift+B`. The setup script automatically configures the PATH in `.vscode/tasks.json`.
+
+## Docker
+
+A `Dockerfile` is provided at the project root with all build tools pre-installed (ARM GCC 10.3, nrfutil, nrfjprog, mergehex, CMake, Ninja).
+
+### Build the Docker Image
+
+```bash
+docker build -t linkit-v4-build .
+```
+
+### Build Firmware in Docker
+
+```bash
+docker run --rm -v $(pwd):/workspace linkit-v4-build ./scripts/build_core.sh
+docker run --rm -v $(pwd):/workspace linkit-v4-build ./scripts/build_rspb.sh
+docker run --rm -v $(pwd):/workspace linkit-v4-build ./scripts/build_linkitv4_smd.sh
+docker run --rm -v $(pwd):/workspace linkit-v4-build ./scripts/build_linkitv4_lora.sh
+```
+
+### Run Unit Tests in Docker
+
+```bash
+docker run --rm -v $(pwd):/workspace linkit-v4-build bash -c "./scripts/build_unit_tests.sh && cd tests/build && ln -sf ../data . && ./TrackerTests -v"
+```
+
+### Interactive Shell
+
+```bash
+docker run --rm -it -v $(pwd):/workspace linkit-v4-build bash
+```
+
+Note: Flashing via JLink is not possible from inside Docker (requires USB passthrough). Use `nrfjprog` on the host after building in Docker.
 
 ## Next Steps
 
-- [Building the Project](2-Building.md) - Full build configuration reference
-- [AT Commands Reference](4-AT-Commands/README.md) - Complete command documentation
-- [Architecture Overview](5-Architecture/README.md) - Understand the firmware design
+- [Building the Project](https://github.com/arribada/linkit-v4-core/wiki/2-%E2%80%90-Building) - Full CMake configuration reference
+- [Board Variants](https://github.com/arribada/linkit-v4-core/wiki/4-%E2%80%90-Boards) — Hardware specs, parameters, and configuration per board
+- [DTE Commands Reference](https://github.com/arribada/linkit-v4-core/wiki/5-%E2%80%90-DTE%E2%80%90Commands) - Complete command documentation
+- [Architecture Overview](https://github.com/arribada/linkit-v4-core/wiki/6-%E2%80%90-Architecture) - Understand the firmware design

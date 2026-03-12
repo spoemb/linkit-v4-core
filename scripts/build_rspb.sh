@@ -95,7 +95,6 @@ cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
       -DDEBUG_LEVEL=4 \
       -DBOARD=RSPB \
       -DCMAKE_BUILD_TYPE=Release \
-      -DMODEL=CORE \
       -DARGOS_SMD=${ARGOS_SMD} \
       -DENABLE_PRESSURE_SENSOR=${ENABLE_PRESSURE_SENSOR} \
       -DENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR} \
@@ -104,15 +103,15 @@ cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
 make -j 20
 
 # Check if build succeeded (check elf, not hex - hex might not exist if build was up-to-date)
-if [ ! -f "LinkIt_RSPB_CORE_board.elf" ]; then
-    echo "ERROR: Build failed - LinkIt_RSPB_CORE_board.elf not found"
+if [ ! -f "LinkIt_RSPB_board.elf" ]; then
+    echo "ERROR: Build failed - LinkIt_RSPB_board.elf not found"
     exit 1
 fi
 
 # Generate hex file if it doesn't exist (POST_BUILD doesn't run if target is up-to-date)
-if [ ! -f "LinkIt_RSPB_CORE_board.hex" ]; then
+if [ ! -f "LinkIt_RSPB_board.hex" ]; then
     echo "Generating hex file..."
-    arm-none-eabi-objcopy -O ihex LinkIt_RSPB_CORE_board.elf LinkIt_RSPB_CORE_board.hex
+    arm-none-eabi-objcopy -O ihex LinkIt_RSPB_board.elf LinkIt_RSPB_board.hex
 fi
 
 echo ""
@@ -120,7 +119,7 @@ echo "✓ Build succeeded!"
 echo ""
 
 # Bootloader path
-BOOTLOADER_HEX="../../bootloader/gentracker_secure_bootloader/rspbtracker_v1.0/armgcc/_build/rspb_bootloader_v1_linkit_merged.hex"
+BOOTLOADER_HEX="../../bootloader/secure_bootloader/rspbtracker_v1.0/armgcc/_build/rspb_bootloader_v1_linkit_merged.hex"
 SOFTDEVICE_HEX="../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/hex/s140_nrf52_7.2.0_softdevice.hex"
 KEY_FILE="../../nrfutil_pkg_key.pem"
 
@@ -145,7 +144,7 @@ if [ "$CAN_MERGE" = true ]; then
 
     # Generate settings
     nrfutil settings generate --family NRF52840 \
-        --application LinkIt_RSPB_CORE_board.hex \
+        --application LinkIt_RSPB_board.hex \
         --application-version 0 \
         --bootloader-version 1 \
         --bl-settings-version 2 \
@@ -156,8 +155,8 @@ if [ "$CAN_MERGE" = true ]; then
         settings.hex
 
     if [ $? -eq 0 ]; then
-        mergehex -m "$BOOTLOADER_HEX" LinkIt_RSPB_CORE_board.hex -o m1.hex
-        mergehex -m m1.hex settings.hex -o LinkIt_RSPB_CORE_board_merged.hex
+        mergehex -m "$BOOTLOADER_HEX" LinkIt_RSPB_board.hex -o m1.hex
+        mergehex -m m1.hex settings.hex -o LinkIt_RSPB_board_merged.hex
         rm -f m1.hex settings.hex
         echo "✓ Merged hex generated"
     else
@@ -167,21 +166,21 @@ if [ "$CAN_MERGE" = true ]; then
 fi
 
 # Rename output files with version tag
-rm -f LinkIt_RSPB_CORE_board-* LinkIt_RSPB_CORE_board_dfu-* LinkIt_RSPB_CORE_board_merged-*
+rm -f LinkIt_RSPB_board-* LinkIt_RSPB_board_dfu-* LinkIt_RSPB_board_merged-*
 
 # Application files (always available after successful build)
-cp LinkIt_RSPB_CORE_board.elf LinkIt_RSPB_CORE_board-`cat TAG_NAME`.elf
-mv LinkIt_RSPB_CORE_board.hex LinkIt_RSPB_CORE_board-`cat TAG_NAME`.hex
+cp LinkIt_RSPB_board.elf LinkIt_RSPB_board-`cat TAG_NAME`.elf
+mv LinkIt_RSPB_board.hex LinkIt_RSPB_board-`cat TAG_NAME`.hex
 
 # Optional files (may not exist)
-if [ -f "LinkIt_RSPB_CORE_board_dfu.zip" ]; then
-    mv LinkIt_RSPB_CORE_board_dfu.zip LinkIt_RSPB_CORE_board_dfu-`cat TAG_NAME`.zip
+if [ -f "LinkIt_RSPB_board_dfu.zip" ]; then
+    mv LinkIt_RSPB_board_dfu.zip LinkIt_RSPB_board_dfu-`cat TAG_NAME`.zip
 fi
-if [ -f "LinkIt_RSPB_CORE_board.img" ]; then
-    mv LinkIt_RSPB_CORE_board.img LinkIt_RSPB_CORE_board-`cat TAG_NAME`.img
+if [ -f "LinkIt_RSPB_board.img" ]; then
+    mv LinkIt_RSPB_board.img LinkIt_RSPB_board-`cat TAG_NAME`.img
 fi
-if [ -f "LinkIt_RSPB_CORE_board_merged.hex" ]; then
-    mv LinkIt_RSPB_CORE_board_merged.hex LinkIt_RSPB_CORE_board_merged-`cat TAG_NAME`.hex
+if [ -f "LinkIt_RSPB_board_merged.hex" ]; then
+    mv LinkIt_RSPB_board_merged.hex LinkIt_RSPB_board_merged-`cat TAG_NAME`.hex
 fi
 
 echo ""
@@ -189,9 +188,9 @@ echo "Build complete!"
 echo "Output files in: ports/nrf52840/build/RSPB/"
 echo ""
 echo "Files generated:"
-ls -la LinkIt_RSPB_CORE_board-* 2>/dev/null || true
-ls -la LinkIt_RSPB_CORE_board_dfu-* 2>/dev/null || true
-ls -la LinkIt_RSPB_CORE_board_merged-* 2>/dev/null || true
+ls -la LinkIt_RSPB_board-* 2>/dev/null || true
+ls -la LinkIt_RSPB_board_dfu-* 2>/dev/null || true
+ls -la LinkIt_RSPB_board_merged-* 2>/dev/null || true
 
 if [ "$CAN_MERGE" = false ]; then
     echo ""

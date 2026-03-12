@@ -3,45 +3,46 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND="noninteractive"
 ENV TZ=Europe/Paris
 
+# System packages
 RUN apt-get -qq update && \
-    apt-get -qq install -y wget unzip build-essential cmake ninja-build git python3 python3-pip unzip xxd libarchive-zip-perl \
-    udev \
-    libusb-1.0-0 \
-    libncurses5 \
-    gdb-multiarch
+    apt-get -qq install -y \
+    wget curl unzip build-essential cmake ninja-build git \
+    python3 python3-pip \
+    xxd libarchive-zip-perl \
+    udev libusb-1.0-0 libncurses5 \
+    gdb-multiarch && \
+    rm -rf /var/lib/apt/lists/*
 
-RUN mkdir tools
+RUN mkdir -p /tools
 
-# Install gcc_arm_none_eabi_10_2020_q4_major
-RUN wget -q https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu-rm/10-2020q4/gcc-arm-none-eabi-10-2020-q4-major-x86_64-linux.tar.bz2 && \
-    tar -xjf gcc-arm-none-eabi-10-2020-q4-major-x86_64-linux.tar.bz2 -C /tools && \
-    rm gcc-arm-none-eabi-10-2020-q4-major-x86_64-linux.tar.bz2
-ENV PATH="/tools/gcc-arm-none-eabi-10-2020-q4-major/bin:$PATH"
-ENV GNU_INSTALL_ROOT="/tools/gcc-arm-none-eabi-10-2020-q4-major/bin/"
+# ARM GCC Toolchain 10.3-2021.10 (recommended for nRF5 SDK 17)
+RUN wget -q https://developer.arm.com/-/media/Files/downloads/gnu-rm/10.3-2021.10/gcc-arm-none-eabi-10.3-2021.10-x86_64-linux.tar.bz2 && \
+    tar -xjf gcc-arm-none-eabi-10.3-2021.10-x86_64-linux.tar.bz2 -C /tools && \
+    rm gcc-arm-none-eabi-10.3-2021.10-x86_64-linux.tar.bz2
+ENV PATH="/tools/gcc-arm-none-eabi-10.3-2021.10/bin:$PATH"
+ENV GNU_INSTALL_ROOT="/tools/gcc-arm-none-eabi-10.3-2021.10/bin/"
 
-# Install JLinkExe
-RUN wget --post-data "accept_license_agreement=accepted&non_emb_ctr=confirmed" "https://www.segger.com/downloads/jlink/JLink_Linux_V812b_x86_64.deb"
-RUN /lib/systemd/systemd-udevd --daemon \
-    && apt-get -y install ./JLink_Linux_V812b_x86_64.deb \
-    && rm -rf /var/lib/apt/lists/*
+# nRF Command Line Tools (nrfjprog + mergehex)
+RUN wget -q https://nsscprodmedia.blob.core.windows.net/prod/software-and-other-downloads/desktop-software/nrf-command-line-tools/sw/versions-10-x-x/10-24-2/nrf-command-line-tools-10.24.2_linux-amd64.tar.gz && \
+    mkdir -p /tools/nrf-command-line-tools && \
+    tar -xzf nrf-command-line-tools-10.24.2_linux-amd64.tar.gz -C /tools/nrf-command-line-tools --strip-components=1 && \
+    rm nrf-command-line-tools-10.24.2_linux-amd64.tar.gz && \
+    # Install bundled J-Link if present \
+    JLINK_DEB=$(find /tools/nrf-command-line-tools -name "JLink_Linux_*.deb" 2>/dev/null | head -1) && \
+    if [ -n "$JLINK_DEB" ]; then \
+        /lib/systemd/systemd-udevd --daemon 2>/dev/null || true; \
+        dpkg -i "$JLINK_DEB" 2>/dev/null || true; \
+    fi
+ENV PATH="/tools/nrf-command-line-tools/bin:$PATH"
 
-# Install nRF command line tools for mergehex
-RUN wget -q https://www.nordicsemi.com/-/media/Software-and-other-downloads/Desktop-software/nRF-command-line-tools/sw/Versions-10-x-x/10-13-0/nRF-Command-Line-Tools_10_13_0_Linux64.zip && \
-    unzip nRF-Command-Line-Tools_10_13_0_Linux64.zip -d /tools && \
-    rm nRF-Command-Line-Tools_10_13_0_Linux64.zip && \
-    cd /tools/nRF-Command-Line-Tools_10_13_0_Linux64 && \
-    tar -xf nRF-Command-Line-Tools_10_13_0_Linux-amd64.tar.gz && \
-    rm nRF-Command-Line-Tools_10_13_0_Linux-amd64.tar.gz && \
-    tar -xf nRF-Command-Line-Tools_10_13_0.tar && \
-    rm nRF-Command-Line-Tools_10_13_0.tar
-ENV PATH="/tools/nRF-Command-Line-Tools_10_13_0_Linux64/mergehex:$PATH"
-ENV PATH="/tools/nRF-Command-Line-Tools_10_13_0_Linux64/nrfjprog:$PATH"
+# nrfutil CLI + nrf5sdk-tools plugin (for DFU package generation)
+RUN curl -fsSL "https://developer.nordicsemi.com/.pc-tools/nrfutil/x64-linux/nrfutil" -o /usr/local/bin/nrfutil && \
+    chmod +x /usr/local/bin/nrfutil && \
+    nrfutil install nrf5sdk-tools
 
-# Configure proper locale support
-#RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
-ENV LANG en_US.UTF-8
-ENV LANGUAGE en_US:en
-ENV LC_ALL en_US.UTF-8
+# Locale
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
 
-# Install nrfutil
-RUN pip3 install nrfutil
+WORKDIR /workspace

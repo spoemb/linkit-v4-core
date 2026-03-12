@@ -1,5 +1,41 @@
 # 2 - Building the Project
 
+## Environment Setup
+
+Before building for the first time, run the setup script to install and configure all required tools:
+
+```bash
+./scripts/setup_environment.sh          # interactive
+./scripts/setup_environment.sh --auto   # auto-install everything
+```
+
+This installs:
+- **ARM GCC 10.3** (downloaded from ARM, not the apt version which has SDK compatibility issues)
+- **Build tools** (make, cmake, ninja, crc32, xxd)
+- **nrfutil** + nrf5sdk-tools plugin (for DFU package generation)
+- **nRF Command Line Tools** (nrfjprog, mergehex, J-Link)
+
+And generates `build_config.sh` in the project root with detected tool paths. All build scripts (`scripts/build_*.sh`) source this file automatically.
+
+Alternatively, use the Docker image (all tools pre-installed):
+
+```bash
+docker build -t linkit-v4-build .
+docker run --rm -v $(pwd):/workspace linkit-v4-build ./scripts/build_core.sh
+```
+
+## Build Scripts
+
+For convenience, each board variant has a dedicated build script:
+
+| Script | Board | Comm Module | Build Dir |
+|--------|-------|------------|-----------|
+| `scripts/build_core.sh` | LinkIt V4 | KIM | `build/LINKIT/` |
+| `scripts/build_linkitv4_smd.sh` | LinkIt V4 | SMD | `build/LINKIT_SMD/` |
+| `scripts/build_linkitv4_lora.sh` | LinkIt V4 | LoRa | `build/LINKIT_LORA/` |
+| `scripts/build_rspb.sh` | RSPB | SMD | `build/RSPB/` |
+| `scripts/build_unit_tests.sh` | - | - | `tests/build/` |
+
 ## Directory Structure
 
 ```
@@ -13,7 +49,7 @@ linkit-v4-core/
 ├── ports/
 │   └── nrf52840/            # nRF52840 hardware implementation
 │       ├── bsp/             # Board Support Packages
-│       │   ├── gentracker_v1.0/   # GenTracker board definitions
+│       │   ├── linkitv4_v1.0/      # LinkIt V4 board definitions
 │       │   └── rspbtracker_v1.0/  # RSPB board definitions
 │       ├── core/hardware/   # Hardware drivers (I2C, SPI, GPIO, sensors)
 │       └── CMakeLists.txt   # Main firmware build
@@ -38,25 +74,11 @@ make -j$(nproc)
 
 | Value | Description | BSP Directory |
 |-------|-------------|---------------|
-| `LINKIT` (default) | GenTracker v1.0 | `bsp/gentracker_v1.0/` |
+| `LINKIT` (default) | LinkIt V4 v1.0 | `bsp/linkitv4_v1.0/` |
 | `RSPB` | RSPB Tracker v1.0 | `bsp/rspbtracker_v1.0/` |
 
 ```bash
 cmake -DBOARD=RSPB ..
-```
-
-### Device Model (`MODEL`)
-
-| Value | Description | Key Defaults |
-|-------|-------------|-------------|
-| `SB` | Surface Bird | Pass prediction mode, 6 retries, 1h GNSS interval |
-| `UW` | Underwater | Legacy mode, underwater detection enabled, 240s acq timeout |
-| `CORE` | Core/Generic | Legacy mode, wireless charging enabled |
-
-The MODEL sets compile-time flags `MODEL_SB`, `MODEL_UW`, `MODEL_CORE` (one = 1, others = 0) and affects many default parameter values in `config_store.hpp`.
-
-```bash
-cmake -DMODEL=UW ..
 ```
 
 ### Sensor Enable Flags
@@ -75,7 +97,7 @@ These flags control conditional compilation via `#if ENABLE_*` guards throughout
 | `ENABLE_CAM_SENSOR` | 0 | Camera trigger |
 
 ```bash
-cmake -DMODEL=UW -DENABLE_PRESSURE_SENSOR=1 -DENABLE_SEA_TEMP_SENSOR=1 ..
+cmake -DENABLE_PRESSURE_SENSOR=1 -DENABLE_SEA_TEMP_SENSOR=1 ..
 ```
 
 ### Other Build Options
@@ -100,17 +122,67 @@ When `BOARD=RSPB`, these are automatically set:
 | `ENABLE_THERMISTOR_SENSOR` | 1 | NTC thermistor enabled |
 | `BATTERY_MONITOR_TYPE` | STC3117 | I2C fuel gauge |
 
-## Build Examples
+### Satellite / Communication Module
+
+| Option | Description |
+|--------|-------------|
+| `ARGOS_SMD=ON` | Use Arribada SMD satellite module (SPI, A+ protocol) |
+| `LORA_RAK3172=ON` | Use RAK3172-SiP LoRa module (UART, LoRaWAN 1.0.3) |
+| *(neither)* | Default: KIM2 module (CLS, UART, legacy Argos) |
+
+Only one communication module can be active at a time. `ARGOS_SMD` and `LORA_RAK3172` are mutually exclusive.
+
+## Build Examples per Board
+
+### LinkIt V4 with KIM (default)
 
 ```bash
-# GenTracker UW with pressure sensor
-cmake -DMODEL=UW -DENABLE_PRESSURE_SENSOR=1 ..
+mkdir -p ports/nrf52840/build/LINKIT && cd ports/nrf52840/build/LINKIT
+cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
+  -DBOARD=LINKIT -DENABLE_AXL_SENSOR=ON \
+  -DCMAKE_BUILD_TYPE=Debug -DDEBUG_LEVEL=4 ../..
+make -j$(nproc)
+```
 
-# RSPB SB with SMD satellite module
-cmake -DBOARD=RSPB -DMODEL=SB -DARGOS_SMD=ON ..
+### LinkIt V4 with SMD
 
-# GenTracker with all sensors
-cmake -DMODEL=UW \
+```bash
+mkdir -p ports/nrf52840/build/LINKIT_SMD && cd ports/nrf52840/build/LINKIT_SMD
+cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
+  -DBOARD=LINKIT -DARGOS_SMD=ON -DENABLE_AXL_SENSOR=ON \
+  -DCMAKE_BUILD_TYPE=Debug -DDEBUG_LEVEL=4 ../..
+make -j$(nproc)
+```
+
+### LinkIt V4 with LoRa
+
+```bash
+mkdir -p ports/nrf52840/build/LINKIT_LORA && cd ports/nrf52840/build/LINKIT_LORA
+cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
+  -DBOARD=LINKIT -DLORA_RAK3172=ON -DENABLE_AXL_SENSOR=ON \
+  -DCMAKE_BUILD_TYPE=Debug -DDEBUG_LEVEL=4 ../..
+make -j$(nproc)
+```
+
+### RSPB with SMD
+
+```bash
+mkdir -p ports/nrf52840/build/RSPB && cd ports/nrf52840/build/RSPB
+cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
+  -DBOARD=RSPB -DARGOS_SMD=ON \
+  -DENABLE_PRESSURE_SENSOR=ON -DENABLE_AXL_SENSOR=ON \
+  -DCMAKE_BUILD_TYPE=Debug -DDEBUG_LEVEL=4 ../..
+make -j$(nproc)
+```
+
+### Additional Examples
+
+```bash
+# LinkIt V4 with pressure sensor (KIM)
+cmake ... -DENABLE_PRESSURE_SENSOR=1 ..
+
+# LinkIt V4 with all sensors
+cmake ... \
   -DENABLE_PRESSURE_SENSOR=1 \
   -DENABLE_SEA_TEMP_SENSOR=1 \
   -DENABLE_PH_SENSOR=1 \
@@ -118,8 +190,10 @@ cmake -DMODEL=UW \
   -DENABLE_CDT_SENSOR=1 ..
 
 # Release build for production
-cmake -DMODEL=SB -DCMAKE_BUILD_TYPE=Release ..
+cmake ... -DCMAKE_BUILD_TYPE=Release ..
 ```
+
+For detailed board-specific documentation see [Board Variants](https://github.com/arribada/linkit-v4-core/wiki/4-%E2%80%90-Boards).
 
 ## Building Unit Tests
 
@@ -135,7 +209,7 @@ make -j$(nproc)
 ctest --output-on-failure
 
 # Run specific test
-./CLSGenTrackerTests -g PressureSensorTest
+./TrackerTests -g PressureSensorTest
 ```
 
 The test build defines all `ENABLE_*` flags to 1 so all code paths are compiled and tested regardless of the target board configuration.

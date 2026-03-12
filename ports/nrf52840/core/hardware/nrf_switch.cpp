@@ -90,7 +90,7 @@ void NrfSwitch::update_state(bool state) {
 	}
 }
 
-void NrfSwitch::process_event(bool state) {
+void NrfSwitch::process_event(bool /* state */) {
 	uint64_t now = system_timer->get_counter();
 
 	// On first edge: disable GPIOTE to suppress all bounce interrupts,

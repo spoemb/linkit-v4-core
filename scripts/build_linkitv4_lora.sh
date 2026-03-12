@@ -62,9 +62,6 @@ if command -v mergehex &> /dev/null; then
 fi
 echo ""
 
-# Parse MODEL from arguments (default: UW)
-MODEL=${1:-UW}
-
 cd "$PROJECT_ROOT"
 
 mkdir -p ports/nrf52840/build/LINKIT_LORA
@@ -79,7 +76,7 @@ fi
 # - ENABLE_AXL_SENSOR=ON: Enable BMA400 accelerometer
 ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR:-ON}
 
-echo "Building LinkIt V4 LoRa RAK3172 (MODEL=${MODEL}) with configuration:"
+echo "Building LinkIt V4 LoRa RAK3172 with configuration:"
 echo "  LORA_RAK3172=ON"
 echo "  ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR}"
 echo ""
@@ -88,14 +85,13 @@ cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
       -DDEBUG_LEVEL=4 \
       -DBOARD=LINKIT \
       -DCMAKE_BUILD_TYPE=Release \
-      -DMODEL=${MODEL} \
       -DLORA_RAK3172=ON \
       -DENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR} \
       ../..
 
 make -j 20
 
-TARGET_NAME="LinkIt_${MODEL}_board"
+TARGET_NAME="LinkIt_board"
 
 # Check if build succeeded
 if [ ! -f "${TARGET_NAME}.elf" ]; then
@@ -114,7 +110,7 @@ echo "Build succeeded!"
 echo ""
 
 # Bootloader path
-BOOTLOADER_HEX="../../bootloader/gentracker_secure_bootloader/linkitv4_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex"
+BOOTLOADER_HEX="../../bootloader/secure_bootloader/linkitv4_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex"
 SOFTDEVICE_HEX="../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/hex/s140_nrf52_7.2.0_softdevice.hex"
 KEY_FILE="../../nrfutil_pkg_key.pem"
 

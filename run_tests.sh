@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TESTS_SRC_DIR="$PROJECT_DIR/tests"
 BUILD_DIR="$TESTS_SRC_DIR/build"
-TEST_EXECUTABLE="$BUILD_DIR/CLSGenTrackerTests"
+TEST_EXECUTABLE="$BUILD_DIR/TrackerTests"
 
 echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║   Tests Unitaires LinkIt V4 Core      ║${NC}"

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.13)
 
-project(CLSGenTrackerTests
+project(TrackerTests
     VERSION 1.0.0.0
     LANGUAGES CXX C ASM
 )
@@ -88,11 +88,8 @@ target_compile_options(${PROJECT_NAME} PRIVATE
     -DDEBUG_ENABLE
     -DDEBUG_LEVEL=4
 
-    # For setting default device model
-    -DDEVICE_MODEL_NAME=std::string\("SURFACEBOX"\)
-    -DMODEL_SB=0
-    -DMODEL_UW=0
-    -DMODEL_CORE=1
+    # Device model name
+    -DDEVICE_MODEL_NAME=std::string\("LinkIt V4"\)
 
     # For setting firmware app version
     -DFW_APP_VERSION_STR=std::string\("V0.1"\)
@@ -268,9 +265,6 @@ target_compile_options(${TURTLE_SIM_NAME} PRIVATE
     -DDEBUG_ENABLE
     -DDEBUG_LEVEL=4
     -DDEVICE_MODEL_NAME=std::string\("SURFACEBOX"\)
-    -DMODEL_SB=0
-    -DMODEL_UW=0
-    -DMODEL_CORE=1
     -DFW_APP_VERSION_STR=std::string\("V0.1"\)
     -DFW_APP_VERSION_STR_C="V0.1"
     -DARGOS_USE_CRC8

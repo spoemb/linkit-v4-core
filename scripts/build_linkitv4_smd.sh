@@ -69,9 +69,6 @@ if command -v mergehex &> /dev/null; then
 fi
 echo ""
 
-# Parse MODEL from arguments (default: UW)
-MODEL=${1:-UW}
-
 mkdir -p ports/nrf52840/build/LINKIT_SMD
 cd ports/nrf52840/build/LINKIT_SMD
 git show-ref --tags -d | grep ^`git rev-parse HEAD` | sed -e "s,.* refs/tags/,," -e "s/\\^{}//" > TAG_NAME
@@ -86,7 +83,7 @@ fi
 ARGOS_SMD=${ARGOS_SMD:-ON}
 ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR:-ON}
 
-echo "Building LinkIt V4 SMD (MODEL=${MODEL}) with configuration:"
+echo "Building LinkIt V4 SMD with configuration:"
 echo "  ARGOS_SMD=${ARGOS_SMD}"
 echo "  ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR}"
 echo ""
@@ -95,14 +92,13 @@ cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
       -DDEBUG_LEVEL=4 \
       -DBOARD=LINKIT \
       -DCMAKE_BUILD_TYPE=Release \
-      -DMODEL=${MODEL} \
       -DARGOS_SMD=${ARGOS_SMD} \
       -DENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR} \
       ../..
 
 make -j 20
 
-TARGET_NAME="LinkIt_${MODEL}_board"
+TARGET_NAME="LinkIt_board"
 
 # Check if build succeeded
 if [ ! -f "${TARGET_NAME}.elf" ]; then
@@ -121,7 +117,7 @@ echo "✓ Build succeeded!"
 echo ""
 
 # Bootloader path
-BOOTLOADER_HEX="../../bootloader/gentracker_secure_bootloader/linkitv4_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex"
+BOOTLOADER_HEX="../../bootloader/secure_bootloader/linkitv4_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex"
 SOFTDEVICE_HEX="../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/hex/s140_nrf52_7.2.0_softdevice.hex"
 KEY_FILE="../../nrfutil_pkg_key.pem"
 

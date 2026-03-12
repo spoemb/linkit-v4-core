@@ -12,7 +12,7 @@
     // =========================================================================
     "options": {
         "env": {
-            "PATH": "/home/schade/tools/gcc-arm-none-eabi-10.3-2021.10/bin:/home/schade/.nrfutil/bin:${env:PATH}"
+            "PATH": "${env:ARM_TOOLCHAIN_PATH}:${env:NRFUTIL_PATH}:${env:PATH}"
         }
     },
     "tasks": [
@@ -38,7 +38,7 @@
 		{
 			"type": "shell",
 			"label": "LINKIT: clean build",
-			"command": "rm -rf ports/nrf52840/build/CORE && ./scripts/build_core.sh",
+			"command": "rm -rf ports/nrf52840/build/LINKIT && ./scripts/build_core.sh",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -51,7 +51,7 @@
 		{
 			"type": "shell",
 			"label": "LINKIT: flash",
-			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/build/CORE/LinkIt_CORE_board_merged-*.hex --sectorerase && nrfjprog -f nrf52 --reset",
+			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/build/LINKIT/LinkIt_board_merged-*.hex --sectorerase && nrfjprog -f nrf52 --reset",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -67,7 +67,7 @@
 		{
 			"type": "shell",
 			"label": "LinkItV4-SMD: clean build (Debug)",
-			"command": "rm -rf ports/nrf52840/build/LINKIT_SMD && mkdir -p ports/nrf52840/build/LINKIT_SMD && cd ports/nrf52840/build/LINKIT_SMD && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=LINKIT -DCMAKE_BUILD_TYPE=Debug -DMODEL=UW -DARGOS_SMD=ON -DENABLE_AXL_SENSOR=ON ../.. && make -j20",
+			"command": "rm -rf ports/nrf52840/build/LINKIT_SMD && mkdir -p ports/nrf52840/build/LINKIT_SMD && cd ports/nrf52840/build/LINKIT_SMD && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=LINKIT -DCMAKE_BUILD_TYPE=Debug -DARGOS_SMD=ON -DENABLE_AXL_SENSOR=ON ../.. && make -j20",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -81,7 +81,7 @@
 			"type": "shell",
 			"label": "LinkItV4-SMD: flash (Debug)",
 			"detail": "Flash Debug build with SoftDevice (no bootloader)",
-			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/drivers/nRF5_SDK_17.0.2/components/softdevice/s140/hex/s140_nrf52_7.2.0_softdevice.hex --sectorerase && nrfjprog -f nrf52 --program ports/nrf52840/build/LINKIT_SMD/LinkIt_UW_board.hex --sectorerase && nrfjprog -f nrf52 --reset",
+			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/drivers/nRF5_SDK_17.0.2/components/softdevice/s140/hex/s140_nrf52_7.2.0_softdevice.hex --sectorerase && nrfjprog -f nrf52 --program ports/nrf52840/build/LINKIT_SMD/LinkIt_board.hex --sectorerase && nrfjprog -f nrf52 --reset",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -97,7 +97,7 @@
 		{
 			"type": "shell",
 			"label": "LinkItV4-LoRa: clean build (Debug)",
-			"command": "rm -rf ports/nrf52840/build/LINKIT_LORA && mkdir -p ports/nrf52840/build/LINKIT_LORA && cd ports/nrf52840/build/LINKIT_LORA && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=LINKIT -DCMAKE_BUILD_TYPE=Debug -DMODEL=UW -DLORA_RAK3172=ON -DENABLE_AXL_SENSOR=ON -DGPS_FAKE_POSITION=1 ../.. && make -j20",
+			"command": "rm -rf ports/nrf52840/build/LINKIT_LORA && mkdir -p ports/nrf52840/build/LINKIT_LORA && cd ports/nrf52840/build/LINKIT_LORA && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=LINKIT -DCMAKE_BUILD_TYPE=Debug -DLORA_RAK3172=ON -DENABLE_AXL_SENSOR=ON -DGPS_FAKE_POSITION=1 ../.. && make -j20",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -111,7 +111,7 @@
 			"type": "shell",
 			"label": "LinkItV4-LoRa: flash (Debug)",
 			"detail": "Flash Debug build with SoftDevice (no bootloader)",
-			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/drivers/nRF5_SDK_17.0.2/components/softdevice/s140/hex/s140_nrf52_7.2.0_softdevice.hex --sectorerase && nrfjprog -f nrf52 --program ports/nrf52840/build/LINKIT_LORA/LinkIt_UW_board.hex --sectorerase && nrfjprog -f nrf52 --reset",
+			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/drivers/nRF5_SDK_17.0.2/components/softdevice/s140/hex/s140_nrf52_7.2.0_softdevice.hex --sectorerase && nrfjprog -f nrf52 --program ports/nrf52840/build/LINKIT_LORA/LinkIt_board.hex --sectorerase && nrfjprog -f nrf52 --reset",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -127,7 +127,7 @@
 		{
 			"type": "shell",
 			"label": "RSPB: build (Debug)",
-			"command": "mkdir -p ports/nrf52840/build/RSPB && cd ports/nrf52840/build/RSPB && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=RSPB -DCMAKE_BUILD_TYPE=Debug -DMODEL=CORE -DARGOS_SMD=ON -DENABLE_PRESSURE_SENSOR=ON -DENABLE_AXL_SENSOR=ON -DGPS_FAKE_POSITION=0 ../.. && make -j20",
+			"command": "mkdir -p ports/nrf52840/build/RSPB && cd ports/nrf52840/build/RSPB && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=RSPB -DCMAKE_BUILD_TYPE=Debug -DARGOS_SMD=ON -DENABLE_PRESSURE_SENSOR=ON -DENABLE_AXL_SENSOR=ON -DGPS_FAKE_POSITION=0 ../.. && make -j20",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -140,7 +140,7 @@
 		{
 			"type": "shell",
 			"label": "RSPB: clean build (Debug)",
-			"command": "rm -rf ports/nrf52840/build/RSPB && mkdir -p ports/nrf52840/build/RSPB && cd ports/nrf52840/build/RSPB && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=RSPB -DCMAKE_BUILD_TYPE=Debug -DMODEL=CORE -DARGOS_SMD=ON -DENABLE_PRESSURE_SENSOR=ON -DENABLE_AXL_SENSOR=ON -DGPS_FAKE_POSITION=0 ../.. && make -j20",
+			"command": "rm -rf ports/nrf52840/build/RSPB && mkdir -p ports/nrf52840/build/RSPB && cd ports/nrf52840/build/RSPB && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=RSPB -DCMAKE_BUILD_TYPE=Debug -DARGOS_SMD=ON -DENABLE_PRESSURE_SENSOR=ON -DENABLE_AXL_SENSOR=ON -DGPS_FAKE_POSITION=0 ../.. && make -j20",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -180,7 +180,7 @@
 			"type": "shell",
 			"label": "RSPB: flash (Debug)",
 			"detail": "Flash Debug build with SoftDevice (no bootloader)",
-			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/drivers/nRF5_SDK_17.0.2/components/softdevice/s140/hex/s140_nrf52_7.2.0_softdevice.hex --sectorerase && nrfjprog -f nrf52 --program ports/nrf52840/build/RSPB/LinkIt_RSPB_CORE_board.hex --sectorerase && nrfjprog -f nrf52 --reset",
+			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/drivers/nRF5_SDK_17.0.2/components/softdevice/s140/hex/s140_nrf52_7.2.0_softdevice.hex --sectorerase && nrfjprog -f nrf52 --program ports/nrf52840/build/RSPB/LinkIt_RSPB_board.hex --sectorerase && nrfjprog -f nrf52 --reset",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -193,7 +193,7 @@
 		{
 			"type": "shell",
 			"label": "RSPB: flash (merged)",
-			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/build/RSPB/LinkIt_RSPB_CORE_board_merged-*.hex --sectorerase && nrfjprog -f nrf52 --reset",
+			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/build/RSPB/LinkIt_RSPB_board_merged-*.hex --sectorerase && nrfjprog -f nrf52 --reset",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -207,7 +207,7 @@
 			"type": "shell",
 			"label": "RSPB: flash (app only)",
 			"detail": "Flash application without bootloader - use for development when bootloader is already on device",
-			"command": "nrfjprog -f nrf52 --program ports/nrf52840/build/RSPB/LinkIt_RSPB_CORE_board-*.hex --sectorerase && nrfjprog -f nrf52 --reset",
+			"command": "nrfjprog -f nrf52 --program ports/nrf52840/build/RSPB/LinkIt_RSPB_board-*.hex --sectorerase && nrfjprog -f nrf52 --reset",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -226,7 +226,7 @@
 			"command": "make mergehex",
 			"args": [],
 			"options": {
-				"cwd": "${workspaceFolder}/ports/nrf52840/bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc"
+				"cwd": "${workspaceFolder}/ports/nrf52840/bootloader/secure_bootloader/linkitv4_v1.0/armgcc"
 			},
 			"problemMatcher": [
 				"$gcc"
@@ -236,10 +236,10 @@
 		{
 			"type": "shell",
 			"label": "Bootloader LINKIT: clean build",
-			"command": "rm -rf ${workspaceFolder}/ports/nrf52840/bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc/_build && make mergehex",
+			"command": "rm -rf ${workspaceFolder}/ports/nrf52840/bootloader/secure_bootloader/linkitv4_v1.0/armgcc/_build && make mergehex",
 			"args": [],
 			"options": {
-				"cwd": "${workspaceFolder}/ports/nrf52840/bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc"
+				"cwd": "${workspaceFolder}/ports/nrf52840/bootloader/secure_bootloader/linkitv4_v1.0/armgcc"
 			},
 			"problemMatcher": [
 				"$gcc"
@@ -249,7 +249,7 @@
 		{
 			"type": "shell",
 			"label": "Bootloader LINKIT: flash",
-			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex --sectoranduicrerase && nrfjprog -f nrf52 --reset",
+			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/bootloader/secure_bootloader/linkitv4_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex --sectoranduicrerase && nrfjprog -f nrf52 --reset",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -265,7 +265,7 @@
 			"command": "make mergehex",
 			"args": [],
 			"options": {
-				"cwd": "${workspaceFolder}/ports/nrf52840/bootloader/gentracker_secure_bootloader/rspbtracker_v1.0/armgcc"
+				"cwd": "${workspaceFolder}/ports/nrf52840/bootloader/secure_bootloader/rspbtracker_v1.0/armgcc"
 			},
 			"problemMatcher": [
 				"$gcc"
@@ -275,10 +275,10 @@
 		{
 			"type": "shell",
 			"label": "Bootloader RSPB: clean build",
-			"command": "rm -rf ${workspaceFolder}/ports/nrf52840/bootloader/gentracker_secure_bootloader/rspbtracker_v1.0/armgcc/_build && make mergehex",
+			"command": "rm -rf ${workspaceFolder}/ports/nrf52840/bootloader/secure_bootloader/rspbtracker_v1.0/armgcc/_build && make mergehex",
 			"args": [],
 			"options": {
-				"cwd": "${workspaceFolder}/ports/nrf52840/bootloader/gentracker_secure_bootloader/rspbtracker_v1.0/armgcc"
+				"cwd": "${workspaceFolder}/ports/nrf52840/bootloader/secure_bootloader/rspbtracker_v1.0/armgcc"
 			},
 			"problemMatcher": [
 				"$gcc"
@@ -288,7 +288,7 @@
 		{
 			"type": "shell",
 			"label": "Bootloader RSPB: flash",
-			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/bootloader/gentracker_secure_bootloader/rspbtracker_v1.0/armgcc/_build/rspb_bootloader_v1_linkit_merged.hex --sectoranduicrerase && nrfjprog -f nrf52 --reset",
+			"command": "nrfjprog --recover && nrfjprog -f nrf52 --program ports/nrf52840/bootloader/secure_bootloader/rspbtracker_v1.0/armgcc/_build/rspb_bootloader_v1_linkit_merged.hex --sectoranduicrerase && nrfjprog -f nrf52 --reset",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -330,7 +330,7 @@
 		{
 			"type": "shell",
 			"label": "Unit Tests: run",
-			"command": "cd tests/build && ln -sf ../data . && ./CLSGenTrackerTests -v",
+			"command": "cd tests/build && ln -sf ../data . && ./TrackerTests -v",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -411,6 +411,31 @@
 			"type": "shell",
 			"label": "Turtle Simulation: open latest report",
 			"command": "xdg-open tests/reports/turtle_simulation_latest.html || open tests/reports/turtle_simulation_latest.html || start tests/reports/turtle_simulation_latest.html",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [],
+			"group": "none"
+		},
+		// =====================================================================
+		// Documentation Tasks
+		// =====================================================================
+		{
+			"type": "shell",
+			"label": "Documentation: build (Doxygen)",
+			"command": "doxygen Doxyfile",
+			"args": [],
+			"options": {
+				"cwd": "${workspaceFolder}/docs"
+			},
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"type": "shell",
+			"label": "Documentation: open",
+			"command": "xdg-open docs/doxygen_output/html/index.html || open docs/doxygen_output/html/index.html || start docs/doxygen_output/html/index.html",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"

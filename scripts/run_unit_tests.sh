@@ -20,7 +20,7 @@ echo -e "${BLUE}========================================${NC}"
 echo ""
 
 # Build tests if needed
-if [ ! -f "$BUILD_DIR/CLSGenTrackerTests" ]; then
+if [ ! -f "$BUILD_DIR/TrackerTests" ]; then
     echo -e "${YELLOW}Building tests...${NC}"
     mkdir -p "$BUILD_DIR"
     cd "$BUILD_DIR"
@@ -38,7 +38,7 @@ echo ""
 
 # Run tests with verbose output and capture exit code
 set +e
-OUTPUT=$("./CLSGenTrackerTests" -v 2>&1)
+OUTPUT=$("./TrackerTests" -v 2>&1)
 EXIT_CODE=$?
 set -e
 

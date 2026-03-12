@@ -7,7 +7,7 @@
         {
             "name": "Debug Application",
             "cwd": "${workspaceFolder}",
-            "executable": "ports/nrf52840/build/CORE/LinkIt_CORE_board.elf",
+            "executable": "ports/nrf52840/build/LINKIT/LinkIt_board.elf",
             "request": "launch",
             "type": "cortex-debug",
             "runToEntryPoint": "main",
@@ -30,7 +30,7 @@
         {
             "name": "Debug Application (attach)",
             "cwd": "${workspaceFolder}",
-            "executable": "ports/nrf52840/build/CORE/LinkIt_CORE_board.elf",
+            "executable": "ports/nrf52840/build/LINKIT/LinkIt_board.elf",
             "request": "attach",
             "type": "cortex-debug",
             "servertype": "jlink",

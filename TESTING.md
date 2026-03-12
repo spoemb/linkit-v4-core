@@ -42,7 +42,7 @@ cmake .. -DCMAKE_BUILD_TYPE=Debug
 make -j$(nproc)
 
 # Exécuter les tests
-./CLSGenTrackerTests -v
+./TrackerTests -v
 ```
 
 ## 🔒 Hook Pre-Commit

@@ -104,45 +104,20 @@ protected:
 		/* ARGOS_POWER */ BaseArgosPower::POWER_350_MW,
 		/* TR_NOM */ 60U,
 
-#if MODEL_SB
-		/* ARGOS_MODE */ BaseArgosMode::PASS_PREDICTION,
-#else
 		/* ARGOS_MODE */ BaseArgosMode::LEGACY,
-#endif
-
-#if MODEL_SB
-		/* NTRY_PER_MESSAGE */ 6U,
-#else
 		/* NTRY_PER_MESSAGE */ 0U,
-#endif
 		/* DUTY_CYCLE */ 0U,
 		/* GNSS_EN */ (bool)true,
-#if MODEL_SB
-		/* DLOC_ARG_NOM */ 60*60U,
-#else
 		/* DLOC_ARG_NOM */ 10*60U,
-#endif
 
-#if MODEL_UW
-		/* ARGOS_DEPTH_PILE */ BaseDepthPile::DEPTH_PILE_1,
-#else
 		/* ARGOS_DEPTH_PILE */ BaseDepthPile::DEPTH_PILE_16,
-#endif
 		/* _RESERVED_20 */ 0U,
 		/* GLONASS_CONST_SELECT */ 0U, // Not implemented
 		/* GNSS_HDOPFILT_EN */ (bool)true,
 		/* GNSS_HDOPFILT_THR */ 2U,
-#if MODEL_UW
-		/* GNSS_ACQ_TIMEOUT */ 240U,
-#else
 		/* GNSS_ACQ_TIMEOUT */ 120U,
-#endif
 		/* GNSS_NTRY */ 0U, // Not implemented
-#if MODEL_UW
-		/* UNDERWATER_EN */ (bool)true,
-#else
 		/* UNDERWATER_EN */ (bool)false,
-#endif
 		/* DRY_TIME_BEFORE_TX */ 0U,
 		/* SAMPLING_UNDER_FREQ */ 10U,
 		/* LB_EN */ (bool)false,
@@ -189,17 +164,8 @@ protected:
 		/* ZONE_ARGOS_DEPTH_PILE */ BaseDepthPile::DEPTH_PILE_1,
 		/* _RESERVED_70 */ BaseArgosPower::POWER_350_MW,
 
-#if MODEL_SB
-		/* ZONE_ARGOS_REPETITION_SECONDS */ 60U,
-#else
 		/* ZONE_ARGOS_REPETITION_SECONDS */ 240U,
-#endif
-
-#if MODEL_SB
-		/* ZONE_ARGOS_MODE */ BaseArgosMode::PASS_PREDICTION,
-#else
 		/* ZONE_ARGOS_MODE */ BaseArgosMode::LEGACY,
-#endif
 
 		/* ZONE_ARGOS_DUTY_CYCLE */ 0xFFFFFFU,
 		/* ZONE_ARGOS_NTRY_PER_MESSAGE */ 0U,
@@ -224,11 +190,7 @@ protected:
 		/* DEVICE_DECID */ 0U,
 		/* GNSS_TRIGGER_ON_SURFACED */ (bool)true,
 		/* GNSS_TRIGGER_ON_AXL_WAKEUP */ (bool)false,
-#if MODEL_UW
-		/* UNDERWATER_DETECT_SOURCE */ BaseUnderwaterDetectSource::SWS_GNSS,
-#else
 		/* UNDERWATER_DETECT_SOURCE */ BaseUnderwaterDetectSource::SWS,
-#endif
 		/* [97] UNDERWATER_DETECT_THRESH */ (double)1.1,
 		/* [98] PH_SENSOR_ENABLE */ (bool)false,
 		/* [99] PH_SENSOR_PERIODIC */ 0U,
@@ -276,11 +238,7 @@ protected:
 		/* UW_GNSS_WET_SAMPLING */ 4U * 3600U,
 		/* UW_GNSS_MAX_SAMPLES */ 10U,
 		/* UW_GNSS_MIN_DRY_SAMPLES */ 1U,
-#if MODEL_UW
-		/* UW_GNSS_DETECT_THRESH */ 2U,
-#else
 		/* UW_GNSS_DETECT_THRESH */ 1U,
-#endif
 		/* [145] LB_CRITICAL_THRESH */ 5U,
 		/* [146] PRESSURE_SENSOR_LOGGING_MODE */ BasePressureSensorLoggingMode::ALWAYS,
 		/* [147] GNSS_TRIGGER_COLD_START_ON_SURFACED */ (bool)false,

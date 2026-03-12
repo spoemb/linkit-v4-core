@@ -76,7 +76,7 @@ BUZZER_ENABLE=${BUZZER_ENABLE:-0}
 ### From Command Line:
 ```bash
 # Build bootloader first
-cd ports/nrf52840/bootloader/gentracker_secure_bootloader/gentracker_v1.0/armgcc
+cd ports/nrf52840/bootloader/secure_bootloader/linkitv4_v1.0/armgcc
 make mergehex
 
 # Then build core

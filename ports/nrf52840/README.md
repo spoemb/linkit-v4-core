@@ -1,23 +1,33 @@
-# GenTracker Application
+# LinkIt V4 Application
 
 ## How to build
-The GenTracker application project uses CMake and the arm-none-eabi-gcc compiler.
-The instructions below describe how to build and flash this application.
 
-### Debug Version
-```
-cmake -DCMAKE_TOOLCHAIN_FILE=toolchain_arm_gcc_nrf52.cmake -DCMAKE_BUILD_TYPE=Debug -DDEBUG_LEVEL=4 -DBOARD=LINKIT -DMODEL=<CORE|SB|UW> .
-make
+The LinkIt V4 application project uses CMake and the arm-none-eabi-gcc compiler.
+
+See [docs/2-Building.md](../../docs/2-Building.md) for full build instructions, or use the build scripts in `scripts/`.
+
+### Quick build
+
+```bash
+# From project root
+./scripts/build_core.sh          # LinkIt V4 KIM
+./scripts/build_linkitv4_smd.sh  # LinkIt V4 SMD
+./scripts/build_linkitv4_lora.sh # LinkIt V4 LoRa
+./scripts/build_rspb.sh          # RSPB
 ```
 
-### Release Version
-```
-cmake -DCMAKE_TOOLCHAIN_FILE=toolchain_arm_gcc_nrf52.cmake -DCMAKE_BUILD_TYPE=Release -DBOARD=LINKIT -DMODEL=<CORE|SB|UW> .
-make
+### Manual CMake build
+
+```bash
+mkdir -p build/LINKIT && cd build/LINKIT
+cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
+  -DCMAKE_BUILD_TYPE=Debug -DDEBUG_LEVEL=4 -DBOARD=LINKIT ../..
+make -j$(nproc)
 ```
 
 ## How to flash the firmware in DFU mode
-With the device connected via USB run the following command
+
+With the device connected via USB:
 ```
 make dfu_app
 ```

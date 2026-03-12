@@ -82,36 +82,16 @@ else()
     set(ENABLE_AXL_SENSOR 0)
 endif()
 
-if(${MODEL} MATCHES SB OR ${MODEL} MATCHES UW OR ${MODEL} MATCHES CORE)
-    set(MODEL_SB 0)
-    set(MODEL_UW 0)
-    set(MODEL_CORE 0)
-    set(DEVICE_MODEL "Linkit ${MODEL}")
-    set(HAS_WCHG 0)
-    if(${MODEL} MATCHES SB)
-        set(MODEL_SB 1)
-    elseif(${MODEL} MATCHES UW)
-        set(MODEL_UW 1)
-	    set(HAS_WCHG 1)
-    elseif(${MODEL} MATCHES CORE)
-        set(MODEL_CORE 1)
-	    set(HAS_WCHG 1)
-    endif()
-else()
-    message(FATAL_ERROR "MODEL must be one of {SB, CORE, UW}")
-endif()
-
 # Fake GPS position for indoor testing (simulates fix at Saint-Paul, Reunion)
 if(NOT DEFINED GPS_FAKE_POSITION)
     set(GPS_FAKE_POSITION 0)
 endif()
 
 if(${BOARD} MATCHES RSPB)
-    set(TARGET_NAME ${PROJECT_NAME}_RSPB_${MODEL}_board)
+    set(TARGET_NAME ${PROJECT_NAME}_RSPB_board)
+    set(DEVICE_MODEL "RSPB")
     set(BOARD_DIR "${PROJ_DIR}/bsp/rspbtracker_v1.0")
-    set(DEVICE_MODEL "RSPB ${MODEL}")
-    set(HAS_WCHG 0)
-    set(BOOTLOADER "bootloader/gentracker_secure_bootloader/rspbtracker_v1.0/armgcc/_build/rspb_bootloader_v1_linkit_merged.hex")
+    set(BOOTLOADER "bootloader/secure_bootloader/rspbtracker_v1.0/armgcc/_build/rspb_bootloader_v1_linkit_merged.hex")
     set(ENABLE_THERMISTOR_SENSOR 1)
     # TPL5111 external wakeup timer support
     set(EXTERNAL_WAKEUP 1)
@@ -126,7 +106,8 @@ if(${BOARD} MATCHES RSPB)
     endif()
     set(LORA_RAK3172_ENABLED 0)
 else()
-    set(TARGET_NAME ${PROJECT_NAME}_${MODEL}_board)
+    set(TARGET_NAME ${PROJECT_NAME}_board)
+    set(DEVICE_MODEL "LinkIt V4")
     set(BOARD_DIR "${PROJ_DIR}/bsp/linkitv4_v1.0")
     if(ARGOS_SMD)
         set(ARGOS_SMD_ENABLED 1)
@@ -138,7 +119,7 @@ else()
     else()
         set(LORA_RAK3172_ENABLED 0)
     endif()
-    set(BOOTLOADER "bootloader/gentracker_secure_bootloader/linkitv4_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex")
+    set(BOOTLOADER "bootloader/secure_bootloader/linkitv4_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex")
 endif()
 
 if(NOT DEFINED DEBUG_LEVEL)
@@ -478,10 +459,6 @@ endif()
 target_compile_definitions(${TARGET_NAME} PRIVATE
     Release=0
     Debug=1
-    HAS_WCHG=${HAS_WCHG}
-    MODEL_SB=${MODEL_SB}
-    MODEL_UW=${MODEL_UW}
-    MODEL_CORE=${MODEL_CORE}
     $<$<BOOL:${GPS_FAKE_POSITION}>:GPS_FAKE_POSITION>
     ENABLE_CAM_SENSOR=${ENABLE_CAM_SENSOR}
     ENABLE_BUZZER=${ENABLE_BUZZER}
