@@ -2,7 +2,10 @@
 #include "argos_tx_service.hpp"
 #include "scheduler.hpp"
 #include "pmu.hpp"
+#include "rgb_led.hpp"
 #include <cmath>
+
+extern RGBLed *status_led;
 
 extern Scheduler *system_scheduler;
 
@@ -1052,10 +1055,16 @@ std::string DTEHandler::SWSTST_REQ(int error_code, std::vector<BaseType>& arg_li
 					(unsigned int)st.observed_peak));
 			}
 		});
+		SWSAnalogService::set_on_test_stop([]() {
+			// Restore normal LED: flash blue (ConfigNotConnected default)
+			if (status_led)
+				status_led->flash(RGBLedColor::BLUE);
+		});
 		SWSAnalogService::start_test_mode();
 	} else {
 		SWSAnalogService::stop_test_mode();
 		SWSAnalogService::clear_status_notify();
+		SWSAnalogService::clear_on_test_stop();
 	}
 
 	unsigned int running = SWSAnalogService::is_test_running() ? 1U : 0U;

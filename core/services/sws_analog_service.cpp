@@ -3,12 +3,16 @@
 #include "gpio.hpp"
 #include "pmu.hpp"
 #include "nrfx_saadc.h"
+#include "rgb_led.hpp"
 
 #ifndef CPPUTEST
 #include "crc16.h"
 #else
 #define crc16_compute(x, y, z) 0xFFFF
 #endif
+
+// LED for test mode visual feedback
+extern RGBLed *status_led;
 
 // ADC constants
 #define ADC_REFERENCE_V 0.6f
@@ -98,6 +102,7 @@ SWSAnalogService::Status SWSAnalogService::m_status = {};
 SWSAnalogService* SWSAnalogService::s_instance = nullptr;
 bool SWSAnalogService::m_test_mode = false;
 std::function<void(const SWSAnalogService::Status&)> SWSAnalogService::m_status_notify;
+std::function<void()> SWSAnalogService::m_on_test_stop;
 
 SWSAnalogService::Status SWSAnalogService::get_status() {
     return m_status;
@@ -108,6 +113,13 @@ void SWSAnalogService::start_test_mode() {
     if (s_instance) {
         DEBUG_INFO("SWSAnalog: Test mode started");
         s_instance->start();
+        // Set initial LED to reflect current state
+        if (status_led) {
+            if (s_instance->m_current_state)
+                status_led->set(RGBLedColor::BLUE);    // UNDERWATER
+            else
+                status_led->set(RGBLedColor::YELLOW);  // SURFACE
+        }
     }
 }
 
@@ -117,6 +129,9 @@ void SWSAnalogService::stop_test_mode() {
         DEBUG_INFO("SWSAnalog: Test mode stopped");
     }
     m_test_mode = false;
+    // Restore normal LED behavior
+    if (m_on_test_stop)
+        m_on_test_stop();
 }
 
 bool SWSAnalogService::is_test_running() {
@@ -129,6 +144,14 @@ void SWSAnalogService::set_status_notify(std::function<void(const Status&)> fn) 
 
 void SWSAnalogService::clear_status_notify() {
     m_status_notify = nullptr;
+}
+
+void SWSAnalogService::set_on_test_stop(std::function<void()> fn) {
+    m_on_test_stop = fn;
+}
+
+void SWSAnalogService::clear_on_test_stop() {
+    m_on_test_stop = nullptr;
 }
 
 // SAADC event handler (required but not used for blocking mode)
@@ -839,6 +862,14 @@ bool SWSAnalogService::detector_state() {
                    new_state ? "UW" : "SURF",
                    raw_value, filtered_value,
                    m_calib.threshold_current, m_calib.threshold_air, m_calib.threshold_water);
+
+        // Test mode: override LED to show SWS state
+        if (m_test_mode && status_led) {
+            if (new_state)
+                status_led->set(RGBLedColor::BLUE);    // UNDERWATER
+            else
+                status_led->set(RGBLedColor::YELLOW);  // SURFACE
+        }
     }
 
     // === 11. STATUS PUSH ===

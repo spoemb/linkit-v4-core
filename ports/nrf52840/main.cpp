@@ -388,10 +388,10 @@ int main()
 #endif
 		NrfI2C::uninit();
 	}
-	bool is_linkit_v3_v4 = (PMU::hardware_version() == "LinkIt V3") || (PMU::hardware_version() == "LinkIt V4");
+	bool is_linkit_v4 = (PMU::hardware_version() == "LinkIt V4");
 
-	if ((is_linkit_v3_v4 && PMU::reset_cause() == "Pseudo Power On Reset") ||
-		(!is_linkit_v3_v4 && (PMU::reset_cause() == "Power On Reset" ||
+	if ((is_linkit_v4 && PMU::reset_cause() == "Pseudo Power On Reset") ||
+		(!is_linkit_v4 && (PMU::reset_cause() == "Power On Reset" ||
 				PMU::reset_cause() == "Pseudo Power On Reset"))) {
 
 		volatile bool power_on_ready = false;

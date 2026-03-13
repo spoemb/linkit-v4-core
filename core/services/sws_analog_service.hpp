@@ -80,6 +80,10 @@ public:
     static void set_status_notify(std::function<void(const Status&)> fn);
     static void clear_status_notify();
 
+    // Callback invoked when test mode stops (to restore normal LED behavior)
+    static void set_on_test_stop(std::function<void()> fn);
+    static void clear_on_test_stop();
+
 #ifdef CPPUTEST
     // Reset static calibration data for test isolation
     static void reset_noinit_data() {
@@ -132,6 +136,7 @@ private:
     static SWSAnalogService* s_instance;
     static bool m_test_mode;
     static std::function<void(const Status&)> m_status_notify;
+    static std::function<void()> m_on_test_stop;
     // Calibration data structure (stored in noinit RAM to survive resets)
     struct CalibrationData {
         uint16_t threshold_air;          // Baseline ADC value in air (low conductivity)
