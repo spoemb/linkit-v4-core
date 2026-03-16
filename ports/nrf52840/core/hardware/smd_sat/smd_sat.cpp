@@ -1162,7 +1162,12 @@ void SmdSat::state_transmit_pending_exit() {
 
 void SmdSat::state_transmit_pending() {
 	if (m_tx_buffer.size()) {
-		initiate_tx();
+		if (!initiate_tx()) {
+			DEBUG_ERROR("SmdSat::%s: initiate_tx failed, aborting TX", __func__);
+			m_tx_buffer.clear();
+			SMD_STATE_CHANGE(transmit_pending, error);
+			return;
+		}
         notify(KineisEventTxStarted({}));
         SMD_STATE_CHANGE(transmit_pending, transmitting);
 	} else if (--m_state_counter == 0) {
@@ -1229,7 +1234,7 @@ void SmdSat::set_frequency(double freq_mhz) {
 	m_tx_freq = freq_mhz;
 }
 
-void SmdSat::initiate_tx() {
+bool SmdSat::initiate_tx() {
 	DEBUG_TRACE("SmdSat::%s: Size: %u", __func__, m_tx_buffer.size());
 
 	uint16_t size = m_tx_buffer.size();
@@ -1237,7 +1242,7 @@ void SmdSat::initiate_tx() {
 	// Step 1: WRITE_TX_REQ (0x14) - Prepare for TX
 	if (!send_command_auto(SMDSAT_CMD_WRITE_TX_REQ)) {
 		DEBUG_ERROR("SmdSat::%s: TX REQ failed", __func__);
-		return;
+		return false;
 	}
 
 	// Step 2: WRITE_TX_SIZE (0x15) - Send size (little-endian, matching Zephyr)
@@ -1246,7 +1251,7 @@ void SmdSat::initiate_tx() {
 	size_data[1] = (size >> 8) & 0xFF;
 	if (!send_command_auto(SMDSAT_CMD_WRITE_TX_SIZE, size_data, 2)) {
 		DEBUG_ERROR("SmdSat::%s: TX SIZE failed", __func__);
-		return;
+		return false;
 	}
 
 	// Step 3: WRITE_TX (0x16) - Send actual payload data
@@ -1267,6 +1272,7 @@ void SmdSat::initiate_tx() {
 
 	// Post-TX delay for STM32 async processing (matches Zephyr ARGOS_SPI_POST_TX_DELAY_MS)
 	nrf_delay_ms(SMDSAT_SPI_POST_TX_DELAY_MS);
+	return true;
 }
 
 void SmdSat::send(const KineisModulation mode, const KineisPacket& user_payload, const unsigned int payload_length)

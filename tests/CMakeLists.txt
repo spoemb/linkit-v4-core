@@ -312,6 +312,7 @@ target_sources(${TURTLE_SIM_NAME} PRIVATE
     "${ROOT_DIR}/core/services/service.cpp"
     "${ROOT_DIR}/core/filesystem/ota_flash_file_updater.cpp"
     "${ROOT_DIR}/core/services/uwdetector_service.cpp"
+    "${ROOT_DIR}/core/services/sws_analog_service.cpp"
     "${ROOT_DIR}/core/hardware/reed.cpp"
     "${ROOT_DIR}/core/hardware/sensor.cpp"
     "${ROOT_DIR}/core/protocol/dte_commands.cpp"

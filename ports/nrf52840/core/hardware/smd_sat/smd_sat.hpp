@@ -169,7 +169,7 @@ private:
 	void power_off();
 	void power_on();
 
-	void initiate_tx();
+	bool initiate_tx();
 
 	// State machine functionality
 	void state_machine(bool use_scheduler=true);

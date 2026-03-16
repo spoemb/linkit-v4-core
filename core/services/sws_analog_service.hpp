@@ -4,30 +4,13 @@
 #include "uwdetector_service.hpp"
 
 /**
- * @brief SWS Analog Detection Service with Dynamic Threshold
+ * @brief SWS Analog Surface Detection — fast, adaptive, biofouling-resistant
  *
- * This service provides robust saltwater detection using analog ADC readings
- * with auto-calibration and dynamic thresholding to handle varying salinity
- * conditions and environmental drift.
+ * RC charge discrimination via 100nF cap + adaptive delay (100-5000µs).
+ * 5-level surface override (L1-L5) for fast detection even with degraded electrodes.
+ * Auto-calibration of air/water baselines with noinit RAM persistence.
  *
- * Key Features:
- * - Auto-calibration: Learns "air" and "water" baseline values
- * - Dynamic threshold: Adapts to salinity changes over time
- * - Hysteresis: Prevents oscillation at threshold boundary
- * - Temporal filtering: Requires N consecutive samples for confirmation
- * - Safety timeouts: Max dive time and min surface time protection
- * - Persistent calibration: Survives device resets (stored in noinit RAM)
- * - 3-tier rapid transition detection for <2s surface detection
- * - Biofouling adaptation (air baseline, water baseline, trend, variance)
- *
- * @section test_mode Test Mode (DTE SWSTST command)
- * Test mode allows standalone SWS testing via DTE, bypassing configuration.
- * When active, the RGB status LED provides visual feedback:
- * - BLUE: underwater detected (state transition)
- * - YELLOW: surface detected (state transition)
- * - LED off when test mode is stopped
- *
- * @see docs/sws_analog_implementation.md for full algorithm documentation
+ * Test mode (DTE SWSTST): LED BLUE=underwater, YELLOW=surface. Async status push.
  */
 class SWSAnalogService : public UWDetectorService {
 public:
@@ -45,21 +28,19 @@ public:
 
     // Status snapshot for DTE SWSST command (read-only diagnostic)
     struct Status {
-        // Calibration state
         uint16_t threshold_air;       // Current air baseline ADC
         uint16_t threshold_water;     // Current water baseline ADC
         uint16_t threshold_current;   // Active threshold ADC
         uint16_t hysteresis;          // Hysteresis value (ADC counts)
-        // Live ADC
         uint16_t last_raw_adc;        // Last raw ADC reading
         uint16_t last_filtered_adc;   // Last filtered ADC reading
-        // State
         bool     is_calibrated;       // Calibration valid
         bool     is_underwater;       // Current state (true=underwater)
         uint32_t time_in_state_sec;   // Seconds in current state
         uint8_t  surface_level;       // Last detection level (0=none, 1-5=L1-L5)
         uint16_t contrast_x10;       // Water/air contrast ratio x10 (e.g. 47 = 4.7x)
-        uint16_t observed_peak;      // Highest ADC value actually observed (dynamic cap)
+        uint16_t observed_peak;      // Highest ADC value actually observed
+        uint32_t sample_delay_us;    // Current adaptive RC charge delay (µs)
     };
 
     static Status get_status();
@@ -213,10 +194,11 @@ private:
     uint32_t m_min_surface_time_sec;
 
     // New optimized parameters for fast surface detection
-    uint8_t m_threshold_ratio_percent;  // Position of threshold (37% = closer to air)
-    uint8_t m_alpha_percent;            // EMA factor for water baseline (13 = 0.13)
-    uint8_t m_max_samples;              // Samples to confirm dive (1 = immediate)
-    uint8_t m_min_dry_samples;          // Samples to confirm surface (5 = robust)
+    uint8_t m_threshold_ratio_percent;  // Position of threshold (35% = closer to air)
+    uint8_t m_alpha_percent;            // EMA factor for water baseline (19 = 0.19)
+
+    // Adaptive sample delay (in µs) — auto-adjusted based on contrast
+    uint32_t m_sample_delay_us;         // Current delay (100-5000 µs)
 
     /**
      * @brief Read analog ADC value from SWS channel
@@ -261,6 +243,12 @@ private:
      * @return true if value is valid (not saturated or out of range)
      */
     bool is_value_valid(uint16_t value) const;
+
+    /**
+     * @brief Adjust sample delay based on current contrast ratio.
+     * Reduces delay when biofouling degrades contrast, increases when clean.
+     */
+    void adjust_sample_delay();
 
     /**
      * @brief Check if recalibration is needed based on time interval

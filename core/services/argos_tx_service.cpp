@@ -1052,10 +1052,10 @@ void DepthPileManager::notify_peer_event(ServiceEvent& e) {
 		e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
 		GPSLogEntry& entry = std::get<GPSLogEntry>(e.event_data);
 		if (!entry.info.valid) {
-			DEBUG_TRACE("DepthPileManager::notify_peer_event: GNSS cache skipped (invalid fix)");
-			return;
+			DEBUG_WARN("DepthPileManager::notify_peer_event: GNSS cache set (no fix, position invalid)");
+		} else {
+			DEBUG_TRACE("DepthPileManager::notify_peer_event: GNSS cache set");
 		}
-		DEBUG_TRACE("DepthPileManager::notify_peer_event: GNSS cache set");
 		m_gps_cache = entry;
 		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::GNSS_SENSOR);
 	} else if (e.event_source == ServiceIdentifier::ALS_SENSOR &&

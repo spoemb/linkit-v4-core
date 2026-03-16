@@ -31,8 +31,7 @@ extern RGBLed *status_led;
 // Detection tuning
 #define DEFAULT_THRESHOLD_RATIO_PERCENT 35
 #define DEFAULT_ALPHA_PERCENT 19
-#define DEFAULT_MAX_SAMPLES 1
-#define DEFAULT_MIN_DRY_SAMPLES 1
+#define DEFAULT_MIN_DRY_SAMPLES 1        // Immediate surface on threshold crossing
 
 // Water baseline protection
 #define ABSOLUTE_MIN_WATER_ADC 2000
@@ -48,28 +47,28 @@ extern RGBLed *status_led;
 //  All levels require: underwater ≥ 1s AND proximity guard OK
 //
 //  Level 1 - INSTANT (1 sample)
-//    Drop > 5% from recent peak (decaying) → immediate surface
+//    Drop > 4% from recent peak (slow-decaying) → immediate surface
 //    Use case: clean/moderate electrode, sharp water exit
 //
 //  Level 2 - FAST (2 samples)
 //    2 consecutive raw drops, cumulative > 3% → surface
-//    Use case: gradual exit where individual drops < 5%
+//    Use case: gradual exit where individual drops < 3% each
 //
 //  Level 3 - TREND (3+ MA3 decreases)
-//    MA3 decreasing 3+ times, total MA3 drop > 8% → surface
+//    MA3 decreasing 3+ times, total MA3 drop > 4% → surface
 //    Use case: heavy biofouling, very slow drying, noisy signal
 //
 //  Level 4 - ABSOLUTE (variable)
-//    filtered < water_baseline × 85% → surface
-//    Use case: reliable when water baseline is well-calibrated
+//    filtered < water_baseline × 92% → surface
+//    Use case: moderate biofouling, well-calibrated baselines
 //
 //  Level 5 - SAFETY NET (>10s underwater)
-//    Drop from dive peak > 15% → surface
+//    Drop from dive peak > 10% → surface
 //    Use case: fallback when baselines have drifted
 // ═══════════════════════════════════════════════════════
 
 // Level 1
-#define L1_DROP_PERCENT 5              // Drop from recent peak threshold (%)
+#define L1_DROP_PERCENT 4              // Drop from recent peak threshold (%)
 
 // Level 2
 #define L2_DROP_PERCENT 3              // Cumulative 2-sample raw drop (%)
@@ -77,22 +76,35 @@ extern RGBLed *status_led;
 
 // Level 3
 #define L3_MIN_CONSECUTIVE 3           // Consecutive MA3 decreases
-#define L3_DROP_PERCENT 5              // Total MA3 drop from trend start (%)
+#define L3_DROP_PERCENT 4              // Total MA3 drop from trend start (%)
 
 // Level 4
-#define L4_DROP_PERCENT 15             // Drop from water baseline (%)
+#define L4_DROP_PERCENT 8              // Drop from water baseline (%)
 
 // Level 5
-#define L5_DROP_PERCENT 15             // Cumulative drop from peak (%)
+#define L5_DROP_PERCENT 10             // Cumulative drop from peak (%)
 #define L5_MIN_TIME_SEC 10             // Minimum time underwater before L5
 
 // Safety
 #define OVERRIDE_MIN_TIME_SEC 1        // Minimum underwater time before any override
 #define SURFACE_LOCKOUT_DURATION_SEC 30
 
-// Proximity guard: L-overrides blocked if value > water_baseline * this%
-// Prevents false surface detection from normal underwater ADC drift
-#define PROXIMITY_GUARD_PERCENT 95     // Must drop below 95% of peak to allow override
+// Adaptive sample delay (µs)
+#define SAMPLE_DELAY_MIN_US     100    // Floor: below this, ADC values approach noise
+#define SAMPLE_DELAY_MAX_US     5000   // Ceiling: above this, biofouled signals converge
+#define SAMPLE_DELAY_DEFAULT_US 1000   // Default: 1ms (good balance for clean electrode)
+#define CONTRAST_LOW_THRESHOLD  50     // contrast_x10 < 5.0x → reduce delay
+#define CONTRAST_HIGH_THRESHOLD 100    // contrast_x10 > 10.0x → increase delay
+
+// Proximity guard: L-overrides blocked if value > water_baseline * guard%
+// Adaptive: relaxes when contrast is low (biofouling) to allow small-gap detection
+#define PROXIMITY_GUARD_PERCENT 95     // Default: must drop below 95% of peak
+#define PROXIMITY_GUARD_BIOFOULING 99  // Relaxed: when contrast < 5x, allow 1% gap
+
+// Air recalibration cap on L-override: prevents gap collapse from transitional readings.
+// At water exit, filtered value lags (MA2) and can be very close to water baseline.
+// Without cap, air→water gap collapses → threshold_high exceeds water → stuck at surface.
+#define AIR_RECALIB_CAP_PERCENT 85
 
 // Initialize static members
 SWSAnalogService::CalibrationData SWSAnalogService::m_calib;
@@ -183,8 +195,11 @@ void SWSAnalogService::service_init() {
 
     m_threshold_ratio_percent = DEFAULT_THRESHOLD_RATIO_PERCENT;
     m_alpha_percent = DEFAULT_ALPHA_PERCENT;
-    m_max_samples = DEFAULT_MAX_SAMPLES;
-    m_min_dry_samples = DEFAULT_MIN_DRY_SAMPLES;
+
+    // Initialize adaptive sample delay from config (value in ms → convert to µs)
+    m_sample_delay_us = m_enable_sample_delay * 1000;
+    if (m_sample_delay_us < SAMPLE_DELAY_MIN_US) m_sample_delay_us = SAMPLE_DELAY_MIN_US;
+    if (m_sample_delay_us > SAMPLE_DELAY_MAX_US) m_sample_delay_us = SAMPLE_DELAY_MAX_US;
 
     // Validate observed peak ADC from noinit RAM
     uint16_t peak_crc = crc16_compute((const uint8_t *)&m_observed_peak_adc,
@@ -253,22 +268,10 @@ bool SWSAnalogService::service_is_enabled() {
 uint16_t SWSAnalogService::read_analog_sws() {
     nrf_saadc_value_t raw = 0;
 
-    // === FAST-CHARGE DISCRIMINATION ===
-    // The 100nF cap at the ADC pin charges through water resistance:
-    //   Water (R≈10kΩ):  τ = 1ms  → at 2ms: 86% charged → ~2700 ADC
-    //   Wet film (R≈50-100kΩ): τ = 5-10ms → at 2ms: 18-33% → ~570-1000 ADC
-    //   Air (R=∞):       τ = ∞   → at 2ms: 0% → ~0 ADC
-    //
-    // Cap must be discharged before reading. Between samples (1s interval),
-    // the 1MΩ pull-down discharges the cap: τ=100ms, 5τ=500ms → fully discharged.
-
-    // Enable SWS electrode excitation
+    // RC discrimination: 100nF cap charges through water resistance.
+    // Short delay → better contrast between water (τ≈1ms) and wet film (τ≈5-10ms).
     GPIOPins::set(SWS_ENABLE_PIN);
-
-    // Short delay: exploits RC time constant difference between
-    // active water contact (fast charge) and residual wet film (slow charge).
-    // This is the KEY to discriminating wet electrode from submerged.
-    PMU::delay_ms(m_enable_sample_delay);
+    PMU::delay_us(m_sample_delay_us);
 
     nrfx_saadc_init(&BSP::ADC_Inits.config, nrfx_saadc_event_handler_sws);
     nrfx_saadc_channel_init(SWS_ADC, &BSP::ADC_Inits.channel_config[SWS_ADC]);
@@ -458,6 +461,23 @@ bool SWSAnalogService::is_value_valid(uint16_t value) const {
     return (value <= ADC_INVALID_MAX);
 }
 
+void SWSAnalogService::adjust_sample_delay() {
+    if (m_calib.threshold_air == 0) return;
+    uint16_t contrast = (uint16_t)((float)m_calib.threshold_water / (float)m_calib.threshold_air * 10.0f);
+    uint32_t old_delay = m_sample_delay_us;
+    if (contrast < CONTRAST_LOW_THRESHOLD && m_sample_delay_us > SAMPLE_DELAY_MIN_US) {
+        m_sample_delay_us = m_sample_delay_us * 3 / 4;  // -25%
+        if (m_sample_delay_us < SAMPLE_DELAY_MIN_US) m_sample_delay_us = SAMPLE_DELAY_MIN_US;
+    } else if (contrast > CONTRAST_HIGH_THRESHOLD && m_sample_delay_us < SAMPLE_DELAY_MAX_US) {
+        m_sample_delay_us = m_sample_delay_us * 11 / 10;  // +10%
+        if (m_sample_delay_us > SAMPLE_DELAY_MAX_US) m_sample_delay_us = SAMPLE_DELAY_MAX_US;
+    }
+    if (old_delay != m_sample_delay_us) {
+        DEBUG_INFO("SWSAnalog: Adaptive delay %uus -> %uus (contrast=%u.%u)",
+                   old_delay, m_sample_delay_us, contrast/10, contrast%10);
+    }
+}
+
 bool SWSAnalogService::should_recalibrate() const {
     if (m_calib_interval_sec == 0) return false;
     uint64_t elapsed = (PMU::get_timestamp_ms() / 1000) - m_calib.last_calibration_time;
@@ -560,27 +580,24 @@ bool SWSAnalogService::detector_state() {
     // === 2. TIME TRACKING ===
     bool timeout_override = check_safety_timeouts(m_current_state);
 
-    // === 3. LEVEL 1 & 2: FAST RAW DROP DETECTION ===
-    // Uses raw values (not filtered) for maximum speed.
-    // The filter dampens transitions — we need to see the instant change.
-    uint8_t surface_level = 0;  // 0 = no override, 1-5 = detection level
+    // === 3. LEVEL 1 & 2: FAST RAW DROP (uses raw, not filtered, for speed) ===
+    uint8_t surface_level = 0;
 
-    // Proximity guard: if filtered value is still very close to water level,
-    // any drops are just normal underwater noise/drift, NOT a real surface event.
-    // Use max(water_baseline, peak_during_dive) as reference to handle EMA drift.
+    // Proximity guard: blocks L-overrides if still close to water peak.
+    // Adaptive: relaxes to 99% when contrast < 5x (biofouling).
     uint16_t proximity_ref = m_calib.threshold_water;
     if (m_peak_adc_since_underwater > proximity_ref)
         proximity_ref = m_peak_adc_since_underwater;
+    uint16_t contrast_x10 = (m_calib.threshold_air > 0) ?
+        (uint16_t)((float)m_calib.threshold_water / (float)m_calib.threshold_air * 10.0f) : 100;
+    uint8_t guard_pct = (contrast_x10 < 50) ? PROXIMITY_GUARD_BIOFOULING : PROXIMITY_GUARD_PERCENT;
     bool proximity_ok = (proximity_ref == 0) ||
-        (filtered_value < (uint16_t)(proximity_ref * PROXIMITY_GUARD_PERCENT / 100.0f));
+        (filtered_value < (uint16_t)(proximity_ref * guard_pct / 100.0f));
 
     if (m_current_state && prev_raw > 0 && m_time_in_current_state >= OVERRIDE_MIN_TIME_SEC
         && proximity_ok) {
 
-        // LEVEL 1: Drop from recent peak (no consecutive requirement)
-        // Uses m_recent_peak which decays with drift, so only a SUDDEN drop triggers.
-        // Drift: peak decays 5%/sample toward reading → no false trigger.
-        // Real exit: reading drops 5%+ instantly → triggers immediately.
+        // LEVEL 1: Sudden drop from recent peak (decays slowly to follow drift)
         if (m_recent_peak > 0 && raw_value < m_recent_peak) {
             uint16_t peak_drop_pct = (uint16_t)((uint32_t)(m_recent_peak - raw_value) * 100 / m_recent_peak);
             if (peak_drop_pct >= L1_DROP_PERCENT) {
@@ -608,10 +625,7 @@ bool SWSAnalogService::detector_state() {
         m_consecutive_raw_drops = 0;
     }
 
-    // === 4. LEVEL 3: TREND MA3 ===
-    // Computes 3-sample moving average. If each new MA3 is lower than the
-    // previous one → electrode is drying → surface. Smooths noise while
-    // preserving trend information. Optimal for slow biofouling transitions.
+    // === 4. LEVEL 3: TREND MA3 (consecutive MA3 decreases → electrode drying) ===
     m_trend_buffer[m_trend_buffer_idx] = filtered_value;
     m_trend_buffer_idx = (m_trend_buffer_idx + 1) % TREND_MA_SIZE;
     if (m_trend_buffer_count < TREND_MA_SIZE)
@@ -659,15 +673,13 @@ bool SWSAnalogService::detector_state() {
         if (filtered_value > m_peak_adc_since_underwater)
             m_peak_adc_since_underwater = filtered_value;
 
-        // Recent peak: tracks the last high point, slowly decays to follow drift.
-        // If reading > recent_peak → update immediately (new peak)
-        // If reading < recent_peak → decay toward reading (alpha=5% per sample)
-        // This prevents underwater drift from accumulating into a false L1 trigger.
+        // Recent peak: decays 2%/sample toward reading (prevents drift false-trigger)
         if (raw_value > m_recent_peak || m_recent_peak == 0) {
             m_recent_peak = raw_value;
         } else {
-            // Decay: recent_peak moves 5% toward current reading each sample
-            m_recent_peak = (uint16_t)(m_recent_peak * 0.95f + raw_value * 0.05f);
+            // Decay: recent_peak moves 2% toward current reading each sample
+            // Slow decay preserves sensitivity with long sampling periods (10s)
+            m_recent_peak = (uint16_t)(m_recent_peak * 0.98f + raw_value * 0.02f);
         }
     }
 
@@ -694,10 +706,9 @@ bool SWSAnalogService::detector_state() {
         }
     }
 
-    // === 6. SURFACE BASELINE TRACKING ===
-    if (!m_current_state && m_time_in_current_state > MIN_SURFACE_TIME_FOR_ADAPT) {
-        // Only accept readings below threshold (safety: prevents underwater
-        // readings from corrupting air baseline when detection is wrong)
+    // === 6. SURFACE BASELINE TRACKING (blocked during lockout) ===
+    if (!m_current_state && m_time_in_current_state > MIN_SURFACE_TIME_FOR_ADAPT
+        && m_surface_lockout_remaining == 0) {
         if (filtered_value < m_calib.threshold_current) {
             m_surface_readings[m_surface_readings_idx] = filtered_value;
             m_surface_readings_idx = (m_surface_readings_idx + 1) % SURFACE_BUFFER_SIZE;
@@ -721,6 +732,7 @@ bool SWSAnalogService::detector_state() {
                 m_surface_readings_count = 0;
                 m_surface_readings_idx = 0;
                 DEBUG_INFO("SWSAnalog: Air recalib %u -> %u", old, m_calib.threshold_air);
+                adjust_sample_delay();
             }
             else if (avg > (uint16_t)(m_calib.threshold_air * SURFACE_ADAPT_THRESHOLD) &&
                      avg < m_calib.threshold_current) {
@@ -731,6 +743,7 @@ bool SWSAnalogService::detector_state() {
                 m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
                                              sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
                 DEBUG_INFO("SWSAnalog: Adaptive air UP %u -> %u", old, m_calib.threshold_air);
+                adjust_sample_delay();
             }
             else if (avg < (uint16_t)(m_calib.threshold_air * 0.70f)) {
                 // Downward adaptation: air was too high (wet electrode calibration)
@@ -746,6 +759,7 @@ bool SWSAnalogService::detector_state() {
                 m_surface_readings_count = 0;
                 m_surface_readings_idx = 0;
                 DEBUG_INFO("SWSAnalog: Adaptive air DOWN %u -> %u", old, m_calib.threshold_air);
+                adjust_sample_delay();
             }
         }
     } else if (m_current_state) {
@@ -758,10 +772,7 @@ bool SWSAnalogService::detector_state() {
     uint16_t threshold_high = m_calib.threshold_current + m_calib.hysteresis_value;
     uint16_t threshold_low = (m_calib.hysteresis_value >= m_calib.threshold_current)
         ? 0 : m_calib.threshold_current - m_calib.hysteresis_value;
-    // Prevent underflow deadlock: with very low ADC values (e.g. air=5, water=15),
-    // hysteresis can exceed the air-to-threshold gap, making threshold_low ≤ air baseline.
-    // This means no ADC reading at air level can ever cross below threshold_low.
-    // Fix: ensure threshold_low is always above the air baseline.
+    // Prevent underflow: ensure threshold_low stays above air baseline
     if (threshold_low <= m_calib.threshold_air && m_calib.threshold_current > m_calib.threshold_air) {
         threshold_low = m_calib.threshold_air + 1;
     }
@@ -779,7 +790,7 @@ bool SWSAnalogService::detector_state() {
 
         if (m_current_state) {
             m_consecutive_samples++;
-            if (m_consecutive_samples >= m_min_dry_samples)
+            if (m_consecutive_samples >= DEFAULT_MIN_DRY_SAMPLES)
                 new_state = false;
         } else {
             new_state = false;
@@ -795,21 +806,21 @@ bool SWSAnalogService::detector_state() {
         new_state = false;
         m_consecutive_samples = 0;
 
-        // CRITICAL: Recalibrate air baseline to current reading.
-        // When electrode exits water, it's WET and reads much higher than dry air.
-        // Without this, threshold stays too low and next sample re-triggers underwater.
-        // GUARD: Only recalibrate if it won't destroy contrast (new air must be < 80% of water)
+        // Recalibrate air to wet-surface reading, capped at water * AIR_RECALIB_CAP_PERCENT.
+        // At L-detection moment, filtered value may be transitional (still near water).
+        // Without cap, air→water gap collapses → threshold_high > water → stuck at surface.
         uint16_t old_air = m_calib.threshold_air;
-        uint16_t max_air_for_contrast = (uint16_t)(m_calib.threshold_water * 0.80f);
-        if (filtered_value > m_calib.threshold_air * 2 &&
-            filtered_value < max_air_for_contrast) {
-            // Filtered value creates reasonable contrast with water → good surface estimate
-            m_calib.threshold_air = filtered_value;
+        uint16_t max_air_recalib = (uint16_t)(m_calib.threshold_water * (AIR_RECALIB_CAP_PERCENT / 100.0f));
+        uint16_t new_air = (filtered_value < max_air_recalib) ? filtered_value : max_air_recalib;
+        if (new_air > m_calib.threshold_air && new_air < m_calib.threshold_water) {
+            m_calib.threshold_air = new_air;
             update_dynamic_threshold();
             m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
                                          sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
             DEBUG_INFO("SWSAnalog: SURFACE L%u | air recalib %u -> %u | thresh=%u",
                        surface_level, old_air, m_calib.threshold_air, m_calib.threshold_current);
+
+            adjust_sample_delay();
         }
 
         // Enforce minimum surface time to prevent immediate re-trigger
@@ -832,10 +843,16 @@ bool SWSAnalogService::detector_state() {
                    m_calib.threshold_air, m_calib.threshold_water, m_calib.threshold_current);
     }
 
-    // === 9. SURFACE LOCKOUT ===
+    // === 9. SURFACE LOCKOUT (time-based, not sample-count-based) ===
+    // Lockout duration is in seconds; compared against actual time in surface state.
+    // !m_current_state guards against premature clear on the L-override call
+    // (where m_time_in_current_state still reflects the old UW state).
     if (m_surface_lockout_remaining > 0) {
-        m_surface_lockout_remaining--;
-        if (new_state) new_state = false;
+        if (!m_current_state && m_time_in_current_state >= m_surface_lockout_remaining) {
+            m_surface_lockout_remaining = 0;
+        } else if (new_state) {
+            new_state = false;
+        }
     }
 
     // === 10. STATE CHANGE ===
@@ -886,6 +903,7 @@ bool SWSAnalogService::detector_state() {
     m_status.contrast_x10 = (m_calib.threshold_air > 0) ?
         (uint16_t)((float)m_calib.threshold_water / (float)m_calib.threshold_air * 10.0f) : 0;
     m_status.observed_peak = m_observed_peak_adc;
+    m_status.sample_delay_us = m_sample_delay_us;
 
     if (m_test_mode && m_status_notify) {
         m_status_notify(m_status);

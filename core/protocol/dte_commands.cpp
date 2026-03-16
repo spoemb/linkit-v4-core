@@ -1086,6 +1086,16 @@ const DTECommandMap command_map[] = {
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false
+			},
+			{
+				.name = "sample_delay_us",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 0U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
 			}
 		}
 	},

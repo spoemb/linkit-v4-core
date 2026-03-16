@@ -28,6 +28,7 @@ void GPSScheduler::start(std::function<void(ServiceEvent&)> data_notification_ca
     m_is_first_fix_found = false;
     m_is_first_schedule = true;
     m_num_gps_fixes = 0;
+    m_num_discarded_fixes = 0;
     m_is_underwater = false;
 
     reschedule();
@@ -292,8 +293,11 @@ void GPSScheduler::task_process_gnss_data()
 
 void GPSScheduler::gnss_data_callback(GNSSData data) {
     // If we haven't finished processing our last data then ignore this one
-    if (m_gnss_data.pending_data_logging || m_gnss_data.pending_rtc_set)
+    if (m_gnss_data.pending_data_logging || m_gnss_data.pending_rtc_set) {
+        m_num_discarded_fixes++;
+        DEBUG_TRACE("GPSScheduler::gnss_data_callback: fix discarded (busy), total discarded=%u", m_num_discarded_fixes);
         return;
+    }
 
     // Set guard flag BEFORE writing data to prevent re-entrant overwrites
     m_gnss_data.pending_rtc_set = true;

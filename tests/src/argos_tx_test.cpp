@@ -482,9 +482,13 @@ TEST(ArgosTxService, TimeSyncBurstNoPosFix)
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
-	// Time sync burst is scheduled but no valid GPS data available, so no send occurs
+	// Time sync burst with invalid GPS: should still send (with invalid position encoded as all-1s)
+	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
+			withUnsignedIntParameter("size_bits", 96);
 	inject_gps_location(0, 11.8768, -33.8232, t);
 	system_scheduler->run();
+
+	mock_kineis->notify(KineisEventTxComplete({}));
 
 	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	serv.stop();
@@ -525,6 +529,9 @@ TEST(ArgosTxService, TimeSyncBurstNoPosOrTimeFix)
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	serv.start();
 
+	// Even without valid GPS or time fix, should still send (invalid position encoded as all-1s)
+	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
+			withUnsignedIntParameter("size_bits", 96);
 	inject_gps_location(0, 11.8768, -33.8232, t);
 	system_scheduler->run();
 }

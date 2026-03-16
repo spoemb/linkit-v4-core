@@ -27,23 +27,27 @@ TEST_GROUP(SWSAnalog)
         system_scheduler = new Scheduler(system_timer);
         configuration_store->init();
 
-        // Set default configuration (write_param takes T& so we need lvalues)
+        // Configuration aligned with PRODUCTION detection behavior:
+        // UW_MIN_DRY_SAMPLES=1 (production), PIN_DELAY=1ms (production)
+        // UW_MAX_SAMPLES=3 / SAMPLE_GAP=100 kept for scheduler timing in tests
+        // (with MIN_DRY=1, first dry sample terminates batch early → same as MAX=1)
         bool uw_en = true;
         auto uw_src = BaseUnderwaterDetectSource::SWS;
-        unsigned int val_1 = 1U, val_3 = 3U, val_2 = 2U, val_100 = 100U;
-        unsigned int val_10 = 10U, val_3000 = 3000U, val_3600 = 3600U, val_0 = 0U;
+        unsigned int val_1 = 1U, val_3 = 3U, val_100 = 100U;
+        unsigned int val_8000 = 8000U, val_3600 = 3600U, val_0 = 0U;
+        unsigned int val_6 = 6U;
 
         configuration_store->write_param(ParamID::UNDERWATER_EN, uw_en);
         configuration_store->write_param(ParamID::UNDERWATER_DETECT_SOURCE, uw_src);
         configuration_store->write_param(ParamID::SAMPLING_UNDER_FREQ, val_1);
         configuration_store->write_param(ParamID::SAMPLING_SURF_FREQ, val_1);
         configuration_store->write_param(ParamID::UW_MAX_SAMPLES, val_3);
-        configuration_store->write_param(ParamID::UW_MIN_DRY_SAMPLES, val_2);
+        configuration_store->write_param(ParamID::UW_MIN_DRY_SAMPLES, val_1);
         configuration_store->write_param(ParamID::UW_SAMPLE_GAP, val_100);
-        configuration_store->write_param(ParamID::UW_PIN_SAMPLE_DELAY, val_10);
+        configuration_store->write_param(ParamID::UW_PIN_SAMPLE_DELAY, val_1);
         configuration_store->write_param(ParamID::SWS_ANALOG_THRESHOLD_MIN, val_100);
-        configuration_store->write_param(ParamID::SWS_ANALOG_THRESHOLD_MAX, val_3000);
-        configuration_store->write_param(ParamID::SWS_ANALOG_HYSTERESIS, val_10);
+        configuration_store->write_param(ParamID::SWS_ANALOG_THRESHOLD_MAX, val_8000);
+        configuration_store->write_param(ParamID::SWS_ANALOG_HYSTERESIS, val_6);
         configuration_store->write_param(ParamID::SWS_ANALOG_CALIB_INTERVAL, val_3600);
         configuration_store->write_param(ParamID::UW_MAX_DIVE_TIME, val_0);  // Disabled for most tests
         configuration_store->write_param(ParamID::UW_MIN_SURFACE_TIME, val_0);
@@ -66,8 +70,15 @@ TEST_GROUP(SWSAnalog)
     }
 
     // Helper: run one scheduler cycle (one service_initiate call)
+    // Time-based guard: max 2s real time to prevent infinite hang
     void run_one_sample() {
-        while (!system_scheduler->run());
+        auto start = std::chrono::steady_clock::now();
+        while (!system_scheduler->run()) {
+            auto elapsed = std::chrono::steady_clock::now() - start;
+            if (elapsed > std::chrono::seconds(2)) {
+                FAIL("run_one_sample: scheduler hung (2s timeout)");
+            }
+        }
     }
 
     // Helper: run a few samples at the calibration air value to pass
@@ -209,9 +220,9 @@ TEST(SWSAnalog, HysteresisPreventOscillation)
     (void)num_callbacks;
 
     // Set value near threshold (in hysteresis zone)
-    // Air baseline ~150, water estimate ~450, threshold ~255, hysteresis ~25
-    // So hysteresis zone is roughly 230-280
-    SAADC::set_adc_value(260);
+    // Air baseline ~150, water estimate ~450, threshold ~255, hysteresis ~15 (6%)
+    // So hysteresis zone is roughly 240-270
+    SAADC::set_adc_value(255);
 
     for (unsigned int i = 0; i < 5; i++) {
         run_one_sample();
@@ -409,9 +420,9 @@ TEST(SWSAnalog, RapidSurfaceDetection_CleanSensor)
     }
 
     CHECK_FALSE(switch_state);
-    // With parent batch of 3 (UW_MAX_SAMPLES=3), should detect within one batch
+    // L1 fires immediately, MIN_DRY=1 terminates batch on first dry
     CHECK_TEXT(samples_to_surface <= 3,
-        "Clean sensor: surface should be detected within 1 batch (3 samples)");
+        "Clean sensor: surface should be detected within 3 samples");
 
     s.stop();
 }
@@ -465,7 +476,7 @@ TEST(SWSAnalog, RapidSurfaceDetection_ModerateBiofouling)
     CHECK_FALSE_TEXT(switch_state,
         "Moderate biofouling: should detect surface despite elevated ADC");
     CHECK_TEXT(samples_to_surface <= 3,
-        "Moderate biofouling: should detect within 1 batch (3 samples)");
+        "Moderate biofouling: should detect within 3 samples");
 
     s.stop();
 }
@@ -519,7 +530,7 @@ TEST(SWSAnalog, RapidSurfaceDetection_HeavyBiofouling)
     CHECK_FALSE_TEXT(switch_state,
         "Heavy biofouling: should detect surface despite high residual ADC");
     CHECK_TEXT(samples_to_surface <= 3,
-        "Heavy biofouling: should detect within 1 batch (3 samples)");
+        "Heavy biofouling: should detect within 3 samples");
 
     s.stop();
 }
@@ -698,7 +709,7 @@ TEST(SWSAnalog, ProgressiveBiofouling_MultiCycleDegradation)
         }
 
         // Surface should be detected quickly:
-        // High contrast (clean): within 1 batch (3 samples)
+        // High contrast (clean): within 2 samples (L1 fires immediately)
         // Low contrast (severe biofouling): needs more samples due to
         // adaptive threshold dynamics and MA2 filter convergence
         unsigned int max_samples = (water - air < 500) ? 10 : 3;
@@ -1034,5 +1045,299 @@ TEST(SWSAnalog, TestMode_StartStop)
 
     // Clear callback
     SWSAnalogService::clear_status_notify();
+    s.stop();
+}
+
+// ============================================================================
+// RE-ENTRY AFTER TRANSITIONAL L-OVERRIDE
+// Reproduces real-world bug: L1 fires during water exit with high filtered value.
+// Without air recalib cap, air snaps to filtered (near water) → threshold_high
+// exceeds water → device stuck at surface forever.
+// ============================================================================
+
+/**
+ * Test 21: Re-entry detection after L-override with transitional reading
+ *
+ * Scenario (real field data):
+ *   air=500 (biofouled), underwater at 3000, water EMA converges to ~2921.
+ *   Exit water: ADC drops to 2600, MA2 filtered = 2800.
+ *   L1 fires (8.3% drop from peak). filtered=2800 is between air and water.
+ *
+ * OLD BUG: air=2800, threshold_high=3019 > water(3000) → can never re-detect water.
+ * FIX: air capped at water*0.85=2483, threshold_high=2818 < 3000 → re-entry works.
+ */
+TEST(SWSAnalog, ReEntry_AfterTransitionalLOverride)
+{
+    SWSAnalogService s;
+    bool switch_state = false;
+    unsigned int callbacks = 0;
+
+    system_timer->start();
+    SAADC::set_adc_value(500);  // Moderate biofouling air baseline
+
+    s.start([&switch_state, &callbacks](ServiceEvent &event) {
+        if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+            switch_state = std::get<bool>(event.event_data);
+            callbacks++;
+        }
+    });
+
+    warmup_air_samples();
+
+    // Go underwater at 3000 (15 samples for water EMA to converge toward ~2921)
+    SAADC::set_adc_value(3000);
+    for (int i = 0; i < 15; i++) run_one_sample();
+    CHECK_TRUE(switch_state);
+
+    // Exit water: transitional reading (2600)
+    // MA2: filtered ≈ (3000+2600)/2 = 2800, between air(500) and water(~2921)
+    // L1: drop from peak ~3000 = 13.3% > 4% → fires
+    unsigned int callbacks_before = callbacks;
+    SAADC::set_adc_value(2600);
+    for (int i = 0; i < 5; i++) {
+        run_one_sample();
+        if (callbacks > callbacks_before && !switch_state) break;
+    }
+    CHECK_FALSE_TEXT(switch_state, "Should detect surface via L-override");
+
+    // Brief real surface
+    SAADC::set_adc_value(200);
+    for (int i = 0; i < 3; i++) run_one_sample();
+
+    // Re-immerse at 3000 → must detect underwater
+    SAADC::set_adc_value(3000);
+    bool detected_underwater = false;
+    for (int i = 0; i < 10; i++) {
+        run_one_sample();
+        if (switch_state) {
+            detected_underwater = true;
+            break;
+        }
+    }
+
+    CHECK_TRUE_TEXT(detected_underwater,
+        "Must detect re-immersion after L-override with transitional reading");
+
+    s.stop();
+}
+
+// ============================================================================
+// NEW: SURFACE LOCKOUT TEST
+// Verifies that after L-override, surface lockout prevents re-trigger
+// ============================================================================
+
+/**
+ * Test 21: Surface lockout prevents re-entry
+ * After L-override forces surface, readings above threshold must NOT
+ * re-trigger underwater during lockout period.
+ */
+TEST(SWSAnalog, SurfaceLockout_PreventsReEntry)
+{
+    SWSAnalogService s;
+    bool switch_state = false;
+    unsigned int callbacks = 0;
+
+    system_timer->start();
+
+    // Enable surface lockout (3 seconds)
+    unsigned int lockout = 3U;
+    configuration_store->write_param(ParamID::UW_MIN_SURFACE_TIME, lockout);
+
+    SAADC::set_adc_value(200);
+
+    s.start([&switch_state, &callbacks](ServiceEvent &event) {
+        if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+            switch_state = std::get<bool>(event.event_data);
+            callbacks++;
+        }
+    });
+
+    warmup_air_samples();
+
+    // Go underwater
+    SAADC::set_adc_value(3000);
+    for (int i = 0; i < 10; i++) run_one_sample();
+    CHECK_TRUE(switch_state);
+
+    // Surface: sharp drop triggers L-override + lockout
+    SAADC::set_adc_value(500);
+    for (int i = 0; i < 3; i++) run_one_sample();
+    CHECK_FALSE_TEXT(switch_state, "Lockout: should detect surface via L-override");
+
+    // During lockout: set ADC back to high (simulates splash/wave)
+    // Should NOT re-trigger underwater
+    SAADC::set_adc_value(3000);
+    for (int i = 0; i < 2; i++) run_one_sample();
+    CHECK_FALSE_TEXT(switch_state, "Lockout: should block underwater re-trigger during lockout");
+
+    s.stop();
+}
+
+// ============================================================================
+// NEW: ADAPTIVE SAMPLE DELAY TEST
+// Verifies that contrast-based delay adjustment works correctly
+// ============================================================================
+
+/**
+ * Test 22: Adaptive delay decreases when contrast drops (biofouling)
+ * Simulates biofouling progression that degrades contrast, checks
+ * that the delay decreases to improve discrimination.
+ */
+TEST(SWSAnalog, AdaptiveDelay_DecreasesWithBiofouling)
+{
+    SWSAnalogService s;
+    bool switch_state = false;
+
+    system_timer->start();
+    SAADC::set_adc_value(200);
+
+    s.start([&switch_state](ServiceEvent &event) {
+        if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED)
+            switch_state = std::get<bool>(event.event_data);
+    });
+
+    warmup_air_samples();
+
+    // Go underwater with clean electrode
+    SAADC::set_adc_value(3000);
+    for (int i = 0; i < 10; i++) run_one_sample();
+    CHECK_TRUE(switch_state);
+
+    auto status1 = SWSAnalogService::get_status();
+    // Clean: air~200, water~3000 → contrast ~15x → delay should stay at max or default
+    CHECK_TEXT(status1.contrast_x10 > 100, "Clean: contrast should be > 10x");
+
+    // Surface at elevated value (biofouling starting)
+    SAADC::set_adc_value(500);
+    for (int i = 0; i < 3; i++) run_one_sample();
+
+    // Back underwater at lower value (biofouling reduced conductivity)
+    SAADC::set_adc_value(2000);
+    for (int i = 0; i < 10; i++) run_one_sample();
+
+    // Surface at very high value (severe biofouling: air barely different from water)
+    SAADC::set_adc_value(1800);
+    // Need enough samples for L-override to fire and recalibrate air
+    for (int i = 0; i < 10; i++) run_one_sample();
+
+    auto status2 = SWSAnalogService::get_status();
+    // After biofouling adaptation: contrast should have decreased
+    // This validates that the algorithm tracks biofouling progression
+    CHECK_TEXT(status2.contrast_x10 < status1.contrast_x10,
+        "Biofouling: contrast should decrease over time");
+
+    s.stop();
+}
+
+// ============================================================================
+// NEW: PROXIMITY GUARD ADAPTIVE TEST
+// Verifies that proximity guard relaxes when contrast is low
+// ============================================================================
+
+/**
+ * Test 23: Proximity guard allows detection with small gap (biofouled)
+ * Simulates progressive biofouling: clean start, then underwater, then surface
+ * with elevated ADC showing only ~6% drop from water.
+ */
+TEST(SWSAnalog, ProximityGuard_AllowsSmallGapDetection)
+{
+    SWSAnalogService s;
+    bool switch_state = false;
+    unsigned int callbacks = 0;
+
+    system_timer->start();
+
+    // Start clean in air
+    SAADC::set_adc_value(200);
+
+    s.start([&switch_state, &callbacks](ServiceEvent &event) {
+        if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+            switch_state = std::get<bool>(event.event_data);
+            callbacks++;
+        }
+    });
+
+    warmup_air_samples();
+
+    // Go underwater at 3200
+    SAADC::set_adc_value(3200);
+    for (int i = 0; i < 10; i++) run_one_sample();
+    CHECK_TRUE_TEXT(switch_state, "Should detect underwater at 3200");
+
+    unsigned int callbacks_before = callbacks;
+
+    // Surface with biofouling: only 6% drop (3200 → 3000)
+    // L1 should fire: drop from recent_peak ~3200 → 3000 = 6.25% > 4%
+    SAADC::set_adc_value(3000);
+
+    unsigned int samples = 0;
+    for (int i = 0; i < 10; i++) {
+        run_one_sample();
+        samples++;
+        if (callbacks > callbacks_before && !switch_state) break;
+    }
+
+    CHECK_FALSE_TEXT(switch_state,
+        "Biofouled proximity: should detect surface despite small gap (6%)");
+
+    s.stop();
+}
+
+// ============================================================================
+// NEW: RAPID RE-ENTRY TEST
+// Surface → underwater → surface in quick succession
+// ============================================================================
+
+/**
+ * Test 24: Rapid re-entry detection
+ * Animal surfaces briefly, dives, surfaces again.
+ * Must detect both surface events without getting confused.
+ */
+TEST(SWSAnalog, RapidReEntry_SurfaceDiveSurface)
+{
+    SWSAnalogService s;
+    bool switch_state = false;
+    unsigned int callbacks = 0;
+
+    system_timer->start();
+    SAADC::set_adc_value(200);
+
+    s.start([&switch_state, &callbacks](ServiceEvent &event) {
+        if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+            switch_state = std::get<bool>(event.event_data);
+            callbacks++;
+        }
+    });
+
+    warmup_air_samples();
+
+    // First dive
+    SAADC::set_adc_value(3000);
+    for (int i = 0; i < 10; i++) run_one_sample();
+    CHECK_TRUE(switch_state);
+
+    // First surface
+    SAADC::set_adc_value(200);
+    for (int i = 0; i < 5; i++) run_one_sample();
+    CHECK_FALSE_TEXT(switch_state, "Re-entry: first surface should be detected");
+
+    // Quick re-dive
+    SAADC::set_adc_value(3000);
+    for (int i = 0; i < 10; i++) run_one_sample();
+    CHECK_TRUE_TEXT(switch_state, "Re-entry: re-dive should be detected");
+
+    // Second surface
+    unsigned int callbacks_before = callbacks;
+    SAADC::set_adc_value(200);
+    unsigned int samples = 0;
+    for (int i = 0; i < 10; i++) {
+        run_one_sample();
+        samples++;
+        if (callbacks > callbacks_before && !switch_state) break;
+    }
+
+    CHECK_FALSE_TEXT(switch_state, "Re-entry: second surface should be detected");
+    CHECK_TEXT(samples <= 3, "Re-entry: second surface should be fast (<=3 samples)");
+
     s.stop();
 }

@@ -62,7 +62,7 @@ extern "C" {
 // It represents the time taken for programming tasks, etc.  We advance the RX task by 3
 // seconds extra relative to the TX task to avoid race conditions when the two might
 // fire at the same time otherwise.
-#define ARGOS_TX_MARGIN_SECS        0  // Don't try to compensate TX
+#define ARGOS_TX_MARGIN_SECS        3  // Advance TX by 3s to account for TCXO warmup and scheduling overhead
 #define ARGOS_RX_MARGIN_SECS        0  // RX always follows TX
 
 // TX certification power off threshold (in seconds)

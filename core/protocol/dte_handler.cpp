@@ -1017,7 +1017,8 @@ std::string DTEHandler::SWSST_REQ(int error_code) {
 		(unsigned int)st.time_in_state_sec,
 		(unsigned int)st.surface_level,
 		(unsigned int)st.contrast_x10,
-		(unsigned int)st.observed_peak);
+		(unsigned int)st.observed_peak,
+		(unsigned int)st.sample_delay_us);
 #else
 	return DTEEncoder::encode(DTECommand::SWSST_RESP, (int)DTEError::PARAM_KEY_UNRECOGNISED);
 #endif
@@ -1052,7 +1053,8 @@ std::string DTEHandler::SWSTST_REQ(int error_code, std::vector<BaseType>& arg_li
 					(unsigned int)st.time_in_state_sec,
 					(unsigned int)st.surface_level,
 					(unsigned int)st.contrast_x10,
-					(unsigned int)st.observed_peak));
+					(unsigned int)st.observed_peak,
+					(unsigned int)st.sample_delay_us));
 			}
 		});
 		SWSAnalogService::set_on_test_stop([]() {
