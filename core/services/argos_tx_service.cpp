@@ -35,6 +35,7 @@ void ArgosTxService::service_init() {
 	m_depth_pile_manager.clear();
 	m_is_first_tx = true;
 	m_is_tx_pending = false;
+	m_tcxo_skip_on_next_tx = false;
 	m_session_tx_count = 0;
 
 	// Set the idle timeout depending on the configuration settings
@@ -152,6 +153,13 @@ void ArgosTxService::service_initiate() {
 	DEBUG_TRACE("ArgosTxService::service_initiate");
 	m_is_first_tx = false;
 	m_is_tx_pending = true;
+
+	// Skip TCXO warmup on first TX after surfacing from underwater
+	if (m_tcxo_skip_on_next_tx) {
+		DEBUG_TRACE("ArgosTxService::service_initiate: TCXO warmup skipped (first TX after submerge)");
+		m_kineis.set_tcxo_warmup_time(0);
+	}
+
 	m_scheduled_task();
 }
 
@@ -204,7 +212,11 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 		}
 
 	} else if (e.event_source == ServiceIdentifier::UW_SENSOR && e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
-		if (std::get<bool>(e.event_data) == false) {
+		if (std::get<bool>(e.event_data) == true) {
+			// Device went underwater: skip TCXO warmup on first TX after next surfacing
+			m_tcxo_skip_on_next_tx = true;
+			m_kineis.set_tcxo_warmup_time(0);
+		} else {
 			ArgosConfig argos_config;
 			configuration_store->get_argos_configuration(argos_config);
 			std::time_t earliest_schedule = service_current_time() + argos_config.dry_time_before_tx;
@@ -316,6 +328,15 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 	DEBUG_TRACE("ArgosTxService::react: KineisEventTxComplete");
 	m_is_tx_pending = false;
 
+	// Restore TCXO warmup after first TX post-submerge
+	if (m_tcxo_skip_on_next_tx) {
+		ArgosConfig argos_config;
+		configuration_store->get_argos_configuration(argos_config);
+		DEBUG_TRACE("ArgosTxService::react: restoring TCXO warmup to %u s", argos_config.argos_tcxo_warmup_time);
+		m_kineis.set_tcxo_warmup_time(argos_config.argos_tcxo_warmup_time);
+		m_tcxo_skip_on_next_tx = false;
+	}
+
 	// Increment TX counter
 	configuration_store->increment_tx_counter();
 	m_session_tx_count++;
@@ -343,6 +364,13 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 
 void ArgosTxService::react(KineisEventDeviceError const&) {
 	DEBUG_TRACE("ArgosTxService::react: KineisEventDeviceError");
+	// Restore TCXO warmup if it was skipped
+	if (m_tcxo_skip_on_next_tx) {
+		ArgosConfig argos_config;
+		configuration_store->get_argos_configuration(argos_config);
+		m_kineis.set_tcxo_warmup_time(argos_config.argos_tcxo_warmup_time);
+		m_tcxo_skip_on_next_tx = false;
+	}
 	if (service_cancel())
 		service_complete();
 }
