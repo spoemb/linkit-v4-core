@@ -76,8 +76,12 @@ TEST(Decoder, ArgosModeParsing)
 	CHECK_TRUE(DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
 	CHECK_TRUE(DTECommand::PARMR_RESP == command);
 	CHECK_TRUE(BaseArgosMode::SURFACING_BURST == std::get<BaseArgosMode>(param_values[0].value));
+	param_values.clear();
+	// Invalid mode=6 is now caught internally and skipped (not thrown)
 	s = "$O;PARMR#007;ARP01=6\r";
-	CHECK_THROWS(ErrorCode, DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
+	CHECK_TRUE(DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
+	CHECK_TRUE(DTECommand::PARMR_RESP == command);
+	CHECK_EQUAL(0, (int)param_values.size());
 }
 
 
@@ -128,17 +132,23 @@ TEST(Decoder, ArgosDepthPile)
 	CHECK_TRUE(DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
 	CHECK_TRUE(DTECommand::PARMR_RESP == command);
 	CHECK_TRUE(BaseDepthPile::DEPTH_PILE_24 == std::get<BaseDepthPile>(param_values[0].value));
+	// Invalid depth pile values are now caught internally and skipped (not thrown)
 	param_values.clear();
 	s = "$O;PARMR#007;ARP16=0\r";
-	CHECK_THROWS(ErrorCode, DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
+	CHECK_TRUE(DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
+	CHECK_EQUAL(0, (int)param_values.size());
 	s = "$O;PARMR#007;ARP16=5\r";
-	CHECK_THROWS(ErrorCode, DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
+	CHECK_TRUE(DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
+	CHECK_EQUAL(0, (int)param_values.size());
 	s = "$O;PARMR#007;ARP16=6\r";
-	CHECK_THROWS(ErrorCode, DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
+	CHECK_TRUE(DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
+	CHECK_EQUAL(0, (int)param_values.size());
 	s = "$O;PARMR#007;ARP16=7\r";
-	CHECK_THROWS(ErrorCode, DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
+	CHECK_TRUE(DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
+	CHECK_EQUAL(0, (int)param_values.size());
 	s = "$O;PARMR#008;ARP16=13\r";
-	CHECK_THROWS(ErrorCode, DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
+	CHECK_TRUE(DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
+	CHECK_EQUAL(0, (int)param_values.size());
 }
 
 TEST(Decoder, MissingLengthSeparator)
@@ -225,9 +235,16 @@ TEST(Decoder, MultiTextParams)
 
 TEST(Decoder, KeyValueListWrongArgType)
 {
+	// IDP12=DEAD is invalid (UINT can't parse "DEAD") and is skipped
+	// IDT06=1234 is valid (HEXADECIMAL parses "1234" as 0x1234)
+	// Decode succeeds with only the valid param in param_values
 	std::string s;
 	s = "$PARMW#015;IDP12=DEAD,IDT06=1234\r";
-	CHECK_THROWS(ErrorCode, DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
+	CHECK_TRUE(DTEDecoder::decode(s, command, error_code, arg_list, params, param_values));
+	CHECK_TRUE(DTECommand::PARMW_REQ == command);
+	CHECK_EQUAL(1, (int)param_values.size());
+	CHECK_TRUE(ParamID::ARGOS_HEXID == param_values[0].param);
+	CHECK_EQUAL(0x1234, (int)std::get<unsigned int>(param_values[0].value));
 }
 
 TEST(Decoder, UnknownCommand)

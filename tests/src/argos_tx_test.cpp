@@ -1082,6 +1082,187 @@ TEST(ArgosTxService, UnderwaterFor24HoursDryTimeZero)
 	system_scheduler->run();
 }
 
+TEST(ArgosTxService, SurfacingBurstDopplerPhase)
+{
+	// Test SURFACING_BURST mode: verify progressive Doppler intervals
+	BaseArgosMode mode = BaseArgosMode::SURFACING_BURST;
+	unsigned int dry_time = 1; // 1s dry time to separate scheduling from notification
+
+	fake_config_store->write_param(ParamID::ARGOS_DEPTH_PILE, BaseDepthPile::DEPTH_PILE_1);
+	fake_config_store->write_param(ParamID::ARGOS_MODE, mode);
+	fake_config_store->write_param(ParamID::ARGOS_HEXID, 0x01234567U);
+	fake_config_store->write_param(ParamID::TR_NOM, 60U);
+	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, (bool)false);
+	fake_config_store->write_param(ParamID::UNDERWATER_EN, (bool)true);
+	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, (bool)false);
+	fake_config_store->write_param(ParamID::DRY_TIME_BEFORE_TX, dry_time);
+	fake_config_store->write_param(ParamID::SURFACING_BURST_INIT_S, 5U);
+	fake_config_store->write_param(ParamID::SURFACING_BURST_STEP_S, 10U);
+	fake_config_store->write_param(ParamID::SURFACING_BURST_MAX_S, 60U);
+
+	ArgosTxService serv(*mock_kineis);
+
+	std::time_t t = 1652105502000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	serv.start();
+
+	// Go underwater
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	notify_underwater_state(true);
+
+	// Advance time underwater
+	t += 60000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	// Surface — first Doppler scheduled immediately (0ms)
+	notify_underwater_state(false);
+	CHECK_EQUAL(0U, serv.get_last_schedule());
+
+	// Fire first Doppler TX
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
+			withUnsignedIntParameter("size_bits", 24);
+	system_scheduler->run();
+
+	// Complete TX → reschedule with INIT interval (5s)
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	mock_kineis->notify(KineisEventTxComplete({}));
+	CHECK_EQUAL(5000U, serv.get_last_schedule());
+
+	// Advance and fire second Doppler
+	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
+			withUnsignedIntParameter("size_bits", 24);
+	t += serv.get_last_schedule();
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+	system_scheduler->run();
+
+	mock_kineis->notify(KineisEventTxComplete({}));
+	// Third message: init + 1*step = 5 + 10 = 15s
+	CHECK_EQUAL(15000U, serv.get_last_schedule());
+}
+
+TEST(ArgosTxService, SurfacingBurstSwitchToGNSS)
+{
+	// Test switch from Doppler to GNSS when GPS fix arrives
+	fake_config_store->write_param(ParamID::ARGOS_DEPTH_PILE, BaseDepthPile::DEPTH_PILE_1);
+	fake_config_store->write_param(ParamID::ARGOS_MODE, BaseArgosMode::SURFACING_BURST);
+	fake_config_store->write_param(ParamID::ARGOS_HEXID, 0x01234567U);
+	fake_config_store->write_param(ParamID::TR_NOM, 60U);
+	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, (bool)false);
+	fake_config_store->write_param(ParamID::UNDERWATER_EN, (bool)true);
+	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, (bool)false);
+	fake_config_store->write_param(ParamID::DRY_TIME_BEFORE_TX, 1U);
+	fake_config_store->write_param(ParamID::SURFACING_BURST_INIT_S, 5U);
+	fake_config_store->write_param(ParamID::SURFACING_BURST_STEP_S, 10U);
+	fake_config_store->write_param(ParamID::SURFACING_BURST_MAX_S, 60U);
+
+	ArgosTxService serv(*mock_kineis);
+
+	std::time_t t = 1652105502000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	serv.start();
+
+	// Dive
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	notify_underwater_state(true);
+
+	t += 60000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	// Surface
+	notify_underwater_state(false);
+
+	// Fire first Doppler TX
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
+			withUnsignedIntParameter("size_bits", 24);
+	system_scheduler->run();
+
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	mock_kineis->notify(KineisEventTxComplete({}));
+
+	// Inject GPS fix → should switch to GNSS phase and reschedule
+	inject_gps_location(true, 11.8768, -33.8232, t/1000);
+	CHECK_FALSE(Service::SCHEDULE_DISABLED == serv.get_last_schedule());
+
+	// Fire TX → should be GNSS short packet (96 bits), not Doppler (24 bits)
+	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
+			withUnsignedIntParameter("size_bits", 96);
+	t += serv.get_last_schedule();
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+	system_scheduler->run();
+}
+
+TEST(ArgosTxService, SurfacingBurstResetOnDive)
+{
+	// Test that diving resets the burst state
+	fake_config_store->write_param(ParamID::ARGOS_DEPTH_PILE, BaseDepthPile::DEPTH_PILE_1);
+	fake_config_store->write_param(ParamID::ARGOS_MODE, BaseArgosMode::SURFACING_BURST);
+	fake_config_store->write_param(ParamID::ARGOS_HEXID, 0x01234567U);
+	fake_config_store->write_param(ParamID::TR_NOM, 60U);
+	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, (bool)false);
+	fake_config_store->write_param(ParamID::UNDERWATER_EN, (bool)true);
+	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, (bool)false);
+	fake_config_store->write_param(ParamID::DRY_TIME_BEFORE_TX, 1U);
+	fake_config_store->write_param(ParamID::SURFACING_BURST_INIT_S, 5U);
+	fake_config_store->write_param(ParamID::SURFACING_BURST_STEP_S, 10U);
+	fake_config_store->write_param(ParamID::SURFACING_BURST_MAX_S, 60U);
+
+	ArgosTxService serv(*mock_kineis);
+
+	std::time_t t = 1652105502000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	serv.start();
+
+	// First dive/surface
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	notify_underwater_state(true);
+	t += 60000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+	notify_underwater_state(false);
+	CHECK_EQUAL(0U, serv.get_last_schedule());  // First burst msg immediate
+
+	// Fire first TX
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
+			withUnsignedIntParameter("size_bits", 24);
+	system_scheduler->run();
+
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	mock_kineis->notify(KineisEventTxComplete({}));
+	CHECK_EQUAL(5000U, serv.get_last_schedule());
+
+	// Dive again before second TX
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	notify_underwater_state(true);
+	CHECK_TRUE(Service::SCHEDULE_DISABLED == serv.get_last_schedule());
+
+	// Surface again → burst restarts from 0
+	t += 60000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+	notify_underwater_state(false);
+	CHECK_EQUAL(0U, serv.get_last_schedule());  // Immediate again (reset)
+}
+
 TEST(ArgosTxService, DepthPileManagerSensorTimeout)
 {
 	bool enable = true;

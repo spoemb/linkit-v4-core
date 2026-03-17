@@ -496,10 +496,11 @@ TEST(DTEHandler, WritingReadOnlyAttributesIsIgnored)
 	std::string resp;
 	std::string req = "$PARMW#007;ART02=1\r";
 	CHECK_TRUE(DTEAction::CONFIG_UPDATED == dte_handler->handle_dte_message(req, resp));
-	STRCMP_EQUAL("$O;PARMW#000;\r", resp.c_str());
+	// Read-only param ART02 is rejected, listed in response
+	STRCMP_EQUAL("$N;PARMW#005;ART02\r", resp.c_str());
 
+	// Read-only param was not written
 	unsigned int tx_counter = configuration_store->read_param<unsigned int>(ParamID::TX_COUNTER);
-
 	CHECK_EQUAL(0, tx_counter);
 }
 
@@ -507,8 +508,9 @@ TEST(DTEHandler, WritingOutOfRangeValue)
 {
 	std::string resp;
 	std::string req = "$PARMW#009;PPP01=-12\r";
-	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
-	STRCMP_EQUAL("$N;PARMW#001;7\r", resp.c_str());
+	// Out-of-range param is skipped, valid params still written, rejected key listed
+	CHECK_TRUE(DTEAction::CONFIG_UPDATED == dte_handler->handle_dte_message(req, resp));
+	STRCMP_EQUAL("$N;PARMW#005;PPP01\r", resp.c_str());
 }
 
 
@@ -1287,10 +1289,10 @@ TEST(DTEHandler, PARMW_LoRa_LP_MODE)
 TEST(DTEHandler, PARMW_LoRa_LP_MODE_OutOfRange)
 {
 	std::string resp;
-	// LP mode range is 0-1, value 2 should be rejected
+	// LP mode range is 0-1, value 2 should be rejected with key in response
 	std::string req = "$PARMW#007;LRP15=2\r";
-	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
-	STRCMP_EQUAL("$N;PARMW#001;7\r", resp.c_str());
+	CHECK_TRUE(DTEAction::CONFIG_UPDATED == dte_handler->handle_dte_message(req, resp));
+	STRCMP_EQUAL("$N;PARMW#005;LRP15\r", resp.c_str());
 }
 
 TEST(DTEHandler, PARMR_UNP_NewParams)
@@ -1355,11 +1357,11 @@ TEST(DTEHandler, PARMW_UNP22_SWSAnalogHysteresis_OutOfRange)
 	std::string req;
 	std::string resp;
 
-	// Write UNP22=51 which exceeds max of 50 → should return error 7
+	// Write UNP22=51 which exceeds max of 50 → rejected key listed in response
 	// "UNP22=51" = 8 chars = 0x008
 	req = "$PARMW#008;UNP22=51\r";
-	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
-	STRCMP_EQUAL("$N;PARMW#001;7\r", resp.c_str());
+	CHECK_TRUE(DTEAction::CONFIG_UPDATED == dte_handler->handle_dte_message(req, resp));
+	STRCMP_EQUAL("$N;PARMW#005;UNP22\r", resp.c_str());
 }
 
 TEST(DTEHandler, PARMW_UNP25_UwMinSurfaceTime)
@@ -1500,12 +1502,12 @@ TEST(DTEHandler, PARMW_REQ_OutOfRangeReturnsError)
 	std::string resp;
 
 	// Write an out-of-range value for TR_NOM (valid range: 30-1200)
-	// "ARP05=29" = 8 chars = 0x08
+	// ARP05=29 is rejected, key listed in response
 	std::string req = "$PARMW#008;ARP05=29\r";
-	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
-	STRCMP_EQUAL("$N;PARMW#001;7\r", resp.c_str());
+	CHECK_TRUE(DTEAction::CONFIG_UPDATED == dte_handler->handle_dte_message(req, resp));
+	STRCMP_EQUAL("$N;PARMW#005;ARP05\r", resp.c_str());
 
-	// Verify TR_NOM was NOT changed (still default)
+	// Verify TR_NOM was NOT changed (out-of-range value was skipped)
 	unsigned int val = configuration_store->read_param<unsigned int>(ParamID::TR_NOM);
 	CHECK_EQUAL(60U, val);
 }
@@ -1514,12 +1516,12 @@ TEST(DTEHandler, PARMW_REQ_UnknownParamKey)
 {
 	std::string resp;
 
-	// Write with a non-existent param key - unknown keys are silently skipped
+	// Write with a non-existent param key - unknown key is skipped and listed in response
 	// "XXXXX=123" = 9 chars = 0x09
 	std::string req = "$PARMW#009;XXXXX=123\r";
 	CHECK_TRUE(DTEAction::CONFIG_UPDATED == dte_handler->handle_dte_message(req, resp));
-	// Handler succeeds (skips unknown key), returns OK
-	STRCMP_EQUAL("$O;PARMW#000;\r", resp.c_str());
+	// Unknown key is rejected, listed in response
+	STRCMP_EQUAL("$N;PARMW#005;XXXXX\r", resp.c_str());
 }
 
 TEST(DTEHandler, SATDP_REQ_NoSatelliteDevice)
