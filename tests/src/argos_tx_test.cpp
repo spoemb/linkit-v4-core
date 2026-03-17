@@ -828,6 +828,8 @@ TEST(ArgosTxService, TxServiceCancelledDuringTx)
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
 	system_scheduler->run();
+	// TX complete restores TCXO warmup
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	mock_kineis->notify(KineisEventTxComplete({}));
 }
 

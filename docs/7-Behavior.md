@@ -277,7 +277,127 @@ Source files: `core/services/sws_analog_service.hpp/.cpp`, `core/services/uwdete
 
 ---
 
-## 3 - RSPB Bird Tracker Behavior
+## 3 - Surfacing Burst Mode (ARGOS_MODE=5)
+
+### Overview
+
+Surfacing Burst mode (`ARGOS_MODE=5`, `SURFACING_BURST`) combines Doppler and GNSS transmissions for marine animals that surface briefly (turtles, seals). On surfacing, the device immediately sends rapid Doppler messages with progressive intervals, allowing Kineis/Argos satellites to compute a Doppler-based position while the GPS acquires a fix. Once a GNSS fix is available, the service switches to standard GNSS transmissions.
+
+This mode is specifically designed for deployments where:
+- Animals surface for short periods (minutes)
+- GPS cold start may take 30-120 seconds
+- Doppler localization requires multiple spaced messages
+- Every surfacing event should produce at least some position data
+
+### Behavior
+
+```
+SURFACE DETECTED
+  |
+  +-- Phase 1: DOPPLER BURST (progressive intervals)
+  |     T=0s                         -> TX Doppler #1 (immediate, no TCXO warmup)
+  |     T=INIT_S                     -> TX Doppler #2
+  |     T+=INIT_S + STEP_S           -> TX Doppler #3
+  |     T+=INIT_S + 2*STEP_S         -> TX Doppler #4
+  |     ...                          -> capped at MAX_S
+  |
+  +-- GNSS FIX ACQUIRED (GPS service notifies valid position)
+  |     |
+  |     v
+  +-- Phase 2: GNSS TX (standard interval)
+  |     Uses TR_NOM interval with GNSS/sensor packets
+  |     Continues until next dive
+  |
+  +-- DIVE DETECTED -> reset, ready for next surfacing
+```
+
+### Progressive Interval Formula
+
+```
+Interval(N) = min(INIT_S + (N-1) * STEP_S, MAX_S)
+
+Example with INIT_S=5, STEP_S=1, MAX_S=30:
+  MSG#1:  0s  (immediate)
+  MSG#2:  5s  after MSG#1
+  MSG#3:  6s  after MSG#2
+  MSG#4:  7s  after MSG#3
+  ...
+  MSG#27: 30s after MSG#26 (cap reached)
+  MSG#28: 30s after MSG#27 (stays at cap)
+```
+
+### Parameters
+
+| Parameter | DTE Key | Default | Range | Description |
+|-----------|---------|---------|-------|-------------|
+| ARGOS_MODE | ARP01 | 2 | 0-5 | Set to 5 for Surfacing Burst mode |
+| SURFACING_BURST_INIT_S | ARP40 | 5 | 5-120 | Initial Doppler interval (seconds) |
+| SURFACING_BURST_STEP_S | ARP41 | 1 | 0-30 | Interval increment per message (seconds) |
+| SURFACING_BURST_MAX_S | ARP42 | 30 | 5-300 | Maximum Doppler interval cap (seconds) |
+| TR_NOM | ARP05 | 60 | 30-1200 | GNSS TX interval after fix (seconds) |
+| DRY_TIME_BEFORE_TX | UNP02 | 0 | 0-max | Delay before first TX after surfacing |
+
+### Key Behaviors
+
+- **TCXO warmup** is automatically skipped on the first TX after surfacing (saves ~5s)
+- **time_sync_burst** is ignored in Surfacing Burst mode (Doppler first, not GNSS)
+- **DRY_TIME_BEFORE_TX** still applies to the first Doppler message if configured
+- **Duty cycle** is NOT enforced during Doppler phase (goal is rapid TX), only in GNSS phase
+- **Low Battery / Zone modes** can also use SURFACING_BURST (LBP04=5, ZOP11=5)
+- If no GNSS fix is acquired before the next dive, only Doppler data is available
+
+### Session Timeline Example
+
+**Typical turtle surfacing (GPS fix in 45s):**
+
+```
+  T+0s     SWS detects surface -> SURFACING_BURST activated
+  T+0s     Doppler TX #1 (immediate, no TCXO warmup, 3 bytes)
+  T+5s     Doppler TX #2
+  T+11s    Doppler TX #3
+  T+18s    Doppler TX #4
+  T+26s    Doppler TX #5
+  T+35s    Doppler TX #6
+  T+45s    GPS fix acquired! -> switch to GNSS phase
+  T+105s   GNSS TX #1 (96 bits short packet with position, +60s TR_NOM)
+  T+165s   GNSS TX #2
+  T+200s   Turtle dives -> all TX suspended, burst state reset
+           Total: 6 Doppler + 2 GNSS messages in 200s surfacing
+```
+
+**Short surfacing (no GPS fix):**
+
+```
+  T+0s     Surface -> SURFACING_BURST activated
+  T+0s     Doppler TX #1
+  T+5s     Doppler TX #2
+  T+11s    Doppler TX #3
+  T+15s    Turtle dives -> burst reset
+           Total: 3 Doppler messages (satellite computes Doppler position)
+```
+
+### DTE Configuration Example
+
+```
+# Enable Surfacing Burst mode
+$PARMW#007;ARP01=5\r
+
+# Progressive Doppler: 5s initial, +1s step, max 30s
+$PARMW#015;ARP40=5,ARP41=1,ARP42=30\r
+
+# GNSS phase: 60s interval
+$PARMW#008;ARP05=60\r
+
+# Enable underwater detection with SWS
+$PARMW#007;UNP01=1\r
+
+# No dry time delay (immediate TX on surfacing)
+$PARMW#007;UNP02=0\r
+```
+
+---
+
+## 4 - RSPB Bird Tracker Behavior
 
 ### Overview
 
@@ -454,7 +574,7 @@ With modulo=4 (~7h cycle): ~3-8 mAh/day. NCR18650 (3400 mAh): ~400-1000 days wit
 
 ---
 
-## 4 - RSPB Deployment Configuration Example
+## 5 - RSPB Deployment Configuration Example
 
 Example deployment configuration for bird mortality detection:
 
