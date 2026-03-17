@@ -42,6 +42,10 @@ extern "C" {
 #define ENABLE_AXL_SENSOR 1
 #endif
 
+#ifndef ENABLE_SWS_LOG
+#define ENABLE_SWS_LOG 0
+#endif
+
 #ifndef LORA_RAK3172
 #define LORA_RAK3172 0
 #endif
@@ -310,8 +314,12 @@ enum class ParamID {
 	LORA_FPORT                               = 194,
 	LORA_LP_MODE                             = 195,  // 0=shutdown (0µA), 1=standby (~1.7µA, fast wake)
 #endif
+	// === Surfacing burst parameters (slots 196-198 always reserved) ===
+	SURFACING_BURST_INIT_S                   = 196,
+	SURFACING_BURST_STEP_S                   = 197,
+	SURFACING_BURST_MAX_S                    = 198,
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 196,
+	__PARAM_SIZE                             = 199,
 	__NULL_PARAM                             = 0xFFFF
 };
 
@@ -371,7 +379,8 @@ enum class BaseLogDType {
 	AXL_SENSOR        = 7,
 	PRESSURE_SENSOR   = 8,
 	THERMISTOR_SENSOR = 9,
-	TSYS01_SENSOR     = 10
+	TSYS01_SENSOR     = 10,
+	SWS_LOG           = 11
 };
 
 enum class BaseEraseType {
@@ -386,7 +395,8 @@ enum class BaseEraseType {
 	AXL_SENSOR        = 9,
 	PRESSURE_SENSOR   = 10,
 	THERMISTOR_SENSOR = 11,
-	TSYS01_SENSOR     = 12
+	TSYS01_SENSOR     = 12,
+	SWS_LOG           = 13
 };
 
 enum class BaseSensorCalType {
@@ -405,7 +415,8 @@ enum class BaseArgosMode {
 	PASS_PREDICTION,
 	LEGACY,
 	DUTY_CYCLE,
-	DOPPLER
+	DOPPLER,
+	SURFACING_BURST
 };
 
 enum class BaseArgosPower {

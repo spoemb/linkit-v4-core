@@ -232,7 +232,7 @@ TEST(ArgosTxService, SchedulerLegacyNoJitter)
 	ArgosConfig config;
 
 	config.argos_tx_jitter_en = false;
-	config.tr_nom = 10;
+	config.tx_interval_s = 10;
 	unsigned int result;
 
 	result = sched.schedule_legacy(config, 0);
@@ -261,7 +261,7 @@ TEST(ArgosTxService, SchedulerLegacyNoJitterWithEarliestTxSet)
 	ArgosConfig config;
 
 	config.argos_tx_jitter_en = false;
-	config.tr_nom = 10;
+	config.tx_interval_s = 10;
 	unsigned int result;
 
 	result = sched.schedule_legacy(config, 0);
@@ -288,7 +288,7 @@ TEST(ArgosTxService, SchedulerLegacyWithJitter)
 	ArgosConfig config;
 
 	config.argos_tx_jitter_en = true;
-	config.tr_nom = 10;
+	config.tx_interval_s = 10;
 	unsigned int result;
 
 	result = sched.schedule_legacy(config, 0);
@@ -305,7 +305,7 @@ TEST(ArgosTxService, SchedulerDutyCycleNoJitter)
 	ArgosConfig config;
 
 	config.argos_tx_jitter_en = false;
-	config.tr_nom = 10;
+	config.tx_interval_s = 10;
 	config.duty_cycle = 0x1;
 
 	unsigned int result = sched.schedule_duty_cycle(config, 0);
@@ -738,6 +738,7 @@ TEST(ArgosTxService, TxServiceCancelledByUnderwaterBeforeTx)
 
 	// Inject UW event
 	mock().expectOneCall("stop_send").onObject(mock_kineis);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
 	notify_underwater_state(true);
 
 	CHECK_TRUE(Service::SCHEDULE_DISABLED == serv.get_last_schedule());
@@ -751,7 +752,8 @@ TEST(ArgosTxService, TxServiceCancelledByUnderwaterBeforeTx)
 	unsigned int dry_time_before_tx = fake_config_store->read_param<unsigned int>(ParamID::DRY_TIME_BEFORE_TX);
 	CHECK_EQUAL(dry_time_before_tx*1000, serv.get_last_schedule());
 
-	// Should now transmit
+	// Should now transmit (TCXO warmup skipped on first TX after submerge)
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
 	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
 			withUnsignedIntParameter("size_bits", 248);
 	t += serv.get_last_schedule();
@@ -808,6 +810,7 @@ TEST(ArgosTxService, TxServiceCancelledDuringTx)
 
 	// Inject UW event
 	mock().expectOneCall("stop_send").onObject(mock_kineis);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
 	notify_underwater_state(true);
 
 	// Inject surfaced event
@@ -817,7 +820,8 @@ TEST(ArgosTxService, TxServiceCancelledDuringTx)
 	unsigned int dry_time_before_tx = fake_config_store->read_param<unsigned int>(ParamID::DRY_TIME_BEFORE_TX);
 	CHECK_EQUAL(dry_time_before_tx*1000, serv.get_last_schedule());
 
-	// Should now transmit
+	// Should now transmit (TCXO warmup skipped on first TX after submerge)
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
 	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
 			withUnsignedIntParameter("size_bits", 248);
 	t += serv.get_last_schedule();
@@ -918,6 +922,7 @@ TEST(ArgosTxService, UnderwaterFor24HoursBeforeTx)
 
 	// Inject UW event
 	mock().expectOneCall("stop_send").onObject(mock_kineis);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
 	notify_underwater_state(true);
 
 	// Keep UW for 25 hours
@@ -933,7 +938,8 @@ TEST(ArgosTxService, UnderwaterFor24HoursBeforeTx)
 	unsigned int dry_time_before_tx = fake_config_store->read_param<unsigned int>(ParamID::DRY_TIME_BEFORE_TX);
 	CHECK_EQUAL(dry_time_before_tx*1000, serv.get_last_schedule());
 
-	// Should now transmit
+	// Should now transmit (TCXO warmup skipped on first TX after submerge)
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
 	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
 			withUnsignedIntParameter("size_bits", 248);
 	t += serv.get_last_schedule();
@@ -1051,6 +1057,7 @@ TEST(ArgosTxService, UnderwaterFor24HoursDryTimeZero)
 
 	// Inject UW event
 	mock().expectOneCall("stop_send").onObject(mock_kineis);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
 	notify_underwater_state(true);
 
 	// Keep UW for 25 hours
@@ -1064,6 +1071,8 @@ TEST(ArgosTxService, UnderwaterFor24HoursDryTimeZero)
 
 	CHECK_EQUAL(0, serv.get_last_schedule());
 
+	// Should now transmit (TCXO warmup skipped on first TX after submerge)
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
 	mock().expectOneCall("send").onObject(mock_kineis).ignoreOtherParameters();
 	t += serv.get_last_schedule();
 	fake_rtc->settime(t/1000);

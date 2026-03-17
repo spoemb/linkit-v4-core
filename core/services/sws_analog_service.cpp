@@ -47,8 +47,8 @@ extern RGBLed *status_led;
 //  All levels require: underwater ≥ 1s AND proximity guard OK
 //
 //  Level 1 - INSTANT (1 sample)
-//    Drop > 4% from recent peak (slow-decaying) → immediate surface
-//    Use case: clean/moderate electrode, sharp water exit
+//    Drop > 4% from previous raw → immediate surface
+//    Use case: sharp water exit, any electrode condition
 //
 //  Level 2 - FAST (2 samples)
 //    2 consecutive raw drops, cumulative > 3% → surface
@@ -73,6 +73,7 @@ extern RGBLed *status_led;
 // Level 2
 #define L2_DROP_PERCENT 3              // Cumulative 2-sample raw drop (%)
 #define L2_MIN_CONSECUTIVE 2           // Minimum consecutive raw drops
+#define L2_MIN_STEP_PERCENT 2          // Each individual step must be ≥ 2% (filters drift)
 
 // Level 3
 #define L3_MIN_CONSECUTIVE 3           // Consecutive MA3 decreases
@@ -101,10 +102,14 @@ extern RGBLed *status_led;
 #define PROXIMITY_GUARD_PERCENT 95     // Default: must drop below 95% of peak
 #define PROXIMITY_GUARD_BIOFOULING 99  // Relaxed: when contrast < 5x, allow 1% gap
 
-// Air recalibration cap on L-override: prevents gap collapse from transitional readings.
-// At water exit, filtered value lags (MA2) and can be very close to water baseline.
-// Without cap, air→water gap collapses → threshold_high exceeds water → stuck at surface.
-#define AIR_RECALIB_CAP_PERCENT 85
+// Air recalibration on L-override: conservative EMA for gradual adaptation.
+// At water exit, filtered value lags (MA2) and is near water baseline → small weight
+// prevents ratcheting air upward on repeated rapid transitions.
+#define AIR_RECALIB_EMA_WEIGHT 0.15f
+// Hard safety cap: air must never exceed 70% of water.
+// Guarantees threshold_high stays below ~86% of water baseline,
+// so actual water readings (even 10-15% below baseline) still cross the threshold.
+#define AIR_RECALIB_MAX_RATIO 0.70f
 
 // Initialize static members
 SWSAnalogService::CalibrationData SWSAnalogService::m_calib;
@@ -115,6 +120,9 @@ SWSAnalogService* SWSAnalogService::s_instance = nullptr;
 bool SWSAnalogService::m_test_mode = false;
 std::function<void(const SWSAnalogService::Status&)> SWSAnalogService::m_status_notify;
 std::function<void()> SWSAnalogService::m_on_test_stop;
+#if ENABLE_SWS_LOG
+Logger *SWSAnalogService::m_sws_logger = nullptr;
+#endif
 
 SWSAnalogService::Status SWSAnalogService::get_status() {
     return m_status;
@@ -348,7 +356,13 @@ void SWSAnalogService::calibrate_air_baseline() {
         // Normal: started in air
         m_calib.threshold_air = avg;
         if (m_calib.threshold_water == 0 || m_calib.threshold_water <= m_calib.threshold_air) {
+            // Estimate water: air*3 for clean sensors, but cap at air+3000 for dirty pins.
+            // With air=200 → water=600 (3x). With air=1900 → water=4900 capped to 4900.
+            // A real electrode never produces > air+3000 gap, even in seawater.
             m_calib.threshold_water = m_calib.threshold_air * 3;
+            uint16_t max_water_estimate = m_calib.threshold_air + 3000;
+            if (m_calib.threshold_water > max_water_estimate)
+                m_calib.threshold_water = max_water_estimate;
             // Cap at observed peak if available (prevents overshoot with wet electrodes)
             if (m_observed_peak_adc > 0 && m_calib.threshold_water > m_observed_peak_adc) {
                 m_calib.threshold_water = m_observed_peak_adc;
@@ -375,7 +389,12 @@ void SWSAnalogService::calibrate_water_baseline(uint16_t value) {
     if (!is_value_valid(value)) return;
 
     uint16_t threshold_with_margin = m_calib.threshold_current + m_calib.hysteresis_value;
-    uint16_t min_expected_water = (uint16_t)(m_calib.threshold_water * 0.85f);
+
+    // Relaxed guard when water baseline is still estimated (no real peaks observed yet).
+    // Estimated water (air*3) can be wildly off with dirty pins → allow full adaptation.
+    bool water_is_estimated = (m_observed_peak_adc == 0);
+    uint16_t min_expected_water = water_is_estimated ?
+        ABSOLUTE_MIN_WATER_ADC : (uint16_t)(m_calib.threshold_water * 0.85f);
 
     // Only apply air ratio guard when air baseline is reasonable (< 1000 ADC).
     // If air is high (e.g. from corrupted calibration), skip this check to allow recovery.
@@ -597,25 +616,32 @@ bool SWSAnalogService::detector_state() {
     if (m_current_state && prev_raw > 0 && m_time_in_current_state >= OVERRIDE_MIN_TIME_SEC
         && proximity_ok) {
 
-        // LEVEL 1: Sudden drop from recent peak (decays slowly to follow drift)
-        if (m_recent_peak > 0 && raw_value < m_recent_peak) {
-            uint16_t peak_drop_pct = (uint16_t)((uint32_t)(m_recent_peak - raw_value) * 100 / m_recent_peak);
-            if (peak_drop_pct >= L1_DROP_PERCENT) {
+        // LEVEL 1: Sudden single-sample drop from previous raw
+        // Uses prev_raw (not recent_peak) to avoid false triggers from gradual drift
+        if (prev_raw > 0 && raw_value < prev_raw) {
+            uint16_t single_drop_pct = (uint16_t)((uint32_t)(prev_raw - raw_value) * 100 / prev_raw);
+            if (single_drop_pct >= L1_DROP_PERCENT) {
                 surface_level = 1;
             }
         }
 
-        // LEVEL 2: Two consecutive raw drops with cumulative threshold
+        // LEVEL 2: Two consecutive significant raw drops with cumulative threshold
+        // Each step must exceed L2_MIN_STEP_PERCENT to filter gradual drift/salinity changes
         if (surface_level == 0) {
             if (raw_value < prev_raw) {
-                if (m_consecutive_raw_drops == 0) {
-                    m_drop_reference = prev_raw;
-                }
-                m_consecutive_raw_drops++;
+                uint16_t step_pct = (uint16_t)((uint32_t)(prev_raw - raw_value) * 100 / prev_raw);
+                if (step_pct >= L2_MIN_STEP_PERCENT) {
+                    if (m_consecutive_raw_drops == 0) {
+                        m_drop_reference = prev_raw;
+                    }
+                    m_consecutive_raw_drops++;
 
-                uint16_t cumul_pct = (uint16_t)((uint32_t)(m_drop_reference - raw_value) * 100 / m_drop_reference);
-                if (m_consecutive_raw_drops >= L2_MIN_CONSECUTIVE && cumul_pct >= L2_DROP_PERCENT) {
-                    surface_level = 2;
+                    uint16_t cumul_pct = (uint16_t)((uint32_t)(m_drop_reference - raw_value) * 100 / m_drop_reference);
+                    if (m_consecutive_raw_drops >= L2_MIN_CONSECUTIVE && cumul_pct >= L2_DROP_PERCENT) {
+                        surface_level = 2;
+                    }
+                } else {
+                    m_consecutive_raw_drops = 0;  // Drift, not a real drop
                 }
             } else {
                 m_consecutive_raw_drops = 0;
@@ -806,12 +832,14 @@ bool SWSAnalogService::detector_state() {
         new_state = false;
         m_consecutive_samples = 0;
 
-        // Recalibrate air to wet-surface reading, capped at water * AIR_RECALIB_CAP_PERCENT.
-        // At L-detection moment, filtered value may be transitional (still near water).
-        // Without cap, air→water gap collapses → threshold_high > water → stuck at surface.
+        // Recalibrate air: gentle EMA toward filtered value (prevents corruption
+        // from transitional readings at water exit where filtered is still near water).
+        // Hard cap at 90% of water ensures threshold_high never exceeds water ADC.
         uint16_t old_air = m_calib.threshold_air;
-        uint16_t max_air_recalib = (uint16_t)(m_calib.threshold_water * (AIR_RECALIB_CAP_PERCENT / 100.0f));
-        uint16_t new_air = (filtered_value < max_air_recalib) ? filtered_value : max_air_recalib;
+        uint16_t new_air = (uint16_t)(m_calib.threshold_air * (1.0f - AIR_RECALIB_EMA_WEIGHT)
+                                       + filtered_value * AIR_RECALIB_EMA_WEIGHT);
+        uint16_t hard_cap = (uint16_t)(m_calib.threshold_water * AIR_RECALIB_MAX_RATIO);
+        if (new_air > hard_cap) new_air = hard_cap;
         if (new_air > m_calib.threshold_air && new_air < m_calib.threshold_water) {
             m_calib.threshold_air = new_air;
             update_dynamic_threshold();
@@ -908,6 +936,30 @@ bool SWSAnalogService::detector_state() {
     if (m_test_mode && m_status_notify) {
         m_status_notify(m_status);
     }
+
+#if ENABLE_SWS_LOG
+    // === 12. PERSISTENT LOG ===
+    if (m_sws_logger) {
+        SWSLogEntry sws_entry = {};
+        service_set_log_header_time(sws_entry.header, service_current_time());
+        sws_entry.header.log_type = LOG_UNDERWATER;
+        sws_entry.header.payload_size = sizeof(SWSLogEntry) - sizeof(LogHeader);
+        sws_entry.raw_adc = raw_value;
+        sws_entry.filtered_adc = filtered_value;
+        sws_entry.threshold = m_calib.threshold_current;
+        sws_entry.hysteresis = m_calib.hysteresis_value;
+        sws_entry.air = m_calib.threshold_air;
+        sws_entry.water = m_calib.threshold_water;
+        sws_entry.calibrated = m_calib.is_calibrated ? 1 : 0;
+        sws_entry.underwater = new_state ? 1 : 0;
+        sws_entry.time_in_state = (uint16_t)m_time_in_current_state;
+        sws_entry.surface_level = surface_level;
+        sws_entry.contrast_x10 = contrast_x10;
+        sws_entry.observed_peak = m_observed_peak_adc;
+        sws_entry.sample_delay_us = (uint16_t)m_sample_delay_us;
+        m_sws_logger->write(&sws_entry);
+    }
+#endif
 
     return new_state;
 }

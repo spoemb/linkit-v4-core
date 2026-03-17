@@ -259,8 +259,8 @@ uint64_t ArgosScheduler::next_duty_cycle(unsigned int duty_cycle)
 	// A new TR_NOM schedule is required
 
 	// Guard against zero TR_NOM which would cause infinite loop
-	if (m_argos_config.tr_nom == 0) {
-		DEBUG_ERROR("ArgosScheduler::next_duty_cycle: tr_nom is 0!");
+	if (m_argos_config.tx_interval_s == 0) {
+		DEBUG_ERROR("ArgosScheduler::next_duty_cycle: tx_interval_s is 0!");
 		m_next_schedule_absolute = INVALID_SCHEDULE;
 		return INVALID_SCHEDULE;
 	}
@@ -280,7 +280,7 @@ uint64_t ArgosScheduler::next_duty_cycle(unsigned int duty_cycle)
 		// than the jitter amount
 		m_next_schedule_absolute = m_last_transmission_schedule;
 		update_tx_jitter(-TX_JITTER_MS, TX_JITTER_MS);
-		m_next_schedule_absolute += (m_argos_config.tr_nom * MS_PER_SEC) + m_tx_jitter;
+		m_next_schedule_absolute += (m_argos_config.tx_interval_s * MS_PER_SEC) + m_tx_jitter;
 	}
 
 	DEBUG_TRACE("ArgosScheduler::next_duty_cycle: starting m_tr_nom_schedule = %.3f", (double)m_next_schedule_absolute / MS_PER_SEC);
@@ -297,7 +297,7 @@ uint64_t ArgosScheduler::next_duty_cycle(unsigned int duty_cycle)
 		} else {
 			uint64_t delta;
 			update_tx_jitter(-TX_JITTER_MS, TX_JITTER_MS);
-			delta = (m_argos_config.tr_nom * MS_PER_SEC);
+			delta = (m_argos_config.tx_interval_s * MS_PER_SEC);
 			delta += m_tx_jitter;
 			m_next_schedule_absolute += delta;
 			elapsed_time += delta;
@@ -386,7 +386,7 @@ uint64_t ArgosScheduler::next_prepass() {
 
 		// If there is a previous transmission then make sure schedule is at least advance TR_NOM
 		if (m_last_transmission_schedule != INVALID_SCHEDULE)
-			schedule = std::max((uint64_t)schedule, m_last_transmission_schedule + (m_argos_config.tr_nom * MS_PER_SEC));
+			schedule = std::max((uint64_t)schedule, m_last_transmission_schedule + (m_argos_config.tx_interval_s * MS_PER_SEC));
 
 		// Advance to at least the prepass epoch position
 		schedule = std::max(((uint64_t)next_pass.epoch * MS_PER_SEC), schedule);

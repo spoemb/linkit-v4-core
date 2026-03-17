@@ -45,6 +45,9 @@ endif()
 if(NOT DEFINED ENABLE_THERMISTOR_SENSOR)
     set(ENABLE_THERMISTOR_SENSOR 0)
 endif()
+if(NOT DEFINED ENABLE_SWS_LOG)
+    set(ENABLE_SWS_LOG 0)
+endif()
 
 # Guard: THERMISTOR and SEA_TEMP share the same depth pile slot in Argos TX.
 # Enabling both simultaneously would cause data corruption (last writer wins).
@@ -469,6 +472,7 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     ENABLE_CDT_SENSOR=${ENABLE_CDT_SENSOR}
     ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR}
     ENABLE_THERMISTOR_SENSOR=${ENABLE_THERMISTOR_SENSOR}
+    ENABLE_SWS_LOG=${ENABLE_SWS_LOG}
     ARGOS_SMD=${ARGOS_SMD_ENABLED}
     $<$<BOOL:${LORA_RAK3172_ENABLED}>:LORA_RAK3172=1>
     # Battery monitor type defines

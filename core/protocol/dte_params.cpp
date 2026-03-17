@@ -32,7 +32,7 @@ const BaseMap param_map[] = {
 	{ "_RESERVED_ARGOS_FREQ", "", BaseEncoding::ARGOSFREQ, 401.6200, 401.6800, {}, false, false },  // Obsolete: RADIOCONF controls frequency
 	{ "_RESERVED_ARGOS_POWER", "", BaseEncoding::ARGOSPOWER, 0, 0, { 0, 1, 2, 3 }, false, false },  // Obsolete: RADIOCONF controls power
 	{ "TR_NOM", "ARP05", BaseEncoding::UINT, 30U, 1200U, {}, true, true },
-	{ "ARGOS_MODE", "ARP01", BaseEncoding::ARGOSMODE, 0, 0, { 0, 1, 2, 3, 4 }, true, true },
+	{ "ARGOS_MODE", "ARP01", BaseEncoding::ARGOSMODE, 0, 0, { 0, 1, 2, 3, 4, 5 }, true, true },
 	{ "NTRY_PER_MESSAGE", "ARP19", BaseEncoding::UINT, 0U, 86400U, {}, true, true },
 	{ "DUTY_CYCLE", "ARP18", BaseEncoding::UINT, 0U, 0xFFFFFFU, {}, true, true },
 	{ "GNSS_EN", "GNP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
@@ -51,7 +51,7 @@ const BaseMap param_map[] = {
 	{ "LB_THRESHOLD", "LBP02", BaseEncoding::UINT, 0U, 100U, {}, true, true },
 	{ "_RESERVED_LB_ARGOS_POWER", "", BaseEncoding::ARGOSPOWER, 0, 0, { 0, 1, 2, 3 }, false, false },  // Obsolete: RADIOCONF controls power
 	{ "TR_LB", "ARP06", BaseEncoding::UINT, 30U, 1200U, {}, true, true },
-	{ "LB_ARGOS_MODE", "LBP04", BaseEncoding::ARGOSMODE, 0U, 0U, { 0U, 1U, 2U, 3U, 4U }, true, true },
+	{ "LB_ARGOS_MODE", "LBP04", BaseEncoding::ARGOSMODE, 0U, 0U, { 0U, 1U, 2U, 3U, 4U, 5U }, true, true },
 	{ "LB_ARGOS_DUTY_CYCLE", "LBP05", BaseEncoding::UINT, 0U, 0xFFFFFFU, {}, true, true },
 	{ "LB_GNSS_EN", "LBP06", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "DLOC_ARG_LB", "ARP12", BaseEncoding::AQPERIOD, 0, 0, { 0, 1, 2, 3, 4, 5, 6, 7, 8 }, true, true },
@@ -94,7 +94,7 @@ const BaseMap param_map[] = {
 	{ "ZONE_ARGOS_DEPTH_PILE", "ZOP08", BaseEncoding::DEPTHPILE, 0U, 0U, {1U, 2U, 3U, 4U, 8U, 9U, 10U, 11U, 12U}, true, true },
 	{ "_RESERVED_70", "", BaseEncoding::ARGOSPOWER, 0U, 0U, { 0, 1, 2, 3 }, false, false },
 	{ "ZONE_ARGOS_REPETITION_SECONDS", "ZOP10", BaseEncoding::UINT, 30U, 1200U, {}, true, true },
-	{ "ZONE_ARGOS_MODE", "ZOP11", BaseEncoding::ARGOSMODE, 0U, 0U, { 0U, 1U, 2U, 3U, 4U }, true, true },
+	{ "ZONE_ARGOS_MODE", "ZOP11", BaseEncoding::ARGOSMODE, 0U, 0U, { 0U, 1U, 2U, 3U, 4U, 5U }, true, true },
 	{ "ZONE_ARGOS_DUTY_CYCLE", "ZOP12", BaseEncoding::UINT, 0U, 0xFFFFFFU, {}, true, true },
 	{ "ZONE_ARGOS_NTRY_PER_MESSAGE", "ZOP13", BaseEncoding::UINT, 0U, 86400U, {}, true, true },
 	{ "ZONE_GNSS_DELTA_ARG_LOC_ARGOS_SECONDS", "ZOP14", BaseEncoding::AQPERIOD, 0, 0, { 0, 1, 2, 3, 4, 5, 6, 7, 8 }, true, true },
@@ -271,6 +271,10 @@ const BaseMap param_map[] = {
 	{ "LORA_CFM", "LRP13", BaseEncoding::BOOLEAN, 0, 0, {}, (LORA_RAK3172 == 1), true },
 	{ "LORA_FPORT", "LRP14", BaseEncoding::UINT, 1U, 223U, {}, (LORA_RAK3172 == 1), true },
 	{ "LORA_LP_MODE", "LRP15", BaseEncoding::UINT, 0U, 1U, {}, (LORA_RAK3172 == 1), true },
+	// [196-198] Surfacing burst parameters (slots always reserved)
+	{ "SURFACING_BURST_INIT_S", "ARP40", BaseEncoding::UINT, 5U, 120U, {}, true, true },
+	{ "SURFACING_BURST_STEP_S", "ARP41", BaseEncoding::UINT, 0U, 30U, {}, true, true },
+	{ "SURFACING_BURST_MAX_S", "ARP42", BaseEncoding::UINT, 5U, 300U, {}, true, true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

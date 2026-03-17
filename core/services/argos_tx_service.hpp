@@ -163,6 +163,11 @@ private:
 	std::function<void()> m_scheduled_task;
 	KineisModulation m_scheduled_mode;
 
+	// Surfacing burst state
+	bool m_is_surfacing_burst;
+	unsigned int m_doppler_burst_count;
+	bool m_has_gnss_fix_since_surfacing;
+
 	void react(KineisEventTxStarted const &) override;
 	void react(KineisEventTxComplete const &) override;
 	void react(KineisEventDeviceError const &) override;

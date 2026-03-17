@@ -2,6 +2,64 @@
 
 #include "bsp.hpp"
 #include "uwdetector_service.hpp"
+#include "logger.hpp"
+#include "messages.hpp"
+#include "timeutils.hpp"
+
+#if ENABLE_SWS_LOG
+
+struct __attribute__((packed)) SWSLogEntry {
+    LogHeader header;
+    union {
+        struct __attribute__((packed)) {
+            uint16_t raw_adc;           // Raw ADC reading
+            uint16_t filtered_adc;      // Filtered (MA2) ADC reading
+            uint16_t threshold;         // Current active threshold
+            uint16_t hysteresis;        // Hysteresis value (ADC counts)
+            uint16_t air;               // Air baseline ADC
+            uint16_t water;             // Water baseline ADC
+            uint8_t  calibrated;        // Calibration valid flag
+            uint8_t  underwater;        // Current state (1=underwater, 0=surface)
+            uint16_t time_in_state;     // Seconds in current state (max 65535s = 18h)
+            uint8_t  surface_level;     // Detection level (0=none, 1-5=L1-L5)
+            uint16_t contrast_x10;     // Water/air contrast ratio x10
+            uint16_t observed_peak;    // Highest ADC value observed
+            uint16_t sample_delay_us;  // Adaptive RC charge delay (µs, max 5000)
+        };
+        uint8_t data[MAX_LOG_PAYLOAD];
+    };
+};
+static_assert(sizeof(SWSLogEntry) - sizeof(LogHeader) <= MAX_LOG_PAYLOAD, "SWSLogEntry payload too large");
+
+class SWSLogFormatter : public LogFormatter {
+public:
+    const std::string header() override {
+        return "log_datetime,raw_adc,filtered_adc,threshold,hysteresis,air,water,calibrated,underwater,time_in_state,surface_level,contrast_x10,observed_peak,sample_delay_us\r\n";
+    }
+    const std::string log_entry(const LogEntry& e) override {
+        char entry[512], d1[128];
+        const SWSLogEntry *log = (const SWSLogEntry *)&e;
+        std::time_t t;
+        std::tm *tm;
+
+        t = convert_epochtime(log->header.year, log->header.month, log->header.day, log->header.hours, log->header.minutes, log->header.seconds);
+        tm = std::gmtime(&t);
+        std::strftime(d1, sizeof(d1), "%d/%m/%Y %H:%M:%S", tm);
+
+        snprintf(entry, sizeof(entry), "%s,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u\r\n", // NOLINT
+                 d1,
+                 log->raw_adc, log->filtered_adc,
+                 log->threshold, log->hysteresis,
+                 log->air, log->water,
+                 log->calibrated, log->underwater,
+                 log->time_in_state, log->surface_level,
+                 log->contrast_x10, log->observed_peak,
+                 log->sample_delay_us);
+        return std::string(entry);
+    }
+};
+
+#endif // ENABLE_SWS_LOG
 
 /**
  * @brief SWS Analog Surface Detection — fast, adaptive, biofouling-resistant
@@ -65,6 +123,10 @@ public:
     static void set_on_test_stop(std::function<void()> fn);
     static void clear_on_test_stop();
 
+#if ENABLE_SWS_LOG
+    static void set_sws_logger(Logger *logger) { m_sws_logger = logger; }
+#endif
+
 #ifdef CPPUTEST
     // Reset static calibration data for test isolation
     static void reset_noinit_data() {
@@ -118,6 +180,9 @@ private:
     static bool m_test_mode;
     static std::function<void(const Status&)> m_status_notify;
     static std::function<void()> m_on_test_stop;
+#if ENABLE_SWS_LOG
+    static Logger *m_sws_logger;
+#endif
     // Calibration data structure (stored in noinit RAM to survive resets)
     struct CalibrationData {
         uint16_t threshold_air;          // Baseline ADC value in air (low conductivity)

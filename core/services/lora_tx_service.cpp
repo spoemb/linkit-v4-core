@@ -410,7 +410,7 @@ void LoRaTxScheduler::schedule_periodic(unsigned int period_ms, bool jitter_en, 
 
 unsigned int LoRaTxScheduler::schedule_duty_cycle(ArgosConfig& config, std::time_t now) {
 	try {
-		schedule_periodic((config.tr_nom * MSECS_PER_SECOND), config.argos_tx_jitter_en, config.duty_cycle, ((uint64_t)now * MSECS_PER_SECOND));
+		schedule_periodic((config.tx_interval_s * MSECS_PER_SECOND), config.argos_tx_jitter_en, config.duty_cycle, ((uint64_t)now * MSECS_PER_SECOND));
 		return m_curr_schedule_abs.value() - (now * MSECS_PER_SECOND);
 	} catch (...) {
 		return INVALID_SCHEDULE;
@@ -419,7 +419,7 @@ unsigned int LoRaTxScheduler::schedule_duty_cycle(ArgosConfig& config, std::time
 
 unsigned int LoRaTxScheduler::schedule_legacy(ArgosConfig& config, std::time_t now) {
 	try {
-		schedule_periodic((config.tr_nom * MSECS_PER_SECOND), config.argos_tx_jitter_en, DUTYCYCLE_24HRS, (now * MSECS_PER_SECOND));
+		schedule_periodic((config.tx_interval_s * MSECS_PER_SECOND), config.argos_tx_jitter_en, DUTYCYCLE_24HRS, (now * MSECS_PER_SECOND));
 		return m_curr_schedule_abs.value() - (now * MSECS_PER_SECOND);
 	} catch (...) {
 		return INVALID_SCHEDULE;

@@ -37,6 +37,9 @@ void ArgosTxService::service_init() {
 	m_is_tx_pending = false;
 	m_tcxo_skip_on_next_tx = false;
 	m_session_tx_count = 0;
+	m_is_surfacing_burst = false;
+	m_doppler_burst_count = 0;
+	m_has_gnss_fix_since_surfacing = false;
 
 	// Set the idle timeout depending on the configuration settings
 	// i) In certification mode, keep powered on for 10 seconds in idle
@@ -88,6 +91,53 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 		} else if (argos_config.mode == BaseArgosMode::DOPPLER) {
 			m_scheduled_task = [this]() { process_doppler_burst(); };
 			m_scheduled_mode = KineisModulation::LDA2;
+			return m_sched.schedule_legacy(argos_config, now);
+		} else if (argos_config.mode == BaseArgosMode::SURFACING_BURST) {
+			m_scheduled_mode = KineisModulation::LDA2;
+
+			// Phase 1: Doppler burst with progressive intervals until GNSS fix
+			if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing) {
+				m_scheduled_task = [this]() { process_doppler_burst(); };
+
+				// First message is immediate (0 delay)
+				if (m_doppler_burst_count == 0) {
+					DEBUG_INFO("ArgosTxService::SURFACING_BURST: Doppler #%u (immediate)", m_doppler_burst_count + 1);
+					m_sched.schedule_at(now);
+					return 0;
+				}
+
+				// Progressive interval: init + (count-1) * step, capped at max
+				unsigned int interval_s = argos_config.surfacing_burst_init_s +
+					(m_doppler_burst_count - 1) * argos_config.surfacing_burst_step_s;
+				if (interval_s > argos_config.surfacing_burst_max_s)
+					interval_s = argos_config.surfacing_burst_max_s;
+
+				DEBUG_INFO("ArgosTxService::SURFACING_BURST: Doppler #%u in %u s", m_doppler_burst_count + 1, interval_s);
+				m_sched.schedule_at(now + interval_s);
+				return interval_s * 1000;
+			}
+
+			// Phase 2: GNSS fix available — switch to normal GNSS TX with tx_interval_s
+			if (m_has_gnss_fix_since_surfacing) {
+				if (!service_is_time_known()) {
+					DEBUG_TRACE("ArgosTxService::SURFACING_BURST: GNSS phase but RTC not set");
+					return Service::SCHEDULE_DISABLED;
+				}
+				if (m_depth_pile_manager.eligible() == 0) {
+					DEBUG_TRACE("ArgosTxService::SURFACING_BURST: GNSS phase but no eligible entries");
+					return Service::SCHEDULE_DISABLED;
+				}
+				DEBUG_INFO("ArgosTxService::SURFACING_BURST: switching to GNSS phase (tx_interval=%u s)", argos_config.tx_interval_s);
+				if (argos_config.sensor_tx_enable) {
+					m_scheduled_task = [this]() { process_sensor_burst(); };
+				} else {
+					m_scheduled_task = [this]() { process_gnss_burst(); };
+				}
+				return m_sched.schedule_legacy(argos_config, now);
+			}
+
+			// Not in surfacing burst and no GNSS fix: send Doppler at legacy rate
+			m_scheduled_task = [this]() { process_doppler_burst(); };
 			return m_sched.schedule_legacy(argos_config, now);
 		} else {
 			if (!argos_config.gnss_en) {
@@ -160,6 +210,11 @@ void ArgosTxService::service_initiate() {
 		m_kineis.set_tcxo_warmup_time(0);
 	}
 
+	// Track Doppler burst count in SURFACING_BURST mode
+	if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing) {
+		m_doppler_burst_count++;
+	}
+
 	m_scheduled_task();
 }
 
@@ -183,7 +238,10 @@ unsigned int ArgosTxService::service_next_timeout() {
 }
 
 bool ArgosTxService::service_is_triggered_on_surfaced(bool &immediate) {
-	immediate = false;
+	ArgosConfig argos_config;
+	configuration_store->get_argos_configuration(argos_config);
+	// In SURFACING_BURST mode, reschedule immediately (Doppler burst starts at T=0)
+	immediate = (argos_config.mode == BaseArgosMode::SURFACING_BURST);
 	return true;  // Re-schedule us on a surfaced event
 }
 
@@ -201,13 +259,21 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 		if (entry.info.valid) {
 			DEBUG_TRACE("ArgosTxService::notify_peer_event: updated GPS location");
 			m_sched.set_last_location(entry.info.lon, entry.info.lat);
+
+			// SURFACING_BURST: GNSS fix received — switch from Doppler to GNSS phase
+			if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing) {
+				DEBUG_INFO("ArgosTxService::SURFACING_BURST: GNSS fix acquired after %u Doppler messages - switching to GNSS phase",
+				           m_doppler_burst_count);
+				m_has_gnss_fix_since_surfacing = true;
+				service_reschedule();
+				Service::notify_peer_event(e);
+				return;
+			}
 		}
 
 		// Reschedule the service
 		if (!service_is_scheduled()) {
 			DEBUG_TRACE("ArgosTxService::notify_peer_event: rescheduling as no existing schedule");
-			// Reschedule service if we have no existing schedule which may be necessary
-			// in the situation that the GPS location was not known in prepass mode
 			service_reschedule();
 		}
 
@@ -216,11 +282,24 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 			// Device went underwater: skip TCXO warmup on first TX after next surfacing
 			m_tcxo_skip_on_next_tx = true;
 			m_kineis.set_tcxo_warmup_time(0);
+			// Reset surfacing burst state on dive
+			m_is_surfacing_burst = false;
+			m_doppler_burst_count = 0;
+			m_has_gnss_fix_since_surfacing = false;
 		} else {
+			// Device surfaced
 			ArgosConfig argos_config;
 			configuration_store->get_argos_configuration(argos_config);
 			std::time_t earliest_schedule = service_current_time() + argos_config.dry_time_before_tx;
 			m_sched.set_earliest_schedule(earliest_schedule);
+
+			// Activate surfacing burst mode
+			if (argos_config.mode == BaseArgosMode::SURFACING_BURST) {
+				m_is_surfacing_burst = true;
+				m_doppler_burst_count = 0;
+				m_has_gnss_fix_since_surfacing = false;
+				DEBUG_INFO("ArgosTxService::SURFACING_BURST: surface detected - starting Doppler burst sequence");
+			}
 		}
 	}
 
@@ -956,7 +1035,7 @@ void ArgosTxScheduler::schedule_periodic(unsigned int period_ms, bool jitter_en,
 
 // 		// If there is a previous transmission then make sure schedule is at least advance TR_NOM
 // 		if (m_last_schedule_abs.has_value())
-// 			schedule = std::max((uint64_t)schedule, m_last_schedule_abs.value() + (config.tr_nom * MSECS_PER_SECOND));
+// 			schedule = std::max((uint64_t)schedule, m_last_schedule_abs.value() + (config.tx_interval_s * MSECS_PER_SECOND));
 
 // 		// Advance to at least the prepass epoch position
 // 		schedule = std::max(((uint64_t)next_pass.epoch * MSECS_PER_SECOND), schedule);
@@ -1005,7 +1084,7 @@ void ArgosTxScheduler::schedule_periodic(unsigned int period_ms, bool jitter_en,
 
 unsigned int ArgosTxScheduler::schedule_duty_cycle(ArgosConfig& config, std::time_t now) {
 	try {
-		schedule_periodic((config.tr_nom * MSECS_PER_SECOND), config.argos_tx_jitter_en, config.duty_cycle, ((uint64_t)now * MSECS_PER_SECOND));
+		schedule_periodic((config.tx_interval_s * MSECS_PER_SECOND), config.argos_tx_jitter_en, config.duty_cycle, ((uint64_t)now * MSECS_PER_SECOND));
 		return m_curr_schedule_abs.value() - (now * MSECS_PER_SECOND);
 	} catch(...) {
 		return INVALID_SCHEDULE;
@@ -1014,7 +1093,7 @@ unsigned int ArgosTxScheduler::schedule_duty_cycle(ArgosConfig& config, std::tim
 
 unsigned int ArgosTxScheduler::schedule_legacy(ArgosConfig& config, std::time_t now) {
 	try {
-		schedule_periodic((config.tr_nom * MSECS_PER_SECOND), config.argos_tx_jitter_en, DUTYCYCLE_24HRS, (now * MSECS_PER_SECOND));
+		schedule_periodic((config.tx_interval_s * MSECS_PER_SECOND), config.argos_tx_jitter_en, DUTYCYCLE_24HRS, (now * MSECS_PER_SECOND));
 		return m_curr_schedule_abs.value() - (now * MSECS_PER_SECOND);
 	} catch(...) {
 		return INVALID_SCHEDULE;

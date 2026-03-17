@@ -43,13 +43,16 @@ struct ArgosConfig {
 	unsigned int tx_counter;
 	double frequency;
 	BaseArgosPower power;
-	unsigned int tr_nom;
+	unsigned int tx_interval_s;
 	BaseArgosMode mode;
 	unsigned int ntry_per_message;
 	unsigned int duty_cycle;
 	BaseDepthPile depth_pile;
 	BaseDeltaTimeLoc delta_time_loc;
 	unsigned int dry_time_before_tx;
+	unsigned int surfacing_burst_init_s;
+	unsigned int surfacing_burst_step_s;
+	unsigned int surfacing_burst_max_s;
 	unsigned int argos_id;
 	bool underwater_en;
 	double prepass_min_elevation;
@@ -290,6 +293,9 @@ protected:
 		/* [193] LORA_CFM */ (bool)false,  // Default: Unconfirmed messages
 		/* [194] LORA_FPORT */ 2U,        // Default: Application port 2
 		/* [195] LORA_LP_MODE */ 1U,      // Default: 1=standby (fast wake ~10ms), 0=shutdown (0µA, slow wake ~2.5s)
+		/* [196] SURFACING_BURST_INIT_S */ 5U,
+		/* [197] SURFACING_BURST_STEP_S */ 1U,
+		/* [198] SURFACING_BURST_MAX_S */ 30U,
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,
@@ -663,7 +669,7 @@ public:
 			argos_config.depth_pile = read_param<BaseDepthPile>(ParamID::LB_ARGOS_DEPTH_PILE);
 			argos_config.duty_cycle = read_param<unsigned int>(ParamID::LB_ARGOS_DUTY_CYCLE);
 			argos_config.ntry_per_message = read_param<unsigned int>(ParamID::LB_NTRY_PER_MESSAGE);
-			argos_config.tr_nom = read_param<unsigned int>(ParamID::TR_LB);
+			argos_config.tx_interval_s = read_param<unsigned int>(ParamID::TR_LB);
 			argos_config.dry_time_before_tx = read_param<unsigned int>(ParamID::DRY_TIME_BEFORE_TX);
 			argos_config.underwater_en = read_param<bool>(ParamID::UNDERWATER_EN);
 			argos_config.argos_id = read_param<unsigned int>(ParamID::ARGOS_HEXID);
@@ -676,6 +682,9 @@ public:
 			unsigned int delta_time_loc = read_param<unsigned int>(ParamID::DLOC_ARG_LB);
 			argos_config.delta_time_loc = calc_delta_time_loc(delta_time_loc);
 			argos_config.shutdown_ntime_sat = read_param<unsigned int>(ParamID::LB_SHUTDOWN_NTIME_SAT);
+			argos_config.surfacing_burst_init_s = read_param<unsigned int>(ParamID::SURFACING_BURST_INIT_S);
+			argos_config.surfacing_burst_step_s = read_param<unsigned int>(ParamID::SURFACING_BURST_STEP_S);
+			argos_config.surfacing_burst_max_s = read_param<unsigned int>(ParamID::SURFACING_BURST_MAX_S);
 			if (m_last_config_mode != ConfigMode::LOW_BATTERY) {
 				DEBUG_INFO("ConfigurationStore: LOW_BATTERY mode detected");
 				m_last_config_mode = ConfigMode::LOW_BATTERY;
@@ -693,7 +702,7 @@ public:
 			argos_config.depth_pile = read_param<BaseDepthPile>(ParamID::ZONE_ARGOS_DEPTH_PILE);
 			argos_config.duty_cycle = read_param<unsigned int>(ParamID::ZONE_ARGOS_DUTY_CYCLE);
 			argos_config.ntry_per_message = read_param<unsigned int>(ParamID::ZONE_ARGOS_NTRY_PER_MESSAGE);
-			argos_config.tr_nom = read_param<unsigned int>(ParamID::ZONE_ARGOS_REPETITION_SECONDS);
+			argos_config.tx_interval_s = read_param<unsigned int>(ParamID::ZONE_ARGOS_REPETITION_SECONDS);
 			argos_config.dry_time_before_tx = read_param<unsigned int>(ParamID::DRY_TIME_BEFORE_TX);
 			argos_config.underwater_en = read_param<bool>(ParamID::UNDERWATER_EN);
 			argos_config.argos_id = read_param<unsigned int>(ParamID::ARGOS_HEXID);
@@ -705,6 +714,9 @@ public:
 			argos_config.prepass_comp_step = read_param<unsigned int>(ParamID::PP_COMP_STEP);
 			argos_config.delta_time_loc = calc_delta_time_loc(read_param<unsigned int>(ParamID::ZONE_GNSS_DELTA_ARG_LOC_ARGOS_SECONDS));
 			argos_config.shutdown_ntime_sat = read_param<unsigned int>(ParamID::SHUTDOWN_NTIME_SAT);
+			argos_config.surfacing_burst_init_s = read_param<unsigned int>(ParamID::SURFACING_BURST_INIT_S);
+			argos_config.surfacing_burst_step_s = read_param<unsigned int>(ParamID::SURFACING_BURST_STEP_S);
+			argos_config.surfacing_burst_max_s = read_param<unsigned int>(ParamID::SURFACING_BURST_MAX_S);
 
 			if (m_last_config_mode != ConfigMode::OUT_OF_ZONE) {
 				DEBUG_INFO("ConfigurationStore: OUT_OF_ZONE mode detected");
@@ -724,7 +736,7 @@ public:
 			argos_config.depth_pile = read_param<BaseDepthPile>(ParamID::ARGOS_DEPTH_PILE);
 			argos_config.duty_cycle = read_param<unsigned int>(ParamID::DUTY_CYCLE);
 			argos_config.ntry_per_message = read_param<unsigned int>(ParamID::NTRY_PER_MESSAGE);
-			argos_config.tr_nom = read_param<unsigned int>(ParamID::TR_NOM);
+			argos_config.tx_interval_s = read_param<unsigned int>(ParamID::TR_NOM);
 			argos_config.dry_time_before_tx = read_param<unsigned int>(ParamID::DRY_TIME_BEFORE_TX);
 			argos_config.underwater_en = read_param<bool>(ParamID::UNDERWATER_EN);
 			argos_config.argos_id = read_param<unsigned int>(ParamID::ARGOS_HEXID);
@@ -737,6 +749,9 @@ public:
 			unsigned int delta_time_loc = read_param<unsigned int>(ParamID::DLOC_ARG_NOM);
 			argos_config.delta_time_loc = calc_delta_time_loc(delta_time_loc);
 			argos_config.shutdown_ntime_sat = read_param<unsigned int>(ParamID::SHUTDOWN_NTIME_SAT);
+			argos_config.surfacing_burst_init_s = read_param<unsigned int>(ParamID::SURFACING_BURST_INIT_S);
+			argos_config.surfacing_burst_step_s = read_param<unsigned int>(ParamID::SURFACING_BURST_STEP_S);
+			argos_config.surfacing_burst_max_s = read_param<unsigned int>(ParamID::SURFACING_BURST_MAX_S);
 			if (m_last_config_mode != ConfigMode::NORMAL) {
 				DEBUG_INFO("ConfigurationStore: NORMAL mode detected");
 				m_last_config_mode = ConfigMode::NORMAL;

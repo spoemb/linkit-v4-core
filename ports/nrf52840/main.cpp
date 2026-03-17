@@ -669,6 +669,13 @@ int main()
 	DEBUG_TRACE("SWS Analog...");
 	static SWSAnalogService sws_analog;
 
+#if ENABLE_SWS_LOG
+	DEBUG_TRACE("SWS Log...");
+	SWSLogFormatter sws_log_formatter;
+	FsLog sws_log(&lfs_file_system, "SWS", 1024*1024);
+	sws_log.set_log_formatter(&sws_log_formatter);
+	SWSAnalogService::set_sws_logger(&sws_log);
+#endif
 
 #if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
 	DEBUG_TRACE("LoRa RAK3172...");

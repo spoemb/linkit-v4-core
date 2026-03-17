@@ -997,7 +997,7 @@ TEST(ConfigStore, RetrieveArgosConfigDefaultMode)
 	CHECK_EQUAL((unsigned int)mode, (unsigned int)argos_config.mode);
 	CHECK_EQUAL(ntry_per_message, argos_config.ntry_per_message);
 	CHECK_EQUAL((unsigned int)BaseArgosPower::POWER_350_MW, (unsigned int)argos_config.power);
-	CHECK_EQUAL(tr_nom, argos_config.tr_nom);
+	CHECK_EQUAL(tr_nom, argos_config.tx_interval_s);
 	CHECK_EQUAL(tx_counter, argos_config.tx_counter);
 }
 
@@ -1050,7 +1050,7 @@ TEST(ConfigStore, RetrieveArgosConfigLBMode)
 	CHECK_EQUAL((unsigned int)mode, (unsigned int)argos_config.mode);
 	CHECK_EQUAL(ntry_per_message, argos_config.ntry_per_message);
 	CHECK_EQUAL((unsigned int)BaseArgosPower::POWER_350_MW, (unsigned int)argos_config.power);
-	CHECK_EQUAL(tr_nom, argos_config.tr_nom);
+	CHECK_EQUAL(tr_nom, argos_config.tx_interval_s);
 	CHECK_EQUAL(tx_counter, argos_config.tx_counter);
 
 	// Notify battery level equal threshold
@@ -1065,7 +1065,7 @@ TEST(ConfigStore, RetrieveArgosConfigLBMode)
 	CHECK_EQUAL((unsigned int)lb_mode, (unsigned int)argos_config.mode);
 	CHECK_EQUAL(lb_ntry_per_message, argos_config.ntry_per_message);
 	CHECK_EQUAL((unsigned int)BaseArgosPower::POWER_350_MW, (unsigned int)argos_config.power);
-	CHECK_EQUAL(lb_tr_nom, argos_config.tr_nom);
+	CHECK_EQUAL(lb_tr_nom, argos_config.tx_interval_s);
 	CHECK_EQUAL(tx_counter, argos_config.tx_counter);
 
 	// Notify battery level below threshold
@@ -1080,7 +1080,7 @@ TEST(ConfigStore, RetrieveArgosConfigLBMode)
 	CHECK_EQUAL((unsigned int)lb_mode, (unsigned int)argos_config.mode);
 	CHECK_EQUAL(lb_ntry_per_message, argos_config.ntry_per_message);
 	CHECK_EQUAL((unsigned int)BaseArgosPower::POWER_350_MW, (unsigned int)argos_config.power);
-	CHECK_EQUAL(lb_tr_nom, argos_config.tr_nom);
+	CHECK_EQUAL(lb_tr_nom, argos_config.tx_interval_s);
 	CHECK_EQUAL(tx_counter, argos_config.tx_counter);
 
 	// Notify battery level 5% above threshold
@@ -1095,7 +1095,7 @@ TEST(ConfigStore, RetrieveArgosConfigLBMode)
 	CHECK_EQUAL((unsigned int)mode, (unsigned int)argos_config.mode);
 	CHECK_EQUAL(ntry_per_message, argos_config.ntry_per_message);
 	CHECK_EQUAL((unsigned int)BaseArgosPower::POWER_350_MW, (unsigned int)argos_config.power);
-	CHECK_EQUAL(tr_nom, argos_config.tr_nom);
+	CHECK_EQUAL(tr_nom, argos_config.tx_interval_s);
 	CHECK_EQUAL(tx_counter, argos_config.tx_counter);
 
 }
@@ -1253,7 +1253,7 @@ TEST(ConfigStore, RetrieveArgosConfigZoneExclusionMode)
 	CHECK_EQUAL((unsigned int)mode, (unsigned int)argos_config.mode);
 	CHECK_EQUAL(ntry_per_message, argos_config.ntry_per_message);
 	CHECK_EQUAL((unsigned int)BaseArgosPower::POWER_350_MW, (unsigned int)argos_config.power);
-	CHECK_EQUAL(tr_nom, argos_config.tr_nom);
+	CHECK_EQUAL(tr_nom, argos_config.tx_interval_s);
 	CHECK_EQUAL(tx_counter, argos_config.tx_counter);
 
 	// Set outside zone
@@ -1271,7 +1271,7 @@ TEST(ConfigStore, RetrieveArgosConfigZoneExclusionMode)
 	CHECK_EQUAL((unsigned int)zone_argos_mode, (unsigned int)argos_config.mode);
 	CHECK_EQUAL(zone_argos_ntry_per_message, argos_config.ntry_per_message);
 	CHECK_EQUAL((unsigned int)BaseArgosPower::POWER_350_MW, (unsigned int)argos_config.power);
-	CHECK_EQUAL(zone_argos_time_repetition_seconds, argos_config.tr_nom);
+	CHECK_EQUAL(zone_argos_time_repetition_seconds, argos_config.tx_interval_s);
 	CHECK_EQUAL(tx_counter, argos_config.tx_counter);
 }
 

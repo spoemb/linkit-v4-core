@@ -1535,7 +1535,7 @@ void DTEHandler::schedule_doppler_cal_tx() {
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	ArgosConfig config;
 	configuration_store->get_argos_configuration(config);
-	unsigned int delay_ms = config.tr_nom * 1000;
+	unsigned int delay_ms = config.tx_interval_s * 1000;
 
 	DEBUG_TRACE("DTEHandler::schedule_doppler_cal_tx: next TX in %u ms", delay_ms);
 

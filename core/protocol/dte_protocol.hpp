@@ -1143,6 +1143,8 @@ private:
 			return BaseArgosMode::DUTY_CYCLE;
 		} else if (s == "4") {
 			return BaseArgosMode::DOPPLER;
+		} else if (s == "5") {
+			return BaseArgosMode::SURFACING_BURST;
 		} else {
 			DEBUG_ERROR("DTE_PROTOCOL_VALUE_OUT_OF_RANGE in %s(%s)", __FUNCTION__, s.c_str());
 			throw DTE_PROTOCOL_VALUE_OUT_OF_RANGE;
