@@ -85,7 +85,7 @@ std::string DTEHandler::PARML_REQ(int error_code) {
 	return DTEEncoder::encode(DTECommand::PARML_RESP, params);
 }
 
-std::string DTEHandler::PARMW_REQ(int error_code, std::vector<ParamValue>& param_values, DTEAction& action) {
+std::string DTEHandler::PARMW_REQ(int error_code, std::vector<ParamValue>& param_values, std::vector<std::string>& rejected_keys, DTEAction& action) {
 
 	if (error_code) {
 		return DTEEncoder::encode(DTECommand::PARMW_RESP, error_code);
@@ -94,8 +94,10 @@ std::string DTEHandler::PARMW_REQ(int error_code, std::vector<ParamValue>& param
 	for (unsigned int i = 0; i < param_values.size(); i++) {
 		if (param_map[(int)param_values[i].param].is_writable)
 			configuration_store->write_param(param_values[i].param, param_values[i].value);
-		else
+		else {
 			DEBUG_WARN("DTEHandler::PARMW_REQ: not writing read-only attribute %s", param_map[(int)param_values[i].param].name.c_str());
+			rejected_keys.push_back(param_map[(int)param_values[i].param].key);
+		}
 	}
 
 	// Save all the parameters
@@ -103,6 +105,19 @@ std::string DTEHandler::PARMW_REQ(int error_code, std::vector<ParamValue>& param
 
 	// Notify configuration updated action
 	action = DTEAction::CONFIG_UPDATED;
+
+	// If some params were rejected, return partial success with rejected key list
+	// Format: $N;PARMW#LEN;key1,key2,...\r  (valid params were still written)
+	if (!rejected_keys.empty()) {
+		std::string payload;
+		for (unsigned int i = 0; i < rejected_keys.size(); i++) {
+			if (i > 0) payload += ",";
+			payload += rejected_keys[i];
+		}
+		char header[16];
+		snprintf(header, sizeof(header), "$N;PARMW#%03X;", (unsigned int)payload.size());
+		return std::string(header) + payload + "\r";
+	}
 
 	return DTEEncoder::encode(DTECommand::PARMW_RESP, DTEError::OK);
 }
@@ -1261,6 +1276,7 @@ DTEAction DTEHandler::handle_dte_message(const std::string& req, std::string& re
 	std::vector<ParamID> params;
 	std::vector<ParamValue> param_values;
 	std::vector<BaseType> arg_list;
+	std::vector<std::string> rejected_keys;
 	unsigned int error_code = (unsigned int)DTEError::OK;
 	DTEAction action = DTEAction::NONE;
 
@@ -1270,7 +1286,7 @@ DTEAction DTEHandler::handle_dte_message(const std::string& req, std::string& re
 	}
 
 	try {
-		if (!DTEDecoder::decode(req, command, error_code, arg_list, params, param_values))
+		if (!DTEDecoder::decode(req, command, error_code, arg_list, params, param_values, rejected_keys))
 			return action;
 	} catch (ErrorCode e) {
 
@@ -1312,7 +1328,7 @@ DTEAction DTEHandler::handle_dte_message(const std::string& req, std::string& re
 		resp = PARML_REQ(error_code);
 		break;
 	case DTECommand::PARMW_REQ:
-		resp = PARMW_REQ(error_code, param_values, action);
+		resp = PARMW_REQ(error_code, param_values, rejected_keys, action);
 		break;
 	case DTECommand::PARMR_REQ:
 		resp = PARMR_REQ(error_code, params);

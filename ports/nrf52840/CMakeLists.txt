@@ -246,7 +246,7 @@ target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
     $<$<BOOL:${ENABLE_SEA_TEMP_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/oem_rtd>
     $<$<BOOL:${ENABLE_SEA_TEMP_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/ezo_rtd>
     ${PROJ_DIR}/core/hardware/cdt
-    ${PROJ_DIR}/core/hardware/bma400
+    $<$<BOOL:${ENABLE_AXL_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/bma400>
     ${PROJ_DIR}/core/hardware/tsys01
     ${PROJ_DIR}/core/hardware/run_cam
     $<$<BOOL:${ENABLE_PRESSURE_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/lps28dfw>
@@ -343,8 +343,8 @@ target_sources(${TARGET_NAME} PRIVATE
     $<$<BOOL:${ENABLE_PRESSURE_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/lps28dfw/lps28dfw.cpp>
     $<$<BOOL:${ENABLE_PRESSURE_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/lps28dfw/lps28dfw_reg.c>
     ${PROJ_DIR}/core/hardware/ad5933/ad5933.cpp
-    ${PROJ_DIR}/core/hardware/bma400/bma400.cpp
-    ${PROJ_DIR}/core/hardware/bma400/bma400.c
+    $<$<BOOL:${ENABLE_AXL_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/bma400/bma400.cpp>
+    $<$<BOOL:${ENABLE_AXL_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/bma400/bma400.c>
     ${PROJ_DIR}/core/hardware/cdt/cdt.cpp
     ${PROJ_DIR}/core/hardware/ltr_303/ltr_303.cpp
     $<$<BOOL:${ENABLE_PH_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/oem_ph/oem_ph.cpp>

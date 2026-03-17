@@ -1280,7 +1280,7 @@ private:
 		return s.size();
 	}
 
-	static size_t decode(std::string& s, std::vector<ParamValue>& val) {
+	static size_t decode(std::string& s, std::vector<ParamValue>& val, std::vector<std::string>& rejected_keys) {
 		// Iterate over comma seperated values
 		constexpr std::string_view delim = ",";
 
@@ -1304,10 +1304,12 @@ private:
 
 					// Skip unknown parameters (logs warning but continues processing)
 					if (!try_lookup_key(key, key_value.param)) {
+						rejected_keys.push_back(key);
 						prev = pos + delim.size();
 						continue;
 					}
 					const BaseMap& param_ref = param_map[(unsigned int)key_value.param];
+					try {
 					switch (param_ref.encoding) {
 						case BaseEncoding::DECIMAL:
 						{
@@ -1484,6 +1486,10 @@ private:
 						default:
 							break;
 						}
+					} catch (ErrorCode) {
+						DEBUG_WARN("Parameter \"%s\" rejected (invalid value \"%s\") - skipping", key.c_str(), value.c_str());
+						rejected_keys.push_back(key);
+					}
 				}
 			}
 
@@ -1495,7 +1501,13 @@ private:
 	}
 
 public:
+	// Backward-compatible overload (ignores rejected keys)
 	static bool decode(const std::string& str, DTECommand& command, unsigned int& error_code, std::vector<BaseType> &arg_list, std::vector<ParamID>& keys, std::vector<ParamValue>& key_values) {
+		std::vector<std::string> rejected_keys;
+		return decode(str, command, error_code, arg_list, keys, key_values, rejected_keys);
+	}
+
+	static bool decode(const std::string& str, DTECommand& command, unsigned int& error_code, std::vector<BaseType> &arg_list, std::vector<ParamID>& keys, std::vector<ParamValue>& key_values, std::vector<std::string>& rejected_keys) {
 		constexpr std::string_view cmd_resp_ok("$O;");
 		constexpr std::string_view cmd_resp_nok("$N;");
 		constexpr std::string_view cmd_req("$");
@@ -1624,7 +1636,7 @@ public:
 				switch (cmd_ref->prototype[arg_index].encoding) {
 				case BaseEncoding::KEY_VALUE_LIST:
 					DEBUG_TRACE("BaseEncoding::KEY_VALUE_LIST");
-					payload_pos += decode(remaining_str, key_values);
+					payload_pos += decode(remaining_str, key_values, rejected_keys);
 					break;
 				case BaseEncoding::KEY_LIST:
 					DEBUG_TRACE("BaseEncoding::KEY_LIST");

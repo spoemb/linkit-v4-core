@@ -137,7 +137,7 @@ public:
 	void reset_state();
 
 	static std::string PARML_REQ(int error_code);
-	static std::string PARMW_REQ(int error_code, std::vector<ParamValue>& param_values, DTEAction& action);
+	static std::string PARMW_REQ(int error_code, std::vector<ParamValue>& param_values, std::vector<std::string>& rejected_keys, DTEAction& action);
 	static std::string PARMR_REQ(int error_code, std::vector<ParamID>& params);
 	static std::string STATR_REQ(int error_code, std::vector<ParamID>& params);
 	static std::string PROFW_REQ(int error_code, std::vector<BaseType>& arg_list);

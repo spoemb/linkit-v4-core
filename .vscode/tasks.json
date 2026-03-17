@@ -67,7 +67,7 @@
 		{
 			"type": "shell",
 			"label": "LinkItV4-SMD: clean build (Debug)",
-			"command": "rm -rf ports/nrf52840/build/LINKIT_SMD && mkdir -p ports/nrf52840/build/LINKIT_SMD && cd ports/nrf52840/build/LINKIT_SMD && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=LINKIT -DCMAKE_BUILD_TYPE=Debug -DARGOS_SMD=ON -DENABLE_AXL_SENSOR=ON ../.. && make -j20",
+			"command": "rm -rf ports/nrf52840/build/LINKIT_SMD && mkdir -p ports/nrf52840/build/LINKIT_SMD && cd ports/nrf52840/build/LINKIT_SMD && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=LINKIT -DCMAKE_BUILD_TYPE=Debug -DARGOS_SMD=ON -DENABLE_AXL_SENSOR=OFF -DENABLE_SWS_LOG=ON ../.. && make -j20",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"
