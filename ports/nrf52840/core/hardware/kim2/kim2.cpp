@@ -43,6 +43,9 @@ KIM2Device::KIM2Device()
     m_tx_buffer.clear();
     m_packet_buffer.clear();
     m_state = KIM2ManagerState::power_off;
+    m_tx_mode = KineisModulation::LDA2;
+    m_current_rconf_mode = KineisModulation::LDA2;
+    m_timeout = {};
     KIM2_STATE_CHANGE(power_off, power_on);
 }
 
@@ -115,7 +118,7 @@ void KIM2Device::send(const KineisModulation mode, const KineisPacket& user_payl
     // Setup TX mode
     DEBUG_TRACE("KIM2Device::send_packet: data[%u]=%s", total_bits, Binascii::hexlify(packet).c_str());
     m_packet_buffer = Binascii::hexlify(packet).c_str();
-    m_tx_mode = mode; //TODO : use m_tx_mode
+    m_tx_mode = mode;
 
     // Request power on (if not already running)
     start_device();
@@ -324,12 +327,16 @@ void KIM2Device::state_init()
         }
     }
 
-    // Read RCONF or similar from configuration_store ?
-    std::string rconf = "03921fb104b92859209b18abd009de96"; // ESS4 - LDK - 27dBm
+    // Read RCONF from configuration store, fallback to default if empty
+    std::string rconf = configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF);
+    if (rconf.empty()) {
+        rconf = "03921fb104b92859209b18abd009de96"; // Default: ESS4 - LDK - 27dBm
+        DEBUG_WARN("KIM2Device::state_init: ARGOS_RADIOCONF empty, using default");
+    }
     if(!(send_AT(AT_SET_RCONF, rconf) || send_AT(AT_SET_KMAC_BASIC)))
     {
         DEBUG_TRACE("KIM2Device::state_init RCONF and KMAC set");
-        // KIM2_STATE_CHANGE(init, idle);
+        configuration_store->write_param(ParamID::ARGOS_RADIOCONF, rconf);
     }
     else
     {
@@ -384,17 +391,17 @@ void KIM2Device::state_idle_exit()
 
 void KIM2Device::state_transmit_enter()
 {
-    DEBUG_INFO("KIM2Device::state_transmit_enter");
-    // GPIOPins::set(SAT_RESET);
-    // PMU::delay_ms(10); // Check if delay necessary
-    // GPIOPins::set(SAT_EXTWAKEUP);
-    // PMU::delay_ms(10); // Check if delay necessary
-	// use m_tx_mode ?
+    DEBUG_INFO("KIM2Device::state_transmit_enter: mode=%u", (unsigned int)m_tx_mode);
+
+    if (m_tx_mode != m_current_rconf_mode) {
+        DEBUG_WARN("KIM2Device::state_transmit_enter: TX mode %u != RCONF mode %u, reconfiguring RCONF may be needed",
+            (unsigned int)m_tx_mode, (unsigned int)m_current_rconf_mode);
+    }
 
     m_tx_done = false;
     send_AT(AT_TX, m_tx_buffer);
     notify(KineisEventTxStarted({}));
-    initiate_timeout(60000);     // Update this timeout once LPM and/or BLIND mode implemented
+    initiate_timeout(60000);
 }
 
 void KIM2Device::state_transmit()

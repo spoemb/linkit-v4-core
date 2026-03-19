@@ -6,10 +6,7 @@
 #include "timeutils.hpp"
 #include "bitpack.hpp"
 #include "debug.hpp"
-#if !defined(ARGOS_SMD) || (ARGOS_SMD != 1)
 #include "crc8.hpp"
-#include "bch.hpp"
-#endif
 #include "binascii.hpp"
 
 
@@ -574,9 +571,7 @@ KineisPacket ArgosPacketBuilder::build_long_packet(std::vector<GPSLogEntry*> &gp
 	packet.assign(LONG_PACKET_BYTES, 0);
 
 	// Payload bytes
-#if !defined(ARGOS_SMD) || (ARGOS_SMD != 1)
-	PACK_BITS(0, packet, base_pos, 8);  // Zero CRC field (computed later)
-#endif
+	// PACK_BITS(0, packet, base_pos, 8);  // Zero CRC field (computed later)
 
 	// This will set the log time for the GPS entry based on when it was scheduled
 	uint16_t year;
@@ -640,23 +635,7 @@ KineisPacket ArgosPacketBuilder::build_long_packet(std::vector<GPSLogEntry*> &gp
 		}
 	}
 
-#if !defined(ARGOS_SMD) || (ARGOS_SMD != 1)
-	// Calculate CRC8
-	unsigned char crc8 = CRC8::checksum(packet.substr(1), LONG_PACKET_PAYLOAD_BITS - 8);
-	unsigned int crc_offset = 0;
-	PACK_BITS(crc8, packet, crc_offset, 8);
-	DEBUG_TRACE("ArgosPacketBuilder::build_long_packet: crc8=%02x", crc8);
-
-	// BCH code B255_223_4
-	BCHCodeWord code_word = BCHEncoder::encode(
-			BCHEncoder::B255_223_4,
-			sizeof(BCHEncoder::B255_223_4),
-			packet, LONG_PACKET_PAYLOAD_BITS);
-	DEBUG_TRACE("ArgosPacketBuilder::build_long_packet: bch=%08x", code_word);
-
-	// Append BCH code
-	PACK_BITS(code_word, packet, base_pos, BCHEncoder::B255_223_4_CODE_LEN);
-#endif
+	// CRC8 and BCH are handled by the satellite module (SMD/KIM2)
 
 	return packet;
 }
@@ -710,9 +689,7 @@ KineisPacket ArgosPacketBuilder::build_doppler_packet(unsigned int batt_voltage,
 	packet.assign(DOPPLER_PACKET_BYTES, 0);
 
 	// Payload bytes
-#if !defined(ARGOS_SMD) || (ARGOS_SMD != 1)
-	PACK_BITS(0, packet, base_pos, 8);  // Zero CRC field (computed later)
-#endif
+	// PACK_BITS(0, packet, base_pos, 8);  // Zero CRC field (computed later)
 
 	unsigned int last_known_pos = 0;
 	PACK_BITS(last_known_pos, packet, base_pos, 8);
@@ -726,13 +703,7 @@ KineisPacket ArgosPacketBuilder::build_doppler_packet(unsigned int batt_voltage,
 	PACK_BITS(is_low_battery, packet, base_pos, 1);
 	DEBUG_TRACE("ArgosPacketBuilder::build_short_packet: is_lb=%u", (unsigned int)is_low_battery);
 
-#if !defined(ARGOS_SMD) || (ARGOS_SMD != 1)
-	// Calculate CRC8
-	unsigned char crc8 = CRC8::checksum(packet.substr(1), DOPPLER_PACKET_PAYLOAD_BITS - 8);
-	unsigned int crc_offset = 0;
-	PACK_BITS(crc8, packet, crc_offset, 8);
-	DEBUG_TRACE("ArgosPacketBuilder::build_short_packet: crc8=%02x", crc8);
-#endif
+	// CRC8 is handled by the satellite module (SMD/KIM2)
 
 	size_bits = DOPPLER_PACKET_BITS;
 
@@ -756,10 +727,7 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 	packet.assign(SENSOR_PACKET_BYTES, 0);
 
 	// Payload bytes
-#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
-#else
-	PACK_BITS(0, packet, base_pos, 8);  // Zero CRC field (computed later)
-#endif
+	// PACK_BITS(0, packet, base_pos, 8);  // Zero CRC field (computed later)
 	// Use scheduled GPS time as day/hour/min
 	uint16_t year;
 	uint8_t month, day, hour, min, sec;

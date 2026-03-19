@@ -277,11 +277,11 @@ enum class ParamID {
 	CAM_PERIOD_OFF                           = 170,
 	LB_CAM_EN                               = 171,
 #endif
-	// === SMD credentials (slots 172-173 always reserved) ===
+	// === Satellite credentials (slots 172-173 always reserved) ===
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	ARGOS_SECKEY                             = 172,
-	ARGOS_RADIOCONF                          = 173,
 #endif
+	ARGOS_RADIOCONF                          = 173,
 	// === Session shutdown control (slots 174-176 always reserved) ===
 	SHUTDOWN_NTIME_SAT                       = 174,
 	LB_SHUTDOWN_NTIME_SAT                    = 175,

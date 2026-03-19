@@ -47,6 +47,7 @@ private:
 	KineisPacket m_tx_buffer;
 	KineisPacket m_packet_buffer;
 	KineisModulation m_tx_mode;
+	KineisModulation m_current_rconf_mode;  // Modulation currently configured in RCONF
 	volatile bool m_tx_done;
 
 	//State machine

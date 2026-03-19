@@ -385,9 +385,9 @@ public:
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 			} else if (param_id == ParamID::ARGOS_SECKEY) {
 				b_is_valid = true;
+#endif
 			} else if (param_id == ParamID::ARGOS_RADIOCONF) {
 				b_is_valid = true;
-#endif
 #if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
 			} else if (param_id == ParamID::LORA_DEVEUI ||
 			           param_id == ParamID::LORA_APPEUI ||

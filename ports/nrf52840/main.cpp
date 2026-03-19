@@ -97,6 +97,11 @@
 #include "lora_tx_service.hpp"
 #elif defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 #include "smd_sat.hpp"
+#if defined(SMD_UART) && (SMD_UART == 1)
+#include "smd_sat_cmd_at.hpp"
+#else
+#include "smd_sat_cmd_spi.hpp"
+#endif
 #else
 #include "kim2.hpp"
 #endif
@@ -690,7 +695,12 @@ int main()
 #elif defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	DEBUG_TRACE("SMD Satellite...");
 	try {
-		static SmdSat argos_smd;
+#if defined(SMD_UART) && (SMD_UART == 1)
+		static SmdSatCmdAt smd_cmd;
+#else
+		static SmdSatCmdSpi smd_cmd;
+#endif
+		static SmdSat argos_smd(smd_cmd);
 		smd_sat_instance = &argos_smd;  // Store pointer for SMD DFU OTA
 		static ArgosTxService argos_tx_service(argos_smd);
 	} catch (...) {

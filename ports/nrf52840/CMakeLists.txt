@@ -427,10 +427,24 @@ target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
 )
 
 # SMD satellite module (conditional)
+# Use -DSMD_UART=ON to select AT/UART transport instead of SPI (default)
 if(ARGOS_SMD)
     target_sources(${TARGET_NAME} PRIVATE
         ${PROJ_DIR}/core/hardware/smd_sat/smd_sat.cpp
     )
+    if(SMD_UART)
+        message(STATUS "SMD transport: AT/UART")
+        target_sources(${TARGET_NAME} PRIVATE
+            ${PROJ_DIR}/core/hardware/smd_sat/smd_sat_cmd_at.cpp
+        )
+        target_compile_definitions(${TARGET_NAME} PRIVATE SMD_UART=1)
+    else()
+        message(STATUS "SMD transport: SPI (default)")
+        target_sources(${TARGET_NAME} PRIVATE
+            ${PROJ_DIR}/core/hardware/smd_sat/smd_sat_cmd_spi.cpp
+        )
+        target_compile_definitions(${TARGET_NAME} PRIVATE SMD_SPI=1)
+    endif()
     target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
         ${PROJ_DIR}/core/hardware/smd_sat
     )

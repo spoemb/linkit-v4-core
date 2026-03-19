@@ -240,9 +240,9 @@ const BaseMap param_map[] = {
 	{ "CAM_PERIOD_ON", "CAP04", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, ENABLE_CAM_SENSOR, true },
 	{ "CAM_PERIOD_OFF", "CAP05", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, ENABLE_CAM_SENSOR, true },
 	{ "LB_CAM_EN", "LBP13", BaseEncoding::BOOLEAN, 0, 0, {}, ENABLE_CAM_SENSOR, true },
-	// [172-173] SMD credentials (slots always reserved)
+	// [172-173] Satellite credentials (slots always reserved)
 	{ "ARGOS_SECKEY", "IDP13", BaseEncoding::TEXT, "", "", {}, (ARGOS_SMD == 1), true },
-	{ "ARGOS_RADIOCONF", "IDP14", BaseEncoding::TEXT, "", "", {}, (ARGOS_SMD == 1), true },
+	{ "ARGOS_RADIOCONF", "IDP14", BaseEncoding::TEXT, "", "", {}, true, true },
 	// [174-176] Session shutdown control (slots always reserved)
 	{ "SHUTDOWN_NTIME_SAT", "PWP05", BaseEncoding::UINT, 0U, 65535U, {}, true, true },
 	{ "LB_SHUTDOWN_NTIME_SAT", "LBP14", BaseEncoding::UINT, 0U, 65535U, {}, true, true },
