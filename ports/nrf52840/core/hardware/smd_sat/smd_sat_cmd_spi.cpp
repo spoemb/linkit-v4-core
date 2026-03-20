@@ -846,10 +846,9 @@ bool SmdSatCmdSpi::is_tx_finished() {
 		return false;
 	}
 
-	uint8_t spi_state = rx[0];
 	uint8_t mac_status = rx[1];
 
-	DEBUG_TRACE("SmdSatCmdSpi::%s: spiState=%02X macStatus=%02X", __func__, spi_state, mac_status);
+	DEBUG_TRACE("SmdSatCmdSpi::%s: spiState=%02X macStatus=%02X", __func__, rx[0], mac_status);
 
 	if (mac_status == MAC_TX_DONE) {
 		DEBUG_INFO("SmdSatCmdSpi::%s: TX completed successfully", __func__);
@@ -1042,10 +1041,8 @@ SmdDfuResponse SmdSatCmdSpi::dfu_send_command(uint8_t cmd, const uint8_t *data, 
 		if (is_busy_pattern(rx_buf, DFU_TRANSACTION_SIZE)) {
 			DEBUG_TRACE("SmdSatCmdSpi::%s: Slave BUSY (0xBB) | re-polling... (%u/%u)",
 			            __func__, busy_retries + 1, DFU_BUSY_RETRY_COUNT);
-		} else {
-			DEBUG_TRACE("SmdSatCmdSpi::%s: No response yet (0x%02X) | re-polling... (%u/%u)",
-			            __func__, rx_buf[0], busy_retries + 1, DFU_BUSY_RETRY_COUNT);
 		}
+		// Note: non-busy non-valid response also retries (same action as busy)
 
 		nrf_delay_ms(DFU_BUSY_RETRY_DELAY_MS);
 

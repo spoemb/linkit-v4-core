@@ -69,6 +69,7 @@ if command -v mergehex &> /dev/null; then
 fi
 echo ""
 
+cd "$PROJECT_ROOT"
 mkdir -p ports/nrf52840/build/LINKIT_SMD
 cd ports/nrf52840/build/LINKIT_SMD
 git show-ref --tags -d | grep ^`git rev-parse HEAD` | sed -e "s,.* refs/tags/,," -e "s/\\^{}//" > TAG_NAME
@@ -81,19 +82,22 @@ fi
 # - ENABLE_AXL_SENSOR=ON: Enable BMA400 accelerometer
 # - BATTERY_MONITOR_TYPE=ANALOG: Use nRF SAADC for battery reading
 ARGOS_SMD=${ARGOS_SMD:-ON}
-ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR:-ON}
+ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR:-OFF}
+ENABLE_SWS_LOG=${ENABLE_SWS_LOG:-ON}
 
 echo "Building LinkIt V4 SMD with configuration:"
 echo "  ARGOS_SMD=${ARGOS_SMD}"
 echo "  ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR}"
+echo "  ENABLE_SWS_LOG=${ENABLE_SWS_LOG}"
 echo ""
 
 cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
-      -DDEBUG_LEVEL=4 \
+      -DDEBUG_LEVEL=3 \
       -DBOARD=LINKIT \
       -DCMAKE_BUILD_TYPE=Release \
       -DARGOS_SMD=${ARGOS_SMD} \
       -DENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR} \
+      -DENABLE_SWS_LOG=${ENABLE_SWS_LOG} \
       ../..
 
 make -j 20

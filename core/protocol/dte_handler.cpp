@@ -649,8 +649,6 @@ std::string DTEHandler::SMDCD_REQ(int error_code, std::vector<BaseType>& arg_lis
 
 	return DTEEncoder::encode(DTECommand::SMDCD_RESP, error_code);
 }
-
-}
 #endif
 
 std::string DTEHandler::SATVF_REQ(int error_code, std::vector<BaseType>& arg_list) {

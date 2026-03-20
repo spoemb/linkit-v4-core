@@ -22,6 +22,28 @@ extern Timer *system_timer;
 extern ConfigurationStore *configuration_store;
 
 // ============================================================================
+// Modulation conversion helpers (used by send() and switch_modulation())
+// ============================================================================
+
+static SmdArgosModulation kineis_to_smd_mod(KineisModulation mode) {
+	switch (mode) {
+		case KineisModulation::LDK:  return ARGOS_MOD_LDK;
+		case KineisModulation::VLDA4: return ARGOS_MOD_VLDA4;
+		case KineisModulation::LDA2:
+		default:                      return ARGOS_MOD_LDA2;
+	}
+}
+
+static KineisModulation smd_to_kineis_mod(SmdArgosModulation mode) {
+	switch (mode) {
+		case ARGOS_MOD_LDK:  return KineisModulation::LDK;
+		case ARGOS_MOD_VLDA4: return KineisModulation::VLDA4;
+		case ARGOS_MOD_LDA2:
+		default:              return KineisModulation::LDA2;
+	}
+}
+
+// ============================================================================
 // Constructor / Destructor
 // ============================================================================
 
@@ -241,9 +263,8 @@ void SmdSat::state_load_kmac() {
 			std::string cfg_rconf = configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF);
 
 			if (!cfg_seckey.empty() && !cfg_rconf.empty()) {
-				// Read current credentials from SMD hardware
-				unsigned int hw_id = 0, hw_addr = 0;
-				std::string hw_seckey, hw_rconf;
+				// Read current RCONF from SMD hardware to check if it matches
+				std::string hw_rconf;
 				try {
 					// Use read_rconf_raw to check if RCONF matches
 					uint8_t rconf_raw[SMDSAT_CMD_READ_RCONF_RAW_LEN] = {0};
@@ -832,24 +853,6 @@ void SmdSat::read_credentials(unsigned int *dec_id, unsigned int *address, std::
 // ============================================================================
 // Runtime modulation switching
 // ============================================================================
-
-static SmdArgosModulation kineis_to_smd_mod(KineisModulation mode) {
-	switch (mode) {
-		case KineisModulation::LDK:  return ARGOS_MOD_LDK;
-		case KineisModulation::VLDA4: return ARGOS_MOD_VLDA4;
-		case KineisModulation::LDA2:
-		default:                      return ARGOS_MOD_LDA2;
-	}
-}
-
-static KineisModulation smd_to_kineis_mod(SmdArgosModulation mode) {
-	switch (mode) {
-		case ARGOS_MOD_LDK:  return KineisModulation::LDK;
-		case ARGOS_MOD_VLDA4: return KineisModulation::VLDA4;
-		case ARGOS_MOD_LDA2:
-		default:              return KineisModulation::LDA2;
-	}
-}
 
 bool SmdSat::switch_modulation(KineisModulation mode, const std::string& rconf_hex) {
 	SmdArgosModulation target = kineis_to_smd_mod(mode);

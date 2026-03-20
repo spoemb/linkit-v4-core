@@ -95,7 +95,7 @@ echo "  ENABLE_MORTALITY_SENSOR=${ENABLE_MORTALITY_SENSOR}"
 echo ""
 
 cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
-      -DDEBUG_LEVEL=4 \
+      -DDEBUG_LEVEL=3 \
       -DBOARD=RSPB \
       -DCMAKE_BUILD_TYPE=Release \
       -DARGOS_SMD=${ARGOS_SMD} \
