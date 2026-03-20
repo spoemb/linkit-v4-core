@@ -193,7 +193,7 @@ void MortalityService::evaluate_mortality()
 	unsigned int current_day = day_of_year(now);
 	unsigned int last_day = day_of_year(static_cast<std::time_t>(m_state.last_eval_epoch));
 
-	if (now > 0 && current_day != last_day) {
+	if (now > 0 && now <= static_cast<std::time_t>(UINT32_MAX) && current_day != last_day) {
 		m_state.last_eval_epoch = static_cast<uint32_t>(now);
 		if (m_state.confidence >= 80) {
 			if (m_state.consecutive_days < 255)

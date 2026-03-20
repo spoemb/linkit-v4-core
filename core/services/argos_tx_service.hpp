@@ -203,4 +203,5 @@ private:
 	bool ensure_modulation(KineisModulation target);
 	std::string get_rconf_for_modulation(KineisModulation mode);
 	KineisModulation m_last_preconfig_mod;
+	std::optional<KineisModulation> m_modulation_preconfig;  // Cached target for deferred switch
 };

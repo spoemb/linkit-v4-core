@@ -40,6 +40,7 @@ void ArgosTxService::service_init() {
 	m_doppler_burst_count = 0;
 	m_has_gnss_fix_since_surfacing = false;
 	m_last_preconfig_mod = KineisModulation::LDA2;
+	m_modulation_preconfig.reset();
 
 	// Set the idle timeout depending on the configuration settings
 	// i) In certification mode, keep powered on for 10 seconds in idle
@@ -211,6 +212,13 @@ void ArgosTxService::service_initiate() {
 		m_kineis.set_tcxo_warmup_time(0);
 	}
 
+	// Apply deferred modulation switch (cached while SMD was powered off)
+	if (m_modulation_preconfig.has_value()) {
+		DEBUG_INFO("ArgosTxService::service_initiate: applying deferred modulation switch to %d", (int)m_modulation_preconfig.value());
+		ensure_modulation(m_modulation_preconfig.value());
+		m_modulation_preconfig.reset();
+	}
+
 	// Track Doppler burst count in SURFACING_BURST mode
 	if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing) {
 		m_doppler_burst_count++;
@@ -288,14 +296,15 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 			m_doppler_burst_count = 0;
 			m_has_gnss_fix_since_surfacing = false;
 
-			// Adaptive modulation: pre-configure VLDA4 while underwater
-			// so first Doppler TX after surfacing is instant (no RCONF switch delay)
+			// Adaptive modulation: pre-configure VLDA4 for first Doppler TX after surfacing.
+			// SMD is powered off here, so we cache the target modulation and apply it
+			// in service_initiate() when the SMD powers on (same pattern as TCXO skip).
 			{
 				ArgosConfig ac;
 				configuration_store->get_argos_configuration(ac);
 				if (ac.adaptive_modulation && ac.mode == BaseArgosMode::SURFACING_BURST) {
-					DEBUG_INFO("ArgosTxService::UW: pre-configuring VLDA4 for surfacing Doppler");
-					ensure_modulation(KineisModulation::VLDA4);
+					m_modulation_preconfig = KineisModulation::VLDA4;
+					DEBUG_INFO("ArgosTxService::UW: VLDA4 pre-config cached for surfacing Doppler");
 				}
 			}
 		} else {
@@ -367,6 +376,10 @@ void ArgosTxService::process_time_sync_burst() {
 		KineisPacket packet = ArgosPacketBuilder::build_gnss_packet(v, argos_config.is_out_of_zone, argos_config.is_lb,
 				argos_config.delta_time_loc,
 				size_bits);
+		// Ensure modulation matches (time_sync always uses LDA2)
+		if (argos_config.adaptive_modulation) {
+			ensure_modulation(m_scheduled_mode);
+		}
 		DEBUG_INFO("ArgosTxService::process_time_sync_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
 		m_kineis.send(m_scheduled_mode, packet, size_bits);
 	} else {
@@ -409,7 +422,10 @@ void ArgosTxService::process_sensor_burst() {
 
 		// Adaptive modulation: switch RCONF to match packet modulation
 		if (argos_config.adaptive_modulation) {
-			ensure_modulation(m_scheduled_mode);
+			if (!ensure_modulation(m_scheduled_mode)) {
+				DEBUG_WARN("ArgosTxService::process_sensor_burst: RSPB modulation switch failed, using current");
+				m_scheduled_mode = m_kineis.get_current_modulation();
+			}
 		}
 #else
 		// Generic sensor packet for LinkIt V4 (all sensors, no RSPB-specific packing)
@@ -434,7 +450,10 @@ void ArgosTxService::process_sensor_burst() {
 			if (size_bits <= 128) {
 				m_scheduled_mode = KineisModulation::LDK;
 			}
-			ensure_modulation(m_scheduled_mode);
+			if (!ensure_modulation(m_scheduled_mode)) {
+				DEBUG_WARN("ArgosTxService::process_sensor_burst: modulation switch failed, using current");
+				m_scheduled_mode = m_kineis.get_current_modulation();
+			}
 		}
 #endif
 		DEBUG_INFO("ArgosTxService::process_sensor_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
@@ -460,7 +479,10 @@ void ArgosTxService::process_gnss_burst() {
 		// Adaptive modulation: short GNSS packet (96 bits) fits LDK, long needs LDA2
 		if (argos_config.adaptive_modulation) {
 			m_scheduled_mode = (size_bits <= 128) ? KineisModulation::LDK : KineisModulation::LDA2;
-			ensure_modulation(m_scheduled_mode);
+			if (!ensure_modulation(m_scheduled_mode)) {
+				DEBUG_WARN("ArgosTxService::process_gnss_burst: modulation switch failed, using current");
+				m_scheduled_mode = m_kineis.get_current_modulation();
+			}
 		}
 
 		DEBUG_INFO("ArgosTxService::process_gnss_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
@@ -484,7 +506,10 @@ void ArgosTxService::process_doppler_burst() {
 	KineisModulation tx_mode = KineisModulation::LDA2;
 	if (argos_config.adaptive_modulation) {
 		tx_mode = KineisModulation::VLDA4;
-		ensure_modulation(tx_mode);
+		if (!ensure_modulation(tx_mode)) {
+			DEBUG_WARN("ArgosTxService::process_doppler_burst: modulation switch failed, using current");
+			tx_mode = m_kineis.get_current_modulation();
+		}
 	}
 
 	DEBUG_INFO("ArgosTxService::process_doppler_burst: mode=%s data=%s sz=%u",
