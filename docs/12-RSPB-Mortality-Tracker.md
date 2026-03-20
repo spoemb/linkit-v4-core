@@ -1,6 +1,4 @@
-# RSPB Bird Tracker - Behavior & Configuration Guide
-
-## Overview
+# Overview
 
 The RSPB tracker is a wildlife GPS/Satellite tracker designed for bird monitoring.
 It uses a **nano-power architecture**: the device spends most of its time completely
@@ -24,7 +22,7 @@ perform a short operational cycle, then the device powers down again.
        immediately         immediately              (session done)
 ```
 
-### Key Concept: Duty Cycling with TPL5111
+## Key Concept: Duty Cycling with TPL5111
 
 The TPL5111 is an external nano-power timer that physically controls the power
 supply. When the tracker powers down, the TPL5111 keeps counting and will
@@ -49,7 +47,7 @@ The `BOOT_COUNTER_MODULO` parameter controls this:
 
 ---
 
-## Battery Modes
+# Battery Modes
 
 The tracker operates in three distinct modes depending on battery voltage.
 Each mode has different behavior to maximize device lifetime.
@@ -75,7 +73,7 @@ Each mode has different behavior to maximize device lifetime.
    0%  |_________________________________________|
 ```
 
-### Mode 1: Normal Operation
+## Mode 1: Normal Operation
 
 When battery is above `LB_THRESHOLD`:
 
@@ -117,7 +115,7 @@ When battery is above `LB_THRESHOLD`:
 | NTRY_PER_MESSAGE | ARP19 | 6 | **3** | TX repetitions per message |
 | ARGOS_RX_EN | ARP32 | 1 (on) | **0** | Satellite downlink (disabled to save power) |
 
-### Mode 2: Low Battery
+## Mode 2: Low Battery
 
 When battery drops below `LB_THRESHOLD` and `LB_EN=1`:
 
@@ -157,7 +155,7 @@ When battery drops below `LB_THRESHOLD` and `LB_EN=1`:
 | LB_SHUTDOWN_NTIME_SAT | LBP14 | 0 (off) | **2** | Number of Doppler TX before powerdown |
 | TR_LB | ARP06 | 240s | **90s** | Interval between Doppler TX |
 
-### Mode 3: Critical Battery
+## Mode 3: Critical Battery
 
 When battery SOC drops below `LB_CRITICAL_THRESH`:
 
@@ -177,6 +175,8 @@ When battery SOC drops below `LB_CRITICAL_THRESH`:
 4. Once solar panels recharge the battery above critical threshold,
    the device will resume Low Battery or Normal mode
 
+**Exception:** If a magnet is detected (reed switch engaged) while in critical battery state, the device enters configuration mode instead of powering off. This allows reconfiguring a depleted device via BLE without waiting for solar recharge.
+
 **Parameters controlling Critical mode:**
 
 | Parameter | DTE Key | Default | Description |
@@ -186,7 +186,7 @@ When battery SOC drops below `LB_CRITICAL_THRESH`:
 
 ---
 
-## Safety Net: Shutdown Timer
+# Safety Net: Shutdown Timer
 
 The `SHUTDOWN_TIMER` is an independent safety mechanism that runs in parallel
 with the NTIME_SAT counter. It prevents the device from staying awake
@@ -214,14 +214,14 @@ indefinitely if something goes wrong (e.g., satellite TX keeps failing).
 
 ---
 
-## Pseudo RTC (Timekeeping Without Battery Backup)
+# Pseudo RTC (Timekeeping Without Battery Backup)
 
 The TPL5111 architecture means the MCU loses all RAM state at each power-off, including the
 real-time clock. There is no battery-backed RTC crystal on the RSPB board. To maintain
 approximate time between wakeups, the firmware implements a **pseudo RTC chain** using a
 flash-persisted parameter.
 
-### How It Works
+## How It Works
 
 ```
   Boot N                                       Boot N+1
@@ -247,7 +247,7 @@ flash-persisted parameter.
   (real timestamp from GNSS)                   (real timestamp from GNSS)
 ```
 
-### Chain Initialization
+## Chain Initialization
 
 The pseudo RTC chain needs a starting value. There are two ways to seed it:
 
@@ -263,7 +263,7 @@ The pseudo RTC chain needs a starting value. There are two ways to seed it:
    This sets the RTC immediately and also saves `LAST_KNOWN_RTC` to flash, seeding
    the chain without needing a GNSS fix first.
 
-### Accuracy
+## Accuracy
 
 The pseudo RTC drifts by the difference between the configured `WAKEUP_PERIOD` and
 the actual TPL5111 timer interval. Typical drift is a few seconds per cycle. Each
@@ -272,7 +272,7 @@ successful GNSS fix corrects the drift completely.
 If the device fails to get a GNSS fix for several cycles, the time will gradually
 drift but remain usable for pass prediction and timestamping.
 
-### Related Parameters
+## Related Parameters
 
 | Parameter | DTE Key | Description |
 |-----------|---------|-------------|
@@ -280,7 +280,7 @@ drift but remain usable for pass prediction and timestamping.
 | WAKEUP_PERIOD | PWP04 | TPL5111 period in seconds (~6300s). Added to LAST_KNOWN_RTC at boot. |
 | RTC_CURRENT_TIME | SYT01 | Live RTC value readable via STATR. |
 
-### Reading Current RTC
+## Reading Current RTC
 
 To check the current RTC time:
 ```
@@ -291,9 +291,9 @@ $O;STATR#010;SYT01=1708451100\r
 
 ---
 
-## Complete Session Timeline
+# Complete Session Timeline
 
-### Normal mode example (RSPB deployment config):
+## Normal mode example (RSPB deployment config):
 
 ```
   Time
@@ -325,7 +325,7 @@ $O;STATR#010;SYT01=1708451100\r
    v
 ```
 
-### Low battery mode example:
+## Low battery mode example:
 
 ```
   Time
@@ -351,9 +351,9 @@ $O;STATR#010;SYT01=1708451100\r
 
 ---
 
-## All RSPB Parameters Reference
+# All RSPB Parameters Reference
 
-### Power Management (TPL5111)
+## Power Management (TPL5111)
 
 | Parameter | DTE Key | Type | Range | Default | RSPB | Description |
 |-----------|---------|------|-------|---------|------|-------------|
@@ -363,7 +363,7 @@ $O;STATR#010;SYT01=1708451100\r
 | WAKEUP_PERIOD | PWP04 | UINT | - | 6300 | - | Read-only. TPL5111 wakeup period in seconds (~1h45 = 6300s). |
 | SHUTDOWN_NTIME_SAT | PWP05 | UINT | 0-65535 | 0 | **3** | Number of satellite TX messages per normal session before powerdown. 0=disabled. |
 
-### GNSS (GPS)
+## GNSS (GPS)
 
 | Parameter | DTE Key | Type | Range | Default | RSPB | Description |
 |-----------|---------|------|-------|---------|------|-------------|
@@ -375,7 +375,7 @@ $O;STATR#010;SYT01=1708451100\r
 | GNSS_MIN_NUM_FIXES | GNP22 | UINT | 1+ | 1 | 1 | Consecutive valid fixes required before accepting. |
 | GNSS_SESSION_SINGLE_FIX | GNP30 | BOOL | 0/1 | 0 | **1** | Stop GNSS after first successful fix in session. Saves battery. |
 
-### Argos Satellite TX
+## Argos Satellite TX
 
 | Parameter | DTE Key | Type | Range | Default | RSPB | Description |
 |-----------|---------|------|-------|---------|------|-------------|
@@ -383,7 +383,7 @@ $O;STATR#010;SYT01=1708451100\r
 | NTRY_PER_MESSAGE | ARP19 | UINT | 0-86400 | 6 | **3** | Number of times each message is repeated on air. |
 | ARGOS_RX_EN | ARP32 | BOOL | 0/1 | 1 | **0** | Enable satellite downlink (RX). Disable to save ~3.75 mAh/cycle. |
 
-### Low Battery Mode
+## Low Battery Mode
 
 | Parameter | DTE Key | Type | Range | Default | RSPB | Description |
 |-----------|---------|------|-------|---------|------|-------------|
@@ -394,21 +394,133 @@ $O;STATR#010;SYT01=1708451100\r
 | TR_LB | ARP06 | UINT | 30-1200 | 240 | **90** | LB mode: interval between Doppler TX (seconds). |
 | LB_CRITICAL_THRESH | LBP12 | UINT | 0-100 | 5 | 5 | Battery SOC (%) for critical mode. Below this = immediate poweroff. |
 
-### Underwater / Surface Detection
+## Underwater / Surface Detection
 
 | Parameter | DTE Key | Type | Range | Default | RSPB | Description |
 |-----------|---------|------|-------|---------|------|-------------|
 | UNDERWATER_EN | UNP01 | BOOL | 0/1 | 0 | **0** | Underwater detection. Disabled for aerial birds. |
 | DRY_TIME_BEFORE_TX | UNP02 | UINT | 0+ | 1 | **0** | Seconds at surface before TX allowed. 0 = TX immediately. |
 
-### LEDs
+## LEDs
 
 | Parameter | DTE Key | Type | Range | Default | RSPB | Description |
 |-----------|---------|------|-------|---------|------|-------------|
 | LED_MODE | LDP01 | ENUM | 0-3 | 1 | **0** | Status LED. 0=OFF, 1=24h mode. Disabled on birds (invisible + wastes energy). |
 | EXT_LED_MODE | LDP02 | ENUM | 0-3 | 3 | **0** | External LED. 0=OFF. Disabled on birds. |
 
-### Device Identity
+## Mortality Detection
+
+Requires `ENABLE_MORTALITY_SENSOR=1` (auto-enabled on RSPB). Combines AXL activity, body temperature, and GPS stationarity to compute a mortality confidence percentage (0-100%).
+
+**WARNING:** Mortality detection requires AXL (`AXP01=1`), Thermistor (`THP01=1`), and GNSS (`GNP01=1`) to be enabled. If any sensor is disabled, the algorithm works with partial data only (biased toward ALIVE).
+
+| Parameter | DTE Key | Type | Range | Default | RSPB | Description |
+|-----------|---------|------|-------|---------|------|-------------|
+| MORTALITY_ENABLE | MTP01 | BOOL | 0/1 | 0 | **1** | Enable mortality detection. |
+| MORTALITY_ACTIVITY_THRESH | MTP02 | UINT | 0-255 | 10 | 10 | Activity score below which = immobile. |
+| MORTALITY_TEMP_THRESH | MTP03 | FLOAT | 0-60 | 25.0 | 25.0 | Body temp below which = hypothermic (°C). Live bird ~40°C. |
+| MORTALITY_GPS_DISTANCE_THRESH | MTP04 | UINT | 0-10000 | 50 | 50 | GPS movement below which = stationary (meters). |
+| MORTALITY_CONFIRM_DAYS | MTP05 | UINT | 1-30 | 3 | 3 | Days of high confidence before CONFIRMED. |
+| MORTALITY_DUTY_CYCLE_MODULO | MTP06 | UINT | 0-100 | 0 | **6** | New BOOT_COUNTER_MODULO when confirmed. 0=never modify. |
+| MORTALITY_ORIGINAL_MODULO | MTP07 | UINT | - | 0 | - | Backup of original modulo (auto, read-only). |
+
+### Scoring Algorithm
+
+Each active session computes a **session score** (0-100) from three independent indicators:
+
+| Indicator | Points | Condition |
+|-----------|--------|-----------|
+| Immobility | 40 pts | AXL activity < `MORTALITY_ACTIVITY_THRESH` (default 10) |
+| Hypothermia | 30 pts | Thermistor temp < `MORTALITY_TEMP_THRESH` (default 25°C) |
+| Stationarity | 30 pts | GPS moved < `MORTALITY_GPS_DISTANCE_THRESH` (default 50m) AND speed < 0.1 m/s |
+
+**Confidence** is computed as an exponential moving average:
+```
+confidence = (old_confidence * 7 + session_score * 3) / 10
+```
+70% weight on history, 30% on current session. This smooths out single bad readings.
+
+### Status State Machine
+
+```
+                    confidence >= 50%
+    ALIVE ─────────────────────────────> SUSPECTED
+      ^                                      |
+      |           confidence < 50%           |
+      +──────────────────────────────────────+
+      |                                      |
+      |     consecutive_days >= CONFIRM_DAYS |
+      |                                      v
+      +──────────────────────────── CONFIRMED
+              bird shows life again
+```
+
+**Daily evaluation** (once per UTC calendar day):
+- If `confidence >= 80%` → increment `consecutive_days`
+- Otherwise → decrement `consecutive_days` (floor at 0)
+- If `consecutive_days >= MORTALITY_CONFIRM_DAYS` (default 3) → status = **CONFIRMED**
+
+### Duty Cycle Adaptation on Mortality
+
+When mortality is **CONFIRMED** and `MORTALITY_DUTY_CYCLE_MODULO > 0` (RSPB only):
+1. Save current `BOOT_COUNTER_MODULO` to `MORTALITY_ORIGINAL_MODULO`
+2. Set `BOOT_COUNTER_MODULO = MORTALITY_DUTY_CYCLE_MODULO` (e.g., 6)
+3. Device wakes less frequently → saves battery on dead bird
+
+If the bird **recovers** (status returns to ALIVE):
+1. Restore `BOOT_COUNTER_MODULO` from `MORTALITY_ORIGINAL_MODULO`
+2. Clear `MORTALITY_ORIGINAL_MODULO` to 0
+
+### State Persistence (FsLog)
+
+Mortality state (confidence, consecutive_days, status, last positions) is **persisted to flash**
+via a dedicated FsLog partition (`"MORTALITY"`, 64KB). On each evaluation, a `MortalityLogEntry`
+is written. On boot, the last entry is read to restore state across TPL5111 power cycles.
+
+This ensures the confirmation counter survives the complete power-off between wakeups.
+
+### Sensor Input Requirements
+
+The service listens to peer events from:
+- **AXL sensor** → caches activity level (port[4])
+- **Thermistor** → caches body temperature
+- **GNSS** → caches position + speed
+
+Evaluation triggers when GPS data is available AND at least one other sensor has reported.
+If a sensor is disabled, its indicator scores 0 (biased toward ALIVE). A dead bird will
+eventually be detected across subsequent sessions even with partial data.
+
+### Mortality Log
+
+The service writes a `MortalityLogEntry` to `mortality.log` on each evaluation, readable via `$DUMPD`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| confidence | uint8 | Current confidence (0-100%) |
+| consecutive_days | uint8 | Days with high confidence |
+| status | uint8 | 0=ALIVE, 1=SUSPECTED, 2=CONFIRMED |
+| last_activity | uint8 | Last AXL activity reading (0-255) |
+| last_body_temp | uint16 | Last thermistor reading (raw) |
+| last_lat | double | Last GPS latitude |
+| last_lon | double | Last GPS longitude |
+| last_eval_epoch | uint32 | Epoch of last daily evaluation |
+
+### Safety Guarantees
+
+1. **Compile-time**: `ENABLE_MORTALITY_SENSOR=OFF` (default) → zero code on non-RSPB boards
+2. **Runtime**: `MORTALITY_ENABLE=false` (default) → service disabled, zero impact
+3. **Duty cycle**: `MORTALITY_DUTY_CYCLE_MODULO=0` (default) → never touches duty cycle
+
+**RSPB Compact Sensor Packet (133/192 bits):**
+```
+[Time 16b][GPS 51b][Battery 8b][Pressure 29b][Thermistor 14b][Activity 8b][Mortality% 7b]
+```
+Mortality confidence (7 bits, 0-100%) is **always transmitted** when the sensor is enabled,
+regardless of status — this allows satellite operators to observe the confidence trend.
+
+Note: AXL X/Y/Z axes and AXL temperature are dropped for RSPB (useless for birds). Only the activity score (8 bits) is kept.
+
+## Device Identity
 
 | Parameter | DTE Key | Type | Default | RSPB | Description |
 |-----------|---------|------|---------|------|-------------|
@@ -417,49 +529,49 @@ $O;STATR#010;SYT01=1708451100\r
 
 ---
 
-## How to Configure a Device
+# How to Configure a Device
 
 Parameters are sent via BLE (Bluetooth) or USB using DTE commands.
 Each command starts with `$PARMW#` followed by the hex-encoded length of the
 payload, then a semicolon, then key=value pairs separated by commas.
 
-### RSPB Deployment Commands
+## RSPB Deployment Commands
 
 Send these commands one by one via BLE (LinkIt app) or USB terminal:
 
 ```
-# GNSS timeouts (faster, save battery on GPS failure)
+ GNSS timeouts (faster, save battery on GPS failure)
 $PARMW#00E;GNP09=180,GNP05=90\r
 
-# Safety shutdown timer (10 minutes max per cycle)
+ Safety shutdown timer (10 minutes max per cycle)
 $PARMW#00A;PWP01=600\r
 
-# Duty cycle: active every 4th wakeup (~7 hours)
+ Duty cycle: active every 4th wakeup (~7 hours)
 $PARMW#009;PWP03=4\r
 
-# GNSS for bird flight (airborne model, relaxed accuracy)
+ GNSS for bird flight (airborne model, relaxed accuracy)
 $PARMW#015;GNP11=6,GNP21=10,GNP22=1\r
 
-# Argos TX: no RX, 3 repetitions, no surface wait
+ Argos TX: no RX, 3 repetitions, no surface wait
 $PARMW#016;ARP32=0,ARP19=3,UNP02=0\r
 
-# Disable underwater detection
+ Disable underwater detection
 $PARMW#009;UNP01=0\r
 
-# LEDs off (invisible on bird, save energy)
+ LEDs off (invisible on bird, save energy)
 $PARMW#00E;LDP01=0,LDP02=0\r
 
-# Session shutdown: 3 TX then powerdown, no GNSS re-acquisition
+ Session shutdown: 3 TX then powerdown, no GNSS re-acquisition
 $PARMW#013;PWP05=3,GNP30=1\r
 
-# Low battery: enable, no GPS, 2 Doppler TX, 90s interval
+ Low battery: enable, no GPS, 2 Doppler TX, 90s interval
 $PARMW#01C;LBP01=1,LBP06=0,LBP14=2,ARP06=90\r
 
-# Profile name
+ Profile name
 $PARMW#015;IDP11=RSPB_DEPLOY_V1\r
 ```
 
-### Reading Parameters
+## Reading Parameters
 
 To verify a parameter was set correctly:
 ```
@@ -475,7 +587,7 @@ $PARMR#000;\r
 
 ---
 
-## Estimated Energy Budget (RSPB Deployment)
+# Estimated Energy Budget (RSPB Deployment)
 
 | Phase | Duration | Current | Energy per cycle |
 |-------|----------|---------|-----------------|
@@ -494,29 +606,29 @@ With solar panels: effectively indefinite in good conditions.
 
 ---
 
-## Troubleshooting
+# Troubleshooting
 
-### Device not transmitting
+## Device not transmitting
 - Check `SHUTDOWN_NTIME_SAT` (PWP05) is not 0 — if 0, only SHUTDOWN_TIMER controls session end
 - Check `GNSS_EN` (GNP01) is 1
 - Check `ARGOS_RX_EN` (ARP32) — if 1, device spends 15min listening before TX
 
-### Device transmitting but no GPS position
+## Device transmitting but no GPS position
 - Check GNSS timeouts: `GNP09` (cold) and `GNP05` (warm) may be too short
 - Check `GNSS_HACCFILT_THR` (GNP21) — if too low, fixes are rejected
 - Check `GNSS_DYN_MODEL` (GNP11) — wrong model can prevent lock
 
-### Battery draining too fast
+## Battery draining too fast
 - Increase `BOOT_COUNTER_MODULO` (PWP03) for less frequent cycles
 - Reduce `SHUTDOWN_NTIME_SAT` (PWP05) for fewer TX per session
 - Ensure `ARGOS_RX_EN` (ARP32) is 0
 - Ensure LEDs are off: `LDP01=0`, `LDP02=0`
 - Reduce `GNSS_COLD_ACQ_TIMEOUT` (GNP09) to fail faster on bad GPS conditions
 
-### Low battery mode not activating
+## Low battery mode not activating
 - Check `LB_EN` (LBP01) is 1
 - Check `LB_THRESHOLD` (LBP02) — battery % must be below this value
 
-### Device stuck (never powers down)
+## Device stuck (never powers down)
 - `SHUTDOWN_TIMER` (PWP01) should be > 0 as a safety net
 - Recommended: 600s (10 minutes)

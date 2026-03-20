@@ -21,6 +21,9 @@
 #include "axl_sensor_service.hpp"
 #endif
 #include "cam_service.hpp"
+#if ENABLE_MORTALITY_SENSOR
+#include "mortality_service.hpp"
+#endif
 #include "argos_tx_service.hpp"
 #include "argos_rx_service.hpp"
 #include "sys_log.hpp"
@@ -133,6 +136,9 @@ SmdSat *smd_sat_instance = nullptr;  // For SMD DFU OTA support
 #endif
 #if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
 LoRaDevice *lora_device_instance = nullptr;  // For LORATX DTE command
+#endif
+#if ENABLE_MORTALITY_SENSOR
+MortalityService *mortality_service = nullptr;
 #endif
 #if defined(BOARD_RSPB)
 BaseDebugMode g_debug_mode = BaseDebugMode::UART;     // Default debug output to UART on SWO pin for RSPB
@@ -646,6 +652,11 @@ int main()
 	cam_sensor_log.set_log_formatter(&cam_sensor_log_formatter);
 #endif
 
+#if ENABLE_MORTALITY_SENSOR
+	DEBUG_TRACE("Mortality Log...");
+	FsLog mortality_log(&lfs_file_system, "MORTALITY", 64*1024);  // Small log, only needs last few entries
+#endif
+
 	DEBUG_TRACE("RAM access...");
 	NrfMemoryAccess nrf_memory_access;
 	memory_access = &nrf_memory_access;
@@ -873,6 +884,12 @@ int main()
 	} catch (...) {
 		DEBUG_TRACE("RunCam: not detected");
 	}
+#endif
+
+#if ENABLE_MORTALITY_SENSOR
+	DEBUG_TRACE("Mortality detection...");
+	static MortalityService mortality_svc(&mortality_log);
+	mortality_service = &mortality_svc;
 #endif
 
 	DEBUG_TRACE("Memory monitor...");

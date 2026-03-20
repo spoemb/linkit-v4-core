@@ -83,6 +83,7 @@ private:
 		{(unsigned int)BaseLogDType::THERMISTOR_SENSOR, "THERMISTOR"},
 		{(unsigned int)BaseLogDType::TSYS01_SENSOR, "TSYS01"},
 		{(unsigned int)BaseLogDType::SWS_LOG, "SWS"},
+		{(unsigned int)BaseLogDType::MORTALITY, "MORTALITY"},
 	};
 	static inline std::map<unsigned int, std::string> m_logger_erase = {
 		{(unsigned int)BaseEraseType::GNSS_SENSOR, "sensor.log"},
@@ -97,6 +98,7 @@ private:
 		{(unsigned int)BaseEraseType::THERMISTOR_SENSOR, "THERMISTOR"},
 		{(unsigned int)BaseEraseType::TSYS01_SENSOR, "TSYS01"},
 		{(unsigned int)BaseEraseType::SWS_LOG, "SWS"},
+		{(unsigned int)BaseEraseType::MORTALITY, "MORTALITY"},
 	};
 	static inline std::map<unsigned int, std::string> m_scalx = {
 		{0, "AXL"},

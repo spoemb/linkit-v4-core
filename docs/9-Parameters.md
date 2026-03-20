@@ -1,12 +1,10 @@
-# 9 - Parameters Definition
-
 This page describes every configurable parameter in detail: what it controls, how it affects device behavior, and recommended values for common deployment scenarios.
 
-Parameters are read/written via the DTE protocol using 5-character keys (see [DTE Commands](https://github.com/arribada/linkit-v4-core/wiki/5-%E2%80%90-DTE%E2%80%90Commands)). Default values can be overridden at deployment time using DTE configuration templates.
+Parameters are read/written via the DTE protocol using 5-character keys (see [DTE Commands](https://github.com/arribada/linkit-v4-core/wiki/6-%E2%80%90-DTE-commands)). Default values can be overridden at deployment time using DTE configuration templates.
 
 ---
 
-## Identity & Device Info
+# Identity & Device Info
 
 These parameters identify the device and its Argos credentials.
 
@@ -29,17 +27,17 @@ These parameters identify the device and its Argos credentials.
 
 ---
 
-## Argos Satellite TX
+# Argos Satellite TX
 
 These parameters control how and when the device transmits to Argos satellites.
 
-### Operating Mode
+## Operating Mode
 
 | Key | Name | Values | Description |
 |-----|------|--------|-------------|
 | ARP01 | ARGOS_MODE | OFF=0, PP=1, LEGACY=2, DUTY=3, DOPPLER=4 | **Argos transmission mode.** Determines how the device schedules satellite transmissions. **PASS_PREDICTION (1)**: Uses AOP satellite pass data to transmit only when a satellite is overhead — most power-efficient but requires valid AOP data. **LEGACY (2)**: Transmits at fixed intervals regardless of satellite positions — simple but wastes power on transmissions with no satellite overhead. **DUTY_CYCLE (3)**: Transmits during configurable time windows (24-bit mask, one bit per hour). **DOPPLER (4)**: Minimal 3-byte packets for Doppler-based positioning — no GPS data, satellites estimate position from frequency shift. Used in low battery mode. |
 
-### Transmission Timing
+## Transmission Timing
 
 | Key | Name | Range | Default | Description |
 |-----|------|-------|---------|-------------|
@@ -49,14 +47,14 @@ These parameters control how and when the device transmits to Argos satellites.
 | ARP30 | ARGOS_TIME_SYNC_BURST_EN | BOOL | true | **Time-synchronized burst mode.** When enabled, the device aligns TX to Argos time slots for better satellite detection probability. Should be enabled for production deployments. |
 | ARP31 | ARGOS_TX_JITTER_EN | BOOL | true | **TX jitter.** Adds small random timing offset to prevent collisions when multiple devices transmit simultaneously. Should be enabled when deploying multiple trackers. |
 
-### Data Packing
+## Data Packing
 
 | Key | Name | Values | Default | Description |
 |-----|------|--------|---------|-------------|
 | ARP16 | ARGOS_DEPTH_PILE | 1,2,3,4,8,12,16,20,24 | 16 (UW: 1) | **Depth pile (number of GPS fixes per message).** Controls how many GPS positions are packed into a single Argos packet. Higher = more data per message but larger packets. **1**: Send only the latest fix (used with frequent TX). **16-24**: Accumulate many fixes before sending (used with pass prediction to send a full history when a satellite passes). UW model defaults to 1 because surface time is limited. |
 | ARP11 | DLOC_ARG_NOM | AQPERIOD | 600 (SB: 3600) | **GNSS acquisition period.** Time between consecutive GNSS fix attempts in seconds. Controls how often the device acquires a new GPS position. SB model uses 3600s (1h) for birds with long surface periods. |
 
-### Duty Cycle
+## Duty Cycle
 
 | Key | Name | Range | Default | Description |
 |-----|------|-------|---------|-------------|
@@ -64,7 +62,7 @@ These parameters control how and when the device transmits to Argos satellites.
 
 ---
 
-## Argos Satellite RX
+# Argos Satellite RX
 
 The device can receive downlink data from Argos satellites to update orbital prediction data (AOP).
 
@@ -86,11 +84,11 @@ The device can receive downlink data from Argos satellites to update orbital pre
 
 ---
 
-## GNSS (GPS)
+# GNSS (GPS)
 
 These parameters control the u-blox M10Q GNSS module: when it runs, how it filters fixes, and how it interacts with underwater detection.
 
-### Core Settings
+## Core Settings
 
 | Key | Name | Range | Default | Description |
 |-----|------|-------|---------|-------------|
@@ -100,7 +98,7 @@ These parameters control the u-blox M10Q GNSS module: when it runs, how it filte
 | GNP10 | GNSS_FIX_MODE | 2D=1, 3D=2, AUTO=3 | AUTO | **Fix mode.** AUTO lets the receiver choose 2D or 3D based on satellite geometry. 3D requires 4+ satellites but provides altitude. 2D works with 3 satellites but assumes fixed altitude. |
 | GNP11 | GNSS_DYN_MODEL | 0-10 | PORTABLE (0) | **u-blox dynamic model.** Tells the GNSS receiver what kind of motion to expect, improving fix quality. **0 (PORTABLE)**: General use. **6 (AIRBORNE_1G)**: For birds — accepts high-speed, low-acceleration motion. **7 (AIRBORNE_2G)**: High-dynamics flight. Wrong model can prevent lock (e.g., PORTABLE rejects bird-speed motion). |
 
-### Fix Filtering
+## Fix Filtering
 
 | Key | Name | Range | Default | Description |
 |-----|------|-------|---------|-------------|
@@ -110,7 +108,7 @@ These parameters control the u-blox M10Q GNSS module: when it runs, how it filte
 | GNP21 | GNSS_HACCFILT_THR | 0-MAX | 5m | **Horizontal accuracy threshold (meters).** Fixes with hAcc > this are rejected. 5m is strict. For RSPB: relax to 10m to get faster fixes (shorter TTFF = less battery). |
 | GNP22 | GNSS_MIN_NUM_FIXES | 1-MAX | 1 | **Consecutive valid fixes required.** Number of successive fixes passing all filters before accepting. Higher = more reliable but longer acquisition. 1 is sufficient for most deployments. |
 
-### Triggers & Scheduling
+## Triggers & Scheduling
 
 | Key | Name | Default | Description |
 |-----|------|---------|-------------|
@@ -120,7 +118,7 @@ These parameters control the u-blox M10Q GNSS module: when it runs, how it filte
 | GNP23 | GNSS_COLD_START_RETRY_PERIOD | 1-MAX | 60s | **Cold start retry interval.** After a failed cold start, wait this many seconds before trying again. Prevents continuous GNSS drain after repeated failures. |
 | GNP30 | GNSS_SESSION_SINGLE_FIX | BOOL | false | **Stop GNSS after first valid fix.** For RSPB: set to 1. Saves significant power by powering off GNSS immediately after one fix instead of continuing to acquire fixes for the depth pile. |
 
-### AssistNow
+## AssistNow
 
 | Key | Name | Default | Description |
 |-----|------|---------|-------------|
@@ -130,11 +128,11 @@ These parameters control the u-blox M10Q GNSS module: when it runs, how it filte
 
 ---
 
-## Underwater Detection
+# Underwater Detection
 
-These parameters control how the device detects whether the animal is submerged. When underwater, GNSS and Argos TX are suspended to save power (satellite communication is impossible underwater). See [Behavior - Underwater Mode](https://github.com/arribada/linkit-v4-core/wiki/7-%E2%80%90-Behavior) for the full algorithm description.
+These parameters control how the device detects whether the animal is submerged. When underwater, GNSS and Argos TX are suspended to save power (satellite communication is impossible underwater). See [Behavior - Underwater Mode](https://github.com/arribada/linkit-v4-core/wiki/11-%E2%80%90-LinkIt-UW-Behavior) for the full algorithm description.
 
-### Core Settings
+## Core Settings
 
 | Key | Name | Default | Description |
 |-----|------|---------|-------------|
@@ -142,7 +140,7 @@ These parameters control how the device detects whether the animal is submerged.
 | UNP10 | UNDERWATER_DETECT_SOURCE | SWS (0) | **Detection method.** **SWS (0)**: Saltwater switch — analog conductivity electrode, recommended for turtles. **PRESSURE (1)**: Depth > threshold. **GNSS (2)**: Poor GNSS signal = submerged. **SWS_GNSS (3)**: Hybrid — SWS for dive detection, GNSS for surface confirmation. |
 | UNP02 | DRY_TIME_BEFORE_TX | 0s | **Surface delay before TX.** Seconds the device must be at the surface before Argos TX is allowed. 0 = TX immediately on surfacing. Increase if false surface detections cause wasted TX attempts. |
 
-### Sampling
+## Sampling
 
 | Key | Name | Default | Description |
 |-----|------|---------|-------------|
@@ -153,7 +151,7 @@ These parameters control how the device detects whether the animal is submerged.
 | UNP07 | UW_SAMPLE_GAP | 1000ms | **Gap between sub-samples.** When UW_MAX_SAMPLES > 1, the interval between consecutive sub-samples within a single cycle. |
 | UNP08 | UW_PIN_SAMPLE_DELAY | 1ms | **RC charge time before ADC read.** The time the SWS electrode pin is enabled before reading the ADC. **Must remain at 1ms** — this is a physical constant of the RC circuit that maximizes water/film discrimination. Changing it degrades detection. |
 
-### Safety
+## Safety
 
 | Key | Name | Default | Description |
 |-----|------|---------|-------------|
@@ -161,7 +159,7 @@ These parameters control how the device detects whether the animal is submerged.
 | UNP25 | UW_MIN_SURFACE_TIME | 2s | **Surface lockout after detection.** After detecting surface (via L1-L5 or threshold), ignore underwater readings for this duration. Prevents oscillation from wet electrode at surface. |
 | UNP11 | UNDERWATER_DETECT_THRESH | 1.1 | **Threshold for pressure/GNSS detection methods.** For PRESSURE source: depth in meters. For GNSS source: signal quality threshold. Not used with SWS source. |
 
-### SWS Analog Calibration
+## SWS Analog Calibration
 
 | Key | Name | Default | Description |
 |-----|------|---------|-------------|
@@ -170,14 +168,14 @@ These parameters control how the device detects whether the animal is submerged.
 | UNP22 | SWS_ANALOG_HYSTERESIS | 4% | **Hysteresis as percentage of threshold.** Higher = more stable transitions but slower detection. 4% is a good balance. |
 | UNP23 | SWS_ANALOG_CALIB_INTERVAL | 3600s | **Air baseline recalibration interval.** After this time at surface, the air baseline is fully recalibrated to current readings. Handles slow biofouling drift. |
 
-### Dive Mode
+## Dive Mode
 
 | Key | Name | Default | Description |
 |-----|------|---------|-------------|
 | UNP12 | UW_DIVE_MODE_ENABLE | false | **Enable dive mode state machine.** Adds reed switch pause/resume for dive tracking. Specialized for dive-logging deployments. |
 | UNP13 | UW_DIVE_MODE_START_TIME | 0 | **Dive mode start time.** Unix timestamp when dive mode was activated. |
 
-### GNSS-Based Detection (UNP10=2 or 3)
+## GNSS-Based Detection (UNP10=2 or 3)
 
 | Key | Name | Default | Description |
 |-----|------|---------|-------------|
@@ -189,11 +187,11 @@ These parameters control how the device detects whether the animal is submerged.
 
 ---
 
-## Low Battery Mode
+# Low Battery Mode
 
-When the battery drops below a threshold, the device switches to a reduced-power mode with different GNSS and Argos parameters. See [Behavior - RSPB Battery Modes](https://github.com/arribada/linkit-v4-core/wiki/7-%E2%80%90-Behavior) for the full behavior description.
+When the battery drops below a threshold, the device switches to a reduced-power mode with different GNSS and Argos parameters. See [RSPB Battery Modes](https://github.com/arribada/linkit-v4-core/wiki/12-%E2%80%90-RSPB-Mortality-Tracker) for the full behavior description.
 
-### Mode Control
+## Mode Control
 
 | Key | Name | Default | Description |
 |-----|------|---------|-------------|
@@ -201,7 +199,7 @@ When the battery drops below a threshold, the device switches to a reduced-power
 | LBP02 | LB_THRESHOLD | 10% | **Battery percentage to enter LB mode.** When SOC < this value and LB_EN=1, the device uses LB parameters instead of normal ones. RSPB typical: 10-30%. |
 | LBP12 | LB_CRITICAL_THRESH | 5% | **Critical battery threshold.** Below this SOC, the device powers off immediately without any operation. Protects the battery from deep discharge. On RSPB, the TPL5111 keeps waking the device — once solar recharges above this threshold, operation resumes. |
 
-### LB GNSS Settings
+## LB GNSS Settings
 
 | Key | Name | Default | Description |
 |-----|------|---------|-------------|
@@ -210,7 +208,7 @@ When the battery drops below a threshold, the device switches to a reduced-power
 | LBP07 | LB_GNSS_HDOPFILT_THR | 2 | **HDOP filter in LB mode.** Can be relaxed to accept lower-quality fixes. |
 | LBP10 | LB_GNSS_HACCFILT_THR | 5m | **Accuracy filter in LB mode.** |
 
-### LB Argos Settings
+## LB Argos Settings
 
 | Key | Name | Default | Description |
 |-----|------|---------|-------------|
@@ -224,7 +222,7 @@ When the battery drops below a threshold, the device switches to a reduced-power
 
 ---
 
-## Geofencing Zone
+# Geofencing Zone
 
 Define a circular zone around a reference point. When the device detects it is outside this zone, it switches to alternate Argos parameters (typically more aggressive TX).
 
@@ -254,7 +252,7 @@ Define a circular zone around a reference point. When the device detects it is o
 
 ---
 
-## Pass Prediction
+# Pass Prediction
 
 These parameters tune the Prepass algorithm used in PASS_PREDICTION mode (ARP01=1) to compute when Argos satellites are overhead.
 
@@ -269,7 +267,7 @@ These parameters tune the Prepass algorithm used in PASS_PREDICTION mode (ARP01=
 
 ---
 
-## Sensors
+# Sensors
 
 All sensors follow the same parameter pattern. Each sensor has:
 - **ENABLE** — Turn the sensor on/off
@@ -278,7 +276,7 @@ All sensors follow the same parameter pattern. Each sensor has:
 - **ENABLE_TX_MAX_SAMPLES** — Maximum samples aggregated per TX event
 - **ENABLE_TX_SAMPLE_PERIOD** — Sampling interval for TX data collection (ms)
 
-### TX Aggregation Modes
+## TX Aggregation Modes
 
 | Value | Mode | Description |
 |-------|------|-------------|
@@ -287,7 +285,7 @@ All sensors follow the same parameter pattern. Each sensor has:
 | 2 | MEAN | Include the average of all samples since last TX |
 | 3 | MEDIAN | Include the median of all samples since last TX |
 
-### Pressure Sensor (LPS28DFW)
+## Pressure Sensor (LPS28DFW)
 
 Requires `ENABLE_PRESSURE_SENSOR` at build time. Measures barometric pressure, temperature, and computes altitude.
 
@@ -301,7 +299,7 @@ Requires `ENABLE_PRESSURE_SENSOR` at build time. Measures barometric pressure, t
 | PRP06 | PRESSURE_SENSOR_ENABLE_TX_SAMPLE_PERIOD | 1000ms | TX sampling interval |
 | PRP07 | PRESSURE_SENSOR_FULL_SCALE | 1260hPa (0) | **Full scale range.** 0 = 1260 hPa (standard atmospheric). 1 = 4060 hPa (for deep underwater pressure measurement up to ~30m depth). |
 
-### Accelerometer (BMA400)
+## Accelerometer (BMA400)
 
 Requires `ENABLE_AXL_SENSOR`. 3-axis accelerometer with wakeup detection and activity monitoring.
 
@@ -317,7 +315,7 @@ Requires `ENABLE_AXL_SENSOR`. 3-axis accelerometer with wakeup detection and act
 | AXP06 | AXL_SENSOR_ENABLE_TX_MAX_SAMPLES | 1 | Max samples per TX |
 | AXP07 | AXL_SENSOR_ENABLE_TX_SAMPLE_PERIOD | 1000ms | TX sampling interval |
 
-### Thermistor (NTC)
+## Thermistor (NTC)
 
 Requires `ENABLE_THERMISTOR_SENSOR`. Reads temperature from an NTC thermistor via ADC.
 
@@ -332,7 +330,7 @@ Requires `ENABLE_THERMISTOR_SENSOR`. Reads temperature from an NTC thermistor vi
 | THP07 | THERMISTOR_SENSOR_ENABLE_TX_MAX_SAMPLES | 1 | Max samples per TX |
 | THP08 | THERMISTOR_SENSOR_ENABLE_TX_SAMPLE_PERIOD | 1000ms | TX sampling interval |
 
-### Other Sensors
+## Other Sensors
 
 These sensors follow the same ENABLE / PERIODIC / TX_MODE pattern. All require their respective `ENABLE_*` build flag.
 
@@ -346,11 +344,27 @@ These sensors follow the same ENABLE / PERIODIC / TX_MODE pattern. All require t
 
 **Camera** — Keys: CAP01-CAP05. Triggers an external camera on surfaced or accelerometer wakeup events.
 
+## Mortality Detection (RSPB)
+
+Requires `ENABLE_MORTALITY_SENSOR` at build time (auto-enabled on RSPB). Combines accelerometer activity, body temperature, and GPS stationarity to compute a mortality confidence percentage (0-100%) transmitted in every satellite sensor packet.
+
+**WARNING:** Mortality detection requires AXL (`AXP01=1`), Thermistor (`THP01=1`), and GNSS (`GNP01=1`) to be enabled and active. If any sensor is disabled, the algorithm works with partial data only (biased toward ALIVE). The RSPB build script enables all three by default.
+
+| Key | Name | Default | Description |
+|-----|------|---------|-------------|
+| MTP01 | MORTALITY_ENABLE | false | Enable mortality detection. When false, service is disabled, zero CPU/flash impact. |
+| MTP02 | MORTALITY_ACTIVITY_THRESH | 10 | **Activity threshold (0-255).** BMA400 activity score below which the bird is considered immobile. At rest: ~0-5, walking: ~20-50, flying: ~100+. |
+| MTP03 | MORTALITY_TEMP_THRESH | 25.0 | **Body temperature threshold (°C).** Below this = hypothermic. Live bird body temp ~38-42°C. Dead bird converges to ambient (~10-25°C). |
+| MTP04 | MORTALITY_GPS_DISTANCE_THRESH | 50 | **Stationarity threshold (meters).** If GPS position moved less than this since last session AND speed < 0.1 m/s, bird is considered stationary. |
+| MTP05 | MORTALITY_CONFIRM_DAYS | 3 | **Confirmation period (days).** Number of consecutive days with confidence >= 80% before status transitions to CONFIRMED. |
+| MTP06 | MORTALITY_DUTY_CYCLE_MODULO | 0 | **Duty cycle when confirmed.** Replaces BOOT_COUNTER_MODULO when mortality is confirmed. **0 = disabled** (never modify duty cycle, just report confidence). Set > 0 to opt in. |
+| MTP07 | MORTALITY_ORIGINAL_MODULO | 0 | **Backup modulo (read-only).** Auto-saved when mortality first confirmed. Used to restore original duty cycle on recovery. |
+
 ---
 
-## Power Management (RSPB / TPL5111)
+# Power Management (RSPB / TPL5111)
 
-These parameters are only active on `EXTERNAL_WAKEUP` builds (RSPB). They control the duty cycling behavior. See [Behavior - RSPB](https://github.com/arribada/linkit-v4-core/wiki/7-%E2%80%90-Behavior) for the full description.
+These parameters are only active on `EXTERNAL_WAKEUP` builds (RSPB). They control the duty cycling behavior. See [RSPB Behavior](https://github.com/arribada/linkit-v4-core/wiki/12-%E2%80%90-RSPB-Mortality-Tracker) for the full description.
 
 | Key | Name | Default | Description |
 |-----|------|---------|-------------|
@@ -368,7 +382,7 @@ These parameters are only active on `EXTERNAL_WAKEUP` builds (RSPB). They contro
 
 ---
 
-## LED
+# LED
 
 | Key | Name | Default | Description |
 |-----|------|---------|-------------|
@@ -377,7 +391,7 @@ These parameters are only active on `EXTERNAL_WAKEUP` builds (RSPB). They contro
 
 ---
 
-## Debug
+# Debug
 
 | Key | Name | Default | Description |
 |-----|------|---------|-------------|
@@ -385,7 +399,7 @@ These parameters are only active on `EXTERNAL_WAKEUP` builds (RSPB). They contro
 
 ---
 
-## Certification Test
+# Certification Test
 
 These parameters are used for Argos TX certification and testing. Not used in normal operation.
 
@@ -398,11 +412,11 @@ These parameters are used for Argos TX certification and testing. Not used in no
 
 ---
 
-## LoRa RAK3172 Configuration
+# LoRa RAK3172 Configuration
 
 These parameters are only available on `LORA_RAK3172=ON` builds (LinkIt V4 LoRa). They configure the RAK3172-SiP LoRaWAN module.
 
-### Network Credentials
+## Network Credentials
 
 | Key | Name | Description |
 |-----|------|-------------|
@@ -413,7 +427,7 @@ These parameters are only available on `LORA_RAK3172=ON` builds (LinkIt V4 LoRa)
 | LRP05 | LORA_APPSKEY | **Application session key** (ABP mode). 32 hex chars. |
 | LRP06 | LORA_NWKSKEY | **Network session key** (ABP mode). 32 hex chars. |
 
-### Radio Configuration
+## Radio Configuration
 
 | Key | Name | Default | Description |
 |-----|------|---------|-------------|
@@ -429,7 +443,7 @@ These parameters are only available on `LORA_RAK3172=ON` builds (LinkIt V4 LoRa)
 
 ---
 
-## Battery & System Status (Read-only)
+# Battery & System Status (Read-only)
 
 These values are read via `$STATR`:
 

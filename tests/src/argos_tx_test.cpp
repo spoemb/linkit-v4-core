@@ -320,8 +320,8 @@ TEST(ArgosTxService, BuildLongCertificationPacket)
 {
 	unsigned int size_bits;
 	std::string x = ArgosPacketBuilder::build_certification_packet("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", size_bits);
-	CHECK_EQUAL(248, size_bits);
-	CHECK_EQUAL("\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF"s, x);
+	CHECK_EQUAL(224, size_bits);
+	CHECK_EQUAL("\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF"s, x);
 }
 
 TEST(ArgosTxService, BuildShortCertificationPacket)
@@ -357,22 +357,23 @@ TEST(ArgosTxService, BuildLongGNSSPacket)
 	unsigned int size_bits;
 	GPSLogEntry e = make_gps_location(1, 12.3, 44.4, 1652105502);
 	std::vector<GPSLogEntry*> v({&e, &e});
+	// CRC8 and BCH are now handled by the satellite module — payload only
 	std::string x = ArgosPacketBuilder::build_gnss_packet(v, false, false, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	CHECK_EQUAL("C74B8B3633003C0F0012C26C6600781E3FFFFFFFFFFFFFFFFFFFFF6DD38EA7"s, Binascii::hexlify(x));
+	CHECK_EQUAL("4B8B3633003C0F0012C26C6600781E3FFFFFFFFFFFFFFFFFFFFF"s, Binascii::hexlify(x));
 	v = {&e, &e, &e};
 	x = ArgosPacketBuilder::build_gnss_packet(v, false, false, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	CHECK_EQUAL("7B4B8B3633003C0F0012C26C6600781E0D8CC00F03C7FFFFFFFFFFB8928747"s, Binascii::hexlify(x));
+	CHECK_EQUAL("4B8B3633003C0F0012C26C6600781E0D8CC00F03C7FFFFFFFFFF"s, Binascii::hexlify(x));
 	v = {&e, &e, &e, &e};
 	x = ArgosPacketBuilder::build_gnss_packet(v, false, false, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	CHECK_EQUAL("684B8B3633003C0F0012C26C6600781E0D8CC00F03C1B19801E0788A14F4C3"s, Binascii::hexlify(x));
+	CHECK_EQUAL("4B8B3633003C0F0012C26C6600781E0D8CC00F03C1B19801E078"s, Binascii::hexlify(x));
 	x = ArgosPacketBuilder::build_gnss_packet(v, true, false, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	CHECK_EQUAL("334B8B3633003C0F0032C26C6600781E0D8CC00F03C1B19801E07868E736A3"s, Binascii::hexlify(x));
+	CHECK_EQUAL("4B8B3633003C0F0032C26C6600781E0D8CC00F03C1B19801E078"s, Binascii::hexlify(x));
 	x = ArgosPacketBuilder::build_gnss_packet(v, false, true, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	CHECK_EQUAL("AF4B8B3633003C0F0012E26C6600781E0D8CC00F03C1B19801E078F4DD69C4"s, Binascii::hexlify(x));
+	CHECK_EQUAL("4B8B3633003C0F0012E26C6600781E0D8CC00F03C1B19801E078"s, Binascii::hexlify(x));
 	x = ArgosPacketBuilder::build_gnss_packet(v, true, true, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	CHECK_EQUAL("F44B8B3633003C0F0032E26C6600781E0D8CC00F03C1B19801E078162EABA4"s, Binascii::hexlify(x));
+	CHECK_EQUAL("4B8B3633003C0F0032E26C6600781E0D8CC00F03C1B19801E078"s, Binascii::hexlify(x));
 	x = ArgosPacketBuilder::build_gnss_packet(v, true, true, BaseDeltaTimeLoc::DELTA_T_30MIN, size_bits);
-	CHECK_EQUAL("CC4B8B3633003C0F0032E66C6600781E0D8CC00F03C1B19801E07814400ECE"s, Binascii::hexlify(x));
+	CHECK_EQUAL("4B8B3633003C0F0032E66C6600781E0D8CC00F03C1B19801E078"s, Binascii::hexlify(x));
 }
 
 
@@ -755,7 +756,7 @@ TEST(ArgosTxService, TxServiceCancelledByUnderwaterBeforeTx)
 	// Should now transmit (TCXO warmup skipped on first TX after submerge)
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
 	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
-			withUnsignedIntParameter("size_bits", 248);
+			withUnsignedIntParameter("size_bits", 224);
 	t += serv.get_last_schedule();
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
@@ -800,7 +801,7 @@ TEST(ArgosTxService, TxServiceCancelledDuringTx)
 	system_scheduler->run();
 
 	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
-			withUnsignedIntParameter("size_bits", 248);
+			withUnsignedIntParameter("size_bits", 224);
 
 	// TX should start
 	t += serv.get_last_schedule();
@@ -823,7 +824,7 @@ TEST(ArgosTxService, TxServiceCancelledDuringTx)
 	// Should now transmit (TCXO warmup skipped on first TX after submerge)
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
 	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
-			withUnsignedIntParameter("size_bits", 248);
+			withUnsignedIntParameter("size_bits", 224);
 	t += serv.get_last_schedule();
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
@@ -943,7 +944,7 @@ TEST(ArgosTxService, UnderwaterFor24HoursBeforeTx)
 	// Should now transmit (TCXO warmup skipped on first TX after submerge)
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
 	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
-			withUnsignedIntParameter("size_bits", 248);
+			withUnsignedIntParameter("size_bits", 224);
 	t += serv.get_last_schedule();
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
@@ -1423,24 +1424,25 @@ TEST(ArgosTxService, BuildSensorPacketAll) {
 	pressure.port[1] = 4000; // 0C
 	sea_temp.port[0] = 126000; // 0C
 
+	// CRC8 is now handled by the satellite module — no leading zero byte
 	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, nullptr, nullptr, false, false, size_bits);
-	CHECK_EQUAL("004B8B3633003C0F0012C0"s, Binascii::hexlify(x));
-	CHECK_EQUAL(83, size_bits);
+	CHECK_EQUAL("4B8B3633003C0F0012C0"s, Binascii::hexlify(x));
+	CHECK_EQUAL(75, size_bits);
 	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, &pressure, &sea_temp, nullptr, false, false, size_bits);
-	CHECK_EQUAL("004B8B3633003C0F0012C27106D601F41F401EC300"s, Binascii::hexlify(x));
-	CHECK_EQUAL(164, size_bits);
+	CHECK_EQUAL("4B8B3633003C0F0012C27106D601F41F401EC300"s, Binascii::hexlify(x));
+	CHECK_EQUAL(156, size_bits);
 	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, &ph, &pressure, &sea_temp, nullptr, false, false, size_bits);
-	CHECK_EQUAL("004B8B3633003C0F0012CDAC03E83E803D8600"s, Binascii::hexlify(x));
-	CHECK_EQUAL(147, size_bits);
+	CHECK_EQUAL("4B8B3633003C0F0012CDAC03E83E803D8600"s, Binascii::hexlify(x));
+	CHECK_EQUAL(139, size_bits);
 	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, nullptr, &pressure, &sea_temp, nullptr, false, false, size_bits);
-	CHECK_EQUAL("004B8B3633003C0F0012C271007D07D007B0C0"s, Binascii::hexlify(x));
-	CHECK_EQUAL(150, size_bits);
+	CHECK_EQUAL("4B8B3633003C0F0012C271007D07D007B0C0"s, Binascii::hexlify(x));
+	CHECK_EQUAL(142, size_bits);
 	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, nullptr, &sea_temp, nullptr, false, false, size_bits);
-	CHECK_EQUAL("004B8B3633003C0F0012C27106D603D860"s, Binascii::hexlify(x));
-	CHECK_EQUAL(135, size_bits);
+	CHECK_EQUAL("4B8B3633003C0F0012C27106D603D860"s, Binascii::hexlify(x));
+	CHECK_EQUAL(127, size_bits);
 	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, &pressure, nullptr, nullptr, false, false, size_bits);
-	CHECK_EQUAL("004B8B3633003C0F0012C27106D601F41F40"s, Binascii::hexlify(x));
-	CHECK_EQUAL(143, size_bits);
+	CHECK_EQUAL("4B8B3633003C0F0012C27106D601F41F40"s, Binascii::hexlify(x));
+	CHECK_EQUAL(135, size_bits);
 }
 
 TEST(ArgosTxService, BuildSensorPacketSeaTemp) {
@@ -1452,8 +1454,8 @@ TEST(ArgosTxService, BuildSensorPacketSeaTemp) {
 	sea_temp.port[0] = 147100; // 21.1C
 
 	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, &sea_temp, nullptr, false, false, size_bits);
-	CHECK_EQUAL("004B8B3633003C0F0012C23E9C"s, Binascii::hexlify(x));
-	CHECK_EQUAL(104, size_bits);
+	CHECK_EQUAL("4B8B3633003C0F0012C23E9C"s, Binascii::hexlify(x));
+	CHECK_EQUAL(96, size_bits);
 }
 
 
@@ -1528,11 +1530,11 @@ TEST(ArgosTxService, BuildSensorPacketOutOfZone) {
 
 	// Test with out-of-zone flag set
 	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, nullptr, nullptr, true, false, size_bits);
-	CHECK_EQUAL(83, size_bits); // GPS-only packet size should be same
+	CHECK_EQUAL(75, size_bits); // GPS-only packet size should be same
 
 	// Test with low battery flag set
 	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, nullptr, nullptr, false, true, size_bits);
-	CHECK_EQUAL(83, size_bits);
+	CHECK_EQUAL(75, size_bits);
 }
 
 TEST(ArgosTxService, BuildDopplerPacket) {

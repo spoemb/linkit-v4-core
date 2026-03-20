@@ -249,3 +249,24 @@ void LEDDFUUpdate::entry() {
 	if (ext_status_led)
 		ext_status_led->off();
 }
+
+void LEDConfirmConfig::entry() {
+	DEBUG_TRACE("LEDConfirmConfig: entry");
+	status_led->flash(RGBLedColor::BLUE, 50);
+	if (ext_status_led)
+		ext_status_led->off();
+}
+
+void LEDConfirmExitConfig::entry() {
+	DEBUG_TRACE("LEDConfirmExitConfig: entry");
+	status_led->flash(RGBLedColor::GREEN, 50);
+	if (ext_status_led)
+		ext_status_led->off();
+}
+
+void LEDConfirmPowerOff::entry() {
+	DEBUG_TRACE("LEDConfirmPowerOff: entry");
+	status_led->flash(RGBLedColor::RED, 50);
+	if (ext_status_led)
+		ext_status_led->off();
+}

@@ -1,8 +1,6 @@
-# 8 - Development Guide
-
 This guide covers common development tasks for extending the LinKit v4 firmware.
 
-## Code Conventions
+# Code Conventions
 
 - C++20 standard
 - Tabs for indentation
@@ -13,7 +11,7 @@ This guide covers common development tasks for extending the LinKit v4 firmware.
 - `ErrorCode` exceptions for error handling (not std::exception)
 - Static registries (SensorManager, ServiceManager, LoggerManager, CalibratableManager) for component lookup
 
-## Key Source Files
+# Key Source Files
 
 | File | Purpose |
 |------|---------|
@@ -30,7 +28,7 @@ This guide covers common development tasks for extending the LinKit v4 firmware.
 
 ---
 
-## Adding Parameters
+# Adding Parameters
 
 Adding a parameter touches 5-6 files in a specific order:
 
@@ -43,15 +41,15 @@ Adding a parameter touches 5-6 files in a specific order:
 6. tests              → Update PARML/PARMR test strings
 ```
 
-### Step 1: Add ParamID (`core/protocol/base_types.hpp`)
+## Step 1: Add ParamID (`core/protocol/base_types.hpp`)
 
 ```cpp
 enum class ParamID {
     // ... existing params ...
-#if ENABLE_PRESSURE_SENSOR
+if ENABLE_PRESSURE_SENSOR
     PRESSURE_SENSOR_FULL_SCALE = 177,
-#endif
-    __PARAM_SIZE = 178,  // Increment this!
+endif
+    __PARAM_SIZE = 206,  // Increment this!
     __NULL_PARAM = 0xFFFF
 };
 ```
@@ -63,7 +61,7 @@ enum class ParamID {
 
 If you need a new enum type, add the enum class, add it to `BaseEncoding`, and add it to the `BaseType` variant (at the end).
 
-### Step 2: Add Parameter Map Entry (`core/protocol/dte_params.cpp`)
+## Step 2: Add Parameter Map Entry (`core/protocol/dte_params.cpp`)
 
 ```cpp
 // [177] Pressure sensor full scale
@@ -73,11 +71,11 @@ If you need a new enum type, add the enum class, add it to `BaseEncoding`, and a
 
 Fields: name, key (5-char: 3-letter prefix + 2-digit number), encoding, min/max (0,0 = no range check), permitted_values (empty = use range), is_implemented (ENABLE_* macro), is_writable.
 
-### Step 3: Add Encode/Decode (`core/protocol/dte_protocol.hpp`)
+## Step 3: Add Encode/Decode (`core/protocol/dte_protocol.hpp`)
 
 Only needed for new enum types. Standard types (UINT, FLOAT, BOOLEAN, TEXT) are already handled. Add encoder (`encode()`) and decoder function, then wire them into the main encode/decode switch.
 
-### Step 4: Add Default Value (`core/configuration/config_store.hpp`)
+## Step 4: Add Default Value (`core/configuration/config_store.hpp`)
 
 Add the default to `default_params[]` at the correct position. **Bump the config version** to force factory reset on existing devices:
 
@@ -86,15 +84,15 @@ static inline const unsigned int m_config_version_code = 0x1c07e800 | 0x15;
 //                                                   was 0x14 ────────────^
 ```
 
-### Step 5: Add Serializer/Deserializer (`core/configuration/config_store_fs.hpp`)
+## Step 5: Add Serializer/Deserializer (`core/configuration/config_store_fs.hpp`)
 
 Only needed if you added a new type to the `BaseType` variant. Add `operator()` overload in serializer and switch case in deserializer.
 
-### Step 6: Update Tests (`tests/src/dte_handler_test.cpp`)
+## Step 6: Update Tests (`tests/src/dte_handler_test.cpp`)
 
 Update the PARML expected response string (add new key) and PARMR expected response string (add key=default). Recalculate `#LEN` hex values.
 
-### Step 7: Use the Parameter
+## Step 7: Use the Parameter
 
 ```cpp
 void sensor_init() override {
@@ -104,7 +102,7 @@ void sensor_init() override {
 }
 ```
 
-### Checklist
+## Checklist
 
 - [ ] ParamID added with correct slot, `__PARAM_SIZE` incremented
 - [ ] New enum type added to BaseEncoding + BaseType variant (if needed)
@@ -116,9 +114,9 @@ void sensor_init() override {
 
 ---
 
-## Adding Sensors
+# Adding Sensors
 
-### Sensor Hierarchy
+## Sensor Hierarchy
 
 ```
 Sensor (core/hardware/sensor.hpp)          ← Abstract interface
@@ -128,7 +126,7 @@ MySensorWrapper (ports/nrf52840/...)       ← Wraps device, implements Sensor
   └── Registers with SensorManager("NAME")
 ```
 
-### Step 1: Create the Device Driver
+## Step 1: Create the Device Driver
 
 In `ports/nrf52840/core/hardware/my_sensor/my_device.cpp`:
 
@@ -148,7 +146,7 @@ void MyDevice::read(double& value1, double& value2) {
 
 **Key pattern**: Always use `SensorsPowerGuard` for I2C access and re-apply sensor configuration in `read()`.
 
-### Step 2: Create the Sensor Wrapper
+## Step 2: Create the Sensor Wrapper
 
 ```cpp
 class MySensor : public Sensor {
@@ -172,11 +170,11 @@ private:
 
 The Sensor constructor registers with SensorManager using the provided name.
 
-### Step 3: Add Calibration Support (Optional)
+## Step 3: Add Calibration Support (Optional)
 
 Override `calibration_write/read/save` from `Calibratable`. Add SCALW/SCALR mapping in DTEHandler for the new sensor type.
 
-### Step 4: Instantiate in Board Application
+## Step 4: Instantiate in Board Application
 
 ```cpp
 MyDevice my_device(ONBOARD_I2C_BUS, MY_DEVICE_I2C_ADDR);
@@ -184,11 +182,11 @@ MySensor my_sensor(my_device);
 MySensorService my_service(my_sensor, &my_logger);
 ```
 
-### Step 5: BSP & Build
+## Step 5: BSP & Build
 
 Add I2C address and pin definitions in the board's `bsp.hpp`. Add `ENABLE_MY_SENSOR` flag in CMakeLists.txt.
 
-### Checklist
+## Checklist
 
 - [ ] Device driver with SensorsPowerGuard and config re-apply in read()
 - [ ] Sensor wrapper implementing `Sensor::read(port)`, registered with SensorManager
@@ -198,9 +196,9 @@ Add I2C address and pin definitions in the board's `bsp.hpp`. Add `ENABLE_MY_SEN
 
 ---
 
-## Adding Services
+# Adding Services
 
-### Service Types
+## Service Types
 
 | Base Class | Use Case |
 |-----------|----------|
@@ -208,7 +206,7 @@ Add I2C address and pin definitions in the board's `bsp.hpp`. Add `ENABLE_MY_SEN
 | `SensorService` | Sensor-based services with periodic sampling and logging |
 | `UWDetectorService` | Underwater detection services |
 
-### Creating a SensorService
+## Creating a SensorService
 
 **Step 1 — Define log entry structure:**
 
@@ -272,7 +270,7 @@ private:
 
 **Step 7 — Add log type mapping** in DTEHandler for DUMPD/ERASE commands.
 
-### Creating a Non-Sensor Service
+## Creating a Non-Sensor Service
 
 ```cpp
 class MyService : public Service {
@@ -292,9 +290,9 @@ private:
 
 ---
 
-## Board Porting
+# Board Porting
 
-### Architecture
+## Architecture
 
 ```
 core/                           # Portable: no hardware dependencies
@@ -312,33 +310,33 @@ ports/nrf52840/                 # Hardware-specific
 └── CMakeLists.txt
 ```
 
-### Step 1: Create BSP
+## Step 1: Create BSP
 
 Create `ports/<mcu>/bsp/<board_name>/bsp.hpp` with all hardware mappings:
 
 ```cpp
-#pragma once
+pragma once
 
 // Peripherals
-#define RTC_DATE_TIME    RTC_1
-#define SPI_SATELLITE    SPI_2
-#define UART_GPS         UART_0
+define RTC_DATE_TIME    RTC_1
+define SPI_SATELLITE    SPI_2
+define UART_GPS         UART_0
 
 // I2C
-#define ONBOARD_I2C_BUS  I2C_0
-#define BMA400_I2C_ADDR  0x14
-#define LPS28DFW_I2C_ADDR 0x5C
+define ONBOARD_I2C_BUS  I2C_0
+define BMA400_I2C_ADDR  0x14
+define LPS28DFW_I2C_ADDR 0x5C
 
 // GPIO
-#define GPS_POWER        GPIO_GPS_PWR_EN
-#define SAT_PWR_EN       GPIO_SAT_EN
-#define SWS_ENABLE_PIN   GPIO_SWS_SEND
+define GPS_POWER        GPIO_GPS_PWR_EN
+define SAT_PWR_EN       GPIO_SAT_EN
+define SWS_ENABLE_PIN   GPIO_SWS_SEND
 
 // Feature flags
-#define POWER_ON_RESET_REQUIRES_REED_SWITCH  1
+define POWER_ON_RESET_REQUIRES_REED_SWITCH  1
 ```
 
-### Step 2: Implement Hardware Abstractions
+## Step 2: Implement Hardware Abstractions
 
 Required interfaces from `core/`:
 
@@ -352,7 +350,7 @@ Required interfaces from `core/`:
 
 Plus platform-specific I2C, SPI, GPIO implementations.
 
-### Step 3: Implement SensorsPowerGuard
+## Step 3: Implement SensorsPowerGuard
 
 Critical RAII pattern:
 
@@ -366,7 +364,7 @@ public:
 
 All sensor drivers must use this guard and re-apply configuration after power-on.
 
-### Existing Board References
+## Existing Board References
 
 | Board | BSP | Key Differences |
 |-------|-----|-----------------|
@@ -375,13 +373,13 @@ All sensor drivers must use this guard and re-apply configuration after power-on
 
 ---
 
-## Testing
+# Testing
 
-### Framework
+## Framework
 
 The project uses **CppUTest** for unit testing. Tests mock hardware dependencies so they run on the host machine (x86/x64).
 
-### Building and Running
+## Building and Running
 
 ```bash
 cd tests && mkdir build && cd build
@@ -392,11 +390,11 @@ ctest --output-on-failure         # Run all tests
 ./TrackerTests -v                     # Verbose output
 ```
 
-### Test Build Configuration
+## Test Build Configuration
 
 The test CMake defines all `ENABLE_*` flags to 1, ensuring all code paths are compiled and tested regardless of the target board.
 
-### Mocks and Fakes
+## Mocks and Fakes
 
 | Mock/Fake | Purpose |
 |-----------|---------|
@@ -406,10 +404,10 @@ The test CMake defines all `ENABLE_*` flags to 1, ensuring all code paths are co
 | fake_logger | In-memory logger capturing log entries |
 | fake_battery_monitor | Configurable battery level/voltage |
 
-### Writing Tests
+## Writing Tests
 
 ```cpp
-#include "CppUTest/TestHarness.h"
+include "CppUTest/TestHarness.h"
 
 TEST_GROUP(MySensorTest) {
     FakeSensor sensor;
@@ -427,11 +425,11 @@ TEST(MySensorTest, BasicReading) {
 }
 ```
 
-### DTE Handler Tests
+## DTE Handler Tests
 
 When adding a parameter, update PARML and PARMR expected strings in `dte_handler_test.cpp`. Recalculate `#LEN` (hex byte count of payload between `;` and `\r`).
 
-### Common Assertions
+## Common Assertions
 
 ```cpp
 CHECK(condition);

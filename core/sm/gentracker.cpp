@@ -60,45 +60,88 @@ using buzz_handle = BuzzState;
 
 void GenTracker::react(tinyfsm::Event const &) { }
 
+void GenTracker::cancel_confirmation()
+{
+	system_scheduler->cancel_task(m_confirmation_timeout_task);
+	m_confirmation_pending = ConfirmationPending::NONE;
+	m_awaiting_re_engage = false;
+}
+
 void GenTracker::react(ReedSwitchEvent const &event)
 {
 	DEBUG_INFO("react: ReedSwitchEvent: %u", (int)event.state);
 
-	// Reed switch event handling:
-	// ENGAGE -- engaged LED state
-	// RELEASE -- disengage LED state
-	// SHORT_HOLD - configuration state
-	// LONG_HOLD -- power off
+	// Reed switch event handling with confirmation gesture:
+	// ENGAGE -- engaged LED state (or confirm pending action if re-engaged within 2s)
+	// RELEASE -- disengage LED state (or start 2s confirmation window)
+	// SHORT_HOLD (3s) -- rapid blink, awaiting release+re-engage to confirm
+	// LONG_HOLD (6s) -- rapid blink, awaiting release+re-engage to confirm power off
 	if (event.state == ReedSwitchGesture::ENGAGE) {
+		if (m_awaiting_re_engage && m_confirmation_pending != ConfirmationPending::NONE) {
+			// User re-engaged within 2s confirmation window — action confirmed
+			system_scheduler->cancel_task(m_confirmation_timeout_task);
+			auto pending = m_confirmation_pending;
+			m_confirmation_pending = ConfirmationPending::NONE;
+			m_awaiting_re_engage = false;
+
+			DEBUG_INFO("Reed confirmation accepted: %u", (int)pending);
+
+			if (pending == ConfirmationPending::ENTER_CONFIG) {
+				transit<ConfigurationState>();
+			} else if (pending == ConfirmationPending::EXIT_CONFIG) {
+				transit<PreOperationalState>();
+			} else if (pending == ConfirmationPending::POWEROFF) {
+				buzz_handle::dispatch<SetBuzzPowerDown>({});
+				transit<OffState>();
+			}
+			return;
+		}
 		led_handle::dispatch<SetLEDMagnetEngaged>({});
 		buzz_handle::dispatch<SetBuzzMagnetEngaged>({});
 	} else if (event.state == ReedSwitchGesture::RELEASE) {
+		if (m_confirmation_pending != ConfirmationPending::NONE) {
+			// Magnet released during confirmation — start 2s re-engage window
+			m_awaiting_re_engage = true;
+			led_handle::dispatch<SetLEDMagnetDisengaged>({});
+			m_confirmation_timeout_task = system_scheduler->post_task_prio([this](){
+				DEBUG_INFO("Reed confirmation timeout");
+				m_confirmation_pending = ConfirmationPending::NONE;
+				m_awaiting_re_engage = false;
+				buzz_handle::dispatch<SetBuzzMagnetDisengaged>({});
+				// Restore LED to current GenTracker state
+				if (is_in_state<ConfigurationState>()) {
+					led_handle::dispatch<SetLEDConfigNotConnected>({});
+				} else if (is_in_state<PreOperationalState>()) {
+					transit<OperationalState>();
+				} else {
+					led_handle::dispatch<SetLEDOff>({});
+				}
+			}, "ReedConfirmTimeout", Scheduler::DEFAULT_PRIORITY, CONFIRMATION_TIMEOUT_MS);
+			return;
+		}
 		led_handle::dispatch<SetLEDMagnetDisengaged>({});
 		buzz_handle::dispatch<SetBuzzMagnetDisengaged>({});
-		if (!is_in_state<OffState>()) {
-			if (led_handle::is_in_state<LEDPreOperationalPending>())
-				transit<PreOperationalState>();
-			else if (led_handle::is_in_state<LEDConfigPending>())
-				transit<ConfigurationState>();
-		}
 	} else if (event.state == ReedSwitchGesture::SHORT_HOLD) {
 		if (is_in_state<ConfigurationState>()) {
-			led_handle::dispatch<SetLEDPreOperationalPending>({});
+			m_confirmation_pending = ConfirmationPending::EXIT_CONFIG;
+			led_handle::dispatch<SetLEDConfirmExitConfig>({});
 			buzz_handle::dispatch<SetBuzzPreOperationalPending>({});
 		} else {
-			led_handle::dispatch<SetLEDConfigPending>({});
+			m_confirmation_pending = ConfirmationPending::ENTER_CONFIG;
+			led_handle::dispatch<SetLEDConfirmConfig>({});
 			buzz_handle::dispatch<SetBuzzConfigPending>({});
 		}
+		m_awaiting_re_engage = false;
 	} else if (event.state == ReedSwitchGesture::LONG_HOLD) {
-		led_handle::dispatch<SetLEDMagnetDisengaged>({});
-		buzz_handle::dispatch<SetBuzzMagnetDisengaged>({});
-		buzz_handle::dispatch<SetBuzzPowerDown>({});
-		transit<OffState>();
+		m_confirmation_pending = ConfirmationPending::POWEROFF;
+		m_awaiting_re_engage = false;
+		led_handle::dispatch<SetLEDConfirmPowerOff>({});
 	}
 }
 
 void GenTracker::react(ErrorEvent const &event) {
 	DEBUG_ERROR("GenTracker::react: ErrorEvent: error_code=%u", event.error_code);
+	cancel_confirmation();
 	transit<ErrorState>();
 }
 
@@ -223,13 +266,11 @@ void PreOperationalState::entry() {
 			led_handle::dispatch<SetLEDPreOperationalBatteryNominal>({});
 
 		m_preop_state_task = system_scheduler->post_task_prio([this](){
-			// If user started a BLE entry gesture (SHORT_HOLD) during PreOperational,
-			// the LED is in ConfigPending state — honour it and go to ConfigurationState
-			// instead of OperationalState (which would override ConfigPending with SetLEDOff).
-			if (led_handle::is_in_state<LEDConfigPending>())
-				transit<ConfigurationState>();
-			else
-				transit<OperationalState>();
+			// If a confirmation gesture is in progress, don't transit yet —
+			// the confirmation handler or timeout will handle the transition.
+			if (m_confirmation_pending != ConfirmationPending::NONE)
+				return;
+			transit<OperationalState>();
 		},
 		"GenTrackerPreOperationalStateTransitOperationalState",
 		Scheduler::DEFAULT_PRIORITY, TRANSIT_PERIOD_MS);
@@ -284,7 +325,8 @@ void OperationalState::service_event_handler(ServiceEvent& e) {
 		if (e.event_type == ServiceEventType::SERVICE_ACTIVE) {
 			led_handle::dispatch<SetLEDGNSSOn>({});
 		} else if (e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
-			if (std::get<GPSLogEntry>(e.event_data).info.valid)
+			auto *gps_log = std::get_if<GPSLogEntry>(&e.event_data);
+			if (gps_log && gps_log->info.valid)
 				led_handle::dispatch<SetLEDGNSSOffWithFix>({});
 			else
 				led_handle::dispatch<SetLEDGNSSOffWithoutFix>({});

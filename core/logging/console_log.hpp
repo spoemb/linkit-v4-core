@@ -95,6 +95,7 @@ public:
 			break;
 		case LOG_CAM:
 		case LOG_AXL:
+		case LOG_MORTALITY:
 		default:
 			// Not yet supported
 			break;

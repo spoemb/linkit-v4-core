@@ -226,14 +226,15 @@ Sensors can inject data into GNSS satellite packets. Each sensor adds bits to th
 
 | Sensor | TX bits | Content |
 |--------|---------|---------|
-| AXL (BMA400) | 67 bits | Temperature + X/Y/Z accel + activity |
-| Pressure | 29 bits | Depth value |
+| AXL (BMA400) | 67 bits (8 bits RSPB) | Full: Temp + X/Y/Z + activity. **RSPB compact: activity only** |
+| Pressure | 29 bits | Pressure + temperature |
 | Sea Temp | 21 bits | Temperature |
 | ALS (Light) | 17 bits | Ambient light |
 | pH | 14 bits | pH value |
-| Thermistor | 14 bits | Temperature |
+| Thermistor | 14 bits | Body temperature |
+| Mortality (RSPB) | 7 bits | Confidence percentage (0-100%) |
 
-**Max TX payload:** 192 bits (24 bytes LDA2). GPS alone = 75 bits. So ~117 bits available for sensors.
+**Max TX payload:** 192 bits (24 bytes LDA2). GPS alone = 75 bits. RSPB total with all sensors: 133 bits (59 bits free).
 
 ### Configuration pattern (per sensor):
 
@@ -253,7 +254,298 @@ Sensors can inject data into GNSS satellite packets. Each sensor adds bits to th
 
 ---
 
+## Scenario I: RSPB Mortality Detection
+
+**Goal:** Detect when a tracked bird has died by combining accelerometer activity, body temperature, and GPS stationarity. Automatically reduce wakeup frequency when mortality is confirmed.
+
+**Prerequisites:** `ENABLE_MORTALITY_SENSOR=1` (auto for RSPB), plus AXL, Thermistor, and GNSS must all be enabled and in TX mode.
+
+| Parameter | Value | Reason |
+|-----------|-------|--------|
+| **MTP01** MORTALITY_ENABLE | 1 | Enable mortality detection algorithm |
+| **MTP02** MORTALITY_ACTIVITY_THRESH | 10 | Activity < 10/255 = immobile (BMA400 activity score) |
+| **MTP03** MORTALITY_TEMP_THRESH | 25.0 | Body temp < 25°C = hypothermic (live bird ~40°C) |
+| **MTP04** MORTALITY_GPS_DISTANCE_THRESH | 50 | < 50m between sessions = stationary |
+| **MTP05** MORTALITY_CONFIRM_DAYS | 3 | 3 consecutive days of high confidence → CONFIRMED |
+| **MTP06** MORTALITY_DUTY_CYCLE_MODULO | 6 | Reduce wakeups when confirmed (0=never modify) |
+| **AXP01** AXL_SENSOR_ENABLE | 1 | **Required** for activity measurement |
+| **AXP05** AXL_SENSOR_ENABLE_TX_MODE | MEAN | Average activity over TX period |
+| **THP01** THERMISTOR_SENSOR_ENABLE | 1 | **Required** for body temperature |
+| **THP06** THERMISTOR_SENSOR_ENABLE_TX_MODE | ONESHOT | Single reading per TX |
+| **GNP01** GNSS_EN | 1 | **Required** for position/stationarity |
+
+**RSPB satellite packet (compact, 133/192 bits):**
+```
+[Time 16b][GPS 51b][Battery 8b][Pressure 29b][Thermistor 14b][Activity 8b][Mortality% 7b]
+```
+
+**WARNING:** Mortality detection requires AXL, Thermistor, and GNSS to be enabled. If any of these sensors is disabled, the algorithm will work with partial data only (biased toward ALIVE).
+
+---
+
 # Part 2 — Complete Parameter Reference
+
+## GUI Mode: Standard vs Advanced
+
+The GUI has two display modes controlled by an "Advanced Mode" toggle. **Standard mode** shows only the parameters a wildlife researcher needs for deployment. **Advanced mode** reveals low-level tuning parameters that can break the device if misconfigured.
+
+**Rule of thumb:** If a user can brick the device, corrupt data, or waste battery by changing it without understanding the firmware internals → Advanced.
+
+### Build Availability Legend
+
+Some parameters are only available on specific firmware builds. The GUI should detect the device model (via `IDT02 DEVICE_MODEL`) and hide parameters that don't exist on the connected device. The firmware returns error code 6 (`PARAM_KEY_UNRECOGNISED`) for parameters not compiled in.
+
+| Tag | Meaning | How to detect |
+|-----|---------|---------------|
+| **All** | Available on all builds | Always present |
+| **RSPB only** | Only on RSPB builds (`BOARD=RSPB`) | `DEVICE_MODEL == "RSPB"` |
+| **LinkIt only** | Only on LinkIt V4 builds (not RSPB) | `DEVICE_MODEL != "RSPB"` |
+| **SMD only** | Only when `ARGOS_SMD=ON` (RSPB + LinkIt SMD) | Try reading `IDP13`; if error 6 → not SMD |
+| **LoRa only** | Only when `LORA_RAK3172=ON` (LinkIt LoRa) | Try reading `LRP01`; if error 6 → not LoRa |
+
+**Build → Parameter availability matrix:**
+
+| Parameter Group | LinkIt KIM | LinkIt SMD | LinkIt LoRa | RSPB |
+|----------------|------------|------------|-------------|------|
+| Core (Argos TX, GNSS, UW, LB, Zone, Sensors) | Yes | Yes | Yes | Yes |
+| Power Management (PWP01-PWP06) | No | No | No | **Yes** |
+| Thermistor (THP01-THP08) | Optional | Optional | Optional | **Always** |
+| Sea Temperature (STP01-STP06) | Optional | Optional | Optional | **Never** |
+| Mortality (MTP01-MTP07) | No | No | No | **Yes** |
+| SMD Credentials (IDP13, IDP14) | No | **Yes** | No | **Yes** |
+| LoRa (LRP01-LRP15) | No | No | **Yes** | No |
+| Camera (CAP01-CAP05, LBP13) | Optional | Optional | Optional | Optional |
+
+**Note:** "Optional" means the parameter exists only if the sensor was enabled at compile time. The GUI should gracefully handle missing optional parameters (error 6 on read = hide the group).
+
+### Device Identification
+
+| DTE Key | Name | Mode | Build | Reason |
+|---------|------|------|-------|--------|
+| IDP12 | ARGOS_DECID | Standard | All | Must configure for each device |
+| IDT06 | ARGOS_HEXID | Standard | All | Must configure for each device |
+| IDP11 | PROFILE_NAME | Standard | All | Deployment label |
+| IDP13 | ARGOS_SECKEY | **Advanced** | **SMD only** | Raw crypto key, set via SMDCD or pylinkit |
+| IDP14 | ARGOS_RADIOCONF | **Advanced** | All | Raw radio calibration blob |
+| IDT02 | DEVICE_MODEL | Standard (RO) | All | Info display |
+| IDT03 | FW_APP_VERSION | Standard (RO) | All | Info display |
+| IDT04 | HW_VERSION | Standard (RO) | All | Info display |
+| IDT10 | DEVICE_DECID | Standard (RO) | All | Info display |
+
+### Argos Satellite TX
+
+| DTE Key | Name | Mode | Reason |
+|---------|------|------|--------|
+| ARP01 | ARGOS_MODE | Standard | Core: how the tracker transmits |
+| ARP05 | TR_NOM | Standard | Core: TX interval |
+| ARP18 | DUTY_CYCLE | Standard | Core: when DUTY_CYCLE mode selected |
+| ARP19 | NTRY_PER_MESSAGE | **Advanced** | Protocol detail, wrong value = channel saturation |
+| ARP16 | ARGOS_DEPTH_PILE | **Advanced** | Packet packing strategy, needs protocol knowledge |
+| ARP11 | DLOC_ARG_NOM | Standard | GPS acquisition period (user-friendly) |
+| ARP35 | ARGOS_TCXO_WARMUP_TIME | **Advanced** | Hardware timing, firmware auto-manages |
+| ARP30 | TIME_SYNC_BURST_EN | **Advanced** | Protocol optimization detail |
+| ARP31 | ARGOS_TX_JITTER_EN | **Advanced** | Anti-collision, should stay ON |
+| ARP40 | SURFACING_BURST_INIT_S | **Advanced** | Burst tuning, defaults are optimized |
+| ARP41 | SURFACING_BURST_STEP_S | **Advanced** | Burst tuning, defaults are optimized |
+| ARP42 | SURFACING_BURST_MAX_S | **Advanced** | Burst tuning, defaults are optimized |
+| PWP05 | SHUTDOWN_NTIME_SAT | Standard | Core: how many TX per session (RSPB) |
+
+### Argos Satellite RX
+
+| DTE Key | Name | Mode | Reason |
+|---------|------|------|--------|
+| ARP32 | ARGOS_RX_EN | Standard | Enable/disable RX (power impact) |
+| ARP33 | ARGOS_RX_MAX_WINDOW | **Advanced** | Protocol detail |
+| ARP34 | ARGOS_RX_AOP_UPDATE_PERIOD | **Advanced** | Protocol detail |
+
+### GNSS (GPS)
+
+| DTE Key | Name | Mode | Reason |
+|---------|------|------|--------|
+| GNP01 | GNSS_EN | Standard | Core: enable GPS |
+| GNP05 | GNSS_ACQ_TIMEOUT | Standard | How long to search for GPS fix |
+| GNP09 | GNSS_COLD_ACQ_TIMEOUT | Standard | First-boot or backup-lost timeout |
+| GNP23 | GNSS_COLD_START_RETRY_PERIOD | **Advanced** | Retry timing detail |
+| GNP10 | GNSS_FIX_MODE | **Advanced** | Most users should leave AUTO |
+| GNP11 | GNSS_DYN_MODEL | Standard | Important: must match animal type |
+| GNP02 | GNSS_HDOPFILT_EN | **Advanced** | Quality filter, needs GPS knowledge |
+| GNP03 | GNSS_HDOPFILT_THR | **Advanced** | Quality filter threshold |
+| GNP20 | GNSS_HACCFILT_EN | Standard | Enable accuracy filter (simple on/off) |
+| GNP21 | GNSS_HACCFILT_THR | Standard | Accuracy in meters (intuitive) |
+| GNP22 | GNSS_MIN_NUM_FIXES | **Advanced** | Multi-fix averaging, niche use |
+| GNP25 | GNSS_TRIGGER_ON_SURFACED | **Advanced** | Auto-managed by UW mode |
+| GNP26 | GNSS_TRIGGER_ON_AXL_WAKEUP | **Advanced** | Niche: motion-triggered GPS |
+| GNP28 | GNSS_TRIGGER_COLD_START_ON_SURFACED | **Advanced** | Debug/recovery use |
+| GNP30 | GNSS_SESSION_SINGLE_FIX | Standard | Important for RSPB power saving |
+| GNP24 | GNSS_ASSISTNOW_EN | Standard | Faster GPS fix (user understands) |
+| GNP27 | GNSS_ASSISTNOW_OFFLINE_EN | **Advanced** | Needs offline data preload |
+| GNP31 | GNSS_TOKEN | **Advanced** | u-blox auth token, set once |
+
+### Underwater Detection
+
+| DTE Key | Name | Mode | Reason |
+|---------|------|------|--------|
+| UNP01 | UNDERWATER_EN | Standard | Core: enable/disable UW detection |
+| UNP10 | UNDERWATER_DETECT_SOURCE | Standard | Which sensor detects water |
+| UNP02 | DRY_TIME_BEFORE_TX | Standard | Surface delay (intuitive) |
+| UNP03 | SAMPLING_UNDER_FREQ | **Advanced** | Sampling rate tuning |
+| UNP04 | SAMPLING_SURF_FREQ | **Advanced** | Sampling rate tuning |
+| UNP05 | UW_MAX_SAMPLES | **Advanced** | Sub-sampling detail |
+| UNP06 | UW_MIN_DRY_SAMPLES | **Advanced** | Detection algorithm tuning |
+| UNP07 | UW_SAMPLE_GAP | **Advanced** | Hardware timing |
+| UNP08 | UW_PIN_SAMPLE_DELAY | **Advanced** | RC circuit constant, **must stay at 1** |
+| UNP24 | UW_MAX_DIVE_TIME | Standard | Safety: max dive before forced surface |
+| UNP25 | UW_MIN_SURFACE_TIME | **Advanced** | Anti-bounce lockout |
+| UNP11 | UNDERWATER_DETECT_THRESH | **Advanced** | Pressure/GNSS threshold tuning |
+| UNP20 | SWS_ANALOG_THRESHOLD_MIN | **Advanced** | SWS auto-calibrates, only for edge cases |
+| UNP21 | SWS_ANALOG_THRESHOLD_MAX | **Advanced** | SWS auto-calibrates |
+| UNP22 | SWS_ANALOG_HYSTERESIS | **Advanced** | SWS tuning |
+| UNP23 | SWS_ANALOG_CALIB_INTERVAL | **Advanced** | SWS tuning |
+| UNP12 | UW_DIVE_MODE_ENABLE | **Advanced** | Reed switch pause during dive |
+| UNP13 | UW_DIVE_MODE_START_TIME | **Advanced** | Dive mode detail |
+| UNP14-18 | UW_GNSS_* | **Advanced** | GNSS-based UW detection tuning (all 5 params) |
+
+### Low Battery Mode
+
+| DTE Key | Name | Mode | Reason |
+|---------|------|------|--------|
+| LBP01 | LB_EN | Standard | Core: enable low battery mode |
+| LBP02 | LB_THRESHOLD | Standard | Battery % to enter LB |
+| LBP12 | LB_CRITICAL_THRESH | Standard | Battery % for shutdown |
+| LBP04 | LB_ARGOS_MODE | **Advanced** | LB TX strategy, needs protocol knowledge |
+| ARP06 | TR_LB | Standard | LB TX interval (intuitive) |
+| LBP11 | LB_NTRY_PER_MESSAGE | **Advanced** | Protocol detail |
+| LBP08 | LB_ARGOS_DEPTH_PILE | **Advanced** | Protocol detail |
+| LBP05 | LB_ARGOS_DUTY_CYCLE | **Advanced** | Protocol detail |
+| LBP06 | LB_GNSS_EN | Standard | GPS on/off in LB (power impact) |
+| LBP09 | LB_GNSS_ACQ_TIMEOUT | **Advanced** | LB GPS tuning |
+| LBP07 | LB_GNSS_HDOPFILT_THR | **Advanced** | LB GPS quality filter |
+| LBP10 | LB_GNSS_HACCFILT_THR | **Advanced** | LB GPS accuracy filter |
+| ARP12 | DLOC_ARG_LB | **Advanced** | LB GPS period |
+| LBP14 | LB_SHUTDOWN_NTIME_SAT | Standard | LB TX count before shutdown (RSPB) |
+
+### Geofencing Zone
+
+| DTE Key | Name | Mode | Reason |
+|---------|------|------|--------|
+| ZOP04 | ZONE_ENABLE | Standard | Core: enable/disable geofence |
+| ZOP01 | ZONE_TYPE | Standard | Zone shape |
+| ZOP19 | ZONE_CENTER_LATITUDE | Standard | Center position |
+| ZOP18 | ZONE_CENTER_LONGITUDE | Standard | Center position |
+| ZOP20 | ZONE_RADIUS | Standard | Zone size |
+| ZOP05 | ZONE_ENABLE_ACTIVATION_DATE | Standard | Time-based activation |
+| ZOP06 | ZONE_ACTIVATION_DATE | Standard | When zone becomes active |
+| ZOP11 | ZONE_ARGOS_MODE | **Advanced** | Out-of-zone TX strategy |
+| ZOP10 | ZONE_ARGOS_REPETITION_SECONDS | **Advanced** | Out-of-zone TX interval |
+| ZOP08 | ZONE_ARGOS_DEPTH_PILE | **Advanced** | Out-of-zone packing |
+| ZOP12 | ZONE_ARGOS_DUTY_CYCLE | **Advanced** | Out-of-zone duty cycle |
+| ZOP13 | ZONE_ARGOS_NTRY_PER_MESSAGE | **Advanced** | Out-of-zone repetitions |
+| ZOP14-17 | ZONE_GNSS_* | **Advanced** | Out-of-zone GPS tuning (all 4 params) |
+
+### Sensors
+
+Generic pattern (applies to all sensors):
+
+| DTE Key | Name | Mode | Build | Reason |
+|---------|------|------|-------|--------|
+| *P01 | *_ENABLE | Standard | Depends on sensor | Enable/disable sensor |
+| *P02 | *_PERIODIC | **Advanced** | Depends on sensor | Local logging interval (most users only need TX) |
+| *_TX_MODE | *_ENABLE_TX_MODE | Standard | Depends on sensor | Include in satellite packet |
+| *_TX_MAX_SAMPLES | *_ENABLE_TX_MAX_SAMPLES | **Advanced** | Depends on sensor | Aggregation tuning |
+| *_TX_SAMPLE_PERIOD | *_ENABLE_TX_SAMPLE_PERIOD | **Advanced** | Depends on sensor | Aggregation timing |
+
+Sensor-specific params:
+
+| DTE Key | Name | Mode | Build | Reason |
+|---------|------|------|-------|--------|
+| AXP01-09 | AXL_* | Mixed | All (default ON) | BMA400 accelerometer |
+| AXP03 | AXL_WAKEUP_THRESH | **Advanced** | All | Motion detection threshold |
+| AXP04 | AXL_WAKEUP_SAMPLES | **Advanced** | All | Motion detection debounce |
+| AXP08 | AXL_MEASUREMENT_RANGE | **Advanced** | All | Accelerometer G-range |
+| AXP09 | AXL_POWER_MODE | **Advanced** | All | Low-power vs normal mode |
+| PRP01-07 | PRESSURE_* | Mixed | Optional (all boards) | LPS28DFW pressure sensor |
+| PRP03 | PRESSURE_LOGGING_MODE | **Advanced** | Optional | Always vs UW-only logging |
+| PRP07 | PRESSURE_FULL_SCALE | **Advanced** | Optional | Pressure range (shallow vs deep) |
+| THP01-08 | THERMISTOR_* | Mixed | **RSPB always, LinkIt optional** | NTC thermistor (body temp) |
+| THP04 | THERMISTOR_WAKEUP_THRESH | **Advanced** | RSPB / optional | Temperature event threshold |
+| THP05 | THERMISTOR_WAKEUP_SAMPLES | **Advanced** | RSPB / optional | Temperature event debounce |
+| STP01-06 | SEA_TEMP_* | Mixed | **LinkIt only** (never RSPB) | RTD/TSYS01 sea temperature |
+| LTP01-06 | ALS_* | Mixed | Optional (all boards) | LTR-303 ambient light |
+| PHP01-06 | PH_* | Mixed | Optional (all boards) | OEM pH sensor |
+| CDP01-05 | CDT_* | Mixed | Optional (all boards) | Conductivity/Depth/Temp |
+| CAP01-05 | CAM_* | Mixed | Optional (all boards) | Camera trigger |
+
+**Mutual exclusion:** `THERMISTOR` and `SEA_TEMP` cannot both be enabled (share same TX packet slot). RSPB always uses Thermistor. LinkIt marine trackers typically use Sea Temp. The GUI should enforce this: enabling one disables the other.
+
+### Mortality Detection (RSPB)
+
+| DTE Key | Name | Mode | Build | Reason |
+|---------|------|------|-------|--------|
+| MTP01 | MORTALITY_ENABLE | Standard | **RSPB only** | Core: enable mortality detection |
+| MTP02 | MORTALITY_ACTIVITY_THRESH | Standard | **RSPB only** | Intuitive: "how still = dead?" |
+| MTP03 | MORTALITY_TEMP_THRESH | Standard | **RSPB only** | Intuitive: "how cold = dead?" |
+| MTP04 | MORTALITY_GPS_DISTANCE_THRESH | Standard | **RSPB only** | Intuitive: "how far = alive?" |
+| MTP05 | MORTALITY_CONFIRM_DAYS | Standard | **RSPB only** | Intuitive: "how long before confirmed?" |
+| MTP06 | MORTALITY_DUTY_CYCLE_MODULO | **Advanced** | **RSPB only** | Modifies boot modulo, can affect battery life |
+| MTP07 | MORTALITY_ORIGINAL_MODULO | **Advanced** (RO) | **RSPB only** | Internal state backup |
+
+### Power Management (RSPB / TPL5111)
+
+| DTE Key | Name | Mode | Build | Reason |
+|---------|------|------|-------|--------|
+| PWP01 | SHUTDOWN_TIMER | Standard | **RSPB only** | Safety timeout (intuitive) |
+| PWP02 | BOOT_COUNTER | **Advanced** (RO) | **RSPB only** | Internal counter |
+| PWP03 | BOOT_COUNTER_MODULO | Standard | **RSPB only** | Core: wakeup frequency |
+| PWP04 | WAKEUP_PERIOD | **Advanced** (RO) | **RSPB only** | Hardware constant |
+| PWP06 | LAST_KNOWN_RTC | **Advanced** (RO) | **RSPB only** | Internal pseudo-RTC state |
+
+### LED & Debug
+
+| DTE Key | Name | Mode | Reason |
+|---------|------|------|--------|
+| LDP01 | LED_MODE | Standard | LED on/off |
+| LDP02 | EXT_LED_MODE | **Advanced** | External LED, niche |
+| DBP01 | DEBUG_OUTPUT_MODE | **Advanced** | Developer-only |
+
+### LoRa RAK3172
+
+| DTE Key | Name | Mode | Build | Reason |
+|---------|------|------|-------|--------|
+| LRP01 | LORA_DEVEUI | Standard (RO) | **LoRa only** | Device identifier |
+| LRP02 | LORA_APPEUI | Standard | **LoRa only** | Network join credential |
+| LRP03 | LORA_APPKEY | Standard | **LoRa only** | Network join credential |
+| LRP04 | LORA_DEVADDR | **Advanced** | **LoRa only** | ABP mode only |
+| LRP05 | LORA_APPSKEY | **Advanced** | **LoRa only** | ABP mode only |
+| LRP06 | LORA_NWKSKEY | **Advanced** | **LoRa only** | ABP mode only |
+| LRP07 | LORA_NJM | Standard | **LoRa only** | OTAA vs ABP (important choice) |
+| LRP08 | LORA_BAND | Standard | **LoRa only** | Frequency band (region-dependent) |
+| LRP09 | LORA_CLASS | **Advanced** | **LoRa only** | Device class tuning |
+| LRP10 | LORA_DR | **Advanced** | **LoRa only** | Data rate / spreading factor |
+| LRP11 | LORA_ADR | **Advanced** | **LoRa only** | Adaptive data rate |
+| LRP12 | LORA_TXP | **Advanced** | **LoRa only** | TX power tuning |
+| LRP13 | LORA_CFM | **Advanced** | **LoRa only** | Confirmed messages |
+| LRP14 | LORA_FPORT | **Advanced** | **LoRa only** | Application port routing |
+| LRP15 | LORA_LP_MODE | **Advanced** | **LoRa only** | Standby vs shutdown |
+
+### Certification Mode
+
+| DTE Key | Name | Mode | Build | Reason |
+|---------|------|------|-------|--------|
+| CTP01-04 | CERT_TX_* | **Advanced** | All | Hardware certification only, never for deployment |
+
+### Summary
+
+| Category | Count | Description |
+|----------|-------|-------------|
+| **Standard** | ~40 params | What a researcher needs to deploy a tracker |
+| **Advanced** | ~70 params | Low-level tuning, protocol details, hardware constants |
+| **Read-only** | ~12 params | Status/telemetry, always visible in info panel |
+| **RSPB only** | ~12 params | PWP01-06 + MTP01-07 (hidden on LinkIt) |
+| **LoRa only** | ~15 params | LRP01-15 (hidden on non-LoRa builds) |
+| **SMD only** | 1 param | IDP13 ARGOS_SECKEY (hidden on KIM/LoRa) |
+| **LinkIt only** | ~6 params | STP01-06 Sea Temp (never on RSPB) |
+
+---
 
 ## ARGOS_MODE Values & Visibility Matrix
 
@@ -458,6 +750,20 @@ CAP01 enable, CAP02 trigger_on_surfaced, CAP03 trigger_on_axl, CAP04 period_on, 
 ## LED & Debug
 LDP01 LED_MODE (OFF=0, HRS_24=1, ALWAYS=3), LDP02 EXT_LED_MODE, DBP01 DEBUG_OUTPUT_MODE (UART=0, USB_CDC=1, BLE_NUS=2)
 
+## Mortality Detection (ENABLE_MORTALITY_SENSOR only, RSPB)
+
+| DTE Key | Name | Type | Range | Default | Description |
+|---------|------|------|-------|---------|-------------|
+| MTP01 | MORTALITY_ENABLE | BOOL | - | false | Enable mortality detection |
+| MTP02 | MORTALITY_ACTIVITY_THRESH | UINT | 0-255 | 10 | Activity below which = immobile |
+| MTP03 | MORTALITY_TEMP_THRESH | FLOAT | 0-60 °C | 25.0 | Body temp below which = hypothermic |
+| MTP04 | MORTALITY_GPS_DISTANCE_THRESH | UINT | 0-10000 m | 50 | Distance below which = stationary |
+| MTP05 | MORTALITY_CONFIRM_DAYS | UINT | 1-30 | 3 | Consecutive days before CONFIRMED |
+| MTP06 | MORTALITY_DUTY_CYCLE_MODULO | UINT | 0-100 | 0 | Modulo when confirmed (0=disabled) |
+| MTP07 | MORTALITY_ORIGINAL_MODULO | UINT | - | 0 | Backup of original modulo (auto, RO) |
+
+**GUI Visibility:** All MTP params → hidden when MTP01=false. MTP06 → greyed with tooltip "0=never modify duty cycle" when value is 0.
+
 ## Power Management (EXTERNAL_WAKEUP only)
 PWP01 SHUTDOWN_TIMER, PWP02 BOOT_COUNTER (RO), PWP03 BOOT_COUNTER_MODULO, PWP04 WAKEUP_PERIOD, PWP06 LAST_KNOWN_RTC (RO)
 
@@ -469,3 +775,208 @@ CTP01 CERT_TX_ENABLE, CTP02 CERT_TX_PAYLOAD, CTP03 CERT_TX_MODULATION (LDK/LDA2/
 
 ## Battery Telemetry (read-only)
 POT03 BATT_SOC (%), POT05 LAST_FULL_CHARGE_DATE, POT06 BATT_VOLTAGE (V), SYT01 RTC_CURRENT_TIME
+
+---
+
+# Part 3 — Enum Values & Log Type Reference
+
+All enum types used in DTE parameters. The GUI must use these exact integer values for encoding/decoding.
+
+## BaseArgosMode (ARP01, LBP04, ZOP11)
+
+| Value | Name | GUI Label | Description |
+|-------|------|-----------|-------------|
+| 0 | OFF | Off | No satellite TX |
+| 1 | PASS_PREDICTION | Pass Prediction | TX when satellite overhead (needs AOP) |
+| 2 | LEGACY | Legacy | Fixed interval TX, all hours |
+| 3 | DUTY_CYCLE | Duty Cycle | Fixed interval within hourly bitmask windows |
+| 4 | DOPPLER | Doppler Only | Doppler-only 3-byte packets (no GNSS) |
+| 5 | SURFACING_BURST | Surfacing Burst | Progressive Doppler then GNSS (marine) |
+
+## BaseDepthPile (ARP16, LBP08, ZOP08)
+
+Allowed values only — not a contiguous range:
+
+| Value | GUI Label |
+|-------|-----------|
+| 1 | 1 fix |
+| 2 | 2 fixes |
+| 3 | 3 fixes |
+| 4 | 4 fixes |
+| 8 | 8 fixes |
+| 12 | 12 fixes |
+| 16 | 16 fixes |
+| 20 | 20 fixes |
+| 24 | 24 fixes |
+
+## BaseDeltaTimeLoc (ARP11, ARP12, ZOP14)
+
+GNSS acquisition period — enum maps to seconds:
+
+| Value | Seconds | GUI Label |
+|-------|---------|-----------|
+| 1 | 600 | 10 min |
+| 2 | 900 | 15 min |
+| 3 | 1800 | 30 min |
+| 4 | 3600 | 1 hour |
+| 5 | 7200 | 2 hours |
+| 6 | 10800 | 3 hours |
+| 7 | 14400 | 4 hours |
+| 8 | 21600 | 6 hours |
+| 9 | 43200 | 12 hours |
+| 10 | 86400 | 24 hours |
+
+## BaseGNSSDynModel (GNP11)
+
+| Value | Name | GUI Label | Use Case |
+|-------|------|-----------|----------|
+| 0 | PORTABLE | Portable | General / default |
+| 2 | STATIONARY | Stationary | Fixed installations |
+| 3 | PEDESTRIAN | Pedestrian | Slow land animals |
+| 4 | AUTOMOTIVE | Automotive | Vehicle-mounted |
+| 5 | SEA | Sea | Marine animals (turtles, seals) |
+| 6 | AIRBORNE_1G | Airborne 1G | **Birds** (high speed, low accel) |
+| 7 | AIRBORNE_2G | Airborne 2G | Fast-diving birds |
+| 8 | AIRBORNE_4G | Airborne 4G | High-G maneuvers |
+| 9 | WRIST_WORN_WATCH | Wrist | Wrist-worn |
+| 10 | BIKE | Bike | Bicycle-mounted |
+
+## BaseGNSSFixMode (GNP10)
+
+| Value | Name | GUI Label |
+|-------|------|-----------|
+| 1 | FIX_2D | 2D Only |
+| 2 | FIX_3D | 3D Only |
+| 3 | AUTO | Auto (2D or 3D) |
+
+## BaseSensorEnableTxMode (AXP05, THP06, PRP04, STP04, PHP04, LTP04)
+
+| Value | Name | GUI Label | Description |
+|-------|------|-----------|-------------|
+| 0 | OFF | Off | Sensor data NOT included in satellite packet |
+| 1 | ONESHOT | Oneshot | Single reading at TX time |
+| 2 | MEAN | Mean | Average of N samples over period |
+| 3 | MEDIAN | Median | Median of N samples over period |
+
+## BaseUnderwaterDetectSource (UNP10)
+
+| Value | Name | GUI Label | Description |
+|-------|------|-----------|-------------|
+| 0 | SWS | Saltwater Switch | Analog conductivity electrode |
+| 1 | PRESSURE_SENSOR | Pressure | Depth > threshold = underwater |
+| 2 | GNSS | GNSS Signal | Satellite count < threshold = submerged |
+| 3 | SWS_GNSS | SWS + GNSS | Combined (highest reliability) |
+
+## BaseLEDMode (LDP01, LDP02)
+
+| Value | Name | GUI Label |
+|-------|------|-----------|
+| 0 | OFF | Off |
+| 1 | HRS_24 | First 24 hours |
+| 3 | ALWAYS | Always on |
+
+Note: value 2 is unused (gap in enum).
+
+## BaseDebugMode (DBP01)
+
+| Value | Name | GUI Label |
+|-------|------|-----------|
+| 0 | UART | UART (SWO pin) |
+| 1 | USB_CDC | USB CDC |
+| 2 | BLE_NUS | BLE NUS |
+
+## BaseZoneType (ZOP01)
+
+| Value | Name | GUI Label |
+|-------|------|-----------|
+| 1 | CIRCLE | Circle |
+
+## BasePressureSensorLoggingMode (PRP03)
+
+| Value | Name | GUI Label |
+|-------|------|-----------|
+| 0 | ALWAYS | Always log |
+| 1 | UW_THRESHOLD | Only when underwater |
+
+## BasePressureSensorFullScale (PRP07)
+
+| Value | Name | GUI Label |
+|-------|------|-----------|
+| 0 | FS_1260 | 1260 hPa (shallow) |
+| 1 | FS_4060 | 4060 hPa (deep) |
+
+## BaseArgosModulation (CTP03)
+
+| Value | Name | GUI Label | Packet Size |
+|-------|------|-----------|-------------|
+| 0 | LDK | LDK | 128 bits (16 bytes) |
+| 1 | A2 | LDA2 | 192 bits (24 bytes) |
+| 2 | A4 | VLDA4 | 24 bits (3 bytes) |
+
+## MortalityStatus (in Mortality Log entries)
+
+| Value | Name | GUI Label | Color |
+|-------|------|-----------|-------|
+| 0 | ALIVE | Alive | Green |
+| 1 | SUSPECTED | Suspected | Yellow |
+| 2 | CONFIRMED | Confirmed | Red |
+
+---
+
+# Part 4 — Log Types (DUMPD / ERASE)
+
+## DUMPD d_type (BaseLogDType)
+
+Used in `$DUMPD#001;X\r` where X is the hex d_type value.
+
+| Hex | Dec | Enum Name | Log File | Description |
+|-----|-----|-----------|----------|-------------|
+| 0 | 0 | INTERNAL | system.log | System events (boot, state changes, errors) |
+| 1 | 1 | GNSS_SENSOR | sensor.log | GPS fixes |
+| 2 | 2 | ALS_SENSOR | ALS | Ambient light readings |
+| 3 | 3 | PH_SENSOR | PH | pH readings |
+| 4 | 4 | RTD_SENSOR | RTD | RTD temperature readings |
+| 5 | 5 | CDT_SENSOR | CDT | Conductivity/Depth/Temperature |
+| 6 | 6 | CAM_SENSOR | CAM | Camera trigger events |
+| 7 | 7 | AXL_SENSOR | AXL | Accelerometer data |
+| 8 | 8 | PRESSURE_SENSOR | PRESSURE | Pressure/depth readings |
+| 9 | 9 | THERMISTOR_SENSOR | THERMISTOR | NTC temperature readings |
+| A | 10 | TSYS01_SENSOR | TSYS01 | TSYS01 sea temperature |
+| B | 11 | SWS_LOG | SWS | Saltwater switch transitions |
+| **C** | **12** | **MORTALITY** | **MORTALITY** | **Mortality detection state (RSPB)** |
+
+## ERASE log_type (BaseEraseType)
+
+Used in `$ERASE#001;X\r` where X is the decimal log_type value.
+
+| Dec | Enum Name | Target | Description |
+|-----|-----------|--------|-------------|
+| 1 | GNSS_SENSOR | sensor.log | Erase GPS log |
+| 2 | SYSTEM | system.log | Erase system log |
+| 3 | ALL | * | Erase ALL logs |
+| 4 | ALS_SENSOR | ALS | Erase light log |
+| 5 | PH_SENSOR | PH | Erase pH log |
+| 6 | RTD_SENSOR | RTD | Erase RTD log |
+| 7 | CDT_SENSOR | CDT | Erase CDT log |
+| 8 | CAM_SENSOR | CAM | Erase camera log |
+| 9 | AXL_SENSOR | AXL | Erase accelerometer log |
+| 10 | PRESSURE_SENSOR | PRESSURE | Erase pressure log |
+| 11 | THERMISTOR_SENSOR | THERMISTOR | Erase thermistor log |
+| 12 | TSYS01_SENSOR | TSYS01 | Erase sea temp log |
+| 13 | SWS_LOG | SWS | Erase SWS log |
+| **14** | **MORTALITY** | **MORTALITY** | **Erase mortality log (RSPB)** |
+
+## Sensor Calibration Types (SCALW/SCALR)
+
+Used in `$SCALW#...;type,...\r` and `$SCALR#...;type\r`.
+
+| Value | Enum Name | Sensor |
+|-------|-----------|--------|
+| 0 | AXL | BMA400 Accelerometer |
+| 1 | PRESSURE | LPS28DFW Pressure |
+| 2 | ALS | LTR-303 Light |
+| 3 | PH | pH Sensor |
+| 4 | RTD | RTD Temperature |
+| 5 | CDT | Conductivity/Depth/Temp |
+| 6 | MCP47X6 | DAC (calibration reference) |
+| 7 | THERMISTOR | NTC Thermistor |

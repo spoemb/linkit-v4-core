@@ -204,10 +204,15 @@ bool KIM2Device::send_AT(ATCmd cmd, const std::optional<std::string>& params, ui
 
     m_kim2_comm.send(cmd, params);
 
+    uint16_t wdt_kick_counter = 0;
     while(!m_cmd_is_ok && !m_is_error && timeout_ms != 0)
     {
         PMU::delay_ms(1);
         timeout_ms--;
+        if (++wdt_kick_counter >= 10000) {
+            PMU::kick_watchdog();
+            wdt_kick_counter = 0;
+        }
     }
 
     if(timeout_ms == 0) {

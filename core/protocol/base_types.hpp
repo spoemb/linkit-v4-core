@@ -42,6 +42,10 @@ extern "C" {
 #define ENABLE_AXL_SENSOR 1
 #endif
 
+#ifndef ENABLE_MORTALITY_SENSOR
+#define ENABLE_MORTALITY_SENSOR 0
+#endif
+
 #ifndef ENABLE_SWS_LOG
 #define ENABLE_SWS_LOG 0
 #endif
@@ -318,8 +322,18 @@ enum class ParamID {
 	SURFACING_BURST_INIT_S                   = 196,
 	SURFACING_BURST_STEP_S                   = 197,
 	SURFACING_BURST_MAX_S                    = 198,
+	// === Mortality detection parameters (slots 199-205 always reserved) ===
+#if ENABLE_MORTALITY_SENSOR
+	MORTALITY_ENABLE                         = 199,
+	MORTALITY_ACTIVITY_THRESH                = 200,
+	MORTALITY_TEMP_THRESH                    = 201,
+	MORTALITY_GPS_DISTANCE_THRESH            = 202,
+	MORTALITY_CONFIRM_DAYS                   = 203,
+	MORTALITY_DUTY_CYCLE_MODULO              = 204,
+	MORTALITY_ORIGINAL_MODULO                = 205,
+#endif
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 199,
+	__PARAM_SIZE                             = 206,
 	__NULL_PARAM                             = 0xFFFF
 };
 
@@ -380,7 +394,8 @@ enum class BaseLogDType {
 	PRESSURE_SENSOR   = 8,
 	THERMISTOR_SENSOR = 9,
 	TSYS01_SENSOR     = 10,
-	SWS_LOG           = 11
+	SWS_LOG           = 11,
+	MORTALITY         = 12
 };
 
 enum class BaseEraseType {
@@ -396,7 +411,8 @@ enum class BaseEraseType {
 	PRESSURE_SENSOR   = 10,
 	THERMISTOR_SENSOR = 11,
 	TSYS01_SENSOR     = 12,
-	SWS_LOG           = 13
+	SWS_LOG           = 13,
+	MORTALITY         = 14
 };
 
 enum class BaseSensorCalType {

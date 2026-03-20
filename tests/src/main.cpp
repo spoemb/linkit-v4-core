@@ -39,6 +39,10 @@ RTC *rtc;
 BatteryMonitor *battery_monitor;
 GPSDevice *gps_device;
 LoRaDevice *lora_device_instance = nullptr;
+#if ENABLE_MORTALITY_SENSOR
+#include "mortality_service.hpp"
+MortalityService *mortality_service = nullptr;
+#endif
 BaseDebugMode g_debug_mode;
 Buzzer *buzzer_ctl;
 

@@ -46,6 +46,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     ENABLE_CDT_SENSOR=1
     ENABLE_AXL_SENSOR=1
     ENABLE_THERMISTOR_SENSOR=1
+    ENABLE_MORTALITY_SENSOR=1
     ENABLE_SWS_LOG=1
     LORA_RAK3172=1
 )
@@ -152,6 +153,7 @@ target_sources(${PROJECT_NAME} PRIVATE
     "${ROOT_DIR}/core/services/argos_tx_service.cpp"
     "${ROOT_DIR}/core/services/gps_service.cpp"
     "${ROOT_DIR}/core/services/service.cpp"
+    "${ROOT_DIR}/core/services/mortality_service.cpp"
     "${ROOT_DIR}/core/filesystem/ota_flash_file_updater.cpp"
     "${ROOT_DIR}/core/services/uwdetector_service.cpp"
     "${ROOT_DIR}/core/services/sws_analog_service.cpp"

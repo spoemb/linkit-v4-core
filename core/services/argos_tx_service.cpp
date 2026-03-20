@@ -8,10 +8,16 @@
 #include "debug.hpp"
 #include "crc8.hpp"
 #include "binascii.hpp"
+#if ENABLE_MORTALITY_SENSOR
+#include "mortality_service.hpp"
+#endif
 
 
 extern ConfigurationStore *configuration_store;
 extern Scheduler *system_scheduler;
+#if ENABLE_MORTALITY_SENSOR
+extern MortalityService *mortality_service;
+#endif
 
 
 ArgosTxService::ArgosTxService(KineisDevice& device) : Service(ServiceIdentifier::ARGOS_TX, "ARGOSTX"),
@@ -340,6 +346,19 @@ void ArgosTxService::process_sensor_burst() {
 	unsigned int size_bits;
 	GPSLogEntry *gps = m_depth_pile_manager.retrieve_gps_single((unsigned int)argos_config.depth_pile);
 	if (gps != nullptr) {
+#if ENABLE_MORTALITY_SENSOR
+		unsigned int mort_conf = 0;
+		unsigned int *mort_conf_ptr = nullptr;
+		if (mortality_service && mortality_service->get_status() != MortalityStatus::ALIVE) {
+			mort_conf = mortality_service->get_confidence();
+			mort_conf_ptr = &mort_conf;
+		} else if (mortality_service) {
+			mort_conf = mortality_service->get_confidence();
+			mort_conf_ptr = &mort_conf;
+		}
+#else
+		unsigned int *mort_conf_ptr = nullptr;
+#endif
 		KineisPacket packet = ArgosPacketBuilder::build_sensor_packet(gps,
 				m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::ALS_SENSOR),
 				m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::PH_SENSOR),
@@ -356,7 +375,8 @@ void ArgosTxService::process_sensor_burst() {
 #endif
 				argos_config.is_out_of_zone,
 				argos_config.is_lb,
-				size_bits);
+				size_bits,
+				mort_conf_ptr);
 		DEBUG_INFO("ArgosTxService::process_sensor_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
 		m_kineis.send(m_scheduled_mode, packet, size_bits);
 	} else {
@@ -719,7 +739,8 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 		ServiceSensorData *sea_temp_sensor,
 		ServiceSensorData *axl_sensor,
 		bool is_out_of_zone, bool is_low_battery,
-		unsigned int& size_bits) {
+		unsigned int& size_bits,
+		unsigned int *mortality_confidence) {
 
 	DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet");
 	unsigned int base_pos = 0;
@@ -801,8 +822,15 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 	}
 
 	// Add AXL (accelerometer) sensor data
-	// port[0] = temperature (14 bits), port[1-3] = X/Y/Z (15 bits each), port[4] = activity (8 bits)
 	if (axl_sensor != nullptr) {
+#ifdef BOARD_RSPB
+		// RSPB compact format: activity only (8 bits) — X/Y/Z axes and AXL temp dropped
+		// AXL temp is least precise (~0.5°C die temp), X/Y/Z useless for bird tracking
+		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: axl_activity=%02X (RSPB compact)",
+				(unsigned int)axl_sensor->port[4]);
+		PACK_BITS((unsigned int)axl_sensor->port[4], packet, base_pos, 8);   // Activity only
+#else
+		// Full format: temp(14) + X(15) + Y(15) + Z(15) + activity(8) = 67 bits
 		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: axl_temp=%04X X=%04X Y=%04X Z=%04X activity=%02X",
 				(unsigned int)axl_sensor->port[0],
 				(unsigned int)axl_sensor->port[1],
@@ -814,6 +842,14 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 		PACK_BITS((unsigned int)axl_sensor->port[2], packet, base_pos, 15);  // Y
 		PACK_BITS((unsigned int)axl_sensor->port[3], packet, base_pos, 15);  // Z
 		PACK_BITS((unsigned int)axl_sensor->port[4], packet, base_pos, 8);   // Activity
+#endif
+	}
+
+	// Mortality confidence (7 bits, 0-100%) — only when enabled
+	if (mortality_confidence != nullptr) {
+		unsigned int conf = (*mortality_confidence > 100) ? 100 : *mortality_confidence;
+		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: mortality_confidence=%u%%", conf);
+		PACK_BITS(conf, packet, base_pos, 7);
 	}
 
 	size_bits = base_pos;

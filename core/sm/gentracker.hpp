@@ -24,6 +24,14 @@ public:
 
 	static void kick_watchdog();
 	static void notify_bad_filesystem_error();
+
+protected:
+	enum class ConfirmationPending { NONE, ENTER_CONFIG, EXIT_CONFIG, POWEROFF };
+	static inline ConfirmationPending m_confirmation_pending = ConfirmationPending::NONE;
+	static inline bool m_awaiting_re_engage = false;
+	static inline Scheduler::TaskHandle m_confirmation_timeout_task;
+	static inline const unsigned int CONFIRMATION_TIMEOUT_MS = 2000;
+	void cancel_confirmation();
 };
 
 

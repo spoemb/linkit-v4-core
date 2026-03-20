@@ -15,7 +15,8 @@ LinKit v4 Core is a multi-sensor wildlife tracker firmware running on nRF52840 (
 - **Low Battery Management** - Configurable threshold with alternate GNSS/Argos parameters and critical shutdown
 - **Camera** - Optional camera trigger on surfaced/accelerometer wakeup events
 - **Dive Mode** - Dive state machine with reed switch pause/resume
-- **196+ Configurable Parameters** - Read/write via DTE commands over USB/BLE/UART
+- **Bird Mortality Detection** (RSPB) - Automatic mortality confidence from activity, temperature, and GPS stationarity
+- **206 Configurable Parameters** - Read/write via DTE commands over USB/BLE/UART
 - **Sensor Data Logging** - Per-sensor CSV-formatted flash logs with DUMPD retrieval
 - **Sensor Data in TX** - Configurable sensor data aggregation (oneshot/mean/median) appended to Argos/LoRa packets
 
@@ -28,7 +29,7 @@ LinKit v4 Core is a multi-sensor wildlife tracker firmware running on nRF52840 (
 | **LinkIt V4 LoRa** | LoRaWAN (RAK3172) | Terrestrial LPWAN for gateway-covered areas |
 | **RSPB Tracker** | Argos (SMD, SPI) | Bird tracker with TPL5111 duty cycle wakeup |
 
-See [Board Variants](https://github.com/arribada/linkit-v4-core/wiki/4-%E2%80%90-Boards) for detailed hardware specs, parameters, and configuration per board.
+See [Board Variants](https://github.com/arribada/linkit-v4-core/wiki/5-%E2%80%90-Boards) for detailed hardware specs, parameters, and configuration per board.
 
 ## Hardware
 
@@ -40,12 +41,16 @@ See [Board Variants](https://github.com/arribada/linkit-v4-core/wiki/4-%E2%80%90
 
 ## Wiki Structure
 
-1. [Quick Start Guide](https://github.com/arribada/linkit-v4-core/wiki/1-%E2%80%90-Quick%E2%80%90Start) - Get up and running
-2. [Building the Project](https://github.com/arribada/linkit-v4-core/wiki/2-%E2%80%90-Building) - CMake configuration and build options
-3. [Programming the Module](https://github.com/arribada/linkit-v4-core/wiki/3-%E2%80%90-Programming) - Flashing, debugging, DFU
-4. [Board Variants](https://github.com/arribada/linkit-v4-core/wiki/4-%E2%80%90-Boards) - Hardware specs and configuration per board
-5. [DTE Commands Reference](https://github.com/arribada/linkit-v4-core/wiki/5-%E2%80%90-DTE%E2%80%90Commands) - DTE protocol and commands
-6. [Firmware Architecture](https://github.com/arribada/linkit-v4-core/wiki/6-%E2%80%90-Architecture) - Code structure and design patterns
-7. [Application Behavior](https://github.com/arribada/linkit-v4-core/wiki/7-%E2%80%90-Behavior) - Underwater mode, RSPB duty cycling, SWS algorithm
-8. [Development Guide](https://github.com/arribada/linkit-v4-core/wiki/8-%E2%80%90-Development%E2%80%90Guide) - Adding parameters, services, sensors
-9. [Parameters Definition](https://github.com/arribada/linkit-v4-core/wiki/9-%E2%80%90-Parameters) - All configurable parameters and their purpose
+1. [User Guide](https://github.com/arribada/linkit-v4-core/wiki/1-%E2%80%90-User-Guide) - Activate, configure, and deploy your tracker
+2. [Developer Quick Start](https://github.com/arribada/linkit-v4-core/wiki/2-%E2%80%90-Developer-quick-start) - Build firmware from source
+3. [Building the Project](https://github.com/arribada/linkit-v4-core/wiki/3-%E2%80%90-Building) - CMake configuration and build options
+4. [Programming the Module](https://github.com/arribada/linkit-v4-core/wiki/4-%E2%80%90-Programming) - Flashing, debugging, DFU
+5. [Board Variants](https://github.com/arribada/linkit-v4-core/wiki/5-%E2%80%90-Boards) - Hardware specs and configuration per board
+6. [DTE Commands Reference](https://github.com/arribada/linkit-v4-core/wiki/6-%E2%80%90-DTE-commands) - DTE protocol and commands
+7. [Firmware Architecture](https://github.com/arribada/linkit-v4-core/wiki/7-%E2%80%90-Architecture) - Code structure and design patterns
+8. [Development Guide](https://github.com/arribada/linkit-v4-core/wiki/8-%E2%80%90-Development-guide) - Adding parameters, services, sensors
+9. [Parameters Definition](https://github.com/arribada/linkit-v4-core/wiki/9-%E2%80%90-Parameters-Definition) - All configurable parameters and their purpose
+10. [Satellite Message Format](https://github.com/arribada/linkit-v4-core/wiki/10-%E2%80%90-Satellite-Message-Format) - Argos & LoRa packet encoding, bit layouts, decoding
+11. [LinkIt UW Behavior](https://github.com/arribada/linkit-v4-core/wiki/11-%E2%80%90-LinkIt-UW-Behavior) - Underwater mode, SWS algorithm, Argos TX modes
+12. [RSPB Bird Tracker](https://github.com/arribada/linkit-v4-core/wiki/12-%E2%80%90-RSPB-Mortality-Tracker) - TPL5111 duty cycling, battery modes, mortality detection
+13. [SWS Algorithm](https://github.com/arribada/linkit-v4-core/wiki/13-%E2%80%90-SWS-Algorithm) - SWS analog detection algorithm deep-dive

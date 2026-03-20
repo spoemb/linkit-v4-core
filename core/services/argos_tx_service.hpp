@@ -17,15 +17,10 @@ public:
 	static inline const unsigned int SHORT_PACKET_PAYLOAD_BITS   = 94;
 	static inline const unsigned int SHORT_PACKET_BYTES			 = 12;
 
-#if ARGOS_SMD
+	// CRC8 and BCH are handled by the satellite module (SMD/KIM2)
 	static inline const unsigned int LONG_PACKET_BITS   		 = 224;
 	static inline const unsigned int LONG_PACKET_PAYLOAD_BITS    = 192;
-	static inline const unsigned int LONG_PACKET_BYTES			 = 24;
-#else
-	static inline const unsigned int LONG_PACKET_BITS   		 = 248;
-	static inline const unsigned int LONG_PACKET_PAYLOAD_BITS    = 216;
-	static inline const unsigned int LONG_PACKET_BYTES			 = 31;
-#endif
+	static inline const unsigned int LONG_PACKET_BYTES			 = 26;  // Buffer for max 4 GPS entries (208 bits)
 
 	static inline const unsigned int SENSOR_PACKET_HEADER 		 = 0b001;
 	// Internal buffer allocation: must cover worst-case packing before truncation
@@ -87,7 +82,8 @@ public:
 			ServiceSensorData *sea_temp_sensor,
 			ServiceSensorData *axl_sensor,
 			bool is_out_of_zone, bool is_low_battery,
-			unsigned int& size_bits
+			unsigned int& size_bits,
+			unsigned int *mortality_confidence = nullptr
 			);
 };
 

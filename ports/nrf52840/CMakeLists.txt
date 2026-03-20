@@ -45,6 +45,9 @@ endif()
 if(NOT DEFINED ENABLE_THERMISTOR_SENSOR)
     set(ENABLE_THERMISTOR_SENSOR 0)
 endif()
+if(NOT DEFINED ENABLE_MORTALITY_SENSOR)
+    set(ENABLE_MORTALITY_SENSOR 0)
+endif()
 if(NOT DEFINED ENABLE_SWS_LOG)
     set(ENABLE_SWS_LOG 0)
 endif()
@@ -54,6 +57,17 @@ endif()
 if(ENABLE_THERMISTOR_SENSOR AND ENABLE_SEA_TEMP_SENSOR)
     message(FATAL_ERROR "ENABLE_THERMISTOR_SENSOR and ENABLE_SEA_TEMP_SENSOR cannot both be enabled. "
         "They share the same Argos TX depth pile slot (m_sea_temp_depth_pile).")
+endif()
+
+# Guard: Mortality detection requires AXL, thermistor, and GNSS sensors.
+# Without these, the algorithm runs with partial data only (biased toward ALIVE).
+if(ENABLE_MORTALITY_SENSOR AND NOT ENABLE_AXL_SENSOR)
+    message(WARNING "ENABLE_MORTALITY_SENSOR=ON but ENABLE_AXL_SENSOR=OFF. "
+        "Mortality detection requires accelerometer data for activity monitoring.")
+endif()
+if(ENABLE_MORTALITY_SENSOR AND NOT ENABLE_THERMISTOR_SENSOR)
+    message(WARNING "ENABLE_MORTALITY_SENSOR=ON but ENABLE_THERMISTOR_SENSOR=OFF. "
+        "Mortality detection requires thermistor data for body temperature monitoring.")
 endif()
 
 # Battery monitor type: ANALOG, FAKE (always 4.1V), STC3117 (I2C fuel gauge)
@@ -96,6 +110,7 @@ if(${BOARD} MATCHES RSPB)
     set(BOARD_DIR "${PROJ_DIR}/bsp/rspbtracker_v1.0")
     set(BOOTLOADER "bootloader/secure_bootloader/rspbtracker_v1.0/armgcc/_build/rspb_bootloader_v1_linkit_merged.hex")
     set(ENABLE_THERMISTOR_SENSOR 1)
+    set(ENABLE_MORTALITY_SENSOR 1)
     # TPL5111 external wakeup timer support
     set(EXTERNAL_WAKEUP 1)
     # TPL5111 configured for 1H45 = 6300 seconds wakeup period (physical config with resistor)
@@ -472,6 +487,13 @@ if(ENABLE_THERMISTOR_SENSOR EQUAL 1)
     )
 endif()
 
+# Mortality detection service (conditional)
+if(ENABLE_MORTALITY_SENSOR EQUAL 1)
+    target_sources(${TARGET_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../core/services/mortality_service.cpp
+    )
+endif()
+
 
 target_compile_definitions(${TARGET_NAME} PRIVATE
     Release=0
@@ -486,6 +508,7 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     ENABLE_CDT_SENSOR=${ENABLE_CDT_SENSOR}
     ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR}
     ENABLE_THERMISTOR_SENSOR=${ENABLE_THERMISTOR_SENSOR}
+    ENABLE_MORTALITY_SENSOR=${ENABLE_MORTALITY_SENSOR}
     ENABLE_SWS_LOG=${ENABLE_SWS_LOG}
     ARGOS_SMD=${ARGOS_SMD_ENABLED}
     $<$<BOOL:${LORA_RAK3172_ENABLED}>:LORA_RAK3172=1>

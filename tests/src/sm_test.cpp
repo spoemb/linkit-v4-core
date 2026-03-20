@@ -302,8 +302,10 @@ TEST(Sm, CheckTransitionToConfigurationState)
 	mock().enable();
 	mock().expectOneCall("set_device_name").onObject(mock_ble_service).withParameter("name", "LinkIt V4 0");
 	mock().expectOneCall("start").onObject(mock_ble_service).ignoreOtherParameters();
+	// New confirmation gesture: SHORT_HOLD → RELEASE → re-ENGAGE within 2s
 	fake_reed_switch->invoke_gesture(ReedSwitchGesture::SHORT_HOLD);
 	fake_reed_switch->invoke_gesture(ReedSwitchGesture::RELEASE);
+	fake_reed_switch->invoke_gesture(ReedSwitchGesture::ENGAGE);
 	system_scheduler->run();
 	CHECK_TRUE(fsm_handle::is_in_state<ConfigurationState>());
 	CHECK_TRUE(status_led->is_flashing());
@@ -320,8 +322,10 @@ TEST(Sm, CheckTransitionToOffState)
 	system_scheduler->run();
 	CHECK_TRUE(fsm_handle::is_in_state<PreOperationalState>());
 
+	// New confirmation gesture: LONG_HOLD → RELEASE → re-ENGAGE within 2s
 	fake_reed_switch->invoke_gesture(ReedSwitchGesture::LONG_HOLD);
 	fake_reed_switch->invoke_gesture(ReedSwitchGesture::RELEASE);
+	fake_reed_switch->invoke_gesture(ReedSwitchGesture::ENGAGE);
 	system_scheduler->run();
 
 	CHECK_TRUE(fsm_handle::is_in_state<OffState>());
@@ -353,12 +357,13 @@ TEST(Sm, CheckBLEInactivityTimeout)
 	system_scheduler->run();
 	CHECK_TRUE(fsm_handle::is_in_state<PreOperationalState>());
 
-	// Swipe gesture and hold for 3 seconds
+	// Confirmation gesture: SHORT_HOLD → RELEASE → re-ENGAGE within 2s
 	mock().enable();
 	mock().expectOneCall("set_device_name").onObject(mock_ble_service).withParameter("name", "LinkIt V4 0");
 	mock().expectOneCall("start").onObject(mock_ble_service).ignoreOtherParameters();
 	fake_reed_switch->invoke_gesture(ReedSwitchGesture::SHORT_HOLD);
 	fake_reed_switch->invoke_gesture(ReedSwitchGesture::RELEASE);
+	fake_reed_switch->invoke_gesture(ReedSwitchGesture::ENGAGE);
 	system_scheduler->run();
 	CHECK_TRUE(fsm_handle::is_in_state<ConfigurationState>());
 	mock().disable();
@@ -388,6 +393,7 @@ TEST(Sm, CheckTransitionToConfigurationStateAndVerifyOTAUpdateEvents)
 	mock().expectOneCall("start").onObject(mock_ble_service).ignoreOtherParameters();
 	fake_reed_switch->invoke_gesture(ReedSwitchGesture::SHORT_HOLD);
 	fake_reed_switch->invoke_gesture(ReedSwitchGesture::RELEASE);
+	fake_reed_switch->invoke_gesture(ReedSwitchGesture::ENGAGE);
 	system_scheduler->run();
 
 	// Trigger BLE connected event

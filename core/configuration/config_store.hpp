@@ -89,7 +89,7 @@ enum class ConfigMode {
 class ConfigurationStore {
 
 protected:
-	static inline const unsigned int m_config_version_code = 0x1c07e800 | 0x16;
+	static inline const unsigned int m_config_version_code = 0x1c07e800 | 0x17;
 	static inline const unsigned int m_config_version_code_aop = 0x1c07e800 | 0x03;
 	static inline const std::array<BaseType,MAX_CONFIG_ITEMS> default_params { {
 		/* ARGOS_DECID */ 0U,
@@ -296,6 +296,13 @@ protected:
 		/* [196] SURFACING_BURST_INIT_S */ 5U,
 		/* [197] SURFACING_BURST_STEP_S */ 1U,
 		/* [198] SURFACING_BURST_MAX_S */ 30U,
+		/* [199] MORTALITY_ENABLE */ (bool)false,
+		/* [200] MORTALITY_ACTIVITY_THRESH */ 10U,
+		/* [201] MORTALITY_TEMP_THRESH */ (double)25.0,
+		/* [202] MORTALITY_GPS_DISTANCE_THRESH */ 50U,
+		/* [203] MORTALITY_CONFIRM_DAYS */ 3U,
+		/* [204] MORTALITY_DUTY_CYCLE_MODULO */ 0U,
+		/* [205] MORTALITY_ORIGINAL_MODULO */ 0U,
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,

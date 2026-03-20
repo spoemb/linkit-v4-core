@@ -27,6 +27,7 @@ const char *LogFormatter::log_level_str(LogType t) {
 		case LogType::LOG_ZONE:
 		case LogType::LOG_OTA_UPDATE:
 		case LogType::LOG_BLE:
+		case LogType::LOG_MORTALITY:
 			return "UNKNOWN";
 		}
 }

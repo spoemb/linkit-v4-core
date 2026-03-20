@@ -284,8 +284,16 @@ bool SmdSatCmdSpi::send_command_aplus(uint8_t command, const uint8_t *tx_data, u
     }
 
     // Wait for STM32 to process command (command-specific delay)
+    // Kick WDT for long delays to prevent watchdog timeout
     uint32_t cmd_delay = get_command_delay(command);
-    nrf_delay_ms(cmd_delay);
+    while (cmd_delay > 500) {
+        PMU::kick_watchdog();
+        nrf_delay_ms(500);
+        cmd_delay -= 500;
+    }
+    if (cmd_delay > 0) {
+        nrf_delay_ms(cmd_delay);
+    }
 
     // Transaction 2+: Send NOP to retrieve response (pipelined protocol)
     m_sequence_number++;

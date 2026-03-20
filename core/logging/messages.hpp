@@ -20,7 +20,8 @@ static constexpr const char *log_type_name[16] = {
 	"ERROR",
 	"WARN",
 	"INFO",
-	"TRACE"
+	"TRACE",
+	"MORTALITY"
 };
 
 enum LogType : uint8_t {
@@ -37,7 +38,8 @@ enum LogType : uint8_t {
 	LOG_ERROR,
 	LOG_WARN,
 	LOG_INFO,
-	LOG_TRACE
+	LOG_TRACE,
+	LOG_MORTALITY
 };
 
 struct __attribute__((packed)) LogHeader {
@@ -219,6 +221,28 @@ struct __attribute__((packed)) BLEActionLogEntry {
 	};
 };
 
+
+enum class MortalityStatus : uint8_t { ALIVE = 0, SUSPECTED = 1, CONFIRMED = 2 };
+
+struct __attribute__((packed)) MortalityInfo {
+	uint8_t          confidence;       // 0-100%
+	uint8_t          consecutive_days; // Days with high confidence
+	MortalityStatus  status;           // ALIVE, SUSPECTED, CONFIRMED
+	uint8_t          last_activity;    // Last AXL activity (0-255)
+	uint16_t         last_body_temp;   // Last thermistor reading (raw ADC units)
+	double           last_lat;         // GPS lat for stationarity check
+	double           last_lon;         // GPS lon for stationarity check
+	uint32_t         last_eval_epoch;  // Epoch of last daily evaluation
+};
+
+struct __attribute__((packed)) MortalityLogEntry {
+	LogHeader header;
+	union {
+		MortalityInfo info;
+		uint8_t data[MAX_LOG_PAYLOAD];
+	};
+};
+static_assert(sizeof(MortalityInfo) <= MAX_LOG_PAYLOAD, "MortalityInfo wrong size");
 
 #endif // __MESSAGES_HPP_
 

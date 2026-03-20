@@ -30,14 +30,14 @@ const BaseMap param_map[] = {
 	{ "_RESERVED_9", "", BaseEncoding::UINT, 0, 0, {}, false, false },  // Reserved: AOP status is part of PASPW allcast data, not a DTE param
 	{ "ARGOS_AOP_DATE", "ART03", BaseEncoding::DATESTRING, 0, 0, {}, true, false },
 	{ "_RESERVED_ARGOS_FREQ", "", BaseEncoding::ARGOSFREQ, 401.6200, 401.6800, {}, false, false },  // Obsolete: RADIOCONF controls frequency
-	{ "_RESERVED_ARGOS_POWER", "", BaseEncoding::ARGOSPOWER, 0, 0, { 0, 1, 2, 3 }, false, false },  // Obsolete: RADIOCONF controls power
+	{ "_RESERVED_ARGOS_POWER", "", BaseEncoding::ARGOSPOWER, 0, 0, { 0U, 1U, 2U, 3U }, false, false },  // Obsolete: RADIOCONF controls power
 	{ "TR_NOM", "ARP05", BaseEncoding::UINT, 30U, 1200U, {}, true, true },
-	{ "ARGOS_MODE", "ARP01", BaseEncoding::ARGOSMODE, 0, 0, { 0, 1, 2, 3, 4, 5 }, true, true },
+	{ "ARGOS_MODE", "ARP01", BaseEncoding::ARGOSMODE, 0, 0, { 0U, 1U, 2U, 3U, 4U, 5U }, true, true },
 	{ "NTRY_PER_MESSAGE", "ARP19", BaseEncoding::UINT, 0U, 86400U, {}, true, true },
 	{ "DUTY_CYCLE", "ARP18", BaseEncoding::UINT, 0U, 0xFFFFFFU, {}, true, true },
 	{ "GNSS_EN", "GNP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
-	{ "DLOC_ARG_NOM", "ARP11", BaseEncoding::AQPERIOD, 0, 0, { 0, 1, 2, 3, 4, 5, 6, 7, 8 }, true, true },
-	{ "ARGOS_DEPTH_PILE", "ARP16", BaseEncoding::DEPTHPILE, 0U, 0U, {1U, 2U, 3U, 4U, 8U, 9U, 10U, 11U, 12U}, true, true },
+	{ "DLOC_ARG_NOM", "ARP11", BaseEncoding::AQPERIOD, 0, 0, { 0U, 1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U }, true, true },
+	{ "ARGOS_DEPTH_PILE", "ARP16", BaseEncoding::DEPTHPILE, 0U, 0U, {1U, 2U, 3U, 4U, 8U, 12U, 16U, 20U, 24U}, true, true },
 	{ "_RESERVED_20", "", BaseEncoding::UINT, 0, 0, {}, false, false },  // Reserved: constellation select never implemented
 	{ "GLONASS_CONST_SELECT", "GNP08", BaseEncoding::UINT, 0, 0, {}, false, true },
 	{ "GNSS_HDOPFILT_EN", "GNP02", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
@@ -49,14 +49,14 @@ const BaseMap param_map[] = {
 	{ "SAMPLING_UNDER_FREQ", "UNP03", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 	{ "LB_EN", "LBP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "LB_THRESHOLD", "LBP02", BaseEncoding::UINT, 0U, 100U, {}, true, true },
-	{ "_RESERVED_LB_ARGOS_POWER", "", BaseEncoding::ARGOSPOWER, 0, 0, { 0, 1, 2, 3 }, false, false },  // Obsolete: RADIOCONF controls power
+	{ "_RESERVED_LB_ARGOS_POWER", "", BaseEncoding::ARGOSPOWER, 0, 0, { 0U, 1U, 2U, 3U }, false, false },  // Obsolete: RADIOCONF controls power
 	{ "TR_LB", "ARP06", BaseEncoding::UINT, 30U, 1200U, {}, true, true },
 	{ "LB_ARGOS_MODE", "LBP04", BaseEncoding::ARGOSMODE, 0U, 0U, { 0U, 1U, 2U, 3U, 4U, 5U }, true, true },
 	{ "LB_ARGOS_DUTY_CYCLE", "LBP05", BaseEncoding::UINT, 0U, 0xFFFFFFU, {}, true, true },
 	{ "LB_GNSS_EN", "LBP06", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
-	{ "DLOC_ARG_LB", "ARP12", BaseEncoding::AQPERIOD, 0, 0, { 0, 1, 2, 3, 4, 5, 6, 7, 8 }, true, true },
+	{ "DLOC_ARG_LB", "ARP12", BaseEncoding::AQPERIOD, 0, 0, { 0U, 1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U }, true, true },
 	{ "LB_GNSS_HDOPFILT_THR", "LBP07", BaseEncoding::UINT, 2U, 15U, {}, true, true },
-	{ "LB_ARGOS_DEPTH_PILE", "LBP08", BaseEncoding::DEPTHPILE, 0U, 0U, {1U, 2U, 3U, 4U, 8U, 9U, 10U, 11U, 12U}, true, true },
+	{ "LB_ARGOS_DEPTH_PILE", "LBP08", BaseEncoding::DEPTHPILE, 0U, 0U, {1U, 2U, 3U, 4U, 8U, 12U, 16U, 20U, 24U}, true, true },
 	{ "LB_GNSS_ACQ_TIMEOUT", "LBP09", BaseEncoding::UINT, 10U, 600U, {}, true, true },
 	{ "SAMPLING_SURF_FREQ", "UNP04", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
     { "PP_MIN_ELEVATION", "PPP01", BaseEncoding::FLOAT, 0.0, 90.0, {}, true, true },
@@ -87,17 +87,17 @@ const BaseMap param_map[] = {
 	//////////////////////////
 	// ZONE FILE
 	//////////////////////////
-	{ "ZONE_TYPE", "ZOP01", BaseEncoding::ZONETYPE, 0, 0, { 0U }, true, true },
+	{ "ZONE_TYPE", "ZOP01", BaseEncoding::ZONETYPE, 0, 0, { 0U, 1U }, true, true },
 	{ "ZONE_ENABLE_OUT_OF_ZONE_DETECTION_MODE", "ZOP04", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "ZONE_ENABLE_ACTIVATION_DATE", "ZOP05", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "ZONE_ACTIVATION_DATE", "ZOP06", BaseEncoding::DATESTRING, 0, 0, {}, true, true },
-	{ "ZONE_ARGOS_DEPTH_PILE", "ZOP08", BaseEncoding::DEPTHPILE, 0U, 0U, {1U, 2U, 3U, 4U, 8U, 9U, 10U, 11U, 12U}, true, true },
-	{ "_RESERVED_70", "", BaseEncoding::ARGOSPOWER, 0U, 0U, { 0, 1, 2, 3 }, false, false },
+	{ "ZONE_ARGOS_DEPTH_PILE", "ZOP08", BaseEncoding::DEPTHPILE, 0U, 0U, {1U, 2U, 3U, 4U, 8U, 12U, 16U, 20U, 24U}, true, true },
+	{ "_RESERVED_70", "", BaseEncoding::ARGOSPOWER, 0U, 0U, { 0U, 1U, 2U, 3U }, false, false },
 	{ "ZONE_ARGOS_REPETITION_SECONDS", "ZOP10", BaseEncoding::UINT, 30U, 1200U, {}, true, true },
 	{ "ZONE_ARGOS_MODE", "ZOP11", BaseEncoding::ARGOSMODE, 0U, 0U, { 0U, 1U, 2U, 3U, 4U, 5U }, true, true },
 	{ "ZONE_ARGOS_DUTY_CYCLE", "ZOP12", BaseEncoding::UINT, 0U, 0xFFFFFFU, {}, true, true },
 	{ "ZONE_ARGOS_NTRY_PER_MESSAGE", "ZOP13", BaseEncoding::UINT, 0U, 86400U, {}, true, true },
-	{ "ZONE_GNSS_DELTA_ARG_LOC_ARGOS_SECONDS", "ZOP14", BaseEncoding::AQPERIOD, 0, 0, { 0, 1, 2, 3, 4, 5, 6, 7, 8 }, true, true },
+	{ "ZONE_GNSS_DELTA_ARG_LOC_ARGOS_SECONDS", "ZOP14", BaseEncoding::AQPERIOD, 0, 0, { 0U, 1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U }, true, true },
 	{ "ZONE_GNSS_HDOPFILT_THR", "ZOP15", BaseEncoding::UINT, 2U, 15U, {}, true, true },
 	{ "ZONE_GNSS_HACCFILT_THR", "ZOP16", BaseEncoding::UINT, 0U, 0U, {}, true, true },
 	{ "ZONE_GNSS_ACQ_TIMEOUT", "ZOP17", BaseEncoding::UINT, 10U, 600U, {}, true, true },
@@ -275,6 +275,14 @@ const BaseMap param_map[] = {
 	{ "SURFACING_BURST_INIT_S", "ARP40", BaseEncoding::UINT, 5U, 120U, {}, true, true },
 	{ "SURFACING_BURST_STEP_S", "ARP41", BaseEncoding::UINT, 0U, 30U, {}, true, true },
 	{ "SURFACING_BURST_MAX_S", "ARP42", BaseEncoding::UINT, 5U, 300U, {}, true, true },
+	// [199-205] Mortality detection parameters (slots always reserved)
+	{ "MORTALITY_ENABLE", "MTP01", BaseEncoding::BOOLEAN, 0, 0, {}, ENABLE_MORTALITY_SENSOR, true },
+	{ "MORTALITY_ACTIVITY_THRESH", "MTP02", BaseEncoding::UINT, 0U, 255U, {}, ENABLE_MORTALITY_SENSOR, true },
+	{ "MORTALITY_TEMP_THRESH", "MTP03", BaseEncoding::FLOAT, 0.0, 60.0, {}, ENABLE_MORTALITY_SENSOR, true },
+	{ "MORTALITY_GPS_DISTANCE_THRESH", "MTP04", BaseEncoding::UINT, 0U, 10000U, {}, ENABLE_MORTALITY_SENSOR, true },
+	{ "MORTALITY_CONFIRM_DAYS", "MTP05", BaseEncoding::UINT, 1U, 30U, {}, ENABLE_MORTALITY_SENSOR, true },
+	{ "MORTALITY_DUTY_CYCLE_MODULO", "MTP06", BaseEncoding::UINT, 0U, 100U, {}, ENABLE_MORTALITY_SENSOR, true },
+	{ "MORTALITY_ORIGINAL_MODULO", "MTP07", BaseEncoding::UINT, 0U, 100U, {}, ENABLE_MORTALITY_SENSOR, false },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);
