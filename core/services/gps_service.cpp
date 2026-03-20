@@ -103,8 +103,9 @@ bool GPSService::service_cancel() {
 }
 
 unsigned int GPSService::service_next_timeout() {
-	// Timeout are handled in the GPSDevice
-	return 0;
+	// GPS device handles its own timeout, but add a safety net
+	// in case the device never responds (e.g., hardware failure)
+	return 120000; // 120s safety timeout
 }
 
 bool GPSService::service_is_triggered_on_surfaced(bool& immediate) {

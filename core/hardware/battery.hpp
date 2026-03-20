@@ -24,10 +24,16 @@ private:
 	bool     m_is_critical_voltage_last;
 
 	void actuate_events() {
+		// Hysteresis: fire critical event on falling edge only,
+		// require recovery above critical+hysteresis to re-arm
 		if (m_is_critical_voltage && !m_is_critical_voltage_last) {
 			notify<BatteryMonitorEventVoltageCritical>({});
+			m_is_critical_voltage_last = true;
+		} else if (m_is_critical_voltage_last && !m_is_critical_voltage) {
+			// Only clear the flag when voltage recovers above hysteresis band
+			// Subclasses set m_is_critical_voltage with hysteresis already applied
+			m_is_critical_voltage_last = false;
 		}
-		m_is_critical_voltage_last = m_is_critical_voltage;
 	}
 	virtual void internal_update() {}
 

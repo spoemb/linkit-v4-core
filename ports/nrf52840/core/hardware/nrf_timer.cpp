@@ -38,6 +38,7 @@ static unsigned int g_unique_id;
 // Return current 64 bit tick count
 static uint64_t current_ticks()
 {
+    InterruptLock lock;
     uint64_t now = drv_rtc_counter_get(&BSP::RTC_Inits[RTC_TIMER].rtc) + ((uint64_t)g_overflows_occured * (uint64_t)TICKS_PER_OVERFLOW);
 
     // It is possible that base was not updated and an overflow occured, in this case 'now' will be
@@ -190,6 +191,7 @@ Timer::TimerHandle NrfTimer::add_schedule(stdext::inplace_function<void(), INPLA
         //printf("Added schedule with id %u ticks %llu\n", *handle, target_count_ticks);
 
         g_unique_id++;
+        if (g_unique_id == 0) g_unique_id = 1; // Skip 0 to avoid collision with invalid handle
     }
 
     // Update our schedule

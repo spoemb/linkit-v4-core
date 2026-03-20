@@ -164,12 +164,10 @@ RespType KIM2Comm::parse_rx_message(const std::string& buffer, uint8_t start_ind
         // Warn : can the ID be shorter than 6 characters ?
         char ascii_id[KIM2::ID_SIZE + 1] = {0};
         std::memcpy(ascii_id, message.c_str() + ID_RESPONSE.size(), ID_SIZE);
-        ascii_id[ID_SIZE] = 0; //terminal character
-        try {
-            m_kineis_id = std::stoi(reinterpret_cast<const char*>(ascii_id));
-        } catch (...) {
-            m_kineis_id = 0;
-        }
+        ascii_id[ID_SIZE] = 0;
+        char *end = nullptr;
+        long id_val = strtol(ascii_id, &end, 10);
+        m_kineis_id = (end != ascii_id && *end == '\0') ? (unsigned int)id_val : 0;
         resp_type = RESP_CONFIG;
     }
     // -- +ADDR=
@@ -179,12 +177,10 @@ RespType KIM2Comm::parse_rx_message(const std::string& buffer, uint8_t start_ind
     {
         char ascii_addr[KIM2::ADDR_SIZE + 1] = {0};
         std::memcpy(ascii_addr, message.c_str() + ADDR_RESPONSE.size(), ADDR_SIZE);
-        ascii_addr[ADDR_SIZE] = 0; //terminal character
-        try {
-            m_hex_addr = std::stoul(reinterpret_cast<const char*>(ascii_addr), nullptr, 16);
-        } catch (...) {
-            m_hex_addr = 0;
-        }
+        ascii_addr[ADDR_SIZE] = 0;
+        char *end_addr = nullptr;
+        unsigned long addr_val = strtoul(ascii_addr, &end_addr, 16);
+        m_hex_addr = (end_addr != ascii_addr) ? (unsigned int)addr_val : 0;
         resp_type = RESP_CONFIG;
     }
     // -- +ERROR=
@@ -221,7 +217,9 @@ void KIM2Comm::handle_tx_done(void)
 }
 
 void KIM2Comm::handle_rx_buffer(uint8_t * buffer, uint8_t length)
-{   
+{
+    // Guard against unbounded buffer growth from corrupted data
+    if (length > 128) length = 128;
     m_rx_buffer.assign(reinterpret_cast<const char*>(buffer), length);
     
     // DEBUG_TRACE("KIM2Comm::handle_rx_buffer %s", buffer);

@@ -435,26 +435,14 @@ int main()
 			}
 		});
 
-		Timer::TimerHandle wdog_handle;
-
-		std::function<void()> kick_watchdog = [&wdog_handle,&kick_watchdog]() {
-			wdog_handle = system_timer->add_schedule([&wdog_handle,&kick_watchdog]() {
-				PMU::kick_watchdog();
-				kick_watchdog();
-			}, system_timer->get_counter() + (14 * 60 * 1000));
-		};
-
-		// Kick the watchdog periodically to avoid a WDT reset
-		kick_watchdog();
-
+		// Kick the watchdog periodically while waiting for reed switch
 		GPIOPins::clear(VSYS_SEL);
 		while (!power_on_ready) {
+			PMU::kick_watchdog();
 			PMU::run();
 		}
 
 		GPIOPins::set(VSYS_SEL);
-		InterruptLock lock;
-		system_timer->cancel_schedule(wdog_handle);
 		PMU::kick_watchdog();
 		nrf_reed_switch.stop();
 		BUZZER_BEEP_COUNT(buzzer_ctl,200,200,2);

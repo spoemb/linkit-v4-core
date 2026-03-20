@@ -113,7 +113,7 @@ private:
 
 	// Protocol A+ state
 	SpiProtocolMode m_protocol_mode;
-	uint8_t m_sequence_number;
+	uint8_t m_sequence_number;  // Wraps at 256 — matches Zephyr argos-smd-driver behavior
 	bool m_protocol_detected;
 
 	// DFU state

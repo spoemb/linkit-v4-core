@@ -31,7 +31,11 @@ SmdSatCmdSpi::~SmdSatCmdSpi() {
 
 void SmdSatCmdSpi::init() {
     if (m_nrf_spim == nullptr) {
-        m_nrf_spim = new NrfSPIM(SPI_SATELLITE);
+        m_nrf_spim = new (std::nothrow) NrfSPIM(SPI_SATELLITE);
+        if (m_nrf_spim == nullptr) {
+            DEBUG_ERROR("SmdSatCmdSpi::init: SPI allocation failed");
+            throw ErrorCode::RESOURCE_NOT_AVAILABLE;
+        }
         nrf_gpio_pin_clear(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
     }
     m_protocol_mode = SpiProtocolMode::APLUS;

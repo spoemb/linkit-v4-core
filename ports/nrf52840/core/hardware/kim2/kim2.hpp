@@ -4,6 +4,7 @@
 #include "kineis_device.hpp"
 #include "nrfx_uarte.h"
 #include "scheduler.hpp"
+#include <atomic>
 
 
 class KIM2Device : public KIM2CommEventListener, public KineisDevice {
@@ -34,21 +35,22 @@ private:
 	// Top-level state
 	Scheduler::TaskHandle m_task;
 	KIM2ManagerState      m_state;
-	volatile bool         m_stopping;
-	volatile bool         m_cmd_is_ok;
-	volatile bool         m_is_error;
+	bool                  m_stopping;
+	std::atomic<bool>     m_cmd_is_ok;
+	std::atomic<bool>     m_is_error;
 	struct Timeout {
 		Scheduler::TaskHandle handle;
-		bool     running;
-		uint64_t end;
 	} m_timeout;
 
 	// Argos TX state
 	KineisPacket m_tx_buffer;
 	KineisPacket m_packet_buffer;
 	KineisModulation m_tx_mode;
-	KineisModulation m_current_rconf_mode;  // Modulation currently configured in RCONF
-	volatile bool m_tx_done;
+	KineisModulation m_current_rconf_mode;
+	std::atomic<bool> m_tx_done;
+
+	// TX poll state
+	unsigned int m_tx_poll_counter;
 
 	//State machine
 	void state_machine();
@@ -79,7 +81,8 @@ private:
 	void react(const KIM2CommEventUartError&) override;
 
 	// Private functions
-	bool send_AT(KIM2::ATCmd cmd, const std::optional<std::string>& params = std::nullopt);
+	bool send_AT(KIM2::ATCmd cmd, const std::optional<std::string>& params = std::nullopt,
+	             uint16_t timeout_ms = 1000);
 	void start_device();
 	void power_off_immediate(void);
 	void cancel_timeout();

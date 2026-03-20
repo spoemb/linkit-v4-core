@@ -596,32 +596,32 @@ protected:
 	}
 	static void validate(const BaseMap &, const BaseRawData&) {
 	}
-	static void validate(const BaseMap &, const BaseGNSSFixMode&) {
+	// Generic enum validator: checks value against permitted_values if defined
+	template<typename EnumT>
+	static void validate_enum(const BaseMap &arg_map, const EnumT& value) {
+		if (!arg_map.permitted_values.empty()) {
+			unsigned int raw = static_cast<unsigned int>(value);
+			if (std::find_if(arg_map.permitted_values.begin(), arg_map.permitted_values.end(),
+				[raw](const BaseConstraint x) { return std::get<unsigned int>(x) == raw; }
+			) == arg_map.permitted_values.end()) {
+				DEBUG_ERROR("parameter \"%s\" enum value %u not in permitted list", arg_map.name.c_str(), raw);
+				throw DTE_PROTOCOL_VALUE_OUT_OF_RANGE;
+			}
+		}
 	}
-	static void validate(const BaseMap &, const BaseGNSSDynModel&) {
-	}
-	static void validate(const BaseMap &, const BaseDepthPile&) {
-	}
-	static void validate(const BaseMap &, const BaseArgosMode&) {
-	}
-	static void validate(const BaseMap &, const BaseSensorEnableTxMode&) {
-	}
-	static void validate(const BaseMap &, const BaseUnderwaterDetectSource&) {
-	}
-	static void validate(const BaseMap &, const BaseArgosPower&) {
-	}
-	static void validate(const BaseMap &, const BaseLEDMode&) {
-	}
-	static void validate(const BaseMap &, const BaseZoneType&) {
-	}
-	static void validate(const BaseMap &, const BaseArgosModulation&) {
-	}
-	static void validate(const BaseMap &, const BaseDebugMode&) {
-	}
-	static void validate(const BaseMap &, const BasePressureSensorLoggingMode&) {
-	}
-	static void validate(const BaseMap &, const BasePressureSensorFullScale&) {
-	}
+	static void validate(const BaseMap &m, const BaseGNSSFixMode& v) { validate_enum(m, v); }
+	static void validate(const BaseMap &m, const BaseGNSSDynModel& v) { validate_enum(m, v); }
+	static void validate(const BaseMap &m, const BaseDepthPile& v) { validate_enum(m, v); }
+	static void validate(const BaseMap &m, const BaseArgosMode& v) { validate_enum(m, v); }
+	static void validate(const BaseMap &m, const BaseSensorEnableTxMode& v) { validate_enum(m, v); }
+	static void validate(const BaseMap &m, const BaseUnderwaterDetectSource& v) { validate_enum(m, v); }
+	static void validate(const BaseMap &m, const BaseArgosPower& v) { validate_enum(m, v); }
+	static void validate(const BaseMap &m, const BaseLEDMode& v) { validate_enum(m, v); }
+	static void validate(const BaseMap &m, const BaseZoneType& v) { validate_enum(m, v); }
+	static void validate(const BaseMap &m, const BaseArgosModulation& v) { validate_enum(m, v); }
+	static void validate(const BaseMap &m, const BaseDebugMode& v) { validate_enum(m, v); }
+	static void validate(const BaseMap &m, const BasePressureSensorLoggingMode& v) { validate_enum(m, v); }
+	static void validate(const BaseMap &m, const BasePressureSensorFullScale& v) { validate_enum(m, v); }
 public:
 	// FIXME: Using C variadic args with non-POD types (std::string, BaseRawData) is
 	// undefined behavior in C++. Works on GCC 10.3 ARM but may break with compiler

@@ -172,7 +172,7 @@ void Service::service_log(ServiceEventData *event_data, void *entry) {
 void Service::service_complete(ServiceEventData *event_data, void *entry, bool shall_reschedule) {
 	DEBUG_TRACE("Service::service_complete: service %s", m_name);
 	if (!m_is_initiated) {
-		DEBUG_TRACE("Service::service_complete: service %s completed without being initiated", m_name);
+		DEBUG_WARN("Service::service_complete: service %s completed without being initiated", m_name);
 		return;
 	}
 	m_is_initiated = false;

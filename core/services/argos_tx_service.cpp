@@ -70,8 +70,9 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 		unsigned int critical_level = configuration_store->read_param<unsigned int>(ParamID::LB_CRITICAL_THRESH);
 		unsigned int current_soc = service_get_level();
 		if (current_soc < critical_level) {
-			DEBUG_INFO("ArgosTxService: CRITICAL battery SOC %u%% < %u%% - immediate powerdown",
+			DEBUG_INFO("ArgosTxService: CRITICAL battery SOC %u%% < %u%% - shutdown",
 			           current_soc, critical_level);
+			configuration_store->save_params();
 			PMU::powerdown();
 			return Service::SCHEDULE_DISABLED;
 		}
@@ -188,7 +189,7 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 				// }
 				// BasePassPredict pass_predict = configuration_store->read_pass_predict();
 				// return m_sched.schedule_prepass(argos_config, pass_predict, m_scheduled_mode, now);
-				return -1; // @TODO implement Kineis Pass pred
+				return Service::SCHEDULE_DISABLED; // @TODO implement Kineis Pass pred
 			}
 		}
 	// }
@@ -428,8 +429,9 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 	ArgosConfig argos_config;
 	configuration_store->get_argos_configuration(argos_config);
 	if (argos_config.shutdown_ntime_sat > 0 && m_session_tx_count >= argos_config.shutdown_ntime_sat) {
-		DEBUG_INFO("ArgosTxService: Session TX limit reached (%u/%u) | powering down",
+		DEBUG_INFO("ArgosTxService: Session TX limit reached (%u/%u) | shutdown",
 		           m_session_tx_count, argos_config.shutdown_ntime_sat);
+		configuration_store->save_params();
 		PMU::powerdown();
 		return;
 	}

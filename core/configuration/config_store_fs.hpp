@@ -133,7 +133,7 @@ protected:
 		}
 		case BaseEncoding::TEXT:
 		{
-			std::string value((const char *)param_value);
+			std::string value((const char *)param_value, strnlen((const char *)param_value, BASE_TEXT_MAX_LENGTH));
 			m_params.at(index) = value;
 			break;
 		}
