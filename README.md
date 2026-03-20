@@ -47,6 +47,13 @@ Use the build scripts (they source `build_config.sh` automatically):
 | `./scripts/build_linkitv4_smd.sh` | LinkIt V4 SMD | `build/LINKIT_SMD/` |
 | `./scripts/build_linkitv4_lora.sh` | LinkIt V4 LoRa | `build/LINKIT_LORA/` |
 | `./scripts/build_rspb.sh` | RSPB | `build/RSPB/` |
+| **`./scripts/build_with_bootloader.sh <target>`** | **Any** | **Merged hex (app+bootloader+SD)** |
+
+Build with bootloader for deployment:
+```bash
+./scripts/build_with_bootloader.sh rspb --clean        # RSPB
+./scripts/build_with_bootloader.sh linkit-smd --clean   # LinkIt V4 SMD
+```
 
 Or build manually with CMake:
 
