@@ -7,6 +7,13 @@
 #define HAS_EXTERNAL_WAKEUP false
 #endif
 
+// Helper for BOARD_RSPB
+#ifdef BOARD_RSPB
+#define HAS_BOARD_RSPB true
+#else
+#define HAS_BOARD_RSPB false
+#endif
+
 // ARGOS_SMD is only defined on targets with SMD satellite module
 #ifndef ARGOS_SMD
 #define ARGOS_SMD 0
@@ -283,6 +290,14 @@ const BaseMap param_map[] = {
 	{ "MORTALITY_CONFIRM_DAYS", "MTP05", BaseEncoding::UINT, 1U, 30U, {}, ENABLE_MORTALITY_SENSOR, true },
 	{ "MORTALITY_DUTY_CYCLE_MODULO", "MTP06", BaseEncoding::UINT, 0U, 100U, {}, ENABLE_MORTALITY_SENSOR, true },
 	{ "MORTALITY_ORIGINAL_MODULO", "MTP07", BaseEncoding::UINT, 0U, 100U, {}, ENABLE_MORTALITY_SENSOR, false },
+	// [206] RSPB packet format (RSPB board only)
+	{ "RSPB_PACKET_FORMAT", "RSP01", BaseEncoding::UINT, 0U, 1U, { 0U, 1U }, HAS_BOARD_RSPB, true },
+	// [207-209] Per-modulation radio configurations
+	{ "ARGOS_RADIOCONF_LDK", "ARP51", BaseEncoding::TEXT, std::string(""), std::string(""), {}, true, true },
+	{ "ARGOS_RADIOCONF_LDA2", "ARP52", BaseEncoding::TEXT, std::string(""), std::string(""), {}, true, true },
+	{ "ARGOS_RADIOCONF_VLDA4", "ARP53", BaseEncoding::TEXT, std::string(""), std::string(""), {}, true, true },
+	// [210] Adaptive modulation: auto-select LDK/LDA2/VLDA4 based on packet size
+	{ "ARGOS_ADAPTIVE_MODULATION", "ARP54", BaseEncoding::BOOLEAN, false, false, {}, true, true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

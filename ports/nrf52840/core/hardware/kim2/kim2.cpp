@@ -172,6 +172,42 @@ void KIM2Device::set_tcxo_warmup_time(unsigned int ms)
 }
 
 // ============================================================================
+// Runtime modulation switching
+// ============================================================================
+
+bool KIM2Device::switch_modulation(KineisModulation mode, const std::string& rconf_hex) {
+    if (mode == m_current_rconf_mode) {
+        DEBUG_TRACE("KIM2Device::%s: already in target modulation %d", __func__, (int)mode);
+        return true;
+    }
+
+    DEBUG_INFO("KIM2Device::%s: switching %d -> %d", __func__, (int)m_current_rconf_mode, (int)mode);
+
+    if (rconf_hex.size() != 32) {
+        DEBUG_ERROR("KIM2Device::%s: invalid RCONF hex length %u", __func__, (unsigned)rconf_hex.size());
+        return false;
+    }
+
+    if (!send_AT(AT_SET_RCONF, rconf_hex)) {
+        DEBUG_ERROR("KIM2Device::%s: failed to set RCONF", __func__);
+        return false;
+    }
+
+    if (!send_AT(AT_SET_KMAC_BASIC)) {
+        DEBUG_ERROR("KIM2Device::%s: failed to reload KMAC", __func__);
+        return false;
+    }
+
+    m_current_rconf_mode = mode;
+    DEBUG_INFO("KIM2Device::%s: modulation switched OK", __func__);
+    return true;
+}
+
+KineisModulation KIM2Device::get_current_modulation() const {
+    return m_current_rconf_mode;
+}
+
+// ============================================================================
 // KIM2Comm event handlers (ISR context)
 // ============================================================================
 

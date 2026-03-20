@@ -132,4 +132,8 @@ public:
 	std::string get_firmware_version();
 	std::string get_new_firmware_version() const { return m_new_firmware_version; }
 	std::string smd_spi_test();
+
+	// Runtime modulation switching (RCONF + save + KMAC reload, no power cycle)
+	bool switch_modulation(KineisModulation mode, const std::string& rconf_hex) override;
+	KineisModulation get_current_modulation() const override;
 };

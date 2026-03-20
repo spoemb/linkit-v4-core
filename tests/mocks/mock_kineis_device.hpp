@@ -43,4 +43,20 @@ public:
 			.onObject(this)
 			.withUnsignedIntParameter("time", ms);
 	}
+
+	bool switch_modulation(KineisModulation mode, const std::string& rconf_hex) override {
+		mock().actualCall("switch_modulation")
+			.onObject(this)
+			.withUnsignedIntParameter("mode", (unsigned int)mode)
+			.withStringParameter("rconf", rconf_hex.c_str());
+		m_current_mod = mode;
+		return true;
+	}
+
+	KineisModulation get_current_modulation() const override {
+		return m_current_mod;
+	}
+
+private:
+	KineisModulation m_current_mod = KineisModulation::LDA2;
 };

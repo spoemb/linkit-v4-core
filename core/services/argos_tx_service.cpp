@@ -8,14 +8,10 @@
 #include "debug.hpp"
 #include "crc8.hpp"
 #include "binascii.hpp"
-#if ENABLE_MORTALITY_SENSOR
-#include "mortality_service.hpp"
-#endif
-
-
 extern ConfigurationStore *configuration_store;
 extern Scheduler *system_scheduler;
-#if ENABLE_MORTALITY_SENSOR
+#if defined(BOARD_RSPB) && ENABLE_MORTALITY_SENSOR
+#include "mortality_service.hpp"
 extern MortalityService *mortality_service;
 #endif
 
@@ -43,6 +39,7 @@ void ArgosTxService::service_init() {
 	m_is_surfacing_burst = false;
 	m_doppler_burst_count = 0;
 	m_has_gnss_fix_since_surfacing = false;
+	m_last_preconfig_mod = KineisModulation::LDA2;
 
 	// Set the idle timeout depending on the configuration settings
 	// i) In certification mode, keep powered on for 10 seconds in idle
@@ -290,6 +287,17 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 			m_is_surfacing_burst = false;
 			m_doppler_burst_count = 0;
 			m_has_gnss_fix_since_surfacing = false;
+
+			// Adaptive modulation: pre-configure VLDA4 while underwater
+			// so first Doppler TX after surfacing is instant (no RCONF switch delay)
+			{
+				ArgosConfig ac;
+				configuration_store->get_argos_configuration(ac);
+				if (ac.adaptive_modulation && ac.mode == BaseArgosMode::SURFACING_BURST) {
+					DEBUG_INFO("ArgosTxService::UW: pre-configuring VLDA4 for surfacing Doppler");
+					ensure_modulation(KineisModulation::VLDA4);
+				}
+			}
 		} else {
 			// Device surfaced
 			ArgosConfig argos_config;
@@ -308,6 +316,35 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 	}
 
 	Service::notify_peer_event(e);
+}
+
+// ============================================================================
+// Adaptive modulation helpers
+// ============================================================================
+
+std::string ArgosTxService::get_rconf_for_modulation(KineisModulation mode) {
+	ArgosConfig argos_config;
+	configuration_store->get_argos_configuration(argos_config);
+	switch (mode) {
+		case KineisModulation::LDK:  return argos_config.radioconf_ldk;
+		case KineisModulation::VLDA4: return argos_config.radioconf_vlda4;
+		case KineisModulation::LDA2:
+		default:                      return argos_config.radioconf_lda2;
+	}
+}
+
+bool ArgosTxService::ensure_modulation(KineisModulation target) {
+	if (m_kineis.get_current_modulation() == target) {
+		return true;
+	}
+	std::string rconf = get_rconf_for_modulation(target);
+	if (rconf.empty() || rconf.size() != 32) {
+		DEBUG_ERROR("ArgosTxService::ensure_modulation: invalid RCONF for mode %d (len=%u)",
+		            (int)target, (unsigned)rconf.size());
+		return false;
+	}
+	DEBUG_INFO("ArgosTxService::ensure_modulation: switching to %d", (int)target);
+	return m_kineis.switch_modulation(target, rconf);
 }
 
 void ArgosTxService::process_certification_burst() {
@@ -346,28 +383,42 @@ void ArgosTxService::process_sensor_burst() {
 	unsigned int size_bits;
 	GPSLogEntry *gps = m_depth_pile_manager.retrieve_gps_single((unsigned int)argos_config.depth_pile);
 	if (gps != nullptr) {
-#if ENABLE_MORTALITY_SENSOR
+		KineisPacket packet;
+#ifdef BOARD_RSPB
+		// RSPB uses dedicated packet format with compact AXL + mortality confidence
 		unsigned int mort_conf = 0;
-		unsigned int *mort_conf_ptr = nullptr;
-		if (mortality_service && mortality_service->get_status() != MortalityStatus::ALIVE) {
-			mort_conf = mortality_service->get_confidence();
-			mort_conf_ptr = &mort_conf;
-		} else if (mortality_service) {
-			mort_conf = mortality_service->get_confidence();
-			mort_conf_ptr = &mort_conf;
+#if ENABLE_MORTALITY_SENSOR
+		if (mortality_service) mort_conf = mortality_service->get_confidence();
+#endif
+		ServiceSensorData *pressure = m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::PRESSURE_SENSOR);
+		ServiceSensorData *thermistor = m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::THERMISTOR_SENSOR);
+		ServiceSensorData *axl = nullptr;
+#if ENABLE_AXL_SENSOR
+		axl = m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::AXL_SENSOR);
+#endif
+		unsigned int pkt_fmt = configuration_store->read_param<unsigned int>(ParamID::RSPB_PACKET_FORMAT);
+		if (pkt_fmt == 1) {
+			m_scheduled_mode = KineisModulation::LDK;
+			packet = ArgosPacketBuilder::build_rspb_short_packet(gps, pressure, thermistor, axl,
+					argos_config.is_out_of_zone, argos_config.is_lb, mort_conf, size_bits);
+		} else {
+			m_scheduled_mode = KineisModulation::LDA2;
+			packet = ArgosPacketBuilder::build_rspb_long_packet(gps, pressure, thermistor, axl,
+					argos_config.is_out_of_zone, argos_config.is_lb, mort_conf, size_bits);
+		}
+
+		// Adaptive modulation: switch RCONF to match packet modulation
+		if (argos_config.adaptive_modulation) {
+			ensure_modulation(m_scheduled_mode);
 		}
 #else
-		unsigned int *mort_conf_ptr = nullptr;
-#endif
-		KineisPacket packet = ArgosPacketBuilder::build_sensor_packet(gps,
+		// Generic sensor packet for LinkIt V4 (all sensors, no RSPB-specific packing)
+		m_scheduled_mode = KineisModulation::LDA2;
+		packet = ArgosPacketBuilder::build_sensor_packet(gps,
 				m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::ALS_SENSOR),
 				m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::PH_SENSOR),
 				m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::PRESSURE_SENSOR),
-#ifdef BOARD_RSPB
-				m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::THERMISTOR_SENSOR),
-#else
 				m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::SEA_TEMP_SENSOR),
-#endif
 #if ENABLE_AXL_SENSOR
 				m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::AXL_SENSOR),
 #else
@@ -375,8 +426,17 @@ void ArgosTxService::process_sensor_burst() {
 #endif
 				argos_config.is_out_of_zone,
 				argos_config.is_lb,
-				size_bits,
-				mort_conf_ptr);
+				size_bits);
+
+		// Adaptive modulation for generic sensor packet
+		if (argos_config.adaptive_modulation) {
+			// Sensor packet fits in LDK (128 bits)?
+			if (size_bits <= 128) {
+				m_scheduled_mode = KineisModulation::LDK;
+			}
+			ensure_modulation(m_scheduled_mode);
+		}
+#endif
 		DEBUG_INFO("ArgosTxService::process_sensor_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
 		m_kineis.send(m_scheduled_mode, packet, size_bits);
 	} else {
@@ -396,6 +456,13 @@ void ArgosTxService::process_gnss_burst() {
 		KineisPacket packet = ArgosPacketBuilder::build_gnss_packet(v, argos_config.is_out_of_zone, argos_config.is_lb,
 				argos_config.delta_time_loc,
 				size_bits);
+
+		// Adaptive modulation: short GNSS packet (96 bits) fits LDK, long needs LDA2
+		if (argos_config.adaptive_modulation) {
+			m_scheduled_mode = (size_bits <= 128) ? KineisModulation::LDK : KineisModulation::LDA2;
+			ensure_modulation(m_scheduled_mode);
+		}
+
 		DEBUG_INFO("ArgosTxService::process_gnss_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
 		m_kineis.send(m_scheduled_mode, packet, size_bits);
 	} else {
@@ -412,8 +479,17 @@ void ArgosTxService::process_doppler_burst() {
 	KineisPacket packet = ArgosPacketBuilder::build_doppler_packet(service_get_voltage(), service_is_battery_level_low(), size_bits);
 	ArgosConfig argos_config;
 	configuration_store->get_argos_configuration(argos_config);
-	DEBUG_INFO("ArgosTxService::process_doppler_burst: mode=A2 data=%s sz=%u", Binascii::hexlify(packet).c_str(), size_bits);
-	m_kineis.send(KineisModulation::LDA2, packet, size_bits);
+
+	// Adaptive modulation: Doppler = 24 bits = VLDA4
+	KineisModulation tx_mode = KineisModulation::LDA2;
+	if (argos_config.adaptive_modulation) {
+		tx_mode = KineisModulation::VLDA4;
+		ensure_modulation(tx_mode);
+	}
+
+	DEBUG_INFO("ArgosTxService::process_doppler_burst: mode=%s data=%s sz=%u",
+	           argos_modulation_to_string((BaseArgosModulation)tx_mode), Binascii::hexlify(packet).c_str(), size_bits);
+	m_kineis.send(tx_mode, packet, size_bits);
 }
 
 void ArgosTxService::react(KineisEventTxStarted const&) {
@@ -739,8 +815,7 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 		ServiceSensorData *sea_temp_sensor,
 		ServiceSensorData *axl_sensor,
 		bool is_out_of_zone, bool is_low_battery,
-		unsigned int& size_bits,
-		unsigned int *mortality_confidence) {
+		unsigned int& size_bits) {
 
 	DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet");
 	unsigned int base_pos = 0;
@@ -812,25 +887,13 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 		PACK_BITS((unsigned int)pressure_sensor->port[1], packet, base_pos, 14);
 	}
 	if (sea_temp_sensor != nullptr) {
-#ifdef BOARD_RSPB
-		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: thermistor=%04X", (unsigned int)sea_temp_sensor->port[0]);
-		PACK_BITS((unsigned int)sea_temp_sensor->port[0], packet, base_pos, 14);
-#else
 		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: sea_temp=%06X", (unsigned int)sea_temp_sensor->port[0]);
 		PACK_BITS((unsigned int)sea_temp_sensor->port[0], packet, base_pos, 21);
-#endif
 	}
 
 	// Add AXL (accelerometer) sensor data
+	// port[0] = temperature (14 bits), port[1-3] = X/Y/Z (15 bits each), port[4] = activity (8 bits)
 	if (axl_sensor != nullptr) {
-#ifdef BOARD_RSPB
-		// RSPB compact format: activity only (8 bits) — X/Y/Z axes and AXL temp dropped
-		// AXL temp is least precise (~0.5°C die temp), X/Y/Z useless for bird tracking
-		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: axl_activity=%02X (RSPB compact)",
-				(unsigned int)axl_sensor->port[4]);
-		PACK_BITS((unsigned int)axl_sensor->port[4], packet, base_pos, 8);   // Activity only
-#else
-		// Full format: temp(14) + X(15) + Y(15) + Z(15) + activity(8) = 67 bits
 		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: axl_temp=%04X X=%04X Y=%04X Z=%04X activity=%02X",
 				(unsigned int)axl_sensor->port[0],
 				(unsigned int)axl_sensor->port[1],
@@ -842,14 +905,6 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 		PACK_BITS((unsigned int)axl_sensor->port[2], packet, base_pos, 15);  // Y
 		PACK_BITS((unsigned int)axl_sensor->port[3], packet, base_pos, 15);  // Z
 		PACK_BITS((unsigned int)axl_sensor->port[4], packet, base_pos, 8);   // Activity
-#endif
-	}
-
-	// Mortality confidence (7 bits, 0-100%) — only when enabled
-	if (mortality_confidence != nullptr) {
-		unsigned int conf = (*mortality_confidence > 100) ? 100 : *mortality_confidence;
-		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: mortality_confidence=%u%%", conf);
-		PACK_BITS(conf, packet, base_pos, 7);
 	}
 
 	size_bits = base_pos;
@@ -862,6 +917,146 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 
 	packet.resize((size_bits+7)/8);
 
+	return packet;
+}
+
+// ============================================================================
+// RSPB Dedicated Packet Builders
+// ============================================================================
+
+// Common RSPB packing: header + time + GPS + battery (shared by long and short)
+static unsigned int pack_rspb_common(KineisPacket &packet, unsigned int header,
+		GPSLogEntry* gps_entry, bool is_out_of_zone, bool is_low_battery) {
+	unsigned int base_pos = 0;
+
+	// 3-bit packet type header
+	PACK_BITS(header, packet, base_pos, 3);
+
+	// Time
+	uint16_t year;
+	uint8_t month, day, hour, min, sec;
+	convert_datetime_to_epoch(gps_entry->info.schedTime, year, month, day, hour, min, sec);
+	PACK_BITS(day, packet, base_pos, 5);
+	PACK_BITS(hour, packet, base_pos, 5);
+	PACK_BITS(min, packet, base_pos, 6);
+
+	// GPS
+	if (gps_entry->info.valid) {
+		unsigned int lat = ArgosPacketBuilder::convert_latitude(gps_entry->info.lat);
+		PACK_BITS(lat, packet, base_pos, 21);
+		unsigned int lon = ArgosPacketBuilder::convert_longitude(gps_entry->info.lon);
+		PACK_BITS(lon, packet, base_pos, 22);
+		unsigned int gspeed = ArgosPacketBuilder::convert_speed((double)gps_entry->info.gSpeed);
+		PACK_BITS(gspeed, packet, base_pos, 7);
+		PACK_BITS(is_out_of_zone, packet, base_pos, 1);
+	} else {
+		PACK_BITS(0xFFFFFFFF, packet, base_pos, 21);
+		PACK_BITS(0xFFFFFFFF, packet, base_pos, 22);
+		PACK_BITS(0xFF, packet, base_pos, 7);
+		PACK_BITS(is_out_of_zone, packet, base_pos, 1);
+	}
+
+	// Battery
+	unsigned int batt = ArgosPacketBuilder::convert_battery_voltage((unsigned int)gps_entry->info.batt_voltage);
+	PACK_BITS(batt, packet, base_pos, 7);
+	PACK_BITS(is_low_battery, packet, base_pos, 1);
+
+	return base_pos;
+}
+
+KineisPacket ArgosPacketBuilder::build_rspb_long_packet(GPSLogEntry* gps_entry,
+		ServiceSensorData *pressure_sensor,
+		ServiceSensorData *thermistor_sensor,
+		ServiceSensorData *axl_sensor,
+		bool is_out_of_zone, bool is_low_battery,
+		unsigned int mortality_confidence,
+		unsigned int &size_bits) {
+
+	DEBUG_TRACE("ArgosPacketBuilder::build_rspb_long_packet");
+	KineisPacket packet;
+	packet.assign(RSPB_LONG_PACKET_BYTES, 0);
+
+	unsigned int base_pos = pack_rspb_common(packet, RSPB_LONG_HEADER, gps_entry, is_out_of_zone, is_low_battery);
+
+	// Pressure: value (15 bits) + temperature (14 bits)
+	if (pressure_sensor != nullptr) {
+		PACK_BITS((unsigned int)pressure_sensor->port[0], packet, base_pos, 15);
+		PACK_BITS((unsigned int)pressure_sensor->port[1], packet, base_pos, 14);
+	} else {
+		PACK_BITS(0, packet, base_pos, 15);
+		PACK_BITS(0, packet, base_pos, 14);
+	}
+
+	// Thermistor body temperature (14 bits)
+	if (thermistor_sensor != nullptr) {
+		PACK_BITS((unsigned int)thermistor_sensor->port[0], packet, base_pos, 14);
+	} else {
+		PACK_BITS(0, packet, base_pos, 14);
+	}
+
+	// AXL activity only (8 bits) — X/Y/Z and AXL temp dropped for RSPB
+	if (axl_sensor != nullptr) {
+		PACK_BITS((unsigned int)axl_sensor->port[4], packet, base_pos, 8);
+	} else {
+		PACK_BITS(0, packet, base_pos, 8);
+	}
+
+	// Mortality confidence (7 bits, 0-100%)
+	unsigned int conf = (mortality_confidence > 100) ? 100 : mortality_confidence;
+	PACK_BITS(conf, packet, base_pos, 7);
+
+	size_bits = base_pos;
+	packet.resize((size_bits+7)/8);
+
+	DEBUG_INFO("ArgosPacketBuilder::build_rspb_long_packet: %u bits | %s",
+			size_bits, Binascii::hexlify(packet).c_str());
+	return packet;
+}
+
+KineisPacket ArgosPacketBuilder::build_rspb_short_packet(GPSLogEntry* gps_entry,
+		ServiceSensorData *pressure_sensor,
+		ServiceSensorData *thermistor_sensor,
+		ServiceSensorData *axl_sensor,
+		bool is_out_of_zone, bool is_low_battery,
+		unsigned int mortality_confidence,
+		unsigned int &size_bits) {
+
+	DEBUG_TRACE("ArgosPacketBuilder::build_rspb_short_packet");
+	KineisPacket packet;
+	packet.assign(RSPB_SHORT_PACKET_BYTES, 0);
+
+	unsigned int base_pos = pack_rspb_common(packet, RSPB_SHORT_HEADER, gps_entry, is_out_of_zone, is_low_battery);
+
+	// Pressure value only (15 bits) — NO temperature (saves 14 bits for LDK)
+	if (pressure_sensor != nullptr) {
+		PACK_BITS((unsigned int)pressure_sensor->port[0], packet, base_pos, 15);
+	} else {
+		PACK_BITS(0, packet, base_pos, 15);
+	}
+
+	// Thermistor body temperature (14 bits)
+	if (thermistor_sensor != nullptr) {
+		PACK_BITS((unsigned int)thermistor_sensor->port[0], packet, base_pos, 14);
+	} else {
+		PACK_BITS(0, packet, base_pos, 14);
+	}
+
+	// AXL activity only (8 bits)
+	if (axl_sensor != nullptr) {
+		PACK_BITS((unsigned int)axl_sensor->port[4], packet, base_pos, 8);
+	} else {
+		PACK_BITS(0, packet, base_pos, 8);
+	}
+
+	// Mortality confidence (7 bits, 0-100%)
+	unsigned int conf = (mortality_confidence > 100) ? 100 : mortality_confidence;
+	PACK_BITS(conf, packet, base_pos, 7);
+
+	size_bits = base_pos;
+	packet.resize((size_bits+7)/8);
+
+	DEBUG_INFO("ArgosPacketBuilder::build_rspb_short_packet: %u bits | %s",
+			size_bits, Binascii::hexlify(packet).c_str());
 	return packet;
 }
 

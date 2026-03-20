@@ -332,8 +332,15 @@ enum class ParamID {
 	MORTALITY_DUTY_CYCLE_MODULO              = 204,
 	MORTALITY_ORIGINAL_MODULO                = 205,
 #endif
+	// === RSPB packet format selection (slot 206, visibility controlled by HAS_BOARD_RSPB) ===
+	RSPB_PACKET_FORMAT                       = 206,  // 0=RSPB_LONG (LDA2), 1=RSPB_SHORT (LDK)
+	// === Adaptive modulation radio configurations (slots 207-210) ===
+	ARGOS_RADIOCONF_LDK                      = 207,
+	ARGOS_RADIOCONF_LDA2                     = 208,
+	ARGOS_RADIOCONF_VLDA4                    = 209,
+	ARGOS_ADAPTIVE_MODULATION                = 210,  // bool: auto-select modulation based on packet size
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 206,
+	__PARAM_SIZE                             = 211,
 	__NULL_PARAM                             = 0xFFFF
 };
 

@@ -77,6 +77,10 @@ struct ArgosConfig {
 	unsigned int argos_tcxo_warmup_time;
 	unsigned int sensor_tx_enable;
 	unsigned int shutdown_ntime_sat;
+	bool adaptive_modulation;
+	std::string radioconf_ldk;
+	std::string radioconf_lda2;
+	std::string radioconf_vlda4;
 };
 
 enum class ConfigMode {
@@ -303,6 +307,11 @@ protected:
 		/* [203] MORTALITY_CONFIRM_DAYS */ 3U,
 		/* [204] MORTALITY_DUTY_CYCLE_MODULO */ 0U,
 		/* [205] MORTALITY_ORIGINAL_MODULO */ 0U,
+		/* [206] RSPB_PACKET_FORMAT */ 0U,  // 0=RSPB_LONG (LDA2), 1=RSPB_SHORT (LDK)
+		/* [207] ARGOS_RADIOCONF_LDK */ std::string("03921fb104b92859209b18abd009de96"),
+		/* [208] ARGOS_RADIOCONF_LDA2 */ std::string("3d678af16b5a572078f3dbc95a1104e7"),
+		/* [209] ARGOS_RADIOCONF_VLDA4 */ std::string("82d07f9d9ce081ee4492983672d75493"),
+		/* [210] ARGOS_ADAPTIVE_MODULATION */ (bool)false,
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,
@@ -775,6 +784,12 @@ public:
 		// Mark GNSS disabled if certification is set
 		if (argos_config.cert_tx_enable)
 			argos_config.gnss_en = false;
+
+		// Adaptive modulation configuration
+		argos_config.adaptive_modulation = read_param<bool>(ParamID::ARGOS_ADAPTIVE_MODULATION);
+		argos_config.radioconf_ldk = read_param<std::string>(ParamID::ARGOS_RADIOCONF_LDK);
+		argos_config.radioconf_lda2 = read_param<std::string>(ParamID::ARGOS_RADIOCONF_LDA2);
+		argos_config.radioconf_vlda4 = read_param<std::string>(ParamID::ARGOS_RADIOCONF_VLDA4);
 
 		// Set sensor TX enable based on configuration
 		argos_config.sensor_tx_enable = 0;

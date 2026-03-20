@@ -80,6 +80,10 @@ private:
 	void react(const KIM2CommEventRespError&) override;
 	void react(const KIM2CommEventUartError&) override;
 
+	// KineisDevice interface — runtime modulation switching
+	bool switch_modulation(KineisModulation mode, const std::string& rconf_hex) override;
+	KineisModulation get_current_modulation() const override;
+
 	// Private functions
 	bool send_AT(KIM2::ATCmd cmd, const std::optional<std::string>& params = std::nullopt,
 	             uint16_t timeout_ms = 1000);

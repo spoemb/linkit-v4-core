@@ -82,9 +82,34 @@ public:
 			ServiceSensorData *sea_temp_sensor,
 			ServiceSensorData *axl_sensor,
 			bool is_out_of_zone, bool is_low_battery,
-			unsigned int& size_bits,
-			unsigned int *mortality_confidence = nullptr
+			unsigned int& size_bits
 			);
+
+	// RSPB dedicated packet formats (bird tracker with mortality detection)
+	// RSPB Long (LDA2): header(3) + time(16) + GPS(51) + battery(8) + pressure(29) + thermistor(14) + activity(8) + mortality(7) = 136 bits
+	// RSPB Short (LDK): header(3) + time(16) + GPS(51) + battery(8) + pressure(15) + thermistor(14) + activity(8) + mortality(7) = 122 bits
+	static inline const unsigned int RSPB_LONG_HEADER            = 0b100;  // Type 4
+	static inline const unsigned int RSPB_SHORT_HEADER           = 0b101;  // Type 5
+	static inline const unsigned int RSPB_LONG_PACKET_BITS       = 136;
+	static inline const unsigned int RSPB_LONG_PACKET_BYTES      = 17;
+	static inline const unsigned int RSPB_SHORT_PACKET_BITS      = 122;
+	static inline const unsigned int RSPB_SHORT_PACKET_BYTES     = 16;
+
+	static KineisPacket build_rspb_long_packet(GPSLogEntry* gps,
+			ServiceSensorData *pressure_sensor,
+			ServiceSensorData *thermistor_sensor,
+			ServiceSensorData *axl_sensor,
+			bool is_out_of_zone, bool is_low_battery,
+			unsigned int mortality_confidence,
+			unsigned int &size_bits);
+
+	static KineisPacket build_rspb_short_packet(GPSLogEntry* gps,
+			ServiceSensorData *pressure_sensor,
+			ServiceSensorData *thermistor_sensor,
+			ServiceSensorData *axl_sensor,
+			bool is_out_of_zone, bool is_low_battery,
+			unsigned int mortality_confidence,
+			unsigned int &size_bits);
 };
 
 class ArgosTxScheduler {
@@ -173,4 +198,9 @@ private:
 	void process_gnss_burst();
 	void process_sensor_burst();
 	void process_doppler_burst();
+
+	// Adaptive modulation: switch RCONF if needed before TX
+	bool ensure_modulation(KineisModulation target);
+	std::string get_rconf_for_modulation(KineisModulation mode);
+	KineisModulation m_last_preconfig_mod;
 };

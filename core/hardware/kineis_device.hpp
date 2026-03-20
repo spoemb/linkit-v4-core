@@ -74,4 +74,11 @@ public:
 	                              std::string *seckey, std::string *radioconf) {
 		(void)dec_id; (void)address; (void)seckey; (void)radioconf;
 	}
+	// Switch radio modulation at runtime: write RCONF, save to flash, reload KMAC.
+	// rconf_hex: 32-char hex string for the target modulation's radio configuration.
+	// Returns true on success.
+	virtual bool switch_modulation(KineisModulation mode, const std::string& rconf_hex) {
+		(void)mode; (void)rconf_hex; return true;
+	}
+	virtual KineisModulation get_current_modulation() const { return KineisModulation::LDA2; }
 };

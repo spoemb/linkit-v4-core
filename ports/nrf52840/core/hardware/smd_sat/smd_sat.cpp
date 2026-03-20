@@ -387,8 +387,12 @@ void SmdSat::set_frequency(double freq_mhz) {
 
 void SmdSat::send(const KineisModulation mode, const KineisPacket& user_payload, const unsigned int payload_length)
 {
-	(void)mode;
-	DEBUG_TRACE("SmdSat::%s: length %u", __func__, payload_length);
+	DEBUG_TRACE("SmdSat::%s: length %u mode=%d current=%d", __func__, payload_length, (int)mode, (int)m_modulation);
+	SmdArgosModulation requested = kineis_to_smd_mod(mode);
+	if (requested != m_modulation) {
+		DEBUG_WARN("SmdSat::%s: TX mode %d != current modulation %d — call switch_modulation() first",
+		           __func__, (int)requested, (int)m_modulation);
+	}
 
 	unsigned int max_payload_size = 0;
 	switch(m_modulation) {
@@ -696,6 +700,99 @@ void SmdSat::read_credentials(unsigned int *dec_id, unsigned int *address, std::
 		GPIOPins::release_sensors_pwr();
 		nrf_gpio_cfg_default(BSP::GPIO_Inits[SAT_RESET].pin_number);
 	}
+}
+
+// ============================================================================
+// Runtime modulation switching
+// ============================================================================
+
+static SmdArgosModulation kineis_to_smd_mod(KineisModulation mode) {
+	switch (mode) {
+		case KineisModulation::LDK:  return ARGOS_MOD_LDK;
+		case KineisModulation::VLDA4: return ARGOS_MOD_VLDA4;
+		case KineisModulation::LDA2:
+		default:                      return ARGOS_MOD_LDA2;
+	}
+}
+
+static KineisModulation smd_to_kineis_mod(SmdArgosModulation mode) {
+	switch (mode) {
+		case ARGOS_MOD_LDK:  return KineisModulation::LDK;
+		case ARGOS_MOD_VLDA4: return KineisModulation::VLDA4;
+		case ARGOS_MOD_LDA2:
+		default:              return KineisModulation::LDA2;
+	}
+}
+
+bool SmdSat::switch_modulation(KineisModulation mode, const std::string& rconf_hex) {
+	SmdArgosModulation target = kineis_to_smd_mod(mode);
+	if (target == m_modulation) {
+		DEBUG_TRACE("SmdSat::%s: already in target modulation %d", __func__, (int)target);
+		return true;
+	}
+
+	DEBUG_INFO("SmdSat::%s: switching %d -> %d", __func__, (int)m_modulation, (int)target);
+
+	if (rconf_hex.size() != 32) {
+		DEBUG_ERROR("SmdSat::%s: invalid RCONF hex length %u (expected 32)", __func__, (unsigned)rconf_hex.size());
+		return false;
+	}
+
+	// SMD must be powered on (not stopped) for RCONF write
+	bool was_stopped = (m_state == SmdSatState::stopped);
+	if (was_stopped) {
+		DEBUG_ERROR("SmdSat::%s: SMD is stopped, cannot switch modulation", __func__);
+		return false;
+	}
+
+	auto wait_cmd = []() { nrf_delay_ms(SMDSAT_DELAY_CMD_MS * 2); };
+
+	// 1. Write RCONF
+	std::string rconf_bin = Binascii::unhexlify(rconf_hex);
+	smd_uint8_array_t rconf_struct = {static_cast<uint16_t>(rconf_bin.size()),
+	                                  reinterpret_cast<uint8_t *>(rconf_bin.data())};
+	try {
+		m_cmd.set_radio_conf(&rconf_struct);
+	} catch (...) {
+		DEBUG_ERROR("SmdSat::%s: failed to write RCONF", __func__);
+		return false;
+	}
+
+	wait_cmd();
+
+	// 2. Save RCONF to flash
+	try {
+		if (!m_cmd.save_radio_conf()) {
+			DEBUG_ERROR("SmdSat::%s: failed to save RCONF", __func__);
+			return false;
+		}
+	} catch (...) {
+		DEBUG_ERROR("SmdSat::%s: save_radio_conf exception", __func__);
+		return false;
+	}
+
+	wait_cmd();
+
+	// 3. Reload KMAC profile 1
+	try {
+		m_cmd.load_kmac_profil(1);
+	} catch (...) {
+		DEBUG_ERROR("SmdSat::%s: failed to reload KMAC", __func__);
+		return false;
+	}
+
+	wait_cmd();
+
+	// Update cached modulation
+	m_modulation = target;
+	is_kmac_profil_loaded = true;
+
+	DEBUG_INFO("SmdSat::%s: modulation switched to %d OK", __func__, (int)target);
+	return true;
+}
+
+KineisModulation SmdSat::get_current_modulation() const {
+	return smd_to_kineis_mod(m_modulation);
 }
 
 // ============================================================================
