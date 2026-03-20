@@ -227,7 +227,11 @@ void OTAFlashFileUpdater::complete_file_transfer()
 void OTAFlashFileUpdater::apply_file_update() {
 	DEBUG_TRACE("OTAFlashFileUpdater::apply_file_update");
 	if (m_file_id == OTAFileIdentifier::MCU_FIRMWARE) {
-		DEBUG_INFO("OTAFlashFileUpdater::apply_file_update: device reset required for update to take effect");
+		DEBUG_INFO("OTAFlashFileUpdater::apply_file_update: resetting device to apply firmware update");
+		// Delay briefly to allow BLE status notification to be sent before reset
+		PMU::delay_ms(500);
+		PMU::reset(false);
+		// Not reached — device reboots, bootloader applies firmware from QSPI flash
 	}
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	else if (m_file_id == OTAFileIdentifier::SMD_FIRMWARE_UART ||

@@ -169,7 +169,7 @@ OPT = -Os -g3
 
 # C flags common to all targets
 CFLAGS += $(OPT)
-CFLAGS += -DBOARD_LINKITV4_V1
+CFLAGS += -DBOARD_LINKIT_V4
 CFLAGS += -DCONFIG_GPIO_AS_PINRESET
 CFLAGS += -DFLOAT_ABI_HARD
 CFLAGS += -DMBR_PRESENT
@@ -188,7 +188,7 @@ CFLAGS += -fno-builtin -fshort-enums
 CXXFLAGS += $(OPT)
 # Assembler flags common to all targets
 ASMFLAGS += -g3
-ASMFLAGS += -DBOARD_LINKITV4_V1
+ASMFLAGS += -DBOARD_LINKIT_V4
 ASMFLAGS += -mcpu=cortex-m4
 ASMFLAGS += -mthumb -mabi=aapcs
 ASMFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
