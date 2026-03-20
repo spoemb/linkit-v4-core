@@ -35,8 +35,9 @@ enum class DTECommand {
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	SMDDFU_REQ,    // SMD satellite module DFU command
 	SMDTST_REQ,    // SMD satellite module SPI applicative test
-	SMDCD_REQ,
+	SMDCD_REQ,     // SMD credentials write to config store
 #endif
+	SATVF_REQ,     // Satellite credentials verify (read-back from hardware, works on SMD + KIM2)
 #if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
 	LORATX_REQ,    // LoRa test transmission
 	LORABR_REQ,    // LoRa UART bridge/passthrough (RUI3 AT access)
@@ -73,6 +74,7 @@ enum class DTECommand {
 	SMDTST_RESP,   // SMD satellite module SPI applicative test response
 	SMDCD_RESP,
 #endif
+	SATVF_RESP,    // Satellite credentials verify response (SMD + KIM2)
 #if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
 	LORATX_RESP,   // LoRa test transmission response
 	LORABR_RESP,   // LoRa UART bridge/passthrough response

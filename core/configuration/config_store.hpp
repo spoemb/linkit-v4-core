@@ -329,6 +329,7 @@ protected:
 	};
 
 	std::array<BaseType, MAX_CONFIG_ITEMS> m_params;
+	bool m_credentials_dirty = true;  // true on first boot to ensure initial write
 	uint8_t m_battery_level = 0;
 	uint16_t m_battery_voltage = 0;
 	bool     m_is_battery_level_low = false;
@@ -514,12 +515,24 @@ public:
 		try {
 			if (is_valid()) {
 				m_params.at((unsigned)param_id) = value;
+				// Mark credentials dirty when credential params change
+				if (param_id == ParamID::ARGOS_DECID ||
+				    param_id == ParamID::ARGOS_HEXID ||
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+				    param_id == ParamID::ARGOS_SECKEY ||
+#endif
+				    param_id == ParamID::ARGOS_RADIOCONF) {
+					m_credentials_dirty = true;
+				}
 			} else
 				throw CONFIG_STORE_CORRUPTED;
 		} catch (...) {
 			throw CONFIG_STORE_CORRUPTED;
 		}
 	}
+
+	bool is_credentials_dirty() const { return m_credentials_dirty; }
+	void clear_credentials_dirty() { m_credentials_dirty = false; }
 
 	void save_params() {
 		try {

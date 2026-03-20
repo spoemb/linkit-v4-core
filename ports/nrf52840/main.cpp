@@ -131,6 +131,7 @@ DTEHandler *dte_handler;
 RTC *rtc;
 BatteryMonitor *battery_monitor;
 GPSDevice *gps_device;
+KineisDevice *kineis_device_instance = nullptr;  // Generic satellite device (SMD or KIM2)
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 SmdSat *smd_sat_instance = nullptr;  // For SMD DFU OTA support
 #endif
@@ -701,18 +702,22 @@ int main()
 #endif
 		static SmdSat argos_smd(smd_cmd);
 		smd_sat_instance = &argos_smd;  // Store pointer for SMD DFU OTA
+		kineis_device_instance = &argos_smd;
 		static ArgosTxService argos_tx_service(argos_smd);
 	} catch (...) {
 		DEBUG_TRACE("SMD not detected");
 		smd_sat_instance = nullptr;
+		kineis_device_instance = nullptr;
 	}
 #else
 	DEBUG_TRACE("KIM2...");
 	try {
 		static KIM2Device kim2;
+		kineis_device_instance = &kim2;
 		static ArgosTxService argos_tx_service(kim2);
 	} catch (...) {
 		DEBUG_TRACE("KIM2 not detected");
+		kineis_device_instance = nullptr;
 	}
 #endif
 

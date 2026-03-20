@@ -38,6 +38,7 @@ MemoryAccess *memory_access;
 RTC *rtc;
 BatteryMonitor *battery_monitor;
 GPSDevice *gps_device;
+KineisDevice *kineis_device_instance = nullptr;
 LoRaDevice *lora_device_instance = nullptr;
 #if ENABLE_MORTALITY_SENSOR
 #include "mortality_service.hpp"

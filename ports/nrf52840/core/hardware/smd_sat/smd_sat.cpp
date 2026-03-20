@@ -18,6 +18,9 @@
 extern Scheduler *system_scheduler;
 extern Timer *system_timer;
 
+#include "config_store.hpp"
+extern ConfigurationStore *configuration_store;
+
 // ============================================================================
 // Constructor / Destructor
 // ============================================================================
@@ -156,6 +159,7 @@ void SmdSat::state_starting()
 {
 	m_is_first_tx = true;
 	is_kmac_profil_loaded = false;
+	m_credentials_written = false;
 	m_cmd.init();
 	m_state_counter = 3;
 	m_next_delay = 0;
@@ -228,6 +232,21 @@ void SmdSat::state_load_kmac_enter() {}
 void SmdSat::state_load_kmac_exit() {}
 
 void SmdSat::state_load_kmac() {
+	// Write credentials from config store only if they changed (PARMW on IDP12/IDT06/IDP13/IDP14)
+	if (!m_credentials_written) {
+		m_credentials_written = true;
+		if (configuration_store && configuration_store->is_credentials_dirty()) {
+			if (!write_credentials_from_config()) {
+				DEBUG_ERROR("SmdSat::%s: credential write failed", __func__);
+				SMD_STATE_CHANGE(load_kmac, error);
+				return;
+			}
+			configuration_store->clear_credentials_dirty();
+		} else {
+			DEBUG_TRACE("SmdSat::%s: credentials unchanged, skipping write", __func__);
+		}
+	}
+
 	uint8_t kmac_status = 0;
 	m_cmd.get_kmac_status(&kmac_status);
 	if (kmac_status == MAC_OK) {
@@ -450,7 +469,88 @@ void SmdSat::set_tx_power(unsigned int power) {
 }
 
 // ============================================================================
-// Credentials
+// Auto-write credentials from config store at boot
+// ============================================================================
+
+bool SmdSat::write_credentials_from_config() {
+	if (!configuration_store) return false;
+
+	auto wait_cmd = []() { nrf_delay_ms(SMDSAT_DELAY_CMD_MS * 2); };
+
+	unsigned int dec_id = configuration_store->read_param<unsigned int>(ParamID::ARGOS_DECID);
+	unsigned int address = configuration_store->read_param<unsigned int>(ParamID::ARGOS_HEXID);
+	std::string seckey = configuration_store->read_param<std::string>(ParamID::ARGOS_SECKEY);
+	std::string radioconf = configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF);
+
+	// Skip if credentials are not configured yet
+	if (seckey.empty() || radioconf.empty()) {
+		DEBUG_WARN("SmdSat::%s: credentials not configured (seckey=%u rconf=%u) | skipping",
+		           __func__, (unsigned)seckey.size(), (unsigned)radioconf.size());
+		return true;  // Not an error, just nothing to write
+	}
+
+	DEBUG_INFO("SmdSat::%s: writing credentials from config store (id=%u addr=0x%08X)",
+	           __func__, dec_id, address);
+
+	// Set ID
+	try { m_cmd.set_id(dec_id); } catch (...) {
+		DEBUG_ERROR("SmdSat::%s: failed to set ID", __func__); return false;
+	}
+	wait_cmd();
+
+	// Set Address
+	{
+		uint8_t address_data[4] = {
+			static_cast<uint8_t>((address >> 24) & 0xFF),
+			static_cast<uint8_t>((address >> 16) & 0xFF),
+			static_cast<uint8_t>((address >> 8) & 0xFF),
+			static_cast<uint8_t>(address & 0xFF)
+		};
+		smd_uint8_array_t address_val = {SMDSAT_CMD_WRITE_ADDR_LEN-1, address_data};
+		try { m_cmd.set_address(&address_val); } catch (...) {
+			DEBUG_ERROR("SmdSat::%s: failed to set address", __func__); return false;
+		}
+	}
+	wait_cmd();
+
+	// Set Security Key
+	{
+		std::string seckey_bin = Binascii::unhexlify(seckey);
+		smd_uint8_array_t seckey_struct = {static_cast<uint16_t>(seckey_bin.size()),
+		                                   reinterpret_cast<uint8_t *>(seckey_bin.data())};
+		try { m_cmd.set_seckey(&seckey_struct); } catch (...) {
+			DEBUG_ERROR("SmdSat::%s: failed to set seckey", __func__); return false;
+		}
+	}
+	wait_cmd();
+
+	// Set Radio Configuration
+	{
+		std::string rconf_bin = Binascii::unhexlify(radioconf);
+		smd_uint8_array_t rconf_struct = {static_cast<uint16_t>(rconf_bin.size()),
+		                                  reinterpret_cast<uint8_t *>(rconf_bin.data())};
+		try { m_cmd.set_radio_conf(&rconf_struct); } catch (...) {
+			DEBUG_ERROR("SmdSat::%s: failed to set radio conf", __func__); return false;
+		}
+	}
+	wait_cmd();
+
+	// Save RCONF to flash
+	try {
+		if (!m_cmd.save_radio_conf()) {
+			DEBUG_ERROR("SmdSat::%s: failed to save RCONF", __func__); return false;
+		}
+	} catch (...) {
+		DEBUG_ERROR("SmdSat::%s: save_radio_conf exception", __func__); return false;
+	}
+	wait_cmd();
+
+	DEBUG_INFO("SmdSat::%s: credentials written successfully", __func__);
+	return true;
+}
+
+// ============================================================================
+// Credentials (legacy API, kept for direct hardware access if needed)
 // ============================================================================
 
 void SmdSat::set_credentials(unsigned int dec_id, unsigned int address, const std::string& seckey, const std::string& radioconf) {

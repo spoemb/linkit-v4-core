@@ -624,49 +624,77 @@ std::string DTEHandler::SMDCD_REQ(int error_code, std::vector<BaseType>& arg_lis
 		return DTEEncoder::encode(DTECommand::SMDCD_RESP, error_code);
 	}
 
-	// Extract the Argos SMD ID
+	// Extract credentials from arguments
 	unsigned int dec_id = std::get<unsigned int>(arg_list[0]);
-	// Extract the Argos SMD ADDR
 	unsigned int address = std::get<unsigned int>(arg_list[1]);
-	// Extract the Argos SMD Sec key
 	std::string seckey = std::get<std::string>(arg_list[2]);
-	// Extract the Argos SMD radio conf
 	std::string radioconf = std::get<std::string>(arg_list[3]);
 
 	try {
-		DEBUG_TRACE("SMDCD_REQ...");
+		DEBUG_TRACE("SMDCD_REQ: writing credentials to config store (dirty flag set)");
 
-		if (!smd_sat_instance) {
-			return smd_not_available_error("SMDCD_REQ", DTECommand::SMDCD_RESP);
-		}
-
-		// If not already active then subscribe to events and setup a sufficiently
-		// long idle period before the driver shuts off argos power
-		if (!m_sat_device_active) {
-			smd_sat_instance->subscribe(*this);
-			smd_sat_instance->set_idle_timeout(30000);
-			m_sat_device_active = true;
-		}
-
-		// Write credentials to SMD
-		smd_sat_instance->set_credentials(dec_id, address, seckey, radioconf);
-
-		// Read back credentials from SMD to confirm
-		smd_sat_instance->read_credentials(&dec_id, &address, &seckey, &radioconf);
-
-		// Update configuration store with confirmed values
+		// Write credentials to config store — dirty flag is set automatically
+		// Hardware write happens at next SMD power-on via state_load_kmac
 		configuration_store->write_param(ParamID::ARGOS_DECID, dec_id);
 		configuration_store->write_param(ParamID::ARGOS_HEXID, address);
 		configuration_store->write_param(ParamID::ARGOS_SECKEY, seckey);
 		configuration_store->write_param(ParamID::ARGOS_RADIOCONF, radioconf);
 		configuration_store->save_params();
+
+		DEBUG_INFO("SMDCD_REQ: credentials saved (id=%u addr=0x%08X) | will be written to SMD at next TX",
+		           dec_id, address);
 	} catch (...) {
 		error_code = (int)DTEError::INCORRECT_DATA;
 	}
 
 	return DTEEncoder::encode(DTECommand::SMDCD_RESP, error_code);
 }
+
+}
 #endif
+
+std::string DTEHandler::SATVF_REQ(int error_code, std::vector<BaseType>& arg_list) {
+	(void)arg_list;
+
+	if (error_code) {
+		return DTEEncoder::encode(DTECommand::SATVF_RESP, error_code);
+	}
+
+	try {
+		if (!kineis_device_instance) {
+			DEBUG_ERROR("SATVF_REQ: no satellite device available");
+			return DTEEncoder::encode(DTECommand::SATVF_RESP, (int)DTEError::INCORRECT_DATA);
+		}
+
+		// Read credentials from satellite hardware (SMD or KIM2)
+		unsigned int hw_id = 0, hw_addr = 0;
+		std::string hw_seckey, hw_rconf;
+		kineis_device_instance->read_credentials(&hw_id, &hw_addr, &hw_seckey, &hw_rconf);
+
+		// Read credentials from config store
+		unsigned int cfg_id = configuration_store->read_param<unsigned int>(ParamID::ARGOS_DECID);
+		unsigned int cfg_addr = configuration_store->read_param<unsigned int>(ParamID::ARGOS_HEXID);
+
+		// Compare ID and address
+		bool match = (hw_id == cfg_id && hw_addr == cfg_addr);
+		DEBUG_INFO("SATVF: hw_id=%u cfg_id=%u hw_addr=0x%08X cfg_addr=0x%08X match=%d",
+		           hw_id, cfg_id, hw_addr, cfg_addr, match);
+
+		// Encode response: id,addr,seckey,radioconf,match
+		std::vector<BaseType> resp_args;
+		resp_args.push_back(hw_id);
+		resp_args.push_back(hw_addr);
+		resp_args.push_back(hw_seckey);
+		resp_args.push_back(hw_rconf);
+		resp_args.push_back(match ? 1U : 0U);
+
+		return DTEEncoder::encode(DTECommand::SATVF_RESP, resp_args);
+	} catch (...) {
+		error_code = (int)DTEError::INCORRECT_DATA;
+	}
+
+	return DTEEncoder::encode(DTECommand::SATVF_RESP, error_code);
+}
 
 std::string DTEHandler::ARGOSTX_REQ(int error_code, std::vector<BaseType>& arg_list) {
 	if (error_code) {
@@ -1413,6 +1441,9 @@ DTEAction DTEHandler::handle_dte_message(const std::string& req, std::string& re
 		resp = SMDCD_REQ(error_code, arg_list);
 		break;
 #endif
+	case DTECommand::SATVF_REQ:
+		resp = SATVF_REQ(error_code, arg_list);
+		break;
 	case DTECommand::SATDP_REQ:
 		resp = SATDP_REQ(error_code, arg_list);
 		break;

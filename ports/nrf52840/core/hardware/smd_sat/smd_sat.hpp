@@ -49,6 +49,7 @@ private:
 	unsigned int m_next_delay;
 	bool m_stopping;
 	bool is_kmac_profil_loaded = false;
+	bool m_credentials_written = false;
 
 	// TX state
 	KineisPacket m_tx_buffer;
@@ -64,6 +65,7 @@ private:
 
 	void power_off();
 	void power_on();
+	bool write_credentials_from_config();
 
 	// State machine functionality
 	void state_machine(bool use_scheduler=true);

@@ -23,6 +23,7 @@
 #include "smd_sat.hpp"
 extern SmdSat *smd_sat_instance;
 #endif
+extern KineisDevice *kineis_device_instance;
 
 #if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
 #include "lora_rak3172.hpp"
@@ -171,6 +172,7 @@ public:
 	static std::string SMDTST_REQ(int error_code, std::vector<BaseType>& arg_list);
 	std::string SMDCD_REQ(int error_code, std::vector<BaseType>& arg_list);
 #endif
+	std::string SATVF_REQ(int error_code, std::vector<BaseType>& arg_list);
 
 #if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
 	std::string LORATX_REQ(int error_code, std::vector<BaseType>& arg_list);

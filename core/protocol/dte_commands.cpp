@@ -548,6 +548,14 @@ const DTECommandMap command_map[] = {
 		}
 	},
 #endif
+	// Satellite credentials verify — read-back from hardware and compare with config store
+	// Works on both SMD and KIM2
+	// Usage: $SATVF#000;\r
+	{
+		.name = "SATVF",
+		.command = DTECommand::SATVF_REQ,
+		.prototype = {}
+	},
 #if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
 	// LoRa test transmission
 	// Usage: $LORATX#001;<size>\r
@@ -1307,6 +1315,13 @@ const DTECommandMap command_map[] = {
 		}
 	},
 #endif
+	{
+		.name = "SATVF",
+		.command = DTECommand::SATVF_RESP,
+		.prototype =
+		{
+		}
+	},
 #if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
 	{
 		.name = "LORATX",
