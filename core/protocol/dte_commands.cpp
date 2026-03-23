@@ -960,8 +960,48 @@ const DTECommandMap command_map[] = {
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false
-			}
+			},
+			{
+			.name = "sea_temp",
+			.key = "",
+			.encoding = BaseEncoding::FLOAT,
+			.min_value = 0.0,
+			.max_value = 0.0,
+			.permitted_values = {},
+			.is_implemented = false,
+			.is_writable = false
+		},
+		{
+			.name = "als_lux",
+			.key = "",
+			.encoding = BaseEncoding::FLOAT,
+			.min_value = 0.0,
+			.max_value = 0.0,
+			.permitted_values = {},
+			.is_implemented = false,
+			.is_writable = false
+		},
+		{
+			.name = "ph",
+			.key = "",
+			.encoding = BaseEncoding::FLOAT,
+			.min_value = 0.0,
+			.max_value = 0.0,
+			.permitted_values = {},
+			.is_implemented = false,
+			.is_writable = false
+		},
+		{
+			.name = "sensor_status",
+			.key = "",
+			.encoding = BaseEncoding::UINT,
+			.min_value = 0U,
+			.max_value = 0xFFU,
+			.permitted_values = {},
+			.is_implemented = false,
+			.is_writable = false
 		}
+	}
 	},
 	// PWRON response - simple acknowledgement
 	{

@@ -848,18 +848,29 @@ std::string DTEHandler::SENSR_REQ(int error_code, std::vector<BaseType>& arg_lis
 	double accel_temp = 0.0;
 	unsigned int activity = 0;
 	double thermistor_temp = 0.0;
+	double sea_temp_c = 0.0;
+	double als_lux = 0.0;
+	double ph_value = 0.0;
+
+	// Status bitmask: bit set = sensor OK, bit clear = sensor unavailable
+	// Bit 0=battery, 1=pressure, 2=gnss, 3=accel, 4=thermistor, 5=sea_temp, 6=als, 7=ph
+	// Upper byte: bit 8=not_compiled (sensor not in build), bit 9=not_enabled (disabled in config)
+	// Per-sensor status: 0x01=OK, 0x02=not_compiled, 0x03=not_enabled, 0x04=read_error
+	unsigned int sensor_status = 0;  // Each bit = sensor OK
 
 	if (error_code) {
 		return DTEEncoder::encode(DTECommand::SENSR_RESP, error_code,
 			batt_mv, batt_soc, pressure, temperature, altitude, lat, lon, hdop, num_sv,
-			accel_x, accel_y, accel_z, accel_temp, activity, thermistor_temp);
+			accel_x, accel_y, accel_z, accel_temp, activity, thermistor_temp,
+			sea_temp_c, als_lux, ph_value, sensor_status);
 	}
 
 	// Parse parameters
 	if (arg_list.size() < 2) {
 		return DTEEncoder::encode(DTECommand::SENSR_RESP, (int)DTEError::MISSING_ARGUMENT,
 			batt_mv, batt_soc, pressure, temperature, altitude, lat, lon, hdop, num_sv,
-			accel_x, accel_y, accel_z, accel_temp, activity, thermistor_temp);
+			accel_x, accel_y, accel_z, accel_temp, activity, thermistor_temp,
+			sea_temp_c, als_lux, ph_value, sensor_status);
 	}
 
 	unsigned int sensors_mask = std::get<unsigned int>(arg_list[0]);
@@ -868,40 +879,43 @@ std::string DTEHandler::SENSR_REQ(int error_code, std::vector<BaseType>& arg_lis
 
 	DEBUG_INFO("DTEHandler::SENSR_REQ: sensors_mask=0x%02X timeout=%us", sensors_mask, timeout_s);
 
-	// Read battery (SensrType::BATTERY = 0x01)
+	// Read battery (bit 0 = 0x01)
 	if (sensors_mask & 0x01) {
 		if (battery_monitor) {
-			battery_monitor->update();  // Refresh readings
+			battery_monitor->update();
 			batt_mv = battery_monitor->get_voltage();
 			batt_soc = battery_monitor->get_level();
+			sensor_status |= (1 << 0);  // Battery OK
 			DEBUG_TRACE("SENSR: Battery %umV | %u%%", batt_mv, batt_soc);
 		} else {
 			DEBUG_WARN("SENSR: Battery monitor not available");
 		}
 	}
 
-	// Read pressure sensor (SensrType::PRESSURE = 0x02)
+	// Read pressure sensor (bit 1 = 0x02)
 	if (sensors_mask & 0x02) {
+#if ENABLE_PRESSURE_SENSOR
 		try {
 			Sensor& prs = SensorManager::find_by_name("PRS");
-			pressure = prs.read(0);      // Channel 0 = pressure (bar)
-			temperature = prs.read(1);   // Channel 1 = temperature (C)
-			// Compute barometric altitude: altitude = 44330 * (1 - (P/P0)^(1/5.255))
+			pressure = prs.read(0);
+			temperature = prs.read(1);
 			double sea_level_hpa = 1013.25;
 			prs.calibration_read(sea_level_hpa, 0);
 			double pressure_hpa = pressure * 1000.0;
 			if (sea_level_hpa > 0.0 && pressure_hpa > 0.0) {
 				altitude = 44330.0 * (1.0 - std::pow(pressure_hpa / sea_level_hpa, 1.0 / 5.255));
 			}
-			DEBUG_TRACE("SENSR: Pressure %.4f bar | Temp %.2f C | Altitude %.2f m", pressure, temperature, altitude);
+			sensor_status |= (1 << 1);  // Pressure OK
+			DEBUG_TRACE("SENSR: Pressure %.4f bar | Temp %.2f C | Alt %.2f m", pressure, temperature, altitude);
 		} catch (...) {
-			DEBUG_WARN("SENSR: Pressure sensor not available");
-			// Leave pressure/temperature/altitude at defaults (0.0)
+			DEBUG_WARN("SENSR: Pressure sensor read error");
 		}
+#else
+		DEBUG_WARN("SENSR: Pressure sensor not compiled in this build");
+#endif
 	}
 
-	// Read GNSS (SensrType::GNSS = 0x04)
-	// Note: Currently returns cached last known position, not live acquisition
+	// Read GNSS (bit 2 = 0x04)
 	if (sensors_mask & 0x04) {
 		const GPSLogEntry& gps_entry = configuration_store->get_last_gps_entry();
 		if (gps_entry.info.valid) {
@@ -909,54 +923,104 @@ std::string DTEHandler::SENSR_REQ(int error_code, std::vector<BaseType>& arg_lis
 			lon = gps_entry.info.lon;
 			hdop = gps_entry.info.hDOP;
 			num_sv = gps_entry.info.numSV;
-			DEBUG_TRACE("SENSR: GNSS lat=%.6f lon=%.6f hdop=%.1f numSV=%u",
-				lat, lon, hdop, num_sv);
+			sensor_status |= (1 << 2);  // GNSS OK
+			DEBUG_TRACE("SENSR: GNSS lat=%.6f lon=%.6f hdop=%.1f numSV=%u", lat, lon, hdop, num_sv);
 		} else {
-			DEBUG_WARN("SENSR: No valid GNSS fix available (returning cached/invalid)");
-			// Leave at defaults - hdop=99.9 indicates no fix
+			DEBUG_WARN("SENSR: No valid GNSS fix available");
 		}
 	}
 
-	// Read accelerometer (SensrType::ACCEL = 0x08)
-#if ENABLE_AXL_SENSOR
+	// Read accelerometer (bit 3 = 0x08)
 	if (sensors_mask & 0x08) {
+#if ENABLE_AXL_SENSOR
 		try {
 			Sensor& axl = SensorManager::find_by_name("AXL");
-			// Channel 1 triggers read_xyz and returns X
-			accel_x = axl.read(1);  // X axis (g-force)
-			accel_y = axl.read(2);  // Y axis (g-force, cached)
-			accel_z = axl.read(3);  // Z axis (g-force, cached)
-			accel_temp = axl.read(0);  // Temperature (°C, already converted by BMA400)
-			activity = (unsigned int)axl.read(4);  // Activity level (0-255)
-			DEBUG_TRACE("SENSR: Accel X=%.3f Y=%.3f Z=%.3f T=%.1f C activity=%u",
+			accel_x = axl.read(1);
+			accel_y = axl.read(2);
+			accel_z = axl.read(3);
+			accel_temp = axl.read(0);
+			activity = (unsigned int)axl.read(4);
+			sensor_status |= (1 << 3);  // AXL OK
+			DEBUG_TRACE("SENSR: Accel X=%.3f Y=%.3f Z=%.3f T=%.1f activity=%u",
 				accel_x, accel_y, accel_z, accel_temp, activity);
 		} catch (...) {
-			DEBUG_WARN("SENSR: Accelerometer not available");
-			// Leave accel values at defaults (0.0)
+			DEBUG_WARN("SENSR: Accelerometer read error");
 		}
-	}
 #else
-	(void)(sensors_mask & 0x08);  // Suppress unused warning
+		DEBUG_WARN("SENSR: Accelerometer not compiled in this build");
 #endif
+	}
 
-	// Read thermistor (SensrType::THERMISTOR = 0x10)
-#if ENABLE_THERMISTOR_SENSOR
+	// Read thermistor (bit 4 = 0x10)
 	if (sensors_mask & 0x10) {
+#if ENABLE_THERMISTOR_SENSOR
 		try {
 			Sensor& therm = SensorManager::find_by_name("THERMISTOR");
-			thermistor_temp = therm.read(0);  // Channel 0 = temperature (°C)
+			thermistor_temp = therm.read(0);
+			sensor_status |= (1 << 4);  // Thermistor OK
 			DEBUG_TRACE("SENSR: Thermistor %.2f C", thermistor_temp);
 		} catch (...) {
-			DEBUG_WARN("SENSR: Thermistor not available");
+			DEBUG_WARN("SENSR: Thermistor read error");
 		}
-	}
 #else
-	(void)(sensors_mask & 0x10);  // Suppress unused warning
+		DEBUG_WARN("SENSR: Thermistor not compiled in this build");
 #endif
+	}
+
+	// Read sea temperature (bit 5 = 0x20)
+	if (sensors_mask & 0x20) {
+#if ENABLE_SEA_TEMP_SENSOR
+		try {
+			Sensor& sea = SensorManager::find_by_name("SEA_TEMP");
+			sea_temp_c = sea.read(0);
+			sensor_status |= (1 << 5);  // Sea temp OK
+			DEBUG_TRACE("SENSR: Sea temp %.3f C", sea_temp_c);
+		} catch (...) {
+			DEBUG_WARN("SENSR: Sea temperature read error");
+		}
+#else
+		DEBUG_WARN("SENSR: Sea temperature not compiled in this build");
+#endif
+	}
+
+	// Read ambient light (bit 6 = 0x40)
+	if (sensors_mask & 0x40) {
+#if ENABLE_ALS_SENSOR
+		try {
+			Sensor& als = SensorManager::find_by_name("ALS");
+			als_lux = als.read(0);
+			sensor_status |= (1 << 6);  // ALS OK
+			DEBUG_TRACE("SENSR: ALS %.1f lux", als_lux);
+		} catch (...) {
+			DEBUG_WARN("SENSR: ALS read error");
+		}
+#else
+		DEBUG_WARN("SENSR: ALS not compiled in this build");
+#endif
+	}
+
+	// Read pH (bit 7 = 0x80)
+	if (sensors_mask & 0x80) {
+#if ENABLE_PH_SENSOR
+		try {
+			Sensor& ph = SensorManager::find_by_name("PH");
+			ph_value = ph.read(0);
+			sensor_status |= (1 << 7);  // pH OK
+			DEBUG_TRACE("SENSR: pH %.3f", ph_value);
+		} catch (...) {
+			DEBUG_WARN("SENSR: pH read error");
+		}
+#else
+		DEBUG_WARN("SENSR: pH not compiled in this build");
+#endif
+	}
+
+	DEBUG_INFO("DTEHandler::SENSR_REQ: sensor_status=0x%02X (requested=0x%02X)", sensor_status, sensors_mask);
 
 	return DTEEncoder::encode(DTECommand::SENSR_RESP, (int)DTEError::OK,
 		batt_mv, batt_soc, pressure, temperature, altitude, lat, lon, hdop, num_sv,
-		accel_x, accel_y, accel_z, accel_temp, activity, thermistor_temp);
+		accel_x, accel_y, accel_z, accel_temp, activity, thermistor_temp,
+		sea_temp_c, als_lux, ph_value, sensor_status);
 }
 
 // PWRON handler - Power on/off components

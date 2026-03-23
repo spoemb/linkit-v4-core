@@ -1312,5 +1312,35 @@ std::string SmdSat::get_firmware_version() {
 }
 
 std::string SmdSat::smd_spi_test() {
-	return m_cmd.run_command_test();
+	bool was_stopped = (m_state == SmdSatState::stopped);
+
+	if (was_stopped) {
+		DEBUG_INFO("SmdSat::%s: Powering on SMD for test...", __func__);
+		GPIOPins::acquire_sensors_pwr();
+		GPIOPins::init_pin(SAT_RESET);
+		GPIOPins::clear(SAT_RESET);
+		nrf_delay_ms(10);
+		GPIOPins::set(SAT_PWR_EN);
+#ifdef SMD_VPA_PIN
+		GPIOPins::release_to_highz(SMD_VPA_PIN);
+#endif
+		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
+		GPIOPins::release_to_highz(SAT_RESET);
+		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
+		PMU::kick_watchdog();
+	}
+
+	m_cmd.init();
+
+	std::string result = m_cmd.run_command_test();
+
+	if (was_stopped) {
+		DEBUG_INFO("SmdSat::%s: Powering off SMD after test", __func__);
+		m_cmd.deinit();
+		shutdown();
+		GPIOPins::release_sensors_pwr();
+		nrf_gpio_cfg_default(BSP::GPIO_Inits[SAT_RESET].pin_number);
+	}
+
+	return result;
 }
