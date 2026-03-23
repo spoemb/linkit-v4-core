@@ -104,6 +104,7 @@ public:
 	// DFU (Device Firmware Update) — SPI-only, AT returns false/error
 	// ========================================================================
 	virtual bool dfu_supported() { return false; }
+	virtual bool is_dfu_mode() const { return false; }
 	virtual bool dfu_enter() { return false; }
 	virtual bool dfu_exit() { return false; }
 	virtual bool dfu_get_bootloader_info(SmdDfuInfo *info) { (void)info; return false; }

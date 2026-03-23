@@ -36,7 +36,7 @@ void SmdSatCmdSpi::init() {
             DEBUG_ERROR("SmdSatCmdSpi::init: SPI allocation failed");
             throw ErrorCode::RESOURCE_NOT_AVAILABLE;
         }
-        nrf_gpio_pin_clear(BSP::SPI_Inits[SPI_SATELLITE].config.ss_pin);
+        // CS is managed by NrfSPIM::transfer() — do NOT force it low here
     }
     m_protocol_mode = SpiProtocolMode::APLUS;
     m_protocol_detected = true;
@@ -644,14 +644,15 @@ void SmdSatCmdSpi::write_lpm(uint8_t *lpm_mode) {
 
 void SmdSatCmdSpi::read_version(uint8_t *version) {
 	DEBUG_TRACE("SmdSatCmdSpi::%s", __func__);
-	uint8_t rx[4] = {0};
+	uint8_t rx[SPI_PROTOCOL_APLUS_MAX_DATA_LEN] = {0};
 	uint16_t rx_len = sizeof(rx);
 	if (!send_command_auto(SMDSAT_CMD_READ_VERSION, nullptr, 0, rx, &rx_len)) {
 		DEBUG_ERROR("SmdSatCmdSpi::%s: Failed to read version", __func__);
 		throw ErrorCode::SPI_COMMS_ERROR;
 	}
-	*version = rx[0];
-	DEBUG_INFO("SmdSatCmdSpi::SMD SPI Version: %u", *version);
+	// Copy full version string (not just first byte)
+	memcpy(version, rx, rx_len);
+	DEBUG_INFO("SmdSatCmdSpi::SMD SPI Version: %.*s", (int)rx_len, (char*)rx);
 }
 
 void SmdSatCmdSpi::read_address(smd_uint8_array_t *address) {
@@ -1436,6 +1437,13 @@ bool SmdSatCmdSpi::dfu_enter() {
 					bootloader_detected = true;
 					break;
 				}
+			}
+
+			if (attempt < 20 || bootloader_detected || (attempt % 50 == 0)) {
+				DEBUG_INFO("SmdSatCmdSpi::%s: Sync %d RX: %02X %02X %02X %02X %02X %02X %02X %02X%s",
+				           __func__, attempt, sync_rx[0], sync_rx[1], sync_rx[2], sync_rx[3],
+				           sync_rx[4], sync_rx[5], sync_rx[6], sync_rx[7],
+				           bootloader_detected ? " <- IDLE" : "");
 			}
 
 			if (bootloader_detected) {

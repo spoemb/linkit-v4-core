@@ -91,6 +91,7 @@ public:
 
 	// DFU
 	bool dfu_supported() override { return true; }
+	bool is_dfu_mode() const override { return m_dfu_mode; }
 	bool dfu_enter() override;
 	bool dfu_exit() override;
 	bool dfu_get_bootloader_info(SmdDfuInfo *info) override;

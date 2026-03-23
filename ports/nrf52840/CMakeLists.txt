@@ -109,9 +109,16 @@ if(${BOARD} MATCHES RSPB)
     set(DEVICE_MODEL "RSPB")
     set(BOARD_DIR "${PROJ_DIR}/bsp/rspbtracker_v1.0")
     set(BOOTLOADER "bootloader/secure_bootloader/rspbtracker_v1.0/armgcc/_build/rspb_bootloader_v1_linkit_merged.hex")
-    set(ENABLE_THERMISTOR_SENSOR 1)
-    set(ENABLE_MORTALITY_SENSOR 1)
-    # TPL5111 external wakeup timer support
+    # RSPB defaults (user can override via -D)
+    if(NOT DEFINED ENABLE_THERMISTOR_SENSOR)
+        set(ENABLE_THERMISTOR_SENSOR 1)
+    endif()
+    if(NOT DEFINED ENABLE_MORTALITY_SENSOR)
+        set(ENABLE_MORTALITY_SENSOR 1)
+    endif()
+    # Hardware constraint: RSPB has no SWS ADC channel
+    set(ENABLE_SWS_ANALOG 0)
+    # TPL5111 external wakeup timer support (hardware, not overridable)
     set(EXTERNAL_WAKEUP 1)
     # TPL5111 configured for 1H45 = 6300 seconds wakeup period (physical config with resistor)
     if(NOT DEFINED WAKEUP_PERIOD)
@@ -138,6 +145,9 @@ else()
         set(LORA_RAK3172_ENABLED 0)
     endif()
     set(BOOTLOADER "bootloader/secure_bootloader/linkitv4_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex")
+    if(NOT DEFINED ENABLE_SWS_ANALOG)
+        set(ENABLE_SWS_ANALOG 1)
+    endif()
 endif()
 
 if(NOT DEFINED DEBUG_LEVEL)
@@ -343,7 +353,7 @@ target_sources(${TARGET_NAME} PRIVATE
     ${CORE_DIR}/services/argos_tx_service.cpp
     ${CORE_DIR}/services/argos_rx_service.cpp
     ${CORE_DIR}/services/uwdetector_service.cpp
-    ${CORE_DIR}/services/sws_analog_service.cpp
+    $<$<BOOL:${ENABLE_SWS_ANALOG}>:${CORE_DIR}/services/sws_analog_service.cpp>
     ${CORE_DIR}/logging/logger.cpp
     ${CORE_DIR}/util/haversine.cpp
     ${CORE_DIR}/filesystem/ota_flash_file_updater.cpp
@@ -495,6 +505,21 @@ if(ENABLE_MORTALITY_SENSOR EQUAL 1)
 endif()
 
 
+# Normalize all ENABLE_* flags to 0/1 for C++ compile definitions.
+# CMake booleans (ON/OFF/TRUE/FALSE) must be converted to integers
+# because target_compile_definitions passes them as-is to the preprocessor.
+foreach(_flag
+    ENABLE_CAM_SENSOR ENABLE_BUZZER ENABLE_PH_SENSOR
+    ENABLE_SEA_TEMP_SENSOR ENABLE_PRESSURE_SENSOR ENABLE_ALS_SENSOR
+    ENABLE_CDT_SENSOR ENABLE_AXL_SENSOR ENABLE_THERMISTOR_SENSOR
+    ENABLE_MORTALITY_SENSOR ENABLE_SWS_LOG ENABLE_SWS_ANALOG)
+    if(${_flag})
+        set(${_flag} 1)
+    else()
+        set(${_flag} 0)
+    endif()
+endforeach()
+
 target_compile_definitions(${TARGET_NAME} PRIVATE
     Release=0
     Debug=1
@@ -510,6 +535,7 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     ENABLE_THERMISTOR_SENSOR=${ENABLE_THERMISTOR_SENSOR}
     ENABLE_MORTALITY_SENSOR=${ENABLE_MORTALITY_SENSOR}
     ENABLE_SWS_LOG=${ENABLE_SWS_LOG}
+    ENABLE_SWS_ANALOG=${ENABLE_SWS_ANALOG}
     ARGOS_SMD=${ARGOS_SMD_ENABLED}
     $<$<BOOL:${LORA_RAK3172_ENABLED}>:LORA_RAK3172=1>
     # Battery monitor type defines

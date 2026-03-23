@@ -1,4 +1,6 @@
+#if ENABLE_SWS_ANALOG
 #include "sws_analog_service.hpp"
+#endif
 #include "gnss_detector_service.hpp"
 #if ENABLE_PRESSURE_SENSOR
 #include "pressure_detector_service.hpp"
@@ -671,6 +673,7 @@ int main()
 	OTAFlashFileUpdater ota_flash_file_updater(&lfs_file_system, &is25_flash, IS25_BLOCK_COUNT - OTA_UPDATE_RESERVED_BLOCKS, OTA_UPDATE_RESERVED_BLOCKS);
 	ota_updater = &ota_flash_file_updater;
 
+#if ENABLE_SWS_ANALOG
 	DEBUG_TRACE("SWS Analog...");
 	static SWSAnalogService sws_analog;
 
@@ -680,6 +683,7 @@ int main()
 	FsLog sws_log(&lfs_file_system, "SWS", 1024*1024);
 	sws_log.set_log_formatter(&sws_log_formatter);
 	SWSAnalogService::set_sws_logger(&sws_log);
+#endif
 #endif
 
 #if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)

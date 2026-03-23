@@ -86,32 +86,16 @@ void OTAFlashFileUpdater::start_file_transfer(OTAFileIdentifier file_id, lfs_siz
 		m_file = new LFSFile(m_filesystem, "gps_config.dat", LFS_O_WRONLY | LFS_O_CREAT);
 		break;
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+#if defined(SMD_UART) && (SMD_UART == 1)
 	case OTAFileIdentifier::SMD_FIRMWARE_UART:
 		DEBUG_INFO("OTAFlashFileUpdater::start_file_transfer: SMD_FIRMWARE_UART");
-		m_filesystem->remove("smd_firmware.dat");
-		m_file = new LFSFile(m_filesystem, "smd_firmware.dat", LFS_O_WRONLY | LFS_O_CREAT);
-		{
-			// Write the 8-byte header to the file (ble_interface strips it from data stream)
-			// Format: [size:4B BE][crc32:4B BE]
-			uint8_t header[8];
-			header[0] = (length >> 24) & 0xFF;
-			header[1] = (length >> 16) & 0xFF;
-			header[2] = (length >> 8) & 0xFF;
-			header[3] = length & 0xFF;
-			header[4] = (crc32 >> 24) & 0xFF;
-			header[5] = (crc32 >> 16) & 0xFF;
-			header[6] = (crc32 >> 8) & 0xFF;
-			header[7] = crc32 & 0xFF;
-			m_file->write(header, 8);
-		}
-		break;
+#else
 	case OTAFileIdentifier::SMD_FIRMWARE_SPI:
 		DEBUG_INFO("OTAFlashFileUpdater::start_file_transfer: SMD_FIRMWARE_SPI");
+#endif
 		m_filesystem->remove("smd_firmware.dat");
 		m_file = new LFSFile(m_filesystem, "smd_firmware.dat", LFS_O_WRONLY | LFS_O_CREAT);
 		{
-			// Write the 8-byte header to the file (ble_interface strips it from data stream)
-			// Format: [size:4B BE][crc32:4B BE]
 			uint8_t header[8];
 			header[0] = (length >> 24) & 0xFF;
 			header[1] = (length >> 16) & 0xFF;
@@ -124,12 +108,18 @@ void OTAFlashFileUpdater::start_file_transfer(OTAFileIdentifier file_id, lfs_siz
 			m_file->write(header, 8);
 		}
 		break;
-#else
+#endif
+	// Reject: wrong transport for this build, or no SMD at all
+#if !defined(ARGOS_SMD) || (ARGOS_SMD != 1)
 	case OTAFileIdentifier::SMD_FIRMWARE_UART:
 	case OTAFileIdentifier::SMD_FIRMWARE_SPI:
+#elif defined(SMD_UART) && (SMD_UART == 1)
+	case OTAFileIdentifier::SMD_FIRMWARE_SPI:
+#else
+	case OTAFileIdentifier::SMD_FIRMWARE_UART:
+#endif
 		throw ErrorCode::OTA_TRANSFER_INVALID_FILE_ID;
 		break;
-#endif
 	default:
 		throw ErrorCode::OTA_TRANSFER_INVALID_FILE_ID;
 		break;

@@ -1043,7 +1043,7 @@ std::string DTEHandler::SWSST_REQ(int error_code) {
 		return DTEEncoder::encode(DTECommand::SWSST_RESP, error_code);
 	}
 
-#ifdef SWS_ADC
+#if ENABLE_SWS_ANALOG
 	auto st = SWSAnalogService::get_status();
 
 	return DTEEncoder::encode(DTECommand::SWSST_RESP, (int)DTEError::OK,
@@ -1076,7 +1076,7 @@ std::string DTEHandler::SWSTST_REQ(int error_code, std::vector<BaseType>& arg_li
 
 	unsigned int action = std::get<unsigned int>(arg_list[0]);
 
-#ifdef SWS_ADC
+#if ENABLE_SWS_ANALOG
 	if (action == 1) {
 		// Start test mode and register async push callback
 		auto write_fn = m_async_write;

@@ -944,9 +944,11 @@ bool SmdSat::dfu_enter() {
 		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 		PMU::kick_watchdog();
 		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
-	}
 
-	m_cmd.init();
+		// Only init SPI if it wasn't already running
+		m_cmd.init();
+	}
+	// If SPI is already active (not stopped), do NOT re-init — dfu_enter() handles protocol reset
 
 	PMU::kick_watchdog();
 	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS / 2);
@@ -1070,19 +1072,30 @@ SmdDfuResponse SmdSat::firmware_update(const uint8_t *firmware, size_t size,
 	// Jump to application
 	m_cmd.dfu_jump();
 
-	// Hardware reset
+	// Full power cycle — GPIO reset alone won't clear SRAM DFU magic
+	DEBUG_INFO("SmdSat::%s: Power cycling SMD for clean app boot...", __func__);
+	m_cmd.deinit();
+	shutdown();
 	PMU::kick_watchdog();
+	nrf_delay_ms(500);
+	PMU::kick_watchdog();
+
+	GPIOPins::acquire_sensors_pwr();
 	GPIOPins::init_pin(SAT_RESET);
 	GPIOPins::clear(SAT_RESET);
-	nrf_delay_ms(50);
+	nrf_delay_ms(10);
+	GPIOPins::set(SAT_PWR_EN);
+#ifdef SMD_VPA_PIN
+	GPIOPins::release_to_highz(SMD_VPA_PIN);
+#endif
+	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 	GPIOPins::release_to_highz(SAT_RESET);
 	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 	PMU::kick_watchdog();
 
-	// Read new firmware version
 	m_cmd.init();
 	bool app_ready = false;
-	for (uint8_t attempt = 0; attempt < 10; attempt++) {
+	for (uint8_t attempt = 0; attempt < 15; attempt++) {
 		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS / 2);
 		PMU::kick_watchdog();
 		if (m_cmd.ping()) {
@@ -1093,6 +1106,9 @@ SmdDfuResponse SmdSat::firmware_update(const uint8_t *firmware, size_t size,
 
 	if (app_ready) {
 		m_new_firmware_version = get_firmware_version();
+		DEBUG_INFO("SmdSat::%s: New firmware: %s", __func__, m_new_firmware_version.c_str());
+	} else {
+		DEBUG_WARN("SmdSat::%s: App not responding after power cycle", __func__);
 	}
 
 	if (progress_callback) progress_callback(100);
@@ -1182,17 +1198,35 @@ SmdDfuResponse SmdSat::firmware_update(File *file, size_t size, uint32_t stm32_c
 
 	m_cmd.dfu_jump();
 
+	// Full power cycle after JUMP to ensure clean app boot.
+	// A GPIO reset alone would NOT clear SRAM, so the DFU magic (0x4446554D)
+	// at 0x2000FFF8 would survive and cause the bootloader to re-enter DFU.
+	// Power cycle cuts VCC → SRAM is lost → clean boot into new app.
+	DEBUG_INFO("SmdSat::%s: Power cycling SMD for clean app boot...", __func__);
+	m_cmd.deinit();
+	shutdown();  // SAT_PWR_EN OFF + SAT_RESET LOW
 	PMU::kick_watchdog();
+	nrf_delay_ms(500);  // Capacitors discharge, SRAM loses state
+	PMU::kick_watchdog();
+
+	// Power on
+	GPIOPins::acquire_sensors_pwr();
 	GPIOPins::init_pin(SAT_RESET);
 	GPIOPins::clear(SAT_RESET);
-	nrf_delay_ms(50);
+	nrf_delay_ms(10);
+	GPIOPins::set(SAT_PWR_EN);
+#ifdef SMD_VPA_PIN
+	GPIOPins::release_to_highz(SMD_VPA_PIN);
+#endif
+	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 	GPIOPins::release_to_highz(SAT_RESET);
 	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 	PMU::kick_watchdog();
 
+	// Re-init SPI and ping new app
 	m_cmd.init();
 	bool app_ready = false;
-	for (uint8_t attempt = 0; attempt < 10; attempt++) {
+	for (uint8_t attempt = 0; attempt < 15; attempt++) {
 		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS / 2);
 		PMU::kick_watchdog();
 		if (m_cmd.ping()) {
@@ -1203,6 +1237,9 @@ SmdDfuResponse SmdSat::firmware_update(File *file, size_t size, uint32_t stm32_c
 
 	if (app_ready) {
 		m_new_firmware_version = get_firmware_version();
+		DEBUG_INFO("SmdSat::%s: New firmware: %s", __func__, m_new_firmware_version.c_str());
+	} else {
+		DEBUG_WARN("SmdSat::%s: App not responding after power cycle", __func__);
 	}
 
 	if (progress_callback) progress_callback(100);

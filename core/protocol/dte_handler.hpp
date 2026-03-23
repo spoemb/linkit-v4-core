@@ -15,7 +15,9 @@
 #include "gpio.hpp"
 #include "bsp.hpp"
 #include "kineis_device.hpp"
+#if ENABLE_SWS_ANALOG
 #include "sws_analog_service.hpp"
+#endif
 #include "gps.hpp"
 #include "rtc.hpp"
 

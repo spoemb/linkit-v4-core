@@ -118,7 +118,7 @@ public:
 
 	bool dfu_enter();
 	bool dfu_exit();
-	bool is_dfu_mode() const { return m_cmd.dfu_supported(); }
+	bool is_dfu_mode() const { return m_cmd.is_dfu_mode(); }
 
 	bool dfu_get_bootloader_info(SmdDfuInfo *info);
 
