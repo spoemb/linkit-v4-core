@@ -23,6 +23,11 @@ protected:
 				for (unsigned int chan = 0; chan < safe_num_channels(); chan++) {
 					m_samples[chan].push_back(m_sensor.read(chan));
 				}
+
+				// Update progressive ready value after each sample (Option 3: best-effort aggregation)
+				// This ensures we always have a valid value to report even if GNSS completes early
+				update_ready_value();
+
 				if (service_is_scheduled()) {
 					service_complete(nullptr, nullptr,
 							!gnss_shutdown &&
@@ -31,34 +36,17 @@ protected:
 				}
 
 				if (gnss_shutdown || m_sample_number >= sensor_max_samples()) {
-					DEBUG_TRACE("SensorService: %s: terminal state reached", get_name());
-					ServiceSensorData sensor;
-					for (unsigned int chan = 0; chan < safe_num_channels(); chan++) {
-						switch (sensor_enable_tx_mode()) {
-						case BaseSensorEnableTxMode::ONESHOT:
-							sensor.port[chan] = compute_oneshot_samples(m_samples[chan]);
-							//DEBUG_TRACE("[%s] oneshot[%u]=%f", get_name(), chan, sensor.port[chan]);
-							break;
-						case BaseSensorEnableTxMode::MEAN:
-							sensor.port[chan] = compute_mean_samples(m_samples[chan]);
-							//DEBUG_TRACE("[%s] mean[%u]=%f", get_name(), chan, sensor.port[chan]);
-							break;
-						case BaseSensorEnableTxMode::MEDIAN:
-							sensor.port[chan] = compute_median_samples(m_samples[chan]);
-							//DEBUG_TRACE("[%s] median[%u]=%f", get_name(), chan, sensor.port[chan]);
-							break;
-						default:
-						case BaseSensorEnableTxMode::OFF:
-							break;
-						}
-					}
+					DEBUG_TRACE("SensorService: %s: terminal state reached (%u/%u samples)",
+					            get_name(), m_sample_number, sensor_max_samples());
+					// Use the progressive ready value (already up-to-date)
 					LogEntry e;
-					ServiceEventData data = sensor;
-					sensor_populate_log_entry(&e, sensor);
+					ServiceEventData data = m_ready_value;
+					sensor_populate_log_entry(&e, m_ready_value);
 					service_log(&data, &e);
 					m_sensor_background_active = false;
 				}
-			} else if (sensor_enable_tx_mode() == BaseSensorEnableTxMode::OFF) {
+			} else {
+				// Not in TX background mode — periodic log acquisition
 				ServiceSensorData sensor;
 				for (unsigned int chan = 0; chan < safe_num_channels(); chan++)
 					sensor.port[chan] = m_sensor.read(chan);
@@ -66,8 +54,6 @@ protected:
 				ServiceEventData data = sensor;
 				sensor_populate_log_entry(&e, sensor);
 				service_log(&data, &e);
-				service_complete(nullptr, nullptr, reschedule);
-			} else {
 				service_complete(nullptr, nullptr, reschedule);
 			}
 		} catch (ErrorCode e) {
@@ -86,6 +72,8 @@ private:
 	std::vector<double> m_samples[MAX_SENSOR_CHANNELS];
 	unsigned int m_sample_number = 0;
 	bool m_sensor_background_active = false;
+	ServiceSensorData m_ready_value = {};
+	bool m_ready_valid = false;
 
 	double compute_mean_samples(std::vector<double>& v) {
 		if (v.empty()) return 0.0;
@@ -105,6 +93,28 @@ private:
 	double compute_oneshot_samples(std::vector<double>& v) {
 		if (v.empty()) return 0.0;
 		return v.at(0);
+	}
+
+	// Progressive aggregation: update ready value after each sample
+	// so we always have a best-effort value available for TX
+	void update_ready_value() {
+		for (unsigned int chan = 0; chan < safe_num_channels(); chan++) {
+			switch (sensor_enable_tx_mode()) {
+			case BaseSensorEnableTxMode::ONESHOT:
+				m_ready_value.port[chan] = compute_oneshot_samples(m_samples[chan]);
+				break;
+			case BaseSensorEnableTxMode::MEAN:
+				m_ready_value.port[chan] = compute_mean_samples(m_samples[chan]);
+				break;
+			case BaseSensorEnableTxMode::MEDIAN:
+				m_ready_value.port[chan] = compute_median_samples(m_samples[chan]);
+				break;
+			default:
+			case BaseSensorEnableTxMode::OFF:
+				break;
+			}
+		}
+		m_ready_valid = true;
 	}
 
 	void notify_peer_event(ServiceEvent& e) override {
@@ -163,6 +173,7 @@ private:
 	void reset_samples() {
 		for (unsigned int chan = 0; chan < safe_num_channels(); chan++)
 			m_samples[chan].clear();
+		m_ready_valid = false;
 	}
 
 	void service_term() override { sensor_term(); }

@@ -250,6 +250,27 @@ void LEDDFUUpdate::entry() {
 		ext_status_led->off();
 }
 
+void LEDOTASuccess::entry() {
+	DEBUG_TRACE("LEDOTASuccess: entry");
+	status_led->set(RGBLedColor::GREEN);
+	if (ext_status_led)
+		ext_status_led->on();
+}
+
+void LEDOTAFailed::entry() {
+	DEBUG_TRACE("LEDOTAFailed: entry");
+	status_led->flash(RGBLedColor::RED, 200);
+	if (ext_status_led)
+		ext_status_led->flash(200);
+}
+
+void LEDFirmwareApplied::entry() {
+	DEBUG_TRACE("LEDFirmwareApplied: entry");
+	status_led->flash(RGBLedColor::GREEN, 150);
+	if (ext_status_led)
+		ext_status_led->flash(150);
+}
+
 void LEDConfirmConfig::entry() {
 	DEBUG_TRACE("LEDConfirmConfig: entry");
 	status_led->flash(RGBLedColor::BLUE, 50);

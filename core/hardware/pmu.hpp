@@ -33,4 +33,5 @@ public:
 	static void save_stack(PMULogType type);
 	static void print_stack();
 	static uint64_t get_timestamp_ms();
+	static bool was_firmware_updated();
 };

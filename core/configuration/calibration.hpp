@@ -29,7 +29,7 @@ public:
 		CalibratableManager::remove(*this);
 	}
 	virtual void calibration_write(const double, const unsigned int) {};
-	virtual void calibration_read(double &, const unsigned int) {};
+	virtual void calibration_read(double &value, const unsigned int) { value = 0.0; };
 	virtual void calibration_save(bool) {};
 };
 

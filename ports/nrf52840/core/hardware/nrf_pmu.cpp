@@ -22,6 +22,7 @@ extern ConfigurationStore *configuration_store;
 #endif
 
 static uint32_t m_reset_cause = 0;
+static bool m_firmware_was_updated = false;
 
 static __attribute__((section(".noinit"))) volatile uint32_t m_callstack[8];
 static __attribute__((section(".noinit"))) volatile PMULogType m_type;
@@ -45,6 +46,11 @@ void PMU::initialise() {
 	else
 		m_reset_cause &= ~POWER_RESETREAS_PSEUDO_POWER_OFF;
 	NRF_POWER->GPREGRET = 0; // Clear down
+
+	// Check GPREGRET2 for firmware update flag (set before OTA reset)
+	m_firmware_was_updated = (NRF_POWER->GPREGRET2 == 0x01);
+	NRF_POWER->GPREGRET2 = 0; // Clear down
+
 	nrf_pwr_mgmt_init();
 
 #ifdef SOFTDEVICE_PRESENT
@@ -249,4 +255,8 @@ void PMU::print_stack() {
 
 	m_crc = 0; // Invalidate CRC
 	memset((void *)&m_callstack, sizeof(m_callstack), 0);
+}
+
+bool PMU::was_firmware_updated() {
+	return m_firmware_was_updated;
 }

@@ -6,7 +6,10 @@
 
 // LED feedback for DFU progress
 #include "rgb_led.hpp"
+#include "ledsm.hpp"
+#include "nrf_power.h"
 extern RGBLed *status_led;
+using led_handle = LEDState;
 
 // SMD DFU support (only when SMD satellite module is enabled)
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
@@ -209,6 +212,7 @@ void OTAFlashFileUpdater::complete_file_transfer()
 	if (m_crc32_calc != m_crc32) {
 		DEBUG_ERROR("OTAFlashFileUpdater:: CRC failure (calc=0x%08X expected=0x%08X)",
 		            m_crc32_calc, m_crc32);
+		led_handle::dispatch<SetLEDOTAFailed>({});
 		abort_file_transfer();
 		throw ErrorCode::OTA_TRANSFER_CRC_ERROR;
 	}
@@ -218,8 +222,12 @@ void OTAFlashFileUpdater::apply_file_update() {
 	DEBUG_TRACE("OTAFlashFileUpdater::apply_file_update");
 	if (m_file_id == OTAFileIdentifier::MCU_FIRMWARE) {
 		DEBUG_INFO("OTAFlashFileUpdater::apply_file_update: resetting device to apply firmware update");
-		// Delay briefly to allow BLE status notification to be sent before reset
-		PMU::delay_ms(500);
+		// Signal OTA success with green LED before reset
+		led_handle::dispatch<SetLEDOTASuccess>({});
+		// Set GPREGRET2 flag so app knows firmware was updated after reboot
+		NRF_POWER->GPREGRET2 = 0x01;
+		// Delay to show green LED and allow BLE status notification
+		PMU::delay_ms(1500);
 		PMU::reset(false);
 		// Not reached — device reboots, bootloader applies firmware from QSPI flash
 	}

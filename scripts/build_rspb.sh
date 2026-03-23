@@ -80,16 +80,18 @@ fi
 # - ARGOS_SMD=ON: Use SMD satellite module (default for RSPB)
 # - ENABLE_PRESSURE_SENSOR=ON: Enable LPS28DFW pressure sensor
 # - ENABLE_AXL_SENSOR=ON: Enable BMA400 accelerometer
-# - ENABLE_THERMISTOR_SENSOR is automatically enabled for RSPB in CMakeLists.txt
+# - ENABLE_THERMISTOR_SENSOR=ON: Enable thermistor temperature sensor
 # - ENABLE_MORTALITY_SENSOR is automatically enabled for RSPB in CMakeLists.txt
 ARGOS_SMD=${ARGOS_SMD:-ON}
 ENABLE_PRESSURE_SENSOR=${ENABLE_PRESSURE_SENSOR:-1}
 ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR:-1}
+ENABLE_THERMISTOR_SENSOR=${ENABLE_THERMISTOR_SENSOR:-1}
 
 echo "Building RSPB with configuration:"
 echo "  ARGOS_SMD=${ARGOS_SMD}"
 echo "  ENABLE_PRESSURE_SENSOR=${ENABLE_PRESSURE_SENSOR}"
 echo "  ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR}"
+echo "  ENABLE_THERMISTOR_SENSOR=${ENABLE_THERMISTOR_SENSOR}"
 echo "  ENABLE_MORTALITY_SENSOR=auto (CMake default for RSPB)"
 echo ""
 
@@ -100,6 +102,7 @@ cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
       -DARGOS_SMD=${ARGOS_SMD} \
       -DENABLE_PRESSURE_SENSOR=${ENABLE_PRESSURE_SENSOR} \
       -DENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR} \
+      -DENABLE_THERMISTOR_SENSOR=${ENABLE_THERMISTOR_SENSOR} \
       ../..
 
 make -j 20

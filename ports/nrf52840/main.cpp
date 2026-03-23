@@ -551,6 +551,10 @@ int main()
 				DEBUG_INFO("EXTERNAL_WAKEUP: Magnet detected | skipping modulo powerdown");
 			} else {
 				DEBUG_INFO("EXTERNAL_WAKEUP: Not our turn to run (modulo check) | powering down");
+				// Brief yellow flash to indicate device is alive but skipping this cycle
+				status_led->flash(RGBLedColor::YELLOW, 100);
+				PMU::delay_ms(300);
+				status_led->off();
 				PMU::powerdown();
 			}
 		}

@@ -127,9 +127,9 @@ double Thermistor::read(unsigned int offset)
 	return temperature;
 }
 
-double Thermistor::find_calibration_point(double target_temp_mdeg) {
-	// target_temp_mdeg is in millidegrees (e.g., 24000 = 24.000°C)
-	double target_c = target_temp_mdeg / 1000.0;
+double Thermistor::find_calibration_point(double target_temp_c) {
+	// target_temp_c is in degrees Celsius (e.g., 24.0 = 24.0°C)
+	double target_c = target_temp_c;
 
 	// Temporarily disable offset to measure raw temperature
 	double saved_offset = offset_temp;
@@ -165,7 +165,7 @@ void Thermistor::calibration_write(const double value, const unsigned int offset
 		m_cal.save();
 		DEBUG_INFO("THERMISTOR: Calibration reset");
 	} else if (offset == 1) {
-		// Calibrate: value is known temperature in millidegrees (e.g., 24000 = 24.0°C)
+		// Calibrate: value is known temperature in degrees Celsius (e.g., 24.0 = 24.0°C)
 		double calibration_value = find_calibration_point(value);
 		offset_temp = calibration_value;
 		m_cal.write((unsigned int)CalibrationPoint::TEMP_THRESHOLD, calibration_value);
@@ -181,6 +181,15 @@ void Thermistor::calibration_save(bool force) {
 void Thermistor::calibration_read(double& value, const unsigned int offset)
 {
 	if (0 == offset) {
-		value = m_cal.read((unsigned int)CalibrationPoint::TEMP_THRESHOLD);
+		try {
+			value = m_cal.read((unsigned int)CalibrationPoint::TEMP_THRESHOLD);
+		} catch (...) {
+			value = 0.0;
+		}
+	} else if (1 == offset) {
+		// Read current temperature (live sensor reading)
+		value = m_last_temperature;
+	} else {
+		value = 0.0;
 	}
 }

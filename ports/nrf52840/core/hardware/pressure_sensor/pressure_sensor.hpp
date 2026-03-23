@@ -36,13 +36,18 @@ public:
         } catch (...) {
             m_sea_level_hpa = 1013.25;
         }
+        try {
+            m_temp_offset = m_cal.read(1);
+        } catch (...) {
+            m_temp_offset = 0.0;
+        }
     }
     double read(unsigned int channel = 0) {
         if (0 == channel) {
             m_device.read(m_last_temperature, m_last_pressure);
             return m_last_pressure;
         } else if (1 == channel) {
-            return m_last_temperature;
+            return m_last_temperature + m_temp_offset;
         }
         throw ErrorCode::BAD_SENSOR_CHANNEL;
     }
@@ -53,12 +58,21 @@ public:
             m_cal.write(0, value);
             m_cal.save();
             DEBUG_TRACE("PressureSensor: sea_level_hpa calibrated to %.2f", m_sea_level_hpa);
+        } else if (offset == 1) {
+            m_temp_offset = value;
+            m_cal.write(1, value);
+            m_cal.save();
+            DEBUG_TRACE("PressureSensor: temp_offset calibrated to %.2f", m_temp_offset);
         }
     }
 
     void calibration_read(double &value, const unsigned int offset) override {
         if (offset == 0) {
             value = m_sea_level_hpa;
+        } else if (offset == 1) {
+            value = m_temp_offset;
+        } else {
+            value = 0.0;
         }
     }
 
@@ -67,9 +81,10 @@ public:
     }
 
 private:
-    double m_last_pressure;
-    double m_last_temperature;
-    double m_sea_level_hpa;
+    double m_last_pressure = 0.0;
+    double m_last_temperature = 0.0;
+    double m_sea_level_hpa = 1013.25;
+    double m_temp_offset = 0.0;
     PressureSensorDevice& m_device;
     Calibration m_cal;
 };

@@ -24,6 +24,9 @@ struct SetLEDArgosTX : tinyfsm::Event { };
 struct SetLEDArgosTXComplete : tinyfsm::Event { };
 struct SetLEDBatteryCritical : tinyfsm::Event { };
 struct SetLEDDFUUpdate : tinyfsm::Event { };
+struct SetLEDOTASuccess : tinyfsm::Event { };
+struct SetLEDOTAFailed : tinyfsm::Event { };
+struct SetLEDFirmwareApplied : tinyfsm::Event { };
 struct SetLEDConfirmConfig : tinyfsm::Event { };
 struct SetLEDConfirmExitConfig : tinyfsm::Event { };
 struct SetLEDConfirmPowerOff : tinyfsm::Event { };
@@ -46,6 +49,9 @@ class LEDArgosTX;
 class LEDArgosTXComplete;
 class LEDBatteryCritical;
 class LEDDFUUpdate;
+class LEDOTASuccess;
+class LEDOTAFailed;
+class LEDFirmwareApplied;
 class LEDConfirmConfig;
 class LEDConfirmExitConfig;
 class LEDConfirmPowerOff;
@@ -77,6 +83,9 @@ public:
 	void react(SetLEDArgosTXComplete const &) { transit<LEDArgosTXComplete>(); }
 	void react(SetLEDBatteryCritical const &) { transit<LEDBatteryCritical>(); }
 	void react(SetLEDDFUUpdate const &) { transit<LEDDFUUpdate>(); }
+	void react(SetLEDOTASuccess const &) { transit<LEDOTASuccess>(); }
+	void react(SetLEDOTAFailed const &) { transit<LEDOTAFailed>(); }
+	void react(SetLEDFirmwareApplied const &) { transit<LEDFirmwareApplied>(); }
 	void react(SetLEDConfirmConfig const &) { transit<LEDConfirmConfig>(); }
 	void react(SetLEDConfirmExitConfig const &) { transit<LEDConfirmExitConfig>(); }
 	void react(SetLEDConfirmPowerOff const &) { transit<LEDConfirmPowerOff>(); }
@@ -207,6 +216,27 @@ public:
 };
 
 class LEDDFUUpdate : public LEDState
+{
+public:
+	void entry() override;
+	void exit() override {};
+};
+
+class LEDOTASuccess : public LEDState
+{
+public:
+	void entry() override;
+	void exit() override {};
+};
+
+class LEDOTAFailed : public LEDState
+{
+public:
+	void entry() override;
+	void exit() override {};
+};
+
+class LEDFirmwareApplied : public LEDState
 {
 public:
 	void entry() override;

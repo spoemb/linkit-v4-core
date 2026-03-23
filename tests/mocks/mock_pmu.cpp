@@ -48,3 +48,7 @@ uint64_t PMU::get_timestamp_ms() {
 	auto now = std::chrono::steady_clock::now();
 	return std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
 }
+
+bool PMU::was_firmware_updated() {
+	return false;
+}
