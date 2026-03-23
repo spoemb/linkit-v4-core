@@ -15,6 +15,7 @@ public:
 	// Public accessor for ArgosTxService to read current confidence
 	unsigned int get_confidence() const { return m_state.confidence; }
 	MortalityStatus get_status() const { return m_state.status; }
+	uint8_t get_last_activity() const { return m_session_activity; }
 
 protected:
 	void service_init() override;

@@ -35,6 +35,11 @@ public:
 	static inline const unsigned int DOPPLER_PACKET_PAYLOAD_BITS = 24;
 	static inline const unsigned int DOPPLER_PACKET_BYTES		 = 3;
 
+	// RSPB Doppler (VLDA4): header(3) + battery_soc(7) + activity(7) + mortality(7) = 24 bits
+	static inline const unsigned int RSPB_DOPPLER_HEADER         = 0b110;  // Type 6
+	static inline const unsigned int RSPB_DOPPLER_PACKET_BITS    = 24;
+	static inline const unsigned int RSPB_DOPPLER_PACKET_BYTES   = 3;
+
 	static inline const unsigned int FIXTYPE_3D			 = 3;
 	static inline const unsigned int HOURS_PER_DAY       = 24;
 	static inline const unsigned int SECONDS_PER_MINUTE	 = 60;
@@ -108,6 +113,13 @@ public:
 			ServiceSensorData *thermistor_sensor,
 			ServiceSensorData *axl_sensor,
 			bool is_out_of_zone, bool is_low_battery,
+			unsigned int mortality_confidence,
+			unsigned int &size_bits);
+
+	// RSPB Doppler: battery SOC + activity + mortality in 24 bits (VLDA4)
+	static KineisPacket build_rspb_doppler_packet(
+			unsigned int battery_soc,
+			unsigned int activity,
 			unsigned int mortality_confidence,
 			unsigned int &size_bits);
 };

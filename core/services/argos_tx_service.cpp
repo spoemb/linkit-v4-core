@@ -498,9 +498,26 @@ void ArgosTxService::process_doppler_burst() {
 	DEBUG_TRACE("ArgosTxService::process_doppler_burst");
 	unsigned int size_bits;
 	service_update_battery();
-	KineisPacket packet = ArgosPacketBuilder::build_doppler_packet(service_get_voltage(), service_is_battery_level_low(), size_bits);
 	ArgosConfig argos_config;
 	configuration_store->get_argos_configuration(argos_config);
+
+	KineisPacket packet;
+
+#if defined(BOARD_RSPB) && ENABLE_MORTALITY_SENSOR
+	// RSPB Doppler: battery SOC + activity + mortality (Type 6)
+	unsigned int mort_conf = 0;
+	uint8_t activity = 0;
+	if (mortality_service) {
+		mort_conf = mortality_service->get_confidence();
+		activity = mortality_service->get_last_activity();
+	}
+	packet = ArgosPacketBuilder::build_rspb_doppler_packet(
+		service_get_level(), activity, mort_conf, size_bits);
+#else
+	// Standard Doppler: battery voltage only
+	packet = ArgosPacketBuilder::build_doppler_packet(
+		service_get_voltage(), service_is_battery_level_low(), size_bits);
+#endif
 
 	// Adaptive modulation: Doppler = 24 bits = VLDA4
 	KineisModulation tx_mode = KineisModulation::LDA2;
@@ -829,6 +846,40 @@ KineisPacket ArgosPacketBuilder::build_doppler_packet(unsigned int batt_voltage,
 	// CRC8 is handled by the satellite module (SMD/KIM2)
 
 	size_bits = DOPPLER_PACKET_BITS;
+
+	return packet;
+}
+
+KineisPacket ArgosPacketBuilder::build_rspb_doppler_packet(
+		unsigned int battery_soc,
+		unsigned int activity,
+		unsigned int mortality_confidence,
+		unsigned int &size_bits) {
+	DEBUG_TRACE("ArgosPacketBuilder::build_rspb_doppler_packet");
+	unsigned int base_pos = 0;
+	KineisPacket packet;
+
+	packet.assign(RSPB_DOPPLER_PACKET_BYTES, 0);
+
+	// Header (3 bits) — Type 6 = RSPB Doppler
+	PACK_BITS(RSPB_DOPPLER_HEADER, packet, base_pos, 3);
+
+	// Battery SOC (7 bits, 0-100%)
+	unsigned int soc = (battery_soc > 100) ? 100 : battery_soc;
+	PACK_BITS(soc, packet, base_pos, 7);
+	DEBUG_TRACE("ArgosPacketBuilder::build_rspb_doppler_packet: soc=%u%%", soc);
+
+	// Activity (7 bits, 0-127 — original 0-255 divided by 2)
+	unsigned int act = (activity > 255) ? 127 : (activity / 2);
+	PACK_BITS(act, packet, base_pos, 7);
+	DEBUG_TRACE("ArgosPacketBuilder::build_rspb_doppler_packet: activity=%u (raw=%u)", act, activity);
+
+	// Mortality confidence (7 bits, 0-100%)
+	unsigned int mort = (mortality_confidence > 100) ? 100 : mortality_confidence;
+	PACK_BITS(mort, packet, base_pos, 7);
+	DEBUG_TRACE("ArgosPacketBuilder::build_rspb_doppler_packet: mortality=%u%%", mort);
+
+	size_bits = RSPB_DOPPLER_PACKET_BITS;
 
 	return packet;
 }
