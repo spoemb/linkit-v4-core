@@ -618,8 +618,10 @@ void SmdSat::set_credentials(unsigned int dec_id, unsigned int address, const st
 #ifdef SMD_VPA_PIN
 		GPIOPins::release_to_highz(SMD_VPA_PIN);
 #endif
+		PMU::kick_watchdog();
 		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 		GPIOPins::release_to_highz(SAT_RESET);
+		PMU::kick_watchdog();
 		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 	}
 	m_cmd.init();
@@ -627,6 +629,7 @@ void SmdSat::set_credentials(unsigned int dec_id, unsigned int address, const st
 	{
 		bool smd_ready = false;
 		for (uint8_t attempt = 0; attempt < 10; attempt++) {
+			PMU::kick_watchdog();
 			nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS / 2);
 			if (m_cmd.ping()) {
 				DEBUG_INFO("SmdSat::%s: SMD ready after %u attempts", __func__, attempt + 1);
@@ -787,12 +790,15 @@ void SmdSat::read_credentials(unsigned int *dec_id, unsigned int *address, std::
 #ifdef SMD_VPA_PIN
 		GPIOPins::release_to_highz(SMD_VPA_PIN);
 #endif
+		PMU::kick_watchdog();
 		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 		GPIOPins::release_to_highz(SAT_RESET);
+		PMU::kick_watchdog();
 		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 	}
 	m_cmd.init();
 
+	PMU::kick_watchdog();
 	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 
 	try {
@@ -1088,16 +1094,17 @@ SmdDfuResponse SmdSat::firmware_update(const uint8_t *firmware, size_t size,
 #ifdef SMD_VPA_PIN
 	GPIOPins::release_to_highz(SMD_VPA_PIN);
 #endif
+	PMU::kick_watchdog();
 	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 	GPIOPins::release_to_highz(SAT_RESET);
-	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 	PMU::kick_watchdog();
+	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 
 	m_cmd.init();
 	bool app_ready = false;
 	for (uint8_t attempt = 0; attempt < 15; attempt++) {
-		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS / 2);
 		PMU::kick_watchdog();
+		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS / 2);
 		if (m_cmd.ping()) {
 			app_ready = true;
 			break;
@@ -1218,17 +1225,18 @@ SmdDfuResponse SmdSat::firmware_update(File *file, size_t size, uint32_t stm32_c
 #ifdef SMD_VPA_PIN
 	GPIOPins::release_to_highz(SMD_VPA_PIN);
 #endif
+	PMU::kick_watchdog();
 	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 	GPIOPins::release_to_highz(SAT_RESET);
-	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 	PMU::kick_watchdog();
+	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 
 	// Re-init SPI and ping new app
 	m_cmd.init();
 	bool app_ready = false;
 	for (uint8_t attempt = 0; attempt < 15; attempt++) {
-		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS / 2);
 		PMU::kick_watchdog();
+		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS / 2);
 		if (m_cmd.ping()) {
 			app_ready = true;
 			break;
@@ -1268,8 +1276,10 @@ std::string SmdSat::get_firmware_version() {
 #ifdef SMD_VPA_PIN
 		GPIOPins::release_to_highz(SMD_VPA_PIN);
 #endif
+		PMU::kick_watchdog();
 		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 		GPIOPins::release_to_highz(SAT_RESET);
+		PMU::kick_watchdog();
 		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 	}
 
@@ -1280,6 +1290,7 @@ std::string SmdSat::get_firmware_version() {
 	try {
 		bool smd_ready = false;
 		for (uint8_t attempt = 0; attempt < 10; attempt++) {
+			PMU::kick_watchdog();
 			nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS / 2);
 			if (m_cmd.ping()) {
 				smd_ready = true;
@@ -1324,10 +1335,11 @@ std::string SmdSat::smd_spi_test() {
 #ifdef SMD_VPA_PIN
 		GPIOPins::release_to_highz(SMD_VPA_PIN);
 #endif
+		PMU::kick_watchdog();
 		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 		GPIOPins::release_to_highz(SAT_RESET);
-		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 		PMU::kick_watchdog();
+		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 	}
 
 	m_cmd.init();

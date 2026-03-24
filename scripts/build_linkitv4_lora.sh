@@ -149,6 +149,7 @@ if [ "$CAN_MERGE" = true ]; then
     if [ $? -eq 0 ]; then
         mergehex -m "$BOOTLOADER_HEX" ${TARGET_NAME}.hex -o m1.hex
         mergehex -m m1.hex settings.hex -o ${TARGET_NAME}_merged.hex
+        mergehex -m ${TARGET_NAME}.hex settings.hex -o ${TARGET_NAME}_app_settings.hex
         rm -f m1.hex settings.hex
         echo "Merged hex generated"
     else
@@ -172,6 +173,9 @@ fi
 if [ -f "${TARGET_NAME}_merged.hex" ]; then
     mv ${TARGET_NAME}_merged.hex ${TARGET_NAME}_merged-`cat TAG_NAME`.hex
 fi
+if [ -f "${TARGET_NAME}_app_settings.hex" ]; then
+    mv ${TARGET_NAME}_app_settings.hex ${TARGET_NAME}_app_settings-`cat TAG_NAME`.hex
+fi
 
 echo ""
 echo "Build complete!"
@@ -181,6 +185,7 @@ echo "Files generated:"
 ls -la ${TARGET_NAME}-* 2>/dev/null || true
 ls -la ${TARGET_NAME}_dfu-* 2>/dev/null || true
 ls -la ${TARGET_NAME}_merged-* 2>/dev/null || true
+ls -la ${TARGET_NAME}_app_settings-* 2>/dev/null || true
 
 if [ "$CAN_MERGE" = false ]; then
     echo ""
@@ -196,5 +201,7 @@ if [ "$CAN_MERGE" = true ] && [ -f "${TARGET_NAME}_merged-${TAG}.hex" ]; then
     echo "  Full (app + bootloader + softdevice):"
     echo "    nrfjprog --program ${BUILD_DIR}/${TARGET_NAME}_merged-${TAG}.hex --chiperase --verify --reset"
 fi
-echo "  App only (bootloader must already be flashed):"
-echo "    nrfjprog --program ${BUILD_DIR}/${TARGET_NAME}-${TAG}.hex --sectorerase --verify --reset"
+if [ -f "${TARGET_NAME}_app_settings-${TAG}.hex" ]; then
+    echo "  App only (bootloader + softdevice must already be flashed):"
+    echo "    nrfjprog --program ${BUILD_DIR}/${TARGET_NAME}_app_settings-${TAG}.hex --sectorerase --verify --reset"
+fi

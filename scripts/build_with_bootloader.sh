@@ -101,7 +101,7 @@ case "$TARGET" in
         BUILD_DIR="RSPB"
         BOOTLOADER_DIR="rspbtracker_v1.0"
         TARGET_NAME="LinkIt_RSPB_board"
-        CMAKE_ARGS="-DBOARD=RSPB -DARGOS_SMD=ON -DENABLE_PRESSURE_SENSOR=1 -DENABLE_AXL_SENSOR=1"
+        CMAKE_ARGS="-DBOARD=RSPB -DARGOS_SMD=ON -DENABLE_PRESSURE_SENSOR=1 -DENABLE_AXL_SENSOR=1 -DENABLE_THERMISTOR_SENSOR=1 -DENABLE_MORTALITY_SENSOR=1"
         BUILD_SCRIPT="build_rspb.sh"
         ;;
     *)
@@ -220,6 +220,8 @@ else
     # Merge: bootloader + app → m1.hex, then m1 + settings → merged
     mergehex -m "$BOOTLOADER_HEX_NAME" ${TARGET_NAME}.hex -o m1.hex
     mergehex -m m1.hex settings.hex -o ${TARGET_NAME}_merged.hex
+    # App + settings (for app-only flash without re-flashing bootloader)
+    mergehex -m ${TARGET_NAME}.hex settings.hex -o ${TARGET_NAME}_app_settings.hex
     rm -f m1.hex settings.hex
 
     echo "✓ Merged hex generated"
@@ -245,6 +247,9 @@ fi
 if [ -f "${TARGET_NAME}_merged.hex" ]; then
     cp ${TARGET_NAME}_merged.hex ${TARGET_NAME}_merged-${VERSION}.hex
 fi
+if [ -f "${TARGET_NAME}_app_settings.hex" ]; then
+    cp ${TARGET_NAME}_app_settings.hex ${TARGET_NAME}_app_settings-${VERSION}.hex
+fi
 
 # =========================================================================
 # Summary
@@ -260,14 +265,17 @@ echo ""
 ls -lh ${TARGET_NAME}-${VERSION}.* 2>/dev/null || true
 ls -lh ${TARGET_NAME}_dfu-${VERSION}.* 2>/dev/null || true
 ls -lh ${TARGET_NAME}_merged-${VERSION}.* 2>/dev/null || true
+ls -lh ${TARGET_NAME}_app_settings-${VERSION}.* 2>/dev/null || true
 echo ""
 
 FLASH_DIR="ports/nrf52840/build/${BUILD_DIR}"
+echo "Flash commands:"
 if [ -f "${TARGET_NAME}_merged-${VERSION}.hex" ]; then
-    echo "★ Ready to flash (merged = app + bootloader + SoftDevice):"
-    echo "  nrfjprog --recover && nrfjprog -f nrf52 --program ${FLASH_DIR}/${TARGET_NAME}_merged-${VERSION}.hex --sectorerase && nrfjprog -f nrf52 --reset"
-else
-    echo "Flash app only (requires SoftDevice already on device):"
-    echo "  nrfjprog -f nrf52 --program ${FLASH_DIR}/${TARGET_NAME}-${VERSION}.hex --sectorerase && nrfjprog -f nrf52 --reset"
+    echo "  Full (app + bootloader + softdevice):"
+    echo "    nrfjprog --program ${FLASH_DIR}/${TARGET_NAME}_merged-${VERSION}.hex --chiperase --verify --reset"
+fi
+if [ -f "${TARGET_NAME}_app_settings-${VERSION}.hex" ]; then
+    echo "  App only (bootloader + softdevice must already be flashed):"
+    echo "    nrfjprog --program ${FLASH_DIR}/${TARGET_NAME}_app_settings-${VERSION}.hex --sectorerase --verify --reset"
 fi
 echo ""

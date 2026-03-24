@@ -81,18 +81,19 @@ fi
 # - ENABLE_PRESSURE_SENSOR=ON: Enable LPS28DFW pressure sensor
 # - ENABLE_AXL_SENSOR=ON: Enable BMA400 accelerometer
 # - ENABLE_THERMISTOR_SENSOR=ON: Enable thermistor temperature sensor
-# - ENABLE_MORTALITY_SENSOR is automatically enabled for RSPB in CMakeLists.txt
+# - ENABLE_MORTALITY_SENSOR=ON: Enable mortality detection (requires AXL + THERMISTOR)
 ARGOS_SMD=${ARGOS_SMD:-ON}
 ENABLE_PRESSURE_SENSOR=${ENABLE_PRESSURE_SENSOR:-1}
 ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR:-1}
 ENABLE_THERMISTOR_SENSOR=${ENABLE_THERMISTOR_SENSOR:-1}
+ENABLE_MORTALITY_SENSOR=${ENABLE_MORTALITY_SENSOR:-1}
 
 echo "Building RSPB with configuration:"
 echo "  ARGOS_SMD=${ARGOS_SMD}"
 echo "  ENABLE_PRESSURE_SENSOR=${ENABLE_PRESSURE_SENSOR}"
 echo "  ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR}"
 echo "  ENABLE_THERMISTOR_SENSOR=${ENABLE_THERMISTOR_SENSOR}"
-echo "  ENABLE_MORTALITY_SENSOR=auto (CMake default for RSPB)"
+echo "  ENABLE_MORTALITY_SENSOR=${ENABLE_MORTALITY_SENSOR}"
 echo ""
 
 cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
@@ -103,6 +104,7 @@ cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
       -DENABLE_PRESSURE_SENSOR=${ENABLE_PRESSURE_SENSOR} \
       -DENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR} \
       -DENABLE_THERMISTOR_SENSOR=${ENABLE_THERMISTOR_SENSOR} \
+      -DENABLE_MORTALITY_SENSOR=${ENABLE_MORTALITY_SENSOR} \
       ../..
 
 make -j 20
@@ -162,6 +164,7 @@ if [ "$CAN_MERGE" = true ]; then
     if [ $? -eq 0 ]; then
         mergehex -m "$BOOTLOADER_HEX" LinkIt_RSPB_board.hex -o m1.hex
         mergehex -m m1.hex settings.hex -o LinkIt_RSPB_board_merged.hex
+        mergehex -m LinkIt_RSPB_board.hex settings.hex -o LinkIt_RSPB_board_app_settings.hex
         rm -f m1.hex settings.hex
         echo "✓ Merged hex generated"
     else
@@ -187,6 +190,9 @@ fi
 if [ -f "LinkIt_RSPB_board_merged.hex" ]; then
     mv LinkIt_RSPB_board_merged.hex LinkIt_RSPB_board_merged-`cat TAG_NAME`.hex
 fi
+if [ -f "LinkIt_RSPB_board_app_settings.hex" ]; then
+    mv LinkIt_RSPB_board_app_settings.hex LinkIt_RSPB_board_app_settings-`cat TAG_NAME`.hex
+fi
 
 echo ""
 echo "Build complete!"
@@ -196,6 +202,7 @@ echo "Files generated:"
 ls -la LinkIt_RSPB_board-* 2>/dev/null || true
 ls -la LinkIt_RSPB_board_dfu-* 2>/dev/null || true
 ls -la LinkIt_RSPB_board_merged-* 2>/dev/null || true
+ls -la LinkIt_RSPB_board_app_settings-* 2>/dev/null || true
 
 if [ "$CAN_MERGE" = false ]; then
     echo ""
@@ -211,5 +218,7 @@ if [ "$CAN_MERGE" = true ] && [ -f "LinkIt_RSPB_board_merged-${TAG}.hex" ]; then
     echo "  Full (app + bootloader + softdevice):"
     echo "    nrfjprog --program ${BUILD_DIR}/LinkIt_RSPB_board_merged-${TAG}.hex --chiperase --verify --reset"
 fi
-echo "  App only (bootloader must already be flashed):"
-echo "    nrfjprog --program ${BUILD_DIR}/LinkIt_RSPB_board-${TAG}.hex --sectorerase --verify --reset"
+if [ -f "LinkIt_RSPB_board_app_settings-${TAG}.hex" ]; then
+    echo "  App only (bootloader + softdevice must already be flashed):"
+    echo "    nrfjprog --program ${BUILD_DIR}/LinkIt_RSPB_board_app_settings-${TAG}.hex --sectorerase --verify --reset"
+fi
