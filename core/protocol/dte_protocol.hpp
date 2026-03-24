@@ -1619,6 +1619,10 @@ public:
 				if (arg_index > 0) {
 					// Skip over parameter separator and check it is a "," character
 					if (payload_pos >= payload.size()) {
+						// Allow optional trailing args when min_args is set
+						if (cmd_ref->min_args > 0 && arg_index >= cmd_ref->min_args) {
+							break;
+						}
 						DEBUG_ERROR("DTE_PROTOCOL_MISSING_ARG");
 						throw DTE_PROTOCOL_MISSING_ARG;
 					}

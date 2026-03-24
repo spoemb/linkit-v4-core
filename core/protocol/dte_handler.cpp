@@ -699,27 +699,56 @@ std::string DTEHandler::ARGOSTX_REQ(int error_code, std::vector<BaseType>& arg_l
 		return DTEEncoder::encode(DTECommand::ARGOSTX_RESP, error_code);
 	}
 
-	if (arg_list.size() < 4) {
+	// Two modes:
+	//   Stored: SATTX,<modulation>,<size>[,<tcxo>]            — uses stored radioconf (ARP51/52/53)
+	//   Custom: SATTX,<modulation>,<radioconf>,<size>[,<tcxo>] — radioconf hex string passed directly
+	if (arg_list.size() < 2) {
 		return DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::MISSING_ARGUMENT);
 	}
 
-	// Extract the argos modulation (0=>LDK, 1=>LDA2, 2=>VLDA4)
-	KineisModulation modulation = (KineisModulation)std::get<unsigned int>(arg_list[0]);
+	// Extract and validate modulation (0=>LDK, 1=>LDA2, 2=>VLDA4)
+	unsigned int mod_val = std::get<unsigned int>(arg_list[0]);
+	if (mod_val > 2) {
+		DEBUG_WARN("DTEHandler::ARGOSTX_REQ: invalid modulation %u", mod_val);
+		return DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::INCORRECT_DATA);
+	}
+	KineisModulation modulation = (KineisModulation)mod_val;
 
-	// Extract the argos power level in mW
-	unsigned int power = std::get<unsigned int>(arg_list[1]);
+	// Max packet size per modulation: LDK=16 bytes (128 bits), LDA2/VLDA4=28 bytes (224 bits)
+	unsigned int max_bytes = (modulation == KineisModulation::LDK) ? 16 : 28;
 
-	// Extract the argos frequency (double)
-	double freq = std::get<double>(arg_list[2]);
+	std::string rconf;
+	unsigned int num_bytes = 0;
+	unsigned int tcxo_time = 0;
 
-	// Extract the payload size in bytes
-	unsigned int num_bytes = std::get<unsigned int>(arg_list[3]);
+	// arg[1] is always TEXT from decoder — detect mode by string length:
+	// radioconf is 32 hex chars, size is 1-2 decimal digits
+	std::string arg2 = std::get<std::string>(arg_list[1]);
+	bool custom_rconf = (arg2.length() > 2);
 
-	// Extract the TCXO warmup time in seconds (optional)
-	unsigned int tcxo_time = arg_list.size() > 4 ? std::get<unsigned int>(arg_list[4]) : 0;
+	if (custom_rconf) {
+		// Custom: SATTX,<modulation>,<radioconf>,<size>[,<tcxo>]
+		rconf = arg2;
+		if (arg_list.size() < 3) {
+			return DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::MISSING_ARGUMENT);
+		}
+		num_bytes = std::get<unsigned int>(arg_list[2]);
+		tcxo_time = arg_list.size() > 3 ? std::get<unsigned int>(arg_list[3]) : 0;
+	} else {
+		// Stored: SATTX,<modulation>,<size>[,<tcxo>]
+		num_bytes = std::stoul(arg2);
+		tcxo_time = arg_list.size() > 2 ? std::get<unsigned int>(arg_list[2]) : 0;
+	}
 
-	DEBUG_INFO("DTEHandler::ARGOSTX_REQ: modulation=%u power=%u freq=%.6f size=%u tcxo=%u",
-		(unsigned int)modulation, power, freq, num_bytes, tcxo_time);
+	// Validate packet size
+	if (num_bytes == 0 || num_bytes > max_bytes) {
+		DEBUG_WARN("DTEHandler::ARGOSTX_REQ: invalid size %u for modulation %u (max=%u)",
+			num_bytes, mod_val, max_bytes);
+		return DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::INCORRECT_DATA);
+	}
+
+	DEBUG_INFO("DTEHandler::ARGOSTX_REQ: mod=%u size=%u tcxo=%u custom_rconf=%u",
+		mod_val, num_bytes, tcxo_time, custom_rconf);
 
 	try {
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
@@ -735,10 +764,25 @@ std::string DTEHandler::ARGOSTX_REQ(int error_code, std::vector<BaseType>& arg_l
 			m_sat_device_active = true;
 		}
 
-		// Configure and transmit
-		smd_sat_instance->set_tx_power(power);
+		if (!custom_rconf) {
+			// Load stored radioconf for the requested modulation
+			ArgosConfig argos_config;
+			configuration_store->get_argos_configuration(argos_config);
+			switch (modulation) {
+				case KineisModulation::LDK:  rconf = argos_config.radioconf_ldk; break;
+				case KineisModulation::VLDA4: rconf = argos_config.radioconf_vlda4; break;
+				case KineisModulation::LDA2:
+				default:                      rconf = argos_config.radioconf_lda2; break;
+			}
+		}
+
+		if (rconf.empty()) {
+			DEBUG_WARN("DTEHandler::ARGOSTX_REQ: empty radioconf for modulation %u", mod_val);
+			return DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::INCORRECT_DATA);
+		}
+
+		smd_sat_instance->switch_modulation(modulation, rconf);
 		smd_sat_instance->set_tcxo_warmup_time(tcxo_time);
-		smd_sat_instance->set_frequency(freq);
 		KineisPacket packet(num_bytes, 0xFF);
 		smd_sat_instance->send(modulation, packet, 8 * num_bytes);
 

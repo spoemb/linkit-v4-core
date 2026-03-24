@@ -197,3 +197,15 @@ if [ "$CAN_MERGE" = false ]; then
     echo ""
     echo "NOTE: Merged hex was not generated (see warnings above)"
 fi
+
+# Show flash command
+TAG=$(cat TAG_NAME)
+BUILD_DIR="ports/nrf52840/build/LINKIT_SMD"
+echo ""
+echo "Flash commands:"
+if [ "$CAN_MERGE" = true ] && [ -f "${TARGET_NAME}_merged-${TAG}.hex" ]; then
+    echo "  Full (app + bootloader + softdevice):"
+    echo "    nrfjprog --program ${BUILD_DIR}/${TARGET_NAME}_merged-${TAG}.hex --chiperase --verify --reset"
+fi
+echo "  App only (bootloader must already be flashed):"
+echo "    nrfjprog --program ${BUILD_DIR}/${TARGET_NAME}-${TAG}.hex --sectorerase --verify --reset"

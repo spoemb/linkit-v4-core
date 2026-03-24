@@ -90,3 +90,15 @@ cp LinkIt_board.elf LinkIt_board-`cat TAG_NAME`.elf
 mv LinkIt_board.hex LinkIt_board-`cat TAG_NAME`.hex
 mv LinkIt_board.img LinkIt_board-`cat TAG_NAME`.img
 mv LinkIt_board_merged.hex LinkIt_board_merged-`cat TAG_NAME`.hex
+
+# Show flash command
+TAG=$(cat TAG_NAME)
+BUILD_DIR="ports/nrf52840/build/LINKIT"
+echo ""
+echo "Flash commands:"
+if [ -f "LinkIt_board_merged-${TAG}.hex" ]; then
+    echo "  Full (app + bootloader + softdevice):"
+    echo "    nrfjprog --program ${BUILD_DIR}/LinkIt_board_merged-${TAG}.hex --chiperase --verify --reset"
+fi
+echo "  App only (bootloader must already be flashed):"
+echo "    nrfjprog --program ${BUILD_DIR}/LinkIt_board-${TAG}.hex --sectorerase --verify --reset"

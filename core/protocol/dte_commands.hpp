@@ -115,6 +115,7 @@ struct DTECommandMap {
 	std::string name;
 	DTECommand  command;
 	std::vector<BaseMap> prototype;
+	unsigned int min_args = 0;  // 0 = all args required (default); >0 = trailing args are optional
 };
 
 extern const DTECommandMap command_map[];

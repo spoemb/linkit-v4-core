@@ -262,11 +262,12 @@ ls -lh ${TARGET_NAME}_dfu-${VERSION}.* 2>/dev/null || true
 ls -lh ${TARGET_NAME}_merged-${VERSION}.* 2>/dev/null || true
 echo ""
 
+FLASH_DIR="ports/nrf52840/build/${BUILD_DIR}"
 if [ -f "${TARGET_NAME}_merged-${VERSION}.hex" ]; then
     echo "★ Ready to flash (merged = app + bootloader + SoftDevice):"
-    echo "  nrfjprog --recover && nrfjprog -f nrf52 --program ${TARGET_NAME}_merged-${VERSION}.hex --sectorerase && nrfjprog -f nrf52 --reset"
+    echo "  nrfjprog --recover && nrfjprog -f nrf52 --program ${FLASH_DIR}/${TARGET_NAME}_merged-${VERSION}.hex --sectorerase && nrfjprog -f nrf52 --reset"
 else
     echo "Flash app only (requires SoftDevice already on device):"
-    echo "  nrfjprog -f nrf52 --program ${TARGET_NAME}-${VERSION}.hex --sectorerase && nrfjprog -f nrf52 --reset"
+    echo "  nrfjprog -f nrf52 --program ${FLASH_DIR}/${TARGET_NAME}-${VERSION}.hex --sectorerase && nrfjprog -f nrf52 --reset"
 fi
 echo ""

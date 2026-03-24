@@ -75,10 +75,12 @@ fi
 # - LORA_RAK3172=ON: Use RAK3172-SiP LoRa module
 # - ENABLE_AXL_SENSOR=ON: Enable BMA400 accelerometer
 ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR:-ON}
+ENABLE_SWS_SENSOR=${ENABLE_SWS_SENSOR:-ON}
 
 echo "Building LinkIt V4 LoRa RAK3172 with configuration:"
 echo "  LORA_RAK3172=ON"
 echo "  ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR}"
+echo "  ENABLE_SWS_SENSOR=${ENABLE_SWS_SENSOR}"
 echo ""
 
 cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
@@ -87,6 +89,7 @@ cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
       -DCMAKE_BUILD_TYPE=Release \
       -DLORA_RAK3172=ON \
       -DENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR} \
+      -DENABLE_SWS_SENSOR=${ENABLE_SWS_SENSOR} \
       ../..
 
 make -j 20
@@ -183,3 +186,15 @@ if [ "$CAN_MERGE" = false ]; then
     echo ""
     echo "NOTE: Merged hex was not generated (see warnings above)"
 fi
+
+# Show flash command
+TAG=$(cat TAG_NAME)
+BUILD_DIR="ports/nrf52840/build/LINKIT_LORA"
+echo ""
+echo "Flash commands:"
+if [ "$CAN_MERGE" = true ] && [ -f "${TARGET_NAME}_merged-${TAG}.hex" ]; then
+    echo "  Full (app + bootloader + softdevice):"
+    echo "    nrfjprog --program ${BUILD_DIR}/${TARGET_NAME}_merged-${TAG}.hex --chiperase --verify --reset"
+fi
+echo "  App only (bootloader must already be flashed):"
+echo "    nrfjprog --program ${BUILD_DIR}/${TARGET_NAME}-${TAG}.hex --sectorerase --verify --reset"

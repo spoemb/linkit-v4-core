@@ -1377,7 +1377,7 @@ TEST(DTEHandler, PARMW_UNP25_UwMinSurfaceTime)
 	CHECK_EQUAL(30U, configuration_store->read_param<unsigned int>(ParamID::UW_MIN_SURFACE_TIME));
 }
 
-TEST(DTEHandler, ARGOSTX_REQ_NoSatelliteDevice)
+TEST(DTEHandler, ARGOSTX_REQ_StoredMode_NoSatelliteDevice)
 {
 	DTECommand command;
 	std::string req;
@@ -1387,9 +1387,63 @@ TEST(DTEHandler, ARGOSTX_REQ_NoSatelliteDevice)
 	std::vector<BaseType> arg_list;
 	unsigned int error_code;
 
-	// ARGOSTX_REQ with valid args - no satellite device in test build
-	// DTE command name is "SATTX", payload: "0,500,401.650000,10,0" = 21 chars = 0x15
-	req = "$SATTX#015;0,500,401.650000,10,0\r";
+	// Stored mode: SATTX,<modulation>,<size> — "0,10" = 4 chars = 0x004
+	req = "$SATTX#004;0,10\r";
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::ARGOSTX_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::INCORRECT_DATA, error_code);
+}
+
+TEST(DTEHandler, ARGOSTX_REQ_StoredModeWithTcxo_NoSatelliteDevice)
+{
+	DTECommand command;
+	std::string req;
+	std::string resp;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// Stored mode with tcxo: SATTX,<modulation>,<size>,<tcxo> — "1,24,5" = 6 chars = 0x006
+	req = "$SATTX#006;1,24,5\r";
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::ARGOSTX_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::INCORRECT_DATA, error_code);
+}
+
+TEST(DTEHandler, ARGOSTX_REQ_CustomMode_NoSatelliteDevice)
+{
+	DTECommand command;
+	std::string req;
+	std::string resp;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// Custom mode: SATTX,<modulation>,<radioconf_32chars>,<size>
+	// "1,0123456789ABCDEF0123456789ABCDEF,24" = 37 chars = 0x025
+	req = "$SATTX#025;1,0123456789ABCDEF0123456789ABCDEF,24\r";
+	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
+	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
+	CHECK_TRUE(DTECommand::ARGOSTX_RESP == command);
+	CHECK_EQUAL((unsigned int)DTEError::INCORRECT_DATA, error_code);
+}
+
+TEST(DTEHandler, ARGOSTX_REQ_InvalidSize)
+{
+	DTECommand command;
+	std::string req;
+	std::string resp;
+	std::vector<ParamID> params;
+	std::vector<ParamValue> param_values;
+	std::vector<BaseType> arg_list;
+	unsigned int error_code;
+
+	// LDK (mod=0) max size is 16, send 24 → INCORRECT_DATA
+	req = "$SATTX#004;0,24\r";
 	CHECK_TRUE(DTEAction::NONE == dte_handler->handle_dte_message(req, resp));
 	DTEDecoder::decode(resp, command, error_code, arg_list, params, param_values);
 	CHECK_TRUE(DTECommand::ARGOSTX_RESP == command);

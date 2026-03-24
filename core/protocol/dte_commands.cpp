@@ -262,7 +262,21 @@ const DTECommandMap command_map[] = {
 				.is_writable = false
 			},
 			{
-				.name = "power",
+				// Stored mode: size (decimal string, e.g. "24")
+				// Custom mode: radioconf (32-char hex string)
+				.name = "radioconf_or_size",
+				.key = "",
+				.encoding = BaseEncoding::TEXT,
+				.min_value = 0U,
+				.max_value = 0U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				// Stored mode: tcxo (optional)
+				// Custom mode: size
+				.name = "size_or_tcxo",
 				.key = "",
 				.encoding = BaseEncoding::UINT,
 				.min_value = 0U,
@@ -272,27 +286,8 @@ const DTECommandMap command_map[] = {
 				.is_writable = false
 			},
 			{
-				.name = "freq",
-				.key = "",
-				.encoding = BaseEncoding::FLOAT,
-				.min_value = 0.0,
-				.max_value = 0.0,
-				.permitted_values = {},
-				.is_implemented = false,
-				.is_writable = false
-			},
-			{
-				.name = "size",
-				.key = "",
-				.encoding = BaseEncoding::UINT,
-				.min_value = 0U,
-				.max_value = 0U,
-				.permitted_values = {},
-				.is_implemented = false,
-				.is_writable = false
-			},
-			{
-				.name = "tcxo_warmup",
+				// Custom mode only: tcxo (optional)
+				.name = "tcxo",
 				.key = "",
 				.encoding = BaseEncoding::UINT,
 				.min_value = 0U,
@@ -301,7 +296,8 @@ const DTECommandMap command_map[] = {
 				.is_implemented = false,
 				.is_writable = false
 			}
-		}
+		},
+		.min_args = 2  // modulation + radioconf_or_size required; rest optional
 	},
 	{
 		.name = "SCALR",
