@@ -78,7 +78,11 @@ float NrfBatteryMonitor::sample_adc()
 
 #ifdef BAT_READ_ENABLE
 	GPIOPins::set(BAT_READ_ENABLE);
-	PMU::delay_ms(500);
+#if ARGOS_SMD
+	PMU::delay_ms(100);   // SMD board: faster RC charge circuit
+#else
+	PMU::delay_ms(500);   // KIM board: slower RC charge circuit
+#endif
 #endif
 
 	// We need to init and uninit the SAADC peripheral here to reduce our sleep current

@@ -270,6 +270,10 @@ echo ""
 
 FLASH_DIR="ports/nrf52840/build/${BUILD_DIR}"
 echo "Flash commands:"
+echo "  NOTE: If flashing fails with 'Access protection enabled', the device has"
+echo "  readback protection (APPROTECT) active. Run 'nrfjprog --recover' first."
+echo "  This erases ALL flash (firmware + config) and disables protection."
+echo ""
 if [ -f "${TARGET_NAME}_merged-${VERSION}.hex" ]; then
     echo "  Full (app + bootloader + softdevice):"
     echo "    nrfjprog --program ${FLASH_DIR}/${TARGET_NAME}_merged-${VERSION}.hex --chiperase --verify --reset"

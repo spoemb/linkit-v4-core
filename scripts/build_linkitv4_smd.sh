@@ -208,6 +208,10 @@ TAG=$(cat TAG_NAME)
 BUILD_DIR="ports/nrf52840/build/LINKIT_SMD"
 echo ""
 echo "Flash commands:"
+echo "  NOTE: If flashing fails with 'Access protection enabled', the device has"
+echo "  readback protection (APPROTECT) active. Run 'nrfjprog --recover' first."
+echo "  This erases ALL flash (firmware + config) and disables protection."
+echo ""
 if [ "$CAN_MERGE" = true ] && [ -f "${TARGET_NAME}_merged-${TAG}.hex" ]; then
     echo "  Full (app + bootloader + softdevice):"
     echo "    nrfjprog --program ${BUILD_DIR}/${TARGET_NAME}_merged-${TAG}.hex --chiperase --verify --reset"
