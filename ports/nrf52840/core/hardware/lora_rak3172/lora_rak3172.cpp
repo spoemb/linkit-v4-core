@@ -427,13 +427,27 @@ void LoRaDevice::state_configure()
             break;
 
         case 3:
-            // Set Device EUI (NOT pre-burned on RAK3172-SiP — must be configured)
+            // Set Device EUI — try: 1) config store, 2) module, 3) nRF52840 FICR
             if (m_config.deveui.empty()) {
-                DEBUG_WARN("LoRaDevice: DEVEUI not configured! Set LRP01 via DTE");
                 at_error = send_AT(AT_GET_DEVEUI);
-                if (!at_error) {
+                if (!at_error && !m_lora_comm.m_last_value.empty() &&
+                    m_lora_comm.m_last_value != "0000000000000000") {
                     m_config.deveui = m_lora_comm.m_last_value;
                     DEBUG_INFO("LoRaDevice: module DEVEUI=%s", m_config.deveui.c_str());
+                } else {
+                    // Generate from nRF52840 FICR unique device ID
+                    char buf[17];
+#ifdef NRF52840_XXAA
+                    snprintf(buf, sizeof(buf), "%08lX%08lX",
+                             (unsigned long)NRF_FICR->DEVICEID[1],
+                             (unsigned long)NRF_FICR->DEVICEID[0]);
+#else
+                    snprintf(buf, sizeof(buf), "%08lX%08lX",
+                             (unsigned long)0, (unsigned long)PMU::device_identifier());
+#endif
+                    m_config.deveui = std::string(buf);
+                    DEBUG_INFO("LoRaDevice: generated DEVEUI=%s", m_config.deveui.c_str());
+                    at_error = send_AT(AT_SET_DEVEUI, m_config.deveui);
                 }
             } else {
                 at_error = send_AT(AT_SET_DEVEUI, m_config.deveui);
