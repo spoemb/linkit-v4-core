@@ -1070,10 +1070,16 @@ KineisPacket ArgosPacketBuilder::build_rspb_long_packet(GPSLogEntry* gps_entry,
 		PACK_BITS(0, packet, base_pos, 14);
 	}
 
-	// AXL activity only (8 bits) — X/Y/Z and AXL temp dropped for RSPB
+	// AXL X/Y/Z (15 bits each) + activity (8 bits)
 	if (axl_sensor != nullptr) {
-		PACK_BITS((unsigned int)axl_sensor->port[4], packet, base_pos, 8);
+		PACK_BITS((unsigned int)axl_sensor->port[1], packet, base_pos, 15);  // X
+		PACK_BITS((unsigned int)axl_sensor->port[2], packet, base_pos, 15);  // Y
+		PACK_BITS((unsigned int)axl_sensor->port[3], packet, base_pos, 15);  // Z
+		PACK_BITS((unsigned int)axl_sensor->port[4], packet, base_pos, 8);   // Activity
 	} else {
+		PACK_BITS(0, packet, base_pos, 15);
+		PACK_BITS(0, packet, base_pos, 15);
+		PACK_BITS(0, packet, base_pos, 15);
 		PACK_BITS(0, packet, base_pos, 8);
 	}
 

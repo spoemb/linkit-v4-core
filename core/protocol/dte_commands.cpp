@@ -137,7 +137,7 @@ const DTECommandMap command_map[] = {
 				.key = "",
 				.encoding = BaseEncoding::HEXADECIMAL,
 				.min_value = 0U,
-				.max_value = 11U,  // Updated: includes SWS_LOG(11)
+				.max_value = 12U,  // Updated: includes MORTALITY(12)
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false
@@ -202,7 +202,7 @@ const DTECommandMap command_map[] = {
 				.key = "",
 				.encoding = BaseEncoding::UINT,
 				.min_value = 1U,
-				.max_value = 13U,  // Updated: includes SWS_LOG(13)
+				.max_value = 14U,  // Updated: includes MORTALITY(14)
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false
@@ -340,7 +340,7 @@ const DTECommandMap command_map[] = {
 				.key = "",
 				.encoding = BaseEncoding::UINT,
 				.min_value = 1U,
-				.max_value = 31U,  // Bitmask: 1=battery, 2=pressure, 4=GNSS, 8=accel, 16=thermistor
+				.max_value = 255U,  // Bitmask: 1=battery, 2=pressure, 4=GNSS, 8=accel, 16=thermistor, 32=sea_temp, 64=ALS, 128=pH
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false

@@ -91,12 +91,12 @@ public:
 			);
 
 	// RSPB dedicated packet formats (bird tracker with mortality detection)
-	// RSPB Long (LDA2): header(3) + time(16) + GPS(51) + battery(8) + pressure(29) + thermistor(14) + activity(8) + mortality(7) = 136 bits
+	// RSPB Long (LDA2): header(3) + time(16) + GPS(51) + battery(8) + pressure(29) + thermistor(14) + AXL_XYZ(45) + activity(8) + mortality(7) = 181 bits
 	// RSPB Short (LDK): header(3) + time(16) + GPS(51) + battery(8) + pressure(15) + thermistor(14) + activity(8) + mortality(7) = 122 bits
 	static inline const unsigned int RSPB_LONG_HEADER            = 0b100;  // Type 4
 	static inline const unsigned int RSPB_SHORT_HEADER           = 0b101;  // Type 5
-	static inline const unsigned int RSPB_LONG_PACKET_BITS       = 136;
-	static inline const unsigned int RSPB_LONG_PACKET_BYTES      = 17;
+	static inline const unsigned int RSPB_LONG_PACKET_BITS       = 181;
+	static inline const unsigned int RSPB_LONG_PACKET_BYTES      = 23;
 	static inline const unsigned int RSPB_SHORT_PACKET_BITS      = 122;
 	static inline const unsigned int RSPB_SHORT_PACKET_BYTES     = 16;
 
