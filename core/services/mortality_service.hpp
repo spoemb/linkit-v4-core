@@ -1,10 +1,43 @@
 #pragma once
 
 #include "service.hpp"
+#include "logger.hpp"
 #include "messages.hpp"
 #include "haversine.hpp"
 #include "timeutils.hpp"
 #include "debug.hpp"
+
+class MortalityLogFormatter : public LogFormatter {
+public:
+	const std::string header() override {
+		return "log_datetime,confidence,consecutive_days,status,last_activity,last_body_temp,last_lat,last_lon,last_eval_epoch\r\n";
+	}
+	const std::string log_entry(const LogEntry& e) override {
+		char entry[256], d1[25];
+		const MortalityLogEntry *log = (const MortalityLogEntry *)&e;
+		std::time_t t;
+		std::tm *tm;
+
+		t = convert_epochtime(log->header.year, log->header.month, log->header.day, log->header.hours, log->header.minutes, log->header.seconds);
+		tm = std::gmtime(&t);
+		std::strftime(d1, sizeof(d1), "%d/%m/%Y %H:%M:%S", tm);
+
+		const char *status_str = (log->info.status == MortalityStatus::CONFIRMED) ? "CONFIRMED" :
+		                         (log->info.status == MortalityStatus::SUSPECTED) ? "SUSPECTED" : "ALIVE";
+
+		snprintf(entry, sizeof(entry), "%s,%u,%u,%s,%u,%u,%.6f,%.6f,%u\r\n",
+				d1,
+				log->info.confidence,
+				log->info.consecutive_days,
+				status_str,
+				log->info.last_activity,
+				log->info.last_body_temp,
+				log->info.last_lat,
+				log->info.last_lon,
+				log->info.last_eval_epoch);
+		return std::string(entry);
+	}
+};
 
 class MortalityService : public Service {
 public:

@@ -172,7 +172,12 @@ void Service::service_log(ServiceEventData *event_data, void *entry) {
 void Service::service_complete(ServiceEventData *event_data, void *entry, bool shall_reschedule) {
 	DEBUG_TRACE("Service::service_complete: service %s", m_name);
 	if (!m_is_initiated) {
-		DEBUG_WARN("Service::service_complete: service %s completed without being initiated", m_name);
+		if (!m_is_started) {
+			// Service was stopped (e.g., state transition during async sensor read) — expected, ignore silently
+			DEBUG_TRACE("Service::service_complete: service %s async completion after stop (ignored)", m_name);
+		} else {
+			DEBUG_WARN("Service::service_complete: service %s completed without being initiated", m_name);
+		}
 		return;
 	}
 	m_is_initiated = false;

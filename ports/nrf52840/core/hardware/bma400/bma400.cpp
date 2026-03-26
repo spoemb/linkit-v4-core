@@ -759,6 +759,18 @@ void BMA400::calibration_read(double& value, const unsigned int offset)
 		case 6: // Z calibration offset (saved)
 			value = m_bma400.get_z_calibration();
 			break;
+		case 7: // Wakeup threshold
+			value = m_bma400.get_wakeup_threshold();
+			break;
+		case 8: // Wakeup duration
+			value = m_bma400.get_wakeup_duration();
+			break;
+		case 9: // G-force range
+			value = (double)m_bma400.get_range();
+			break;
+		case 10: // Power mode
+			value = (double)m_bma400.get_power_mode();
+			break;
 		default:
 			DEBUG_WARN("BMA400::calibration_read: invalid offset %u", offset);
 			value = 0.0;

@@ -120,6 +120,8 @@ private:
 	bool m_lora_tx_active;         // Current async TX is LoRa (vs Argos/SMD)
 	bool m_doppler_cal_active;     // Periodic Doppler TX mode active (until reset)
 	bool m_doppler_cal_first_tx;   // Waiting for first TX result
+	bool m_sattx_needs_restore;    // SATTX temporarily switched modulation
+	KineisModulation m_sattx_restore_modulation;  // Modulation to restore after SATTX
 	bool m_gnssi_pending;          // Waiting for GNSS device info (autonomous GNSSI)
 	bool m_gps_subscribed;         // Subscribed to GPS events
 	std::function<void(const std::string&)> m_async_write;

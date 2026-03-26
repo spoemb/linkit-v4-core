@@ -661,7 +661,9 @@ int main()
 
 #if ENABLE_MORTALITY_SENSOR
 	DEBUG_TRACE("Mortality Log...");
+	MortalityLogFormatter mortality_log_formatter;
 	FsLog mortality_log(&lfs_file_system, "MORTALITY", 64*1024);  // Small log, only needs last few entries
+	mortality_log.set_log_formatter(&mortality_log_formatter);
 #endif
 
 	DEBUG_TRACE("RAM access...");

@@ -17,6 +17,8 @@ DTEHandler::DTEHandler() {
 	m_lora_tx_active = false;
 	m_doppler_cal_active = false;
 	m_doppler_cal_first_tx = false;
+	m_sattx_needs_restore = false;
+	m_sattx_restore_modulation = KineisModulation::LDA2;
 	m_gnssi_pending = false;
 	m_gps_subscribed = false;
 }
@@ -781,7 +783,12 @@ std::string DTEHandler::ARGOSTX_REQ(int error_code, std::vector<BaseType>& arg_l
 			return DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::INCORRECT_DATA);
 		}
 
+		// Save current modulation before switching for SATTX
+		KineisModulation prev_mod = smd_sat_instance->get_current_modulation();
 		smd_sat_instance->switch_modulation(modulation, rconf);
+		m_sattx_restore_modulation = prev_mod;
+		m_sattx_needs_restore = true;
+
 		smd_sat_instance->set_tcxo_warmup_time(tcxo_time);
 		KineisPacket packet(num_bytes, 0xFF);
 		smd_sat_instance->send(modulation, packet, 8 * num_bytes);
@@ -1593,6 +1600,22 @@ void DTEHandler::react(KineisEventTxComplete const& ) {
 		m_lora_tx_active = false;
 #else
 		DTECommand resp_cmd = DTECommand::ARGOSTX_RESP;
+#endif
+		// Restore modulation after SATTX if it was temporarily switched
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+		if (m_sattx_needs_restore && smd_sat_instance) {
+			ArgosConfig argos_config;
+			configuration_store->get_argos_configuration(argos_config);
+			std::string rconf;
+			switch (m_sattx_restore_modulation) {
+				case KineisModulation::LDK:  rconf = argos_config.radioconf_ldk; break;
+				case KineisModulation::VLDA4: rconf = argos_config.radioconf_vlda4; break;
+				default:                      rconf = argos_config.radioconf_lda2; break;
+			}
+			if (!rconf.empty())
+				smd_sat_instance->switch_modulation(m_sattx_restore_modulation, rconf);
+			m_sattx_needs_restore = false;
+		}
 #endif
 		if (m_async_write) {
 			std::string resp = DTEEncoder::encode(resp_cmd, (int)DTEError::OK);

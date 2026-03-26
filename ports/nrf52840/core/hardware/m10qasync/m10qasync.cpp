@@ -523,10 +523,12 @@ void M10QAsyncReceiver::react(const UBXCommsEventDebug& e) {
 }
 
 void M10QAsyncReceiver::react(const UBXCommsEventError& e) {
-    system_scheduler->post_task_prio([this, e]() {
-        DEBUG_ERROR("UBXCommsEventError: type=%02x count=%u", e.error_type, m_uart_error_count);
-    }, "Debug");
     if (STATE_EQUAL(poweron)) {
+        // During power-on, UART framing errors are expected (GPS module sends
+        // NMEA by default before UBX protocol is configured). Tolerate up to 10.
+        system_scheduler->post_task_prio([this, e]() {
+            DEBUG_WARN("UBXCommsEventError: type=%02x count=%u (power-on, expected)", e.error_type, m_uart_error_count);
+        }, "Debug");
         if (++m_uart_error_count >= 10) {
             m_uart_error_count = 0;
             cancel_timeout();
@@ -534,6 +536,10 @@ void M10QAsyncReceiver::react(const UBXCommsEventError& e) {
             run_state_machine();
         }
     } else {
+        // Outside power-on, comms errors are real problems
+        system_scheduler->post_task_prio([this, e]() {
+            DEBUG_ERROR("UBXCommsEventError: type=%02x count=%u", e.error_type, m_uart_error_count);
+        }, "Debug");
         cancel_timeout();
         m_op_state = OpState::ERROR;
         run_state_machine();

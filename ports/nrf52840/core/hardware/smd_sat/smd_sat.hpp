@@ -55,6 +55,7 @@ private:
 	KineisPacket m_tx_buffer;
 	KineisPacket m_packet_buffer;
 	SmdArgosModulation m_modulation;
+	std::string m_pending_rconf;  // Deferred RCONF for next power-on
 	unsigned int m_tx_power;
 	double      m_tx_freq;
 	bool        m_is_first_tx;

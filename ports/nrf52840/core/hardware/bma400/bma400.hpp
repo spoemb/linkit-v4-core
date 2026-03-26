@@ -48,6 +48,8 @@ public:
 	// Configuration getters
 	uint8_t get_power_mode() const { return m_power_mode; }
 	uint8_t get_range() const { return m_g_range; }
+	double get_wakeup_threshold() const { return m_wakeup_threshold; }
+	double get_wakeup_duration() const { return m_wakeup_duration; }
 
 	// Calibration offset calculation
 	void calibrate_offset(uint8_t g_range, double& offset_x, double& offset_y, double& offset_z);

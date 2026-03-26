@@ -254,6 +254,28 @@ void SmdSat::state_load_kmac_enter() {}
 void SmdSat::state_load_kmac_exit() {}
 
 void SmdSat::state_load_kmac() {
+	// Apply deferred RCONF from switch_modulation() while stopped
+	if (!m_pending_rconf.empty()) {
+		DEBUG_INFO("SmdSat::%s: applying deferred RCONF for modulation %d", __func__, (int)m_modulation);
+		auto wait_cmd = []() { nrf_delay_ms(SMDSAT_DELAY_CMD_MS * 2); };
+		std::string rconf_bin = Binascii::unhexlify(m_pending_rconf);
+		smd_uint8_array_t rconf_struct = {static_cast<uint16_t>(rconf_bin.size()),
+		                                  reinterpret_cast<uint8_t *>(rconf_bin.data())};
+		try {
+			m_cmd.set_radio_conf(&rconf_struct);
+			wait_cmd();
+			m_cmd.save_radio_conf();
+			wait_cmd();
+			m_cmd.load_kmac_profil(1);
+			wait_cmd();
+			is_kmac_profil_loaded = true;
+			DEBUG_INFO("SmdSat::%s: deferred RCONF applied OK", __func__);
+		} catch (...) {
+			DEBUG_ERROR("SmdSat::%s: failed to apply deferred RCONF", __func__);
+		}
+		m_pending_rconf.clear();
+	}
+
 	// Write credentials from config store to SMD hardware if they differ.
 	// Read-back from SMD and compare to avoid unnecessary flash writes (endurance).
 	if (!m_credentials_written) {
@@ -874,11 +896,12 @@ bool SmdSat::switch_modulation(KineisModulation mode, const std::string& rconf_h
 		return false;
 	}
 
-	// SMD must be powered on (not stopped) for RCONF write
-	bool was_stopped = (m_state == SmdSatState::stopped);
-	if (was_stopped) {
-		DEBUG_ERROR("SmdSat::%s: SMD is stopped, cannot switch modulation", __func__);
-		return false;
+	// If SMD is stopped, defer the switch — RCONF will be written on next power-on
+	if (m_state == SmdSatState::stopped) {
+		DEBUG_INFO("SmdSat::%s: SMD stopped, deferring switch to %d", __func__, (int)target);
+		m_modulation = target;
+		m_pending_rconf = rconf_hex;
+		return true;
 	}
 
 	auto wait_cmd = []() { nrf_delay_ms(SMDSAT_DELAY_CMD_MS * 2); };

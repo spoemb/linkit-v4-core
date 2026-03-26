@@ -59,9 +59,9 @@ GaugeBatteryMonitor::GaugeBatteryMonitor(uint8_t critical_level,
     // Setup I2C functions but DON'T start the gauge yet (power saving)
     setup_i2c();
 
-    // Set default values until first read
-    m_last_voltage_mv = 4100;
-    m_last_level = 100;
+    // Set default values until first read (conservative, not 100%)
+    m_last_voltage_mv = 3700;
+    m_last_level = 50;
     m_is_init = false;  // Will init on first update()
 }
 
@@ -170,6 +170,28 @@ int GaugeBatteryMonitor::check_i2c_device() {
     return status;
 }
 
+// Voltage-based SOC estimate using 4V20_MAX LiPo OCV curve (420mAh 3.7V)
+// Used as sanity check when STC3117 reports implausible SOC after power cycle
+static uint8_t estimate_soc_from_voltage(uint16_t mv) {
+    // OCV table: voltage (mV) → SOC (%) for typical 4.2V LiPo
+    static const struct { uint16_t mv; uint8_t soc; } ocv[] = {
+        {3300,  0}, {3541,  3}, {3618,  6}, {3658, 10},
+        {3695, 15}, {3721, 20}, {3747, 25}, {3761, 30},
+        {3778, 40}, {3802, 50}, {3863, 60}, {3899, 65},
+        {3929, 70}, {3991, 80}, {4076, 90}, {4176,100},
+    };
+    if (mv <= ocv[0].mv) return 0;
+    if (mv >= ocv[15].mv) return 100;
+    for (int i = 1; i < 16; i++) {
+        if (mv <= ocv[i].mv) {
+            uint32_t range_mv = ocv[i].mv - ocv[i-1].mv;
+            uint32_t range_soc = ocv[i].soc - ocv[i-1].soc;
+            return ocv[i-1].soc + (uint8_t)((mv - ocv[i-1].mv) * range_soc / range_mv);
+        }
+    }
+    return 100;
+}
+
 void GaugeBatteryMonitor::internal_update() {
     // Cache: skip I2C read if last measurement is still fresh
     static uint64_t last_read_time = 0;
@@ -181,13 +203,13 @@ void GaugeBatteryMonitor::internal_update() {
     // Acquire VSENSORS for I2C bus stability (other sensors on same bus)
     SensorsPowerGuard power_guard;
 
-    // === POWER OPTIMIZED: Wake up → Read → Shutdown ===
+    // Power-optimized: init → read → shutdown cycle.
+    // STC3117 runs at ~70uA vs ~3uA standby — must minimize run time for long deployment.
 
     // 1. Initialize gauge (wake from standby)
     int status = this->init();
     if (status != STC3117_OK) {
         DEBUG_ERROR("STC3117: Failed to init for reading");
-        // Keep previous values on error
         return;
     }
 
@@ -202,20 +224,25 @@ void GaugeBatteryMonitor::internal_update() {
         mv = (uint16_t)STC3117_GG_struct.Voltage;
         level = (uint8_t)(STC3117_GG_struct.SOC / 10);
 
+        // Sanity check: if STC3117 reports implausible SOC, override with
+        // voltage-based estimate using the OCV curve (4V20_MAX LiPo profile)
+        uint8_t volt_soc = estimate_soc_from_voltage(mv);
+        if (level > volt_soc + 15) {
+            DEBUG_WARN("STC3117: SOC %u%% implausible for %umV, using voltage estimate %u%%",
+                       level, mv, volt_soc);
+            level = volt_soc;
+        }
+
         DEBUG_INFO("STC3117: V=%umV SOC=%u%% I=%imA",
             mv, level, STC3117_GG_struct.Current);
     }
     else if (status == 0) {
-        // Only previous values available (use them)
         mv = (uint16_t)STC3117_GG_struct.Voltage;
         level = (uint8_t)(STC3117_GG_struct.SOC / 10);
-
-        // Using previous cached values
     }
     else {
-        // Error - keep previous values
         DEBUG_ERROR("STC3117: Read error (status=%d)", status);
-        this->shutdown();  // Still shutdown to save power
+        this->shutdown();
         return;
     }
 

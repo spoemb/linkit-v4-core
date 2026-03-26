@@ -1237,14 +1237,14 @@ TEST(DTEHandler, PARMW_LoRa_APPKEY)
 	STRCMP_EQUAL("0102030405060708090A0B0C0D0E0F10", configuration_store->read_param<std::string>(ParamID::LORA_APPKEY).c_str());
 }
 
-TEST(DTEHandler, PARMW_LoRa_DEVEUI_ReadOnly)
+TEST(DTEHandler, PARMW_LoRa_DEVEUI_Writable)
 {
 	std::string resp;
-	// DevEUI (LRP01) is read-only — write attempt should be silently ignored
+	// DevEUI (LRP01) is now writable — write should succeed
 	std::string req = "$PARMW#016;LRP01=AABBCCDDEEFF0011\r";
-	dte_handler->handle_dte_message(req, resp);
-	// DevEUI should remain empty (default)
-	STRCMP_EQUAL("", configuration_store->read_param<std::string>(ParamID::LORA_DEVEUI).c_str());
+	CHECK_TRUE(DTEAction::CONFIG_UPDATED == dte_handler->handle_dte_message(req, resp));
+	STRCMP_EQUAL("$O;PARMW#000;\r", resp.c_str());
+	STRCMP_EQUAL("AABBCCDDEEFF0011", configuration_store->read_param<std::string>(ParamID::LORA_DEVEUI).c_str());
 }
 
 TEST(DTEHandler, PARMW_LoRa_NJM)
