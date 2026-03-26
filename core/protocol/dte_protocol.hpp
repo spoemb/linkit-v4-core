@@ -479,33 +479,22 @@ protected:
 	static inline void encode_acquisition_period(std::string& output, unsigned int& value) {
 		unsigned int x;
 		switch (value) {
-		    case 0:
-		    	x = 0;
-		    	break;
-			case 10 * 60:
-				x = 1;
-				break;
-			case 15 * 60:
-				x = 2;
-				break;
-			case 30 * 60:
-				x = 3;
-				break;
-			case 60 * 60:
-				x = 4;
-				break;
-			case 120 * 60:
-				x = 5;
-				break;
-			case 360 * 60:
-				x = 6;
-				break;
-			case 720 * 60:
-				x = 7;
-				break;
-			case 1440 * 60:
-				x = 8;
-				break;
+			case 0:          x = 0;  break;
+			case 10 * 60:    x = 1;  break;  // 10 min
+			case 15 * 60:    x = 2;  break;  // 15 min
+			case 30 * 60:    x = 3;  break;  // 30 min
+			case 60 * 60:    x = 4;  break;  // 1 hour
+			case 120 * 60:   x = 5;  break;  // 2 hours
+			case 180 * 60:   x = 6;  break;  // 3 hours
+			case 240 * 60:   x = 7;  break;  // 4 hours
+			case 360 * 60:   x = 8;  break;  // 6 hours
+			case 720 * 60:   x = 9;  break;  // 12 hours
+			case 1440 * 60:  x = 10; break;  // 24 hours
+			case 1 * 60:     x = 11; break;  // 1 min
+			case 2 * 60:     x = 12; break;  // 2 min
+			case 5 * 60:     x = 13; break;  // 5 min
+			case 20 * 60:    x = 14; break;  // 20 min
+			case 45 * 60:    x = 15; break;  // 45 min
 			default:
 				throw DTE_PROTOCOL_VALUE_OUT_OF_RANGE;
 		}
@@ -959,25 +948,23 @@ private:
 	}
 
 	static unsigned int decode_acquisition_period(const std::string& s) {
-		if (s == "0") {
-			return 0;
-		} else if (s == "1") {
-			return 10 * 60;
-		} else if (s == "2") {
-			return 15 * 60;
-		} else if (s == "3") {
-			return 30 * 60;
-		} else if (s == "4") {
-			return 60 * 60;
-		} else if (s == "5") {
-			return 120 * 60;
-		} else if (s == "6") {
-			return 360 * 60;
-		} else if (s == "7") {
-			return 720 * 60;
-		} else if (s == "8") {
-			return 1440 * 60;
-		} else {
+		if (s == "0")       return 0;
+		else if (s == "1")  return 10 * 60;    // 10 min
+		else if (s == "2")  return 15 * 60;    // 15 min
+		else if (s == "3")  return 30 * 60;    // 30 min
+		else if (s == "4")  return 60 * 60;    // 1 hour
+		else if (s == "5")  return 120 * 60;   // 2 hours
+		else if (s == "6")  return 180 * 60;   // 3 hours
+		else if (s == "7")  return 240 * 60;   // 4 hours
+		else if (s == "8")  return 360 * 60;   // 6 hours
+		else if (s == "9")  return 720 * 60;   // 12 hours
+		else if (s == "10") return 1440 * 60;  // 24 hours
+		else if (s == "11") return 1 * 60;     // 1 min
+		else if (s == "12") return 2 * 60;     // 2 min
+		else if (s == "13") return 5 * 60;     // 5 min
+		else if (s == "14") return 20 * 60;    // 20 min
+		else if (s == "15") return 45 * 60;    // 45 min
+		else {
 			DEBUG_ERROR("DTE_PROTOCOL_VALUE_OUT_OF_RANGE in %s(%s)", __FUNCTION__, s.c_str());
 			throw DTE_PROTOCOL_VALUE_OUT_OF_RANGE;
 		}

@@ -554,7 +554,12 @@ enum class BaseDeltaTimeLoc {
 	DELTA_T_4HR,
 	DELTA_T_6HR,
 	DELTA_T_12HR,
-	DELTA_T_24HR
+	DELTA_T_24HR,
+	DELTA_T_1MIN,    // 11
+	DELTA_T_2MIN,    // 12
+	DELTA_T_5MIN,    // 13
+	DELTA_T_20MIN,   // 14
+	DELTA_T_45MIN,   // 15
 };
 
 enum class BaseGNSSFixMode {

@@ -357,12 +357,22 @@ private:
 			return BaseDeltaTimeLoc::DELTA_T_2HR;
 		} else if (dloc_arg_nom >= (1 * SECONDS_PER_HOUR)) {
 			return BaseDeltaTimeLoc::DELTA_T_1HR;
+		} else if (dloc_arg_nom >= (45 * SECONDS_PER_MINUTE)) {
+			return BaseDeltaTimeLoc::DELTA_T_45MIN;
 		} else if (dloc_arg_nom >= (30 * SECONDS_PER_MINUTE)) {
 			return BaseDeltaTimeLoc::DELTA_T_30MIN;
+		} else if (dloc_arg_nom >= (20 * SECONDS_PER_MINUTE)) {
+			return BaseDeltaTimeLoc::DELTA_T_20MIN;
 		} else if (dloc_arg_nom >= (15 * SECONDS_PER_MINUTE)) {
 			return BaseDeltaTimeLoc::DELTA_T_15MIN;
-		} else {
+		} else if (dloc_arg_nom >= (10 * SECONDS_PER_MINUTE)) {
 			return BaseDeltaTimeLoc::DELTA_T_10MIN;
+		} else if (dloc_arg_nom >= (5 * SECONDS_PER_MINUTE)) {
+			return BaseDeltaTimeLoc::DELTA_T_5MIN;
+		} else if (dloc_arg_nom >= (2 * SECONDS_PER_MINUTE)) {
+			return BaseDeltaTimeLoc::DELTA_T_2MIN;
+		} else {
+			return BaseDeltaTimeLoc::DELTA_T_1MIN;
 		}
 	}
 
