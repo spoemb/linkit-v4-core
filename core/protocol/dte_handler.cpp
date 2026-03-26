@@ -1608,7 +1608,8 @@ void DTEHandler::react(KineisEventTxComplete const& ) {
 			configuration_store->get_argos_configuration(argos_config);
 			std::string rconf;
 			switch (m_sattx_restore_modulation) {
-				case KineisModulation::LDK:  rconf = argos_config.radioconf_ldk; break;
+				case KineisModulation::LDK:   rconf = argos_config.radioconf_ldk; break;
+				case KineisModulation::LDA2:  rconf = argos_config.radioconf_lda2; break;
 				case KineisModulation::VLDA4: rconf = argos_config.radioconf_vlda4; break;
 				default:                      rconf = argos_config.radioconf_lda2; break;
 			}

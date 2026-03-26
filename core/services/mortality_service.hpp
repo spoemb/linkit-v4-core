@@ -25,7 +25,7 @@ public:
 		const char *status_str = (log->info.status == MortalityStatus::CONFIRMED) ? "CONFIRMED" :
 		                         (log->info.status == MortalityStatus::SUSPECTED) ? "SUSPECTED" : "ALIVE";
 
-		snprintf(entry, sizeof(entry), "%s,%u,%u,%s,%u,%u,%.6f,%.6f,%u\r\n",
+		snprintf(entry, sizeof(entry), "%s,%u,%u,%s,%u,%u,%.6f,%.6f,%lu\r\n",
 				d1,
 				log->info.confidence,
 				log->info.consecutive_days,
