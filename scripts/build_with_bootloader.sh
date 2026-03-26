@@ -41,19 +41,28 @@ TARGET=""
 CLEAN=false
 DEBUG_MODE=false
 NO_MERGE=false
+RECOVER=false
 
 for arg in "$@"; do
     case "$arg" in
         --clean)   CLEAN=true ;;
         --debug)   DEBUG_MODE=true ;;
         --no-merge) NO_MERGE=true ;;
+        --recover) RECOVER=true ;;
         -*)        echo "Unknown option: $arg"; exit 1 ;;
         *)         TARGET="$arg" ;;
     esac
 done
 
+if [ "$RECOVER" = true ]; then
+    echo "Recovering device (erases ALL flash, disables APPROTECT)..."
+    nrfjprog --recover -f nrf52
+    echo "✓ Device recovered"
+    echo ""
+fi
+
 if [ -z "$TARGET" ]; then
-    echo "Usage: $0 <target> [--clean] [--debug] [--no-merge]"
+    echo "Usage: $0 <target> [--clean] [--debug] [--no-merge] [--recover]"
     echo ""
     echo "Targets:"
     echo "  linkit-kim    LinkIt V4 KIM (UART)"

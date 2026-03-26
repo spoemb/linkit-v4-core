@@ -71,11 +71,20 @@ echo ""
 
 # Parse arguments
 CLEAN=false
+RECOVER=false
 for arg in "$@"; do
     case $arg in
         --clean) CLEAN=true ;;
+        --recover) RECOVER=true ;;
     esac
 done
+
+if [ "$RECOVER" = true ]; then
+    echo "Recovering device (erases ALL flash, disables APPROTECT)..."
+    nrfjprog --recover -f nrf52
+    echo "✓ Device recovered"
+    echo ""
+fi
 
 cd "$PROJECT_ROOT"
 BUILD_DIR="ports/nrf52840/build/LINKIT_SMD"
