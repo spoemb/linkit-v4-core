@@ -19,7 +19,7 @@ Recommended: **Ubuntu/Debian** or **WSL2** (Windows). A **Docker** image is also
 
 ```bash
 docker build -t linkit-v4-build .
-docker run --rm -v $(pwd):/workspace linkit-v4-build ./scripts/build_core.sh
+docker run --rm -v $(pwd):/workspace linkit-v4-build ./scripts/build_linkitv4_kim.sh
 ```
 
 Windows native is possible with adapted tools but not officially supported. Use WSL2 for the best experience.
@@ -43,7 +43,7 @@ Use the build scripts (they source `build_config.sh` automatically):
 
 | Script | Board | Output |
 |--------|-------|--------|
-| `./scripts/build_core.sh` | LinkIt V4 KIM | `build/LINKIT/` |
+| `./scripts/build_linkitv4_kim.sh` | LinkIt V4 KIM | `build/LINKIT/` |
 | `./scripts/build_linkitv4_smd.sh` | LinkIt V4 SMD | `build/LINKIT_SMD/` |
 | `./scripts/build_linkitv4_lora.sh` | LinkIt V4 LoRa | `build/LINKIT_LORA/` |
 | `./scripts/build_rspb.sh` | RSPB | `build/RSPB/` |

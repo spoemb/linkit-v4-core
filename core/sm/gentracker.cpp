@@ -341,8 +341,17 @@ void OperationalState::service_event_handler(ServiceEvent& e) {
 		}
 		return;
 	}
+	else if (e.event_source == ServiceIdentifier::UW_SENSOR) {
+		if (e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+			bool is_underwater = std::get<bool>(e.event_data);
+			if (is_underwater)
+				led_handle::dispatch<SetLEDDiveDetected>({});
+			else
+				led_handle::dispatch<SetLEDSurfaceDetected>({});
+		}
+		return;
+	}
 	else if (e.event_source == ServiceIdentifier::ARGOS_TX) {
-		// New Argos TX event handling
 		if (e.event_type == ServiceEventType::SERVICE_ACTIVE) {
 			led_handle::dispatch<SetLEDArgosTX>({});
 		}

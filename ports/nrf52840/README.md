@@ -10,7 +10,7 @@ See [docs/2-Building.md](../../docs/2-Building.md) for full build instructions, 
 
 ```bash
 # From project root
-./scripts/build_core.sh          # LinkIt V4 KIM
+./scripts/build_linkitv4_kim.sh          # LinkIt V4 KIM
 ./scripts/build_linkitv4_smd.sh  # LinkIt V4 SMD
 ./scripts/build_linkitv4_lora.sh # LinkIt V4 LoRa
 ./scripts/build_rspb.sh          # RSPB

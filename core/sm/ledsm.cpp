@@ -291,3 +291,27 @@ void LEDConfirmPowerOff::entry() {
 	if (ext_status_led)
 		ext_status_led->off();
 }
+
+void LEDSurfaceDetected::entry() {
+	DEBUG_TRACE("LEDSurfaceDetected: entry");
+	LED_MODE_GUARD {
+		status_led->set(RGBLedColor::GREEN);
+	} else {
+		status_led->off();
+	}
+	system_timer->add_schedule([this]() {
+		transit<LEDOff>();
+	}, system_timer->get_counter() + 100);
+}
+
+void LEDDiveDetected::entry() {
+	DEBUG_TRACE("LEDDiveDetected: entry");
+	LED_MODE_GUARD {
+		status_led->set(RGBLedColor::CYAN);
+	} else {
+		status_led->off();
+	}
+	system_timer->add_schedule([this]() {
+		transit<LEDOff>();
+	}, system_timer->get_counter() + 100);
+}

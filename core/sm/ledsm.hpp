@@ -30,6 +30,8 @@ struct SetLEDFirmwareApplied : tinyfsm::Event { };
 struct SetLEDConfirmConfig : tinyfsm::Event { };
 struct SetLEDConfirmExitConfig : tinyfsm::Event { };
 struct SetLEDConfirmPowerOff : tinyfsm::Event { };
+struct SetLEDSurfaceDetected : tinyfsm::Event { };
+struct SetLEDDiveDetected : tinyfsm::Event { };
 
 class LEDOff;
 class LEDBoot;
@@ -55,6 +57,8 @@ class LEDFirmwareApplied;
 class LEDConfirmConfig;
 class LEDConfirmExitConfig;
 class LEDConfirmPowerOff;
+class LEDSurfaceDetected;
+class LEDDiveDetected;
 
 
 class LEDState : public tinyfsm::Fsm<LEDState> {
@@ -89,6 +93,8 @@ public:
 	void react(SetLEDConfirmConfig const &) { transit<LEDConfirmConfig>(); }
 	void react(SetLEDConfirmExitConfig const &) { transit<LEDConfirmExitConfig>(); }
 	void react(SetLEDConfirmPowerOff const &) { transit<LEDConfirmPowerOff>(); }
+	void react(SetLEDSurfaceDetected const &) { transit<LEDSurfaceDetected>(); }
+	void react(SetLEDDiveDetected const &) { transit<LEDDiveDetected>(); }
 
 	virtual void entry(void) {}
 	virtual void exit(void) {}
@@ -258,6 +264,20 @@ public:
 };
 
 class LEDConfirmPowerOff : public LEDState
+{
+public:
+	void entry() override;
+	void exit() override {};
+};
+
+class LEDSurfaceDetected : public LEDState
+{
+public:
+	void entry() override;
+	void exit() override {};
+};
+
+class LEDDiveDetected : public LEDState
 {
 public:
 	void entry() override;

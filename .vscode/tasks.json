@@ -4,7 +4,7 @@
     // Build Tools Configuration
     // =========================================================================
     // IMPORTANT: Update the PATH below if your toolchain is installed elsewhere
-    // This setting must match the PATH in scripts/build_core.sh (line 16)
+    // This setting must match the PATH in scripts/build_linkitv4_kim.sh (line 16)
     //
     // Required tools:
     //   - ARM GCC Toolchain (arm-none-eabi-gcc)
@@ -22,7 +22,7 @@
 		{
 			"type": "shell",
 			"label": "LINKIT: build",
-			"command": "./scripts/build_core.sh",
+			"command": "./scripts/build_linkitv4_kim.sh",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -38,7 +38,7 @@
 		{
 			"type": "shell",
 			"label": "LINKIT: clean build",
-			"command": "rm -rf ports/nrf52840/build/LINKIT && ./scripts/build_core.sh",
+			"command": "rm -rf ports/nrf52840/build/LINKIT && ./scripts/build_linkitv4_kim.sh",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"

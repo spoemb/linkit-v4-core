@@ -53,8 +53,8 @@ KIM2Device::KIM2Device()
     m_tx_buffer.clear();
     m_packet_buffer.clear();
     m_state = KIM2ManagerState::power_off;
-    m_tx_mode = KineisModulation::LDA2;
-    m_current_rconf_mode = KineisModulation::LDA2;
+    m_tx_mode = KineisModulation::LDK;
+    m_current_rconf_mode = KineisModulation::LDK;
     m_timeout = {};
     m_stopping = false;
     m_cmd_is_ok = false;

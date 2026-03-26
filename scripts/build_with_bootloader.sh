@@ -81,7 +81,7 @@ case "$TARGET" in
         BOOTLOADER_DIR="linkitv4_v1.0"
         TARGET_NAME="LinkIt_board"
         CMAKE_ARGS="-DBOARD=LINKIT"
-        BUILD_SCRIPT="build_core.sh"
+        BUILD_SCRIPT="build_linkitv4_kim.sh"
         ;;
     linkit-smd)
         BUILD_DIR="LINKIT_SMD"
@@ -177,6 +177,12 @@ if [ "$NO_MERGE" = true ]; then
 else
     echo ""
     echo "--- Step 2: Build bootloader ($BOOTLOADER_DIR) ---"
+
+    # Clean bootloader if --clean
+    if [ "$CLEAN" = true ] && [ -d "$BOOTLOADER_ARMGCC/_build" ]; then
+        echo "Cleaning bootloader build..."
+        rm -rf "$BOOTLOADER_ARMGCC/_build"
+    fi
 
     # Check if bootloader already exists
     BOOTLOADER_HEX_NAME=$(ls "$BOOTLOADER_ARMGCC/_build/"*_merged.hex 2>/dev/null | head -1)

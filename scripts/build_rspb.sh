@@ -69,8 +69,22 @@ if command -v mergehex &> /dev/null; then
 fi
 echo ""
 
-mkdir -p ports/nrf52840/build/RSPB
-cd ports/nrf52840/build/RSPB
+# Parse arguments
+CLEAN=false
+for arg in "$@"; do
+    case $arg in
+        --clean) CLEAN=true ;;
+    esac
+done
+
+cd "$PROJECT_ROOT"
+BUILD_DIR="ports/nrf52840/build/RSPB"
+if [ "$CLEAN" = true ]; then
+    echo "Cleaning build directory..."
+    rm -rf "$BUILD_DIR"
+fi
+mkdir -p "$BUILD_DIR"
+cd "$BUILD_DIR"
 git show-ref --tags -d | grep ^`git rev-parse HEAD` | sed -e "s,.* refs/tags/,," -e "s/\\^{}//" > TAG_NAME
 if [ -z "$(cat TAG_NAME)" ]; then
     git describe --dirty > TAG_NAME
