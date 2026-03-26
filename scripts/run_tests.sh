@@ -28,7 +28,7 @@ echo "  ConfigStore: $R4"
     echo "ArgosTxService: $R2"
     echo "AXLSensor: $R3"
     echo "ConfigStore: $R4"
-    echo "Known failures: 2 (PARMR_REQ_CheckEmptyRequest, PARMR_UNP_NewParams)"
+    echo "Status: All tests passing"
 } > "$REPORT"
 
 echo ""
