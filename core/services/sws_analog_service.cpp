@@ -21,8 +21,6 @@ extern RGBLed *status_led;
 #define ADC_INVALID_MAX 16383          // 14-bit ADC
 
 // Default configuration values
-#define DEFAULT_THRESHOLD_MIN 0
-#define DEFAULT_THRESHOLD_MAX 8000
 #define DEFAULT_HYSTERESIS_PERCENT 4
 #define DEFAULT_CALIB_INTERVAL_SEC 3600
 #define DEFAULT_MAX_DIVE_TIME_SEC 7200
@@ -36,6 +34,22 @@ extern RGBLed *status_led;
 // Water baseline protection
 #define ABSOLUTE_MIN_WATER_ADC 2000
 #define MIN_WATER_AIR_RATIO 3
+
+// Minimum air baseline floor: prevents adaptive DOWN from collapsing to near-zero.
+// Even a clean dry electrode reads ~20-50 ADC with RC circuit.
+#define AIR_BASELINE_FLOOR 20
+
+// SWS.CAL offsets for Calibration class persistence
+// 0 = manual water hint (SCALW/SWSCAL)
+// 1 = manual air hint (SCALW/SWSCAL)
+// 2 = running water baseline (auto-updated on state transitions)
+// 3 = running air baseline (auto-updated on state transitions)
+// 4 = observed peak ADC
+#define CAL_OFFSET_HINT_WATER 0
+#define CAL_OFFSET_HINT_AIR   1
+#define CAL_OFFSET_RUN_WATER  2
+#define CAL_OFFSET_RUN_AIR    3
+#define CAL_OFFSET_PEAK       4
 
 // Surface baseline adaptation
 #define SURFACE_ADAPT_THRESHOLD 1.3f
@@ -118,6 +132,14 @@ uint16_t SWSAnalogService::m_observed_peak_crc;
 SWSAnalogService::Status SWSAnalogService::m_status = {};
 SWSAnalogService* SWSAnalogService::s_instance = nullptr;
 bool SWSAnalogService::m_test_mode = false;
+SWSAnalogService::CalibPhase SWSAnalogService::m_calib_phase = SWSAnalogService::CalibPhase::IDLE;
+uint32_t SWSAnalogService::m_calib_sum = 0;
+uint8_t SWSAnalogService::m_calib_count = 0;
+uint16_t SWSAnalogService::m_calib_air_result = 0;
+uint16_t SWSAnalogService::m_calib_water_result = 0;
+uint8_t SWSAnalogService::m_calib_stable_count = 0;
+uint16_t SWSAnalogService::m_calib_prev_value = 0;
+std::function<void(const SWSAnalogService::CalibResult&)> SWSAnalogService::m_calib_notify;
 std::function<void(const SWSAnalogService::Status&)> SWSAnalogService::m_status_notify;
 std::function<void()> SWSAnalogService::m_on_test_stop;
 #if ENABLE_SWS_LOG
@@ -158,6 +180,76 @@ bool SWSAnalogService::is_test_running() {
     return m_test_mode;
 }
 
+// ═══════════════════════════════════════════════════════
+//  GUIDED CALIBRATION — LED-assisted air/water measurement
+//
+//  GREEN flashing  → place in AIR  → samples → GREEN solid
+//  BLUE  flashing  → place in WATER → samples → BLUE solid
+//  WHITE flash     → done (success)
+//  RED flash       → done (failure)
+// ═══════════════════════════════════════════════════════
+
+#define CALIB_NUM_SAMPLES 5            // samples per phase (air/water)
+#define CALIB_STABILITY_THRESHOLD 3    // consecutive stable readings to start sampling
+#define CALIB_STABILITY_TOLERANCE 200  // ADC counts variation allowed for "stable"
+#define CALIB_SAMPLE_INTERVAL_MS 1000  // 1s sampling during guided calibration
+
+void SWSAnalogService::start_guided_calibration() {
+    if (!s_instance) return;
+
+    m_calib_phase = CalibPhase::AIR_WAITING;
+    m_calib_sum = 0;
+    m_calib_count = 0;
+    m_calib_air_result = 0;
+    m_calib_water_result = 0;
+    m_calib_stable_count = 0;
+    m_calib_prev_value = 0;
+
+    // Start the SWS service if not already running
+    m_test_mode = true;
+    s_instance->start();
+
+    DEBUG_INFO("SWSAnalog: Guided calibration started — place device in AIR");
+    if (status_led) status_led->flash(RGBLedColor::GREEN, 500);
+}
+
+void SWSAnalogService::cancel_guided_calibration() {
+    if (m_calib_phase == CalibPhase::IDLE) return;
+
+    m_calib_phase = CalibPhase::IDLE;
+    m_test_mode = false;
+    if (s_instance) s_instance->stop();
+
+    if (status_led) status_led->flash(RGBLedColor::RED, 200);
+    DEBUG_INFO("SWSAnalog: Guided calibration cancelled");
+
+    if (m_calib_notify) {
+        CalibResult r = {3, 0, 0};  // status=cancelled
+        m_calib_notify(r);
+    }
+}
+
+bool SWSAnalogService::is_guided_calibration_running() {
+    return m_calib_phase != CalibPhase::IDLE;
+}
+
+SWSAnalogService::CalibResult SWSAnalogService::get_guided_calibration_result() {
+    if (m_calib_phase == CalibPhase::DONE) {
+        return {1, m_calib_air_result, m_calib_water_result};  // success
+    } else if (m_calib_phase == CalibPhase::IDLE && m_calib_air_result > 0) {
+        return {1, m_calib_air_result, m_calib_water_result};  // already done
+    }
+    return {0, 0, 0};  // in progress
+}
+
+void SWSAnalogService::set_guided_calib_notify(std::function<void(const CalibResult&)> fn) {
+    m_calib_notify = fn;
+}
+
+void SWSAnalogService::clear_guided_calib_notify() {
+    m_calib_notify = nullptr;
+}
+
 void SWSAnalogService::set_status_notify(std::function<void(const Status&)> fn) {
     m_status_notify = fn;
 }
@@ -180,23 +272,96 @@ static void nrfx_saadc_event_handler_sws(nrfx_saadc_evt_t const *p_event)
     (void)p_event;
 }
 
+// ═══════════════════════════════════════════════════════
+//  MANUAL CALIBRATION (via DTE $SCALW/$SCALR, persisted in SWS.CAL)
+//  Offset 0 = expected water ADC
+//  Offset 1 = expected air ADC
+// ═══════════════════════════════════════════════════════
+
+void SWSAnalogService::calibration_write(const double value, const unsigned int offset) {
+    m_manual_calib.write(offset, value);
+    m_manual_calib.save(true);
+    DEBUG_INFO("SWSAnalog: Manual calib write offset=%u value=%.0f (saved)", offset, value);
+}
+
+void SWSAnalogService::calibration_read(double &value, const unsigned int offset) {
+    try {
+        value = m_manual_calib.read(offset);
+    } catch (...) {
+        value = 0.0;
+    }
+}
+
+void SWSAnalogService::calibration_save(bool force) {
+    m_manual_calib.save(force);
+}
+
+// ═══════════════════════════════════════════════════════
+//  FLASH PERSISTENCE — via SWS.CAL (Calibration class)
+//  Running calibration stored at offsets 2-4, survives hard resets.
+// ═══════════════════════════════════════════════════════
+
+void SWSAnalogService::save_calibration_to_flash() {
+    if (!s_instance) return;
+
+    s_instance->m_manual_calib.write(CAL_OFFSET_RUN_WATER, (double)m_calib.threshold_water);
+    s_instance->m_manual_calib.write(CAL_OFFSET_RUN_AIR, (double)m_calib.threshold_air);
+    s_instance->m_manual_calib.write(CAL_OFFSET_PEAK, (double)m_observed_peak_adc);
+    s_instance->m_manual_calib.save(true);
+    DEBUG_TRACE("SWSAnalog: Calibration saved to SWS.CAL (air=%u water=%u peak=%u)",
+                m_calib.threshold_air, m_calib.threshold_water, m_observed_peak_adc);
+}
+
+bool SWSAnalogService::load_calibration_from_flash() {
+    if (!s_instance) return false;
+
+    double water = 0, air = 0, peak = 0;
+    try {
+        water = s_instance->m_manual_calib.read(CAL_OFFSET_RUN_WATER);
+        air = s_instance->m_manual_calib.read(CAL_OFFSET_RUN_AIR);
+        peak = s_instance->m_manual_calib.read(CAL_OFFSET_PEAK);
+    } catch (...) {
+        return false;
+    }
+
+    // Sanity check
+    if (air <= 0 || water <= 0 || water <= air || water > ADC_INVALID_MAX) {
+        return false;
+    }
+
+    m_calib.threshold_air = (uint16_t)air;
+    m_calib.threshold_water = (uint16_t)water;
+    update_dynamic_threshold();
+    m_calib.is_calibrated = true;
+    m_calib.last_calibration_time = PMU::get_timestamp_ms() / 1000;
+    m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
+                                 sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
+
+    if (peak > 0 && peak <= ADC_INVALID_MAX) {
+        m_observed_peak_adc = (uint16_t)peak;
+        m_observed_peak_crc = crc16_compute((const uint8_t *)&m_observed_peak_adc,
+                                             sizeof(m_observed_peak_adc), nullptr);
+    }
+
+    DEBUG_INFO("SWSAnalog: Calibration restored from SWS.CAL - air=%u water=%u thresh=%u peak=%u",
+               m_calib.threshold_air, m_calib.threshold_water,
+               m_calib.threshold_current, m_observed_peak_adc);
+    return true;
+}
+
 void SWSAnalogService::service_init() {
     UWDetectorService::service_init();
 
+    // SWS analog has its own internal filtering (MA2, 5-level detection, consecutive
+    // samples). Multi-sample batching is redundant and wastes CPU in sample_gap waits.
+    m_max_samples = 1;
+
     // Load configuration
-    m_threshold_min = service_read_param<unsigned int>(ParamID::SWS_ANALOG_THRESHOLD_MIN);
-    m_threshold_max = service_read_param<unsigned int>(ParamID::SWS_ANALOG_THRESHOLD_MAX);
     m_hysteresis_percent = service_read_param<unsigned int>(ParamID::SWS_ANALOG_HYSTERESIS);
     m_calib_interval_sec = service_read_param<unsigned int>(ParamID::SWS_ANALOG_CALIB_INTERVAL);
     m_max_dive_time_sec = service_read_param<unsigned int>(ParamID::UW_MAX_DIVE_TIME);
     m_min_surface_time_sec = service_read_param<unsigned int>(ParamID::UW_MIN_SURFACE_TIME);
 
-    if (m_threshold_min >= m_threshold_max) {
-        m_threshold_min = DEFAULT_THRESHOLD_MIN;
-    }
-    if (m_threshold_max > ADC_INVALID_MAX || m_threshold_max <= m_threshold_min) {
-        m_threshold_max = DEFAULT_THRESHOLD_MAX;
-    }
     if (m_hysteresis_percent > 50) {
         m_hysteresis_percent = DEFAULT_HYSTERESIS_PERCENT;
     }
@@ -221,9 +386,12 @@ void SWSAnalogService::service_init() {
 
     // Validate or initialize calibration from noinit RAM
     if (!validate_calibration_data()) {
-        DEBUG_INFO("SWSAnalog: Calibration invalid | clearing and recalibrating");
+        DEBUG_INFO("SWSAnalog: Calibration invalid | trying flash backup");
         memset(&m_calib, 0, sizeof(m_calib));
-        calibrate_air_baseline();
+        if (!load_calibration_from_flash()) {
+            DEBUG_INFO("SWSAnalog: No flash backup | clearing and recalibrating");
+            calibrate_air_baseline();
+        }
     } else {
         DEBUG_INFO("SWSAnalog: Calibration valid - air=%u water=%u thresh=%u",
                    m_calib.threshold_air, m_calib.threshold_water, m_calib.threshold_current);
@@ -262,15 +430,25 @@ void SWSAnalogService::service_init() {
     // First-sample coherence check
     m_first_sample_done = false;
 
-    DEBUG_INFO("SWSAnalog: Init - min=%u max=%u hyst=%u%% ratio=%u%%",
-               m_threshold_min, m_threshold_max, m_hysteresis_percent, m_threshold_ratio_percent);
+    DEBUG_INFO("SWSAnalog: Init - hyst=%u%% ratio=%u%%",
+               m_hysteresis_percent, m_threshold_ratio_percent);
 }
 
 bool SWSAnalogService::service_is_enabled() {
     if (m_test_mode) return true;
-    bool enabled = service_read_param<bool>(ParamID::UNDERWATER_EN);
-    BaseUnderwaterDetectSource src = service_read_param<BaseUnderwaterDetectSource>(ParamID::UNDERWATER_DETECT_SOURCE);
-    return enabled && (src == BaseUnderwaterDetectSource::SWS || src == BaseUnderwaterDetectSource::SWS_GNSS);
+    return service_read_param<bool>(ParamID::UNDERWATER_EN);
+}
+
+unsigned int SWSAnalogService::service_next_schedule_in_ms() {
+    // Fast 1s sampling during guided calibration for responsive user experience
+    if (m_calib_phase != CalibPhase::IDLE && m_calib_phase != CalibPhase::DONE) {
+        return CALIB_SAMPLE_INTERVAL_MS;
+    }
+    // Normal: read configured surface/underwater period
+    unsigned int period = m_current_state ?
+        service_read_param<unsigned int>(ParamID::SAMPLING_UNDER_FREQ) * 1000 :
+        service_read_param<unsigned int>(ParamID::SAMPLING_SURF_FREQ) * 1000;
+    return period > 0 ? period : 1000;
 }
 
 uint16_t SWSAnalogService::read_analog_sws() {
@@ -316,6 +494,29 @@ bool SWSAnalogService::validate_calibration_data() {
 }
 
 void SWSAnalogService::calibrate_air_baseline() {
+    // Check for manual calibration from SWS.CAL (set via $SCALW,8,offset,value)
+    // Offset 0 = expected water ADC, Offset 1 = expected air ADC
+    double hint_water = 0.0, hint_air = 0.0;
+    calibration_read(hint_water, 0);
+    calibration_read(hint_air, 1);
+
+    if (hint_water > 0 && hint_air > 0 && hint_water > hint_air) {
+        m_calib.threshold_air = (uint16_t)hint_air;
+        m_calib.threshold_water = (uint16_t)hint_water;
+
+        update_dynamic_threshold();
+        m_calib.is_calibrated = true;
+        m_calib.last_calibration_time = PMU::get_timestamp_ms() / 1000;
+        m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
+                                     sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
+
+        DEBUG_INFO("SWSAnalog: Calib - air=%u water=%u thresh=%u (from SWS.CAL)",
+                   m_calib.threshold_air, m_calib.threshold_water, m_calib.threshold_current);
+        save_calibration_to_flash();
+        return;
+    }
+
+    // Auto-calibration: sample the ADC
     const int NUM_SAMPLES = 10;
     uint32_t sum = 0;
     int valid_count = 0;
@@ -350,23 +551,30 @@ void SWSAnalogService::calibrate_air_baseline() {
         m_calib.threshold_water = avg;
         // Estimate air as 1/3 of water (conservative)
         m_calib.threshold_air = avg / 3;
-        if (m_calib.threshold_air < m_threshold_min)
-            m_calib.threshold_air = m_threshold_min;
+        if (m_calib.threshold_air < AIR_BASELINE_FLOOR)
+            m_calib.threshold_air = AIR_BASELINE_FLOOR;
     } else {
         // Normal: started in air
         m_calib.threshold_air = avg;
         if (m_calib.threshold_water == 0 || m_calib.threshold_water <= m_calib.threshold_air) {
-            // Estimate water: air*3 for clean sensors, but cap at air+3000 for dirty pins.
-            // With air=200 → water=600 (3x). With air=1900 → water=4900 capped to 4900.
-            // A real electrode never produces > air+3000 gap, even in seawater.
-            m_calib.threshold_water = m_calib.threshold_air * 3;
-            uint16_t max_water_estimate = m_calib.threshold_air + 3000;
-            if (m_calib.threshold_water > max_water_estimate)
-                m_calib.threshold_water = max_water_estimate;
-            // Cap at observed peak if available (prevents overshoot with wet electrodes)
-            if (m_observed_peak_adc > 0 && m_calib.threshold_water > m_observed_peak_adc) {
+            // Priority order for water estimate:
+            // 1. Manual hint from SWS.CAL (only water provided)
+            // 2. Observed peak from noinit (previous session)
+            // 3. Heuristic: air×3 (fallback)
+            if (hint_water > m_calib.threshold_air) {
+                m_calib.threshold_water = (uint16_t)hint_water;
+                DEBUG_INFO("SWSAnalog: Water from manual hint %u", m_calib.threshold_water);
+            } else if (m_observed_peak_adc > m_calib.threshold_air * 2 &&
+                       m_observed_peak_adc >= (uint16_t)(m_calib.threshold_air * MIN_WATER_AIR_RATIO)) {
                 m_calib.threshold_water = m_observed_peak_adc;
-                DEBUG_INFO("SWSAnalog: Water capped at observed peak %u", m_observed_peak_adc);
+                DEBUG_INFO("SWSAnalog: Water from observed peak %u", m_observed_peak_adc);
+            } else {
+                // Heuristic: water ≈ air × 3, capped at air × 5 to avoid
+                // unreachable thresholds when air is high (wet electrode startup).
+                m_calib.threshold_water = m_calib.threshold_air * 3;
+                uint16_t max_water_estimate = m_calib.threshold_air * 5;
+                if (max_water_estimate < m_calib.threshold_water)
+                    m_calib.threshold_water = max_water_estimate;
             }
             if (m_calib.threshold_water > ADC_INVALID_MAX)
                 m_calib.threshold_water = ADC_INVALID_MAX;
@@ -382,6 +590,8 @@ void SWSAnalogService::calibrate_air_baseline() {
     DEBUG_INFO("SWSAnalog: Calib - air=%u water=%u thresh=%u (started_in_%s)",
                m_calib.threshold_air, m_calib.threshold_water, m_calib.threshold_current,
                avg > WATER_DETECT_HEURISTIC ? "WATER" : "AIR");
+
+    save_calibration_to_flash();
 }
 
 void SWSAnalogService::calibrate_water_baseline(uint16_t value) {
@@ -394,15 +604,18 @@ void SWSAnalogService::calibrate_water_baseline(uint16_t value) {
     // Estimated water (air*3) can be wildly off with dirty pins → allow full adaptation.
     bool water_is_estimated = (m_observed_peak_adc == 0);
     uint16_t min_expected_water = water_is_estimated ?
-        ABSOLUTE_MIN_WATER_ADC : (uint16_t)(m_calib.threshold_water * 0.85f);
+        (uint16_t)(m_calib.threshold_air * MIN_WATER_AIR_RATIO) :
+        (uint16_t)(m_calib.threshold_water * 0.85f);
 
     // Only apply air ratio guard when air baseline is reasonable (< 1000 ADC).
     // If air is high (e.g. from corrupted calibration), skip this check to allow recovery.
     bool air_ratio_ok = (m_calib.threshold_air >= 1000) ||
                         (value >= (uint16_t)(m_calib.threshold_air * MIN_WATER_AIR_RATIO));
 
+    // Water must exceed threshold and maintain minimum ratio to air.
+    // No absolute ADC floor: allows operation in fresh/brackish water where
+    // ADC values can be well below 2000.
     bool ok = (value > threshold_with_margin) &&
-              (value >= ABSOLUTE_MIN_WATER_ADC) &&
               air_ratio_ok &&
               (value >= min_expected_water || value > m_calib.threshold_water);
 
@@ -422,6 +635,7 @@ void SWSAnalogService::update_dynamic_threshold() {
     // Dynamic ratio: low contrast (biofouling) → threshold closer to water
     float contrast = (m_calib.threshold_air > 0) ?
         (float)m_calib.threshold_water / (float)m_calib.threshold_air : 10.0f;
+    m_contrast_x10 = (uint16_t)(contrast * 10.0f);
 
     float ratio;
     if (contrast >= 8.0f) {
@@ -482,7 +696,7 @@ bool SWSAnalogService::is_value_valid(uint16_t value) const {
 
 void SWSAnalogService::adjust_sample_delay() {
     if (m_calib.threshold_air == 0) return;
-    uint16_t contrast = (uint16_t)((float)m_calib.threshold_water / (float)m_calib.threshold_air * 10.0f);
+    uint16_t contrast = m_contrast_x10;
     uint32_t old_delay = m_sample_delay_us;
     if (contrast < CONTRAST_LOW_THRESHOLD && m_sample_delay_us > SAMPLE_DELAY_MIN_US) {
         m_sample_delay_us = m_sample_delay_us * 3 / 4;  // -25%
@@ -514,7 +728,7 @@ bool SWSAnalogService::check_safety_timeouts(bool current_state) {
 
     if (current_state && m_max_dive_time_sec > 0 &&
         m_time_in_current_state >= m_max_dive_time_sec) {
-        DEBUG_WARN("SWSAnalog: Max dive time %us | forcing surface", m_time_in_current_state);
+        DEBUG_WARN("SWSAnalog: Max dive time %us | recalibrating", m_time_in_current_state);
         return true;
     }
     return false;
@@ -533,39 +747,55 @@ bool SWSAnalogService::detector_state() {
         return m_current_state;
     }
 
-    // === 1b. FIRST-SAMPLE COHERENCE CHECK ===
-    // If stored calibration says air=1000 but we read 4800, the calibration
-    // is stale or was done in the wrong medium. Force recalibration.
-    if (!m_first_sample_done) {
-        m_first_sample_done = true;
+    // === 1b. COHERENCE CHECK (first sample + continuous) ===
+    // Detects calibration mismatch vs actual ADC readings.
+    // First sample: catches stale noinit data.
+    // Continuous: catches environment changes (e.g. device moved from indoor to outdoor).
+    {
         bool calib_incoherent = false;
 
-        // Case 1: Stored air is low, but actual reading is very high → we're in water
-        //         and stored threshold is way below current reading → can't detect water
-        if (raw_value > m_calib.threshold_current + m_calib.hysteresis_value * 3 &&
-            raw_value > m_calib.threshold_water * 1.3f) {
-            DEBUG_WARN("SWSAnalog: Coherence fail - raw=%u >> water=%u, recalibrating",
-                       raw_value, m_calib.threshold_water);
-            calib_incoherent = true;
+        if (!m_first_sample_done) {
+            m_first_sample_done = true;
+
+            // Case 1: Stored air is low, but reading is way above water → wrong medium
+            if (raw_value > m_calib.threshold_current + m_calib.hysteresis_value * 3 &&
+                raw_value > m_calib.threshold_water * 1.3f) {
+                DEBUG_WARN("SWSAnalog: Coherence fail - raw=%u >> water=%u, recalibrating",
+                           raw_value, m_calib.threshold_water);
+                calib_incoherent = true;
+            }
+            // Case 2: Stored air is high (calibrated in water), but reading is low → in air
+            else if (raw_value < m_calib.threshold_air * 0.5f && m_calib.threshold_air > 2000) {
+                DEBUG_WARN("SWSAnalog: Coherence fail - raw=%u << air=%u, recalibrating",
+                           raw_value, m_calib.threshold_air);
+                calib_incoherent = true;
+            }
         }
-        // Case 2: Stored air is high (calibrated in water), but actual reading is low → in air
-        //         with inflated thresholds
-        else if (raw_value < m_calib.threshold_air * 0.5f && m_calib.threshold_air > 2000) {
-            DEBUG_WARN("SWSAnalog: Coherence fail - raw=%u << air=%u, recalibrating",
-                       raw_value, m_calib.threshold_air);
-            calib_incoherent = true;
+
+        // Continuous coherence: if on surface and raw reading exceeds water baseline
+        // by a large margin, the environment has changed (e.g. moved to real water
+        // after indoor calibration). Adapt water baseline immediately instead of
+        // waiting for the slow EMA convergence.
+        if (!calib_incoherent && !m_current_state && m_calib.threshold_water > 0 &&
+            raw_value > m_calib.threshold_water * 2 &&
+            m_time_in_current_state > 2) {
+            DEBUG_WARN("SWSAnalog: Continuous coherence - raw=%u >> water=%u, adapting water",
+                       raw_value, m_calib.threshold_water);
+            m_calib.threshold_water = raw_value;
+            update_dynamic_threshold();
+            m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
+                                         sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
+            save_calibration_to_flash();
         }
 
         if (calib_incoherent) {
             memset(&m_calib, 0, sizeof(m_calib));
-            // Use current reading to decide: high = water, low = air
             if (raw_value > 2500) {
                 m_calib.threshold_water = raw_value;
                 m_calib.threshold_air = raw_value / 3;
             } else {
                 m_calib.threshold_air = raw_value;
                 m_calib.threshold_water = raw_value * 3;
-                // Cap at observed peak if available
                 if (m_observed_peak_adc > 0 && m_calib.threshold_water > m_observed_peak_adc)
                     m_calib.threshold_water = m_observed_peak_adc;
                 if (m_calib.threshold_water > ADC_INVALID_MAX)
@@ -578,16 +808,8 @@ bool SWSAnalogService::detector_state() {
                                          sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
             DEBUG_INFO("SWSAnalog: Recalib from coherence - air=%u water=%u thresh=%u",
                        m_calib.threshold_air, m_calib.threshold_water, m_calib.threshold_current);
+            save_calibration_to_flash();
         }
-    }
-
-    // === 1c. UPDATE OBSERVED PEAK ADC ===
-    // Track the highest ADC value actually seen. Used to cap water baseline
-    // estimates so threshold never exceeds what the ADC actually produces.
-    if (raw_value > m_observed_peak_adc) {
-        m_observed_peak_adc = raw_value;
-        m_observed_peak_crc = crc16_compute((const uint8_t *)&m_observed_peak_adc,
-                                             sizeof(m_observed_peak_adc), nullptr);
     }
 
     // Save prev_raw BEFORE filtering overwrites history
@@ -607,9 +829,7 @@ bool SWSAnalogService::detector_state() {
     uint16_t proximity_ref = m_calib.threshold_water;
     if (m_peak_adc_since_underwater > proximity_ref)
         proximity_ref = m_peak_adc_since_underwater;
-    uint16_t contrast_x10 = (m_calib.threshold_air > 0) ?
-        (uint16_t)((float)m_calib.threshold_water / (float)m_calib.threshold_air * 10.0f) : 100;
-    uint8_t guard_pct = (contrast_x10 < 50) ? PROXIMITY_GUARD_BIOFOULING : PROXIMITY_GUARD_PERCENT;
+    uint8_t guard_pct = (m_contrast_x10 < 50) ? PROXIMITY_GUARD_BIOFOULING : PROXIMITY_GUARD_PERCENT;
     bool proximity_ok = (proximity_ref == 0) ||
         (filtered_value < (uint16_t)(proximity_ref * guard_pct / 100.0f));
 
@@ -773,19 +993,28 @@ bool SWSAnalogService::detector_state() {
             }
             else if (avg < (uint16_t)(m_calib.threshold_air * 0.70f)) {
                 // Downward adaptation: air was too high (wet electrode calibration)
-                // Adapt faster (20%) since readings are far below stored air
-                uint16_t old = m_calib.threshold_air;
-                uint16_t new_air = (uint16_t)(m_calib.threshold_air * 0.80f + avg * 0.20f);
-                // Enforce minimum air baseline to prevent collapse over long deployment
-                if (new_air < 5) new_air = 5;
-                m_calib.threshold_air = new_air;
-                update_dynamic_threshold();
-                m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
-                                             sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
-                m_surface_readings_count = 0;
-                m_surface_readings_idx = 0;
-                DEBUG_INFO("SWSAnalog: Adaptive air DOWN %u -> %u", old, m_calib.threshold_air);
-                adjust_sample_delay();
+                //
+                // Guard against runaway drift toward zero: block if air baseline is
+                // already close to actual surface readings (< 2× avg). This replaces
+                // the old absolute contrast gate which permanently blocked adaptation
+                // once water baseline was established.
+                bool air_already_low = (m_calib.threshold_air < avg * 2);
+                if (air_already_low) {
+                    DEBUG_TRACE("SWSAnalog: Adaptive air DOWN blocked (air=%u already close to avg=%u)",
+                                m_calib.threshold_air, avg);
+                } else {
+                    uint16_t old = m_calib.threshold_air;
+                    uint16_t new_air = (uint16_t)(m_calib.threshold_air * 0.80f + avg * 0.20f);
+                    if (new_air < AIR_BASELINE_FLOOR) new_air = AIR_BASELINE_FLOOR;
+                    m_calib.threshold_air = new_air;
+                    update_dynamic_threshold();
+                    m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
+                                                 sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
+                    m_surface_readings_count = 0;
+                    m_surface_readings_idx = 0;
+                    DEBUG_INFO("SWSAnalog: Adaptive air DOWN %u -> %u", old, m_calib.threshold_air);
+                    adjust_sample_delay();
+                }
             }
         }
     } else if (m_current_state) {
@@ -827,6 +1056,15 @@ bool SWSAnalogService::detector_state() {
         m_consecutive_samples = 0;
     }
 
+    // === 7b. UPDATE OBSERVED PEAK ADC ===
+    // Placed after calibrate_water_baseline() so water_is_estimated (peak==0)
+    // is correctly evaluated on the first underwater samples.
+    if (raw_value > m_observed_peak_adc) {
+        m_observed_peak_adc = raw_value;
+        m_observed_peak_crc = crc16_compute((const uint8_t *)&m_observed_peak_adc,
+                                             sizeof(m_observed_peak_adc), nullptr);
+    }
+
     // Apply multi-level surface override
     if (surface_level > 0 && m_current_state && new_state) {
         new_state = false;
@@ -840,7 +1078,8 @@ bool SWSAnalogService::detector_state() {
                                        + filtered_value * AIR_RECALIB_EMA_WEIGHT);
         uint16_t hard_cap = (uint16_t)(m_calib.threshold_water * AIR_RECALIB_MAX_RATIO);
         if (new_air > hard_cap) new_air = hard_cap;
-        if (new_air > m_calib.threshold_air && new_air < m_calib.threshold_water) {
+        if (new_air < AIR_BASELINE_FLOOR) new_air = AIR_BASELINE_FLOOR;
+        if (new_air != m_calib.threshold_air && new_air < m_calib.threshold_water) {
             m_calib.threshold_air = new_air;
             update_dynamic_threshold();
             m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
@@ -861,14 +1100,24 @@ bool SWSAnalogService::detector_state() {
                    m_calib.threshold_air, m_calib.threshold_water, m_surface_lockout_remaining);
     }
 
-    // === 8. MAX DIVE TIMEOUT ===
+    // === 8. MAX DIVE TIMEOUT — diagnostic recalibration ===
+    // Does NOT force surface: a long dive is legitimate (turtles, seals).
+    // Instead, refreshes water baseline from current reading to correct drift/biofouling,
+    // and resets the timer so the check fires again after another full interval.
     if (timeout_override) {
-        new_state = false;
-        // Do NOT recalibrate air from underwater values — it corrupts calibration.
-        // Just force surface and let normal surface baseline tracking fix things.
-        m_surface_lockout_remaining = SURFACE_LOCKOUT_DURATION_SEC;
-        DEBUG_WARN("SWSAnalog: Max dive timeout | air=%u water=%u thresh=%u",
-                   m_calib.threshold_air, m_calib.threshold_water, m_calib.threshold_current);
+        uint16_t old_water = m_calib.threshold_water;
+        if (is_value_valid(filtered_value) && filtered_value > m_calib.threshold_air * 2) {
+            m_calib.threshold_water = filtered_value;
+            update_dynamic_threshold();
+            m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
+                                         sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
+            save_calibration_to_flash();
+        }
+        // Reset timer so timeout fires again after another full interval
+        m_last_state_change_time = PMU::get_timestamp_ms() / 1000;
+        DEBUG_WARN("SWSAnalog: Max dive recalib | water %u -> %u | air=%u thresh=%u",
+                   old_water, m_calib.threshold_water,
+                   m_calib.threshold_air, m_calib.threshold_current);
     }
 
     // === 9. SURFACE LOCKOUT (time-based, not sample-count-based) ===
@@ -908,6 +1157,9 @@ bool SWSAnalogService::detector_state() {
                    raw_value, filtered_value,
                    m_calib.threshold_current, m_calib.threshold_air, m_calib.threshold_water);
 
+        // Persist calibration to flash on state transitions (infrequent, important)
+        save_calibration_to_flash();
+
         // Test mode: override LED to show SWS state
         if (m_test_mode && status_led) {
             if (new_state)
@@ -928,8 +1180,7 @@ bool SWSAnalogService::detector_state() {
     m_status.is_underwater = new_state;
     m_status.time_in_state_sec = (uint32_t)m_time_in_current_state;
     m_status.surface_level = surface_level;
-    m_status.contrast_x10 = (m_calib.threshold_air > 0) ?
-        (uint16_t)((float)m_calib.threshold_water / (float)m_calib.threshold_air * 10.0f) : 0;
+    m_status.contrast_x10 = m_contrast_x10;
     m_status.observed_peak = m_observed_peak_adc;
     m_status.sample_delay_us = m_sample_delay_us;
 
@@ -954,12 +1205,134 @@ bool SWSAnalogService::detector_state() {
         sws_entry.underwater = new_state ? 1 : 0;
         sws_entry.time_in_state = (uint16_t)m_time_in_current_state;
         sws_entry.surface_level = surface_level;
-        sws_entry.contrast_x10 = contrast_x10;
+        sws_entry.contrast_x10 = m_contrast_x10;
         sws_entry.observed_peak = m_observed_peak_adc;
         sws_entry.sample_delay_us = (uint16_t)m_sample_delay_us;
         m_sws_logger->write(&sws_entry);
     }
 #endif
+
+    // === 13. GUIDED CALIBRATION STATE MACHINE ===
+    if (m_calib_phase != CalibPhase::IDLE) {
+        switch (m_calib_phase) {
+        case CalibPhase::AIR_WAITING:
+            // Waiting for stable readings in air before sampling
+            if (m_calib_prev_value > 0 &&
+                ((raw_value > m_calib_prev_value) ?
+                 (raw_value - m_calib_prev_value) : (m_calib_prev_value - raw_value))
+                < CALIB_STABILITY_TOLERANCE) {
+                m_calib_stable_count++;
+            } else {
+                m_calib_stable_count = 0;
+            }
+            m_calib_prev_value = raw_value;
+            if (m_calib_stable_count >= CALIB_STABILITY_THRESHOLD) {
+                m_calib_phase = CalibPhase::AIR_SAMPLING;
+                m_calib_sum = 0;
+                m_calib_count = 0;
+                if (status_led) status_led->flash(RGBLedColor::GREEN, 150);
+                DEBUG_INFO("SWSAnalog: Guided calib — sampling AIR");
+            }
+            break;
+
+        case CalibPhase::AIR_SAMPLING:
+            m_calib_sum += raw_value;
+            m_calib_count++;
+            if (m_calib_count >= CALIB_NUM_SAMPLES) {
+                m_calib_air_result = (uint16_t)(m_calib_sum / m_calib_count);
+                if (status_led) status_led->set(RGBLedColor::GREEN);
+                DEBUG_INFO("SWSAnalog: Guided calib — AIR=%u — now place in WATER",
+                           m_calib_air_result);
+                // Transition to water phase after brief pause
+                m_calib_phase = CalibPhase::WATER_WAITING;
+                m_calib_stable_count = 0;
+                m_calib_prev_value = 0;
+                // Short delay then switch LED
+                PMU::delay_ms(1000);
+                if (status_led) status_led->flash(RGBLedColor::BLUE, 500);
+            }
+            break;
+
+        case CalibPhase::WATER_WAITING:
+            // Wait for readings significantly above air baseline
+            if (raw_value > m_calib_air_result * 2) {
+                if (m_calib_prev_value > 0 &&
+                    ((raw_value > m_calib_prev_value) ?
+                     (raw_value - m_calib_prev_value) : (m_calib_prev_value - raw_value))
+                    < CALIB_STABILITY_TOLERANCE) {
+                    m_calib_stable_count++;
+                } else {
+                    m_calib_stable_count = 0;
+                }
+            } else {
+                m_calib_stable_count = 0;
+            }
+            m_calib_prev_value = raw_value;
+            if (m_calib_stable_count >= CALIB_STABILITY_THRESHOLD) {
+                m_calib_phase = CalibPhase::WATER_SAMPLING;
+                m_calib_sum = 0;
+                m_calib_count = 0;
+                if (status_led) status_led->flash(RGBLedColor::BLUE, 150);
+                DEBUG_INFO("SWSAnalog: Guided calib — sampling WATER");
+            }
+            break;
+
+        case CalibPhase::WATER_SAMPLING:
+            m_calib_sum += raw_value;
+            m_calib_count++;
+            if (m_calib_count >= CALIB_NUM_SAMPLES) {
+                m_calib_water_result = (uint16_t)(m_calib_sum / m_calib_count);
+                DEBUG_INFO("SWSAnalog: Guided calib — WATER=%u", m_calib_water_result);
+
+                // Validate: water must be significantly above air
+                bool success = (m_calib_water_result > m_calib_air_result * 2);
+                if (success) {
+                    // Save to SWS.CAL (batch writes, single flash serialize)
+                    m_manual_calib.write(CAL_OFFSET_HINT_WATER, (double)m_calib_water_result);
+                    m_manual_calib.write(CAL_OFFSET_HINT_AIR, (double)m_calib_air_result);
+                    m_manual_calib.save(true);
+
+                    // Apply immediately
+                    m_calib.threshold_air = m_calib_air_result;
+                    m_calib.threshold_water = m_calib_water_result;
+                    update_dynamic_threshold();
+                    m_calib.is_calibrated = true;
+                    m_calib.last_calibration_time = PMU::get_timestamp_ms() / 1000;
+                    m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
+                                                 sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
+                    save_calibration_to_flash();
+
+                    if (status_led) status_led->flash(RGBLedColor::WHITE, 200);
+                    DEBUG_INFO("SWSAnalog: Guided calib SUCCESS — air=%u water=%u thresh=%u",
+                               m_calib_air_result, m_calib_water_result, m_calib.threshold_current);
+                } else {
+                    if (status_led) status_led->flash(RGBLedColor::RED, 200);
+                    DEBUG_WARN("SWSAnalog: Guided calib FAILED — water=%u not >> air=%u",
+                               m_calib_water_result, m_calib_air_result);
+                }
+
+                m_calib_phase = CalibPhase::DONE;
+                if (m_calib_notify) {
+                    CalibResult r = {(uint8_t)(success ? 1 : 2),
+                                     m_calib_air_result, m_calib_water_result};
+                    m_calib_notify(r);
+                }
+
+                // Stop test mode after short delay for LED feedback
+                PMU::delay_ms(2000);
+                m_test_mode = false;
+                m_calib_phase = CalibPhase::IDLE;
+                if (s_instance) s_instance->stop();
+                if (m_on_test_stop) m_on_test_stop();
+            }
+            break;
+
+        case CalibPhase::IDLE:
+        case CalibPhase::DONE:
+        default:
+            break;
+        }
+    }
 
     return new_state;
 }

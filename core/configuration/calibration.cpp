@@ -68,6 +68,7 @@ void Calibration::save(bool force) {
 }
 
 void Calibration::deserialize() {
+	if (!main_filesystem) return;
 	LFSFile f(main_filesystem, m_filename.c_str(), LFS_O_RDONLY);
 	while (1) {
 		unsigned int offset;
@@ -81,6 +82,7 @@ void Calibration::deserialize() {
 }
 
 void Calibration::serialize() {
+	if (!main_filesystem) return;
 	LFSFile f(main_filesystem, m_filename.c_str(), LFS_O_CREAT | LFS_O_WRONLY | LFS_O_TRUNC);
 	for (auto const& entry : m_map) {
 		f.write((void *)&entry.first, sizeof(entry.first));

@@ -112,6 +112,7 @@ private:
 		{5, "CDT"},
 		{6, "MCP47X6"},
 		{7, "THERMISTOR"},
+		{8, "SWS"},
 	};
 	unsigned int m_dumpd_NNN;
 	unsigned int m_dumpd_mmm;
@@ -164,6 +165,7 @@ public:
 	std::string PWRON_REQ(int error_code, std::vector<BaseType>& arg_list);
 	static std::string SWSST_REQ(int error_code);
 	std::string SWSTST_REQ(int error_code, std::vector<BaseType>& arg_list);
+	std::string SWSCAL_REQ(int error_code, std::vector<BaseType>& arg_list);
 	std::string GNSSBR_REQ(int error_code, std::vector<BaseType>& arg_list);
 	std::string GNSSI_REQ(int error_code);
 	static std::string GNSSA_REQ(int error_code);

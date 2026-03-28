@@ -138,7 +138,7 @@ const BaseMap param_map[] = {
 	{ "DEVICE_DECID", "IDT10", BaseEncoding::UINT, 0U, 0U, {}, true, false },
 	{ "GNSS_TRIGGER_ON_SURFACED", "GNP25", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "GNSS_TRIGGER_ON_AXL_WAKEUP", "GNP26", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
-	{ "UNDERWATER_DETECT_SOURCE", "UNP10", BaseEncoding::UWDETECTSOURCE, 0, 0, {}, true, true },
+	{ "__RESERVED", "", BaseEncoding::UWDETECTSOURCE, 0, 0, {}, false, false }, // was UNP10 UNDERWATER_DETECT_SOURCE (only SWS supported)
 	{ "UNDERWATER_DETECT_THRESH", "UNP11", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, true, true },
 
 	// [98-100] pH sensor (slots always reserved)
@@ -190,9 +190,9 @@ const BaseMap param_map[] = {
 	{ "UW_SAMPLE_GAP", "UNP07", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 	{ "UW_PIN_SAMPLE_DELAY", "UNP08", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 
-	// SWS Analog parameters
-	{ "SWS_ANALOG_THRESHOLD_MIN", "UNP20", BaseEncoding::UINT, 0U, 16383U, {}, true, true },
-	{ "SWS_ANALOG_THRESHOLD_MAX", "UNP21", BaseEncoding::UINT, 50U, 16383U, {}, true, true },
+	// SWS Analog parameters (UNP20/UNP21 removed: thresholds are now auto-calibrated)
+	{ "__RESERVED", "", BaseEncoding::UINT, 0U, 0U, {}, false, false },
+	{ "__RESERVED", "", BaseEncoding::UINT, 0U, 0U, {}, false, false },
 	{ "SWS_ANALOG_HYSTERESIS", "UNP22", BaseEncoding::UINT, 0U, 50U, {}, true, true },
 	{ "SWS_ANALOG_CALIB_INTERVAL", "UNP23", BaseEncoding::UINT, 60U, 0xFFFFFFFFU, {}, true, true },
 	{ "UW_MAX_DIVE_TIME", "UNP24", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true },
@@ -202,12 +202,12 @@ const BaseMap param_map[] = {
 	{ "UW_DIVE_MODE_ENABLE", "UNP12", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "UW_DIVE_MODE_START_TIME", "UNP13", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true },
 
-	// GNSS UW parameters
-	{ "UW_GNSS_DRY_SAMPLING", "UNP14", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
-	{ "UW_GNSS_WET_SAMPLING", "UNP15", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
-	{ "UW_GNSS_MAX_SAMPLES", "UNP16", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
-	{ "UW_GNSS_MIN_DRY_SAMPLES", "UNP17", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
-	{ "UW_GNSS_DETECT_THRESH", "UNP18", BaseEncoding::UINT, 1U, 7U, {}, true, true },
+	// GNSS UW parameters (removed — GNSSDetectorService no longer exists, slots reserved)
+	{ "__RESERVED", "", BaseEncoding::UINT, 0U, 0U, {}, false, false },
+	{ "__RESERVED", "", BaseEncoding::UINT, 0U, 0U, {}, false, false },
+	{ "__RESERVED", "", BaseEncoding::UINT, 0U, 0U, {}, false, false },
+	{ "__RESERVED", "", BaseEncoding::UINT, 0U, 0U, {}, false, false },
+	{ "__RESERVED", "", BaseEncoding::UINT, 0U, 0U, {}, false, false },
 
 	// Critical battery threshold
 	{ "LB_CRITICAL_THRESH", "LBP12", BaseEncoding::UINT, 0U, 100U, {}, true, true },

@@ -30,10 +30,12 @@ private:
 	unsigned int m_period_underwater_ms;
 	unsigned int m_period_surface_ms;
 	unsigned int m_sample_iteration;
-	unsigned int m_max_samples;
 	unsigned int m_sample_gap;
 	unsigned int m_min_dry_samples;
 	unsigned int m_dry_count;
+
+protected:
+	unsigned int m_max_samples;
 
 	void service_term() override;
 	unsigned int service_next_schedule_in_ms() override;

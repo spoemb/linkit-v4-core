@@ -222,19 +222,19 @@ enum class ParamID {
 	UW_MIN_DRY_SAMPLES                      = 129,
 	UW_SAMPLE_GAP                            = 130,
 	UW_PIN_SAMPLE_DELAY                      = 131,
-	SWS_ANALOG_THRESHOLD_MIN                 = 132,
-	SWS_ANALOG_THRESHOLD_MAX                 = 133,
+	__RESERVED_132                           = 132, // was SWS_ANALOG_THRESHOLD_MIN
+	__RESERVED_133                           = 133, // was SWS_ANALOG_THRESHOLD_MAX
 	SWS_ANALOG_HYSTERESIS                    = 134,
 	SWS_ANALOG_CALIB_INTERVAL                = 135,
 	UW_MAX_DIVE_TIME                         = 136,
 	UW_MIN_SURFACE_TIME                      = 137,
 	UW_DIVE_MODE_ENABLE                      = 138,
 	UW_DIVE_MODE_START_TIME                  = 139,
-	UW_GNSS_DRY_SAMPLING                     = 140,
-	UW_GNSS_WET_SAMPLING                     = 141,
-	UW_GNSS_MAX_SAMPLES                      = 142,
-	UW_GNSS_MIN_DRY_SAMPLES                 = 143,
-	UW_GNSS_DETECT_THRESH                    = 144,
+	__RESERVED_140                           = 140, // was UW_GNSS_DRY_SAMPLING
+	__RESERVED_141                           = 141, // was UW_GNSS_WET_SAMPLING
+	__RESERVED_142                           = 142, // was UW_GNSS_MAX_SAMPLES
+	__RESERVED_143                           = 143, // was UW_GNSS_MIN_DRY_SAMPLES
+	__RESERVED_144                           = 144, // was UW_GNSS_DETECT_THRESH
 	LB_CRITICAL_THRESH                       = 145,
 	// === Pressure sensor logging (slot 146 always reserved) ===
 #if ENABLE_PRESSURE_SENSOR
@@ -384,9 +384,9 @@ enum class BasePressureSensorFullScale {
 
 enum class BaseUnderwaterDetectSource {
 	SWS = 0,
-	PRESSURE_SENSOR,
-	GNSS,
-	SWS_GNSS
+	__RESERVED_1 = 1, // was PRESSURE_SENSOR
+	__RESERVED_2 = 2, // was GNSS
+	__RESERVED_3 = 3, // was SWS_GNSS
 };
 
 enum class BaseLogDType {

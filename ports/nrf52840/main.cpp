@@ -1,9 +1,7 @@
 #if ENABLE_SWS_ANALOG
 #include "sws_analog_service.hpp"
 #endif
-#include "gnss_detector_service.hpp"
 #if ENABLE_PRESSURE_SENSOR
-#include "pressure_detector_service.hpp"
 #include "pressure_sensor_service.hpp"
 #endif
 #if ENABLE_ALS_SENSOR
@@ -737,7 +735,6 @@ int main()
 		static M10QAsyncReceiver m10q_gnss;
 		gps_device = &m10q_gnss;
 		static GPSService gps_service(m10q_gnss, &fs_sensor_log);
-		static GNSSDetectorService gps_detector(m10q_gnss);
 	} catch (...) {
 		DEBUG_TRACE("GPS M10Q not detected");
 	}
@@ -824,7 +821,6 @@ int main()
 				DEBUG_TRACE("Standalone Pressure Sensor on bus %u...", i);
 				standalone_pressure = true;
 				static PressureSensor pressure_sensor(*pressure_sensor_devices[i]);
-				static PressureDetectorService pressure_detector(pressure_sensor);
 				static PressureSensorService pressure_sensor_service(pressure_sensor, &pressure_sensor_log);
 			}
 #endif

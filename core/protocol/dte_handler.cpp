@@ -1233,6 +1233,54 @@ std::string DTEHandler::SWSTST_REQ(int error_code, std::vector<BaseType>& arg_li
 #endif
 }
 
+std::string DTEHandler::SWSCAL_REQ(int error_code, std::vector<BaseType>& arg_list) {
+	if (error_code) {
+		return DTEEncoder::encode(DTECommand::SWSCAL_RESP, error_code);
+	}
+
+	if (arg_list.size() < 1) {
+		return DTEEncoder::encode(DTECommand::SWSCAL_RESP, (int)DTEError::MISSING_ARGUMENT);
+	}
+
+	unsigned int action = std::get<unsigned int>(arg_list[0]);
+
+#if ENABLE_SWS_ANALOG
+	if (action == 1) {
+		if (SWSAnalogService::is_test_running()) {
+			// Stop any running test mode first
+			SWSAnalogService::stop_test_mode();
+			SWSAnalogService::clear_status_notify();
+		}
+		auto write_fn = m_async_write;
+		SWSAnalogService::set_guided_calib_notify([write_fn](const SWSAnalogService::CalibResult& r) {
+			if (write_fn) {
+				write_fn(DTEEncoder::encode(DTECommand::SWSCAL_RESP, (int)DTEError::OK,
+					(unsigned int)r.status,
+					(unsigned int)r.air,
+					(unsigned int)r.water));
+			}
+		});
+		SWSAnalogService::set_on_test_stop([]() {
+			if (status_led)
+				status_led->flash(RGBLedColor::BLUE);
+		});
+		SWSAnalogService::start_guided_calibration();
+	} else {
+		SWSAnalogService::cancel_guided_calibration();
+		SWSAnalogService::clear_guided_calib_notify();
+	}
+
+	auto r = SWSAnalogService::get_guided_calibration_result();
+	return DTEEncoder::encode(DTECommand::SWSCAL_RESP, (int)DTEError::OK,
+		(unsigned int)r.status,
+		(unsigned int)r.air,
+		(unsigned int)r.water);
+#else
+	(void)action;
+	return DTEEncoder::encode(DTECommand::SWSCAL_RESP, (int)DTEError::PARAM_KEY_UNRECOGNISED);
+#endif
+}
+
 std::string DTEHandler::GNSSBR_REQ(int error_code, std::vector<BaseType>& arg_list) {
 	if (error_code) {
 		return DTEEncoder::encode(DTECommand::GNSSBR_RESP, error_code);
@@ -1530,6 +1578,9 @@ DTEAction DTEHandler::handle_dte_message(const std::string& req, std::string& re
 		break;
 	case DTECommand::SWSTST_REQ:
 		resp = SWSTST_REQ(error_code, arg_list);
+		break;
+	case DTECommand::SWSCAL_REQ:
+		resp = SWSCAL_REQ(error_code, arg_list);
 		break;
 	case DTECommand::GNSSBR_REQ:
 		resp = GNSSBR_REQ(error_code, arg_list);

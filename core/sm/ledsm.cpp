@@ -307,7 +307,7 @@ void LEDSurfaceDetected::entry() {
 void LEDDiveDetected::entry() {
 	DEBUG_TRACE("LEDDiveDetected: entry");
 	LED_MODE_GUARD {
-		status_led->set(RGBLedColor::CYAN);
+		status_led->set(RGBLedColor::BLUE);
 	} else {
 		status_led->off();
 	}

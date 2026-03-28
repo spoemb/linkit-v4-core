@@ -73,9 +73,7 @@ for arg in "$@"; do
 done
 
 if [ "$RECOVER" = true ]; then
-    echo "Recovering device (erases ALL flash, disables APPROTECT)..."
-    nrfjprog --recover -f nrf52
-    echo "✓ Device recovered"
+    echo "NOTE: --recover flag set — recover command will be shown in flash commands below"
     echo ""
 fi
 
@@ -222,6 +220,11 @@ echo "  NOTE: If flashing fails with 'Access protection enabled', the device has
 echo "  readback protection (APPROTECT) active. Run 'nrfjprog --recover' first."
 echo "  This erases ALL flash (firmware + config) and disables protection."
 echo ""
+if [ "$RECOVER" = true ]; then
+    echo "  Recover (erase ALL flash + disable APPROTECT — run BEFORE flashing):"
+    echo "    nrfjprog --recover -f nrf52"
+    echo ""
+fi
 if [ "$CAN_MERGE" = true ] && [ -f "${TARGET_NAME}_merged-${TAG}.hex" ]; then
     echo "  Full (app + bootloader + softdevice):"
     echo "    nrfjprog --program ${BUILD_DIR}/${TARGET_NAME}_merged-${TAG}.hex --chiperase --verify --reset"

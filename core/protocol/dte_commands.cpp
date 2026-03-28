@@ -448,6 +448,26 @@ const DTECommandMap command_map[] = {
 			}
 		}
 	},
+	// SWSCAL - SWS guided calibration (LED-assisted air/water measurement)
+	// Usage: $SWSCAL#001;1\r (start) or $SWSCAL#001;0\r (cancel)
+	// Response: $O;SWSCAL#003;<status>,<air>,<water>\r
+	{
+		.name = "SWSCAL",
+		.command = DTECommand::SWSCAL_REQ,
+		.prototype =
+		{
+			{
+				.name = "action",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 1U,  // 0=cancel, 1=start
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	},
 	// GNSSBR - GNSS UART bridge/passthrough mode (direct u-blox access via USB)
 	// Usage: $GNSSBR#001;1\r (start) — exit by typing +++
 	{
@@ -1263,6 +1283,44 @@ const DTECommandMap command_map[] = {
 				.encoding = BaseEncoding::UINT,
 				.min_value = 0U,
 				.max_value = 1U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	},
+	// SWSCAL response - guided calibration result
+	{
+		.name = "SWSCAL",
+		.command = DTECommand::SWSCAL_RESP,
+		.prototype =
+		{
+			{
+				.name = "status",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 3U,  // 0=in progress, 1=success, 2=failed, 3=cancelled
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "air",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 16383U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "water",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 16383U,
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false

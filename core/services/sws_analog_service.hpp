@@ -2,6 +2,7 @@
 
 #include "bsp.hpp"
 #include "uwdetector_service.hpp"
+#include "calibration.hpp"
 #include "logger.hpp"
 #include "messages.hpp"
 #include "timeutils.hpp"
@@ -70,7 +71,7 @@ public:
  *
  * Test mode (DTE SWSTST): LED BLUE=underwater, YELLOW=surface. Async status push.
  */
-class SWSAnalogService : public UWDetectorService {
+class SWSAnalogService : public UWDetectorService, public Calibratable {
 public:
     // Detection method IDs (for IHM visualization)
     enum DetectMethod : uint8_t {
@@ -115,6 +116,37 @@ public:
     static void stop_test_mode();
     static bool is_test_running();
 
+    /**
+     * @brief Guided calibration: LED-assisted air/water measurement
+     *
+     * Phase 1: GREEN flashing → user places device in AIR → samples 10 readings → GREEN solid
+     * Phase 2: BLUE flashing  → user places device in WATER → samples 10 readings → BLUE solid
+     * Phase 3: Save to SWS.CAL + flash. WHITE flash = success, RED flash = failure.
+     *
+     * Runs asynchronously via detector_state() ticks. Async notify pushes completion.
+     */
+    enum class CalibPhase : uint8_t {
+        IDLE = 0,
+        AIR_WAITING,      // GREEN flashing — waiting for stable air readings
+        AIR_SAMPLING,      // GREEN fast flash — sampling air
+        WATER_WAITING,     // BLUE flashing — waiting for stable water readings
+        WATER_SAMPLING,    // BLUE fast flash — sampling water
+        DONE,              // Calibration complete
+    };
+
+    struct CalibResult {
+        uint8_t status;    // 0=in progress, 1=success, 2=failed, 3=cancelled
+        uint16_t air;
+        uint16_t water;
+    };
+
+    static void start_guided_calibration();
+    static void cancel_guided_calibration();
+    static bool is_guided_calibration_running();
+    static CalibResult get_guided_calibration_result();
+    static void set_guided_calib_notify(std::function<void(const CalibResult&)> fn);
+    static void clear_guided_calib_notify();
+
     // Async notify: push SWSST status on each sample during test mode
     static void set_status_notify(std::function<void(const Status&)> fn);
     static void clear_status_notify();
@@ -140,7 +172,13 @@ public:
     }
 #endif
 
-    SWSAnalogService() : UWDetectorService("SWSAnalog") {
+    // Calibratable interface: manual calibration via DTE $SCALW/$SCALR
+    // Offset 0 = expected water ADC, offset 1 = expected air ADC
+    void calibration_write(const double value, const unsigned int offset) override;
+    void calibration_read(double &value, const unsigned int offset) override;
+    void calibration_save(bool force) override;
+
+    SWSAnalogService() : UWDetectorService("SWSAnalog"), Calibratable("SWS"), m_manual_calib("SWS") {
         s_instance = this;
         m_adc_history_idx = 0;
         m_adc_history_count = 0;
@@ -161,6 +199,7 @@ public:
         m_recent_peak = 0;
         m_surface_lockout_remaining = 0;
         m_first_sample_done = false;
+        m_contrast_x10 = 0;
         for (int i = 0; i < ADC_HISTORY_SIZE; i++) {
             m_adc_history[i] = 0;
         }
@@ -183,6 +222,19 @@ private:
 #if ENABLE_SWS_LOG
     static Logger *m_sws_logger;
 #endif
+    // Manual calibration data (persisted in SWS.CAL via Calibration class)
+    Calibration m_manual_calib;
+
+    // Guided calibration state
+    static CalibPhase m_calib_phase;
+    static uint32_t m_calib_sum;
+    static uint8_t m_calib_count;
+    static uint16_t m_calib_air_result;
+    static uint16_t m_calib_water_result;
+    static uint8_t m_calib_stable_count;
+    static uint16_t m_calib_prev_value;
+    static std::function<void(const CalibResult&)> m_calib_notify;
+
     // Calibration data structure (stored in noinit RAM to survive resets)
     struct CalibrationData {
         uint16_t threshold_air;          // Baseline ADC value in air (low conductivity)
@@ -251,8 +303,6 @@ private:
     bool m_first_sample_done;
 
     // Configuration parameters (loaded from config store)
-    uint16_t m_threshold_min;
-    uint16_t m_threshold_max;
     uint16_t m_hysteresis_percent;
     uint32_t m_calib_interval_sec;
     uint32_t m_max_dive_time_sec;
@@ -264,6 +314,9 @@ private:
 
     // Adaptive sample delay (in µs) — auto-adjusted based on contrast
     uint32_t m_sample_delay_us;         // Current delay (100-5000 µs)
+
+    // Cached contrast ratio (water/air × 10), updated once per detector_state() call
+    uint16_t m_contrast_x10;
 
     /**
      * @brief Read analog ADC value from SWS channel
@@ -328,6 +381,18 @@ private:
      */
     bool check_safety_timeouts(bool current_state);
 
+    /**
+     * @brief Save calibration data to flash (survives hard resets)
+     * Called on state transitions and significant calibration changes.
+     */
+    void save_calibration_to_flash();
+
+    /**
+     * @brief Load calibration data from flash
+     * @return true if valid calibration was loaded from flash
+     */
+    bool load_calibration_from_flash();
+
 protected:
     /**
      * @brief Detect current state (underwater or surface)
@@ -340,6 +405,11 @@ protected:
      * @return true if SWS analog detection is enabled
      */
     bool service_is_enabled() override;
+
+    /**
+     * @brief Override scheduling: 1s during guided calibration, normal otherwise
+     */
+    unsigned int service_next_schedule_in_ms() override;
 
     /**
      * @brief Service initialization - load config and validate calibration

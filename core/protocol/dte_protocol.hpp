@@ -1141,13 +1141,8 @@ private:
 	static BaseUnderwaterDetectSource decode_underwater_detect_source(const std::string& s) {
 		if (s == "0") {
 			return BaseUnderwaterDetectSource::SWS;
-		} else if (s == "1") {
-			return BaseUnderwaterDetectSource::PRESSURE_SENSOR;
-		} else if (s == "2") {
-			return BaseUnderwaterDetectSource::GNSS;
-		} else if (s == "3") {
-			return BaseUnderwaterDetectSource::SWS_GNSS;
 		} else {
+			// Only SWS is supported; other sources have been removed
 			DEBUG_ERROR("DTE_PROTOCOL_VALUE_OUT_OF_RANGE in %s(%s)", __FUNCTION__, s.c_str());
 			throw DTE_PROTOCOL_VALUE_OUT_OF_RANGE;
 		}

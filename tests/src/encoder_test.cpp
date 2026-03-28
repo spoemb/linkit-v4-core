@@ -470,6 +470,8 @@ TEST(Encoder, PARAM_GNSS_EN)
 TEST(Encoder, PARAM_DLOC_ARG_NOM)
 {
 	std::string s;
+	// Matches encode_acquisition_period() mapping in dte_protocol.hpp:
+	// 10min=1, 15min=2, 30min=3, 1h=4, 2h=5, 3h=6, 4h=7, 6h=8, 12h=9, 24h=10
 	ParamValue p = { ParamID::DLOC_ARG_NOM, 10*60U };
 	std::vector<ParamValue> v = { p };
 	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
@@ -493,15 +495,15 @@ TEST(Encoder, PARAM_DLOC_ARG_NOM)
 	p = { ParamID::DLOC_ARG_NOM, 360*60U };
 	v = { p };
 	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
-	STRCMP_EQUAL("$O;PARMR#007;ARP11=6\r", s.c_str());
+	STRCMP_EQUAL("$O;PARMR#007;ARP11=8\r", s.c_str());  // 6h = index 8
 	p = { ParamID::DLOC_ARG_NOM, 720*60U };
 	v = { p };
 	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
-	STRCMP_EQUAL("$O;PARMR#007;ARP11=7\r", s.c_str());
+	STRCMP_EQUAL("$O;PARMR#007;ARP11=9\r", s.c_str());  // 12h = index 9
 	p = { ParamID::DLOC_ARG_NOM, 1440*60U };
 	v = { p };
 	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
-	STRCMP_EQUAL("$O;PARMR#007;ARP11=8\r", s.c_str());
+	STRCMP_EQUAL("$O;PARMR#008;ARP11=10\r", s.c_str());  // 24h = index 10
 }
 
 TEST(Encoder, PARAM_ARGOS_DEPTH_PILE)
@@ -850,15 +852,15 @@ TEST(Encoder, PARAM_DLOC_ARG_LB)
 	p = { ParamID::DLOC_ARG_LB, 360*60U };
 	v = { p };
 	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
-	STRCMP_EQUAL("$O;PARMR#007;ARP12=6\r", s.c_str());
+	STRCMP_EQUAL("$O;PARMR#007;ARP12=8\r", s.c_str());  // 6h = index 8
 	p = { ParamID::DLOC_ARG_LB, 720*60U };
 	v = { p };
 	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
-	STRCMP_EQUAL("$O;PARMR#007;ARP12=7\r", s.c_str());
+	STRCMP_EQUAL("$O;PARMR#007;ARP12=9\r", s.c_str());  // 12h = index 9
 	p = { ParamID::DLOC_ARG_LB, 1440*60U };
 	v = { p };
 	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
-	STRCMP_EQUAL("$O;PARMR#007;ARP12=8\r", s.c_str());
+	STRCMP_EQUAL("$O;PARMR#008;ARP12=10\r", s.c_str());  // 24h = index 10
 }
 
 TEST(Encoder, PARAM_LB_GNSS_HDOPFILT_THR)
