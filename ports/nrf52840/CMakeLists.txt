@@ -51,6 +51,9 @@ endif()
 if(NOT DEFINED ENABLE_SWS_LOG)
     set(ENABLE_SWS_LOG 0)
 endif()
+if(NOT DEFINED GNSS_HAS_BACKUP_BATTERY)
+    set(GNSS_HAS_BACKUP_BATTERY 0)
+endif()
 
 # Guard: THERMISTOR and SEA_TEMP share the same depth pile slot in Argos TX.
 # Enabling both simultaneously would cause data corruption (last writer wins).
@@ -536,6 +539,7 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     ENABLE_MORTALITY_SENSOR=${ENABLE_MORTALITY_SENSOR}
     ENABLE_SWS_LOG=${ENABLE_SWS_LOG}
     ENABLE_SWS_ANALOG=${ENABLE_SWS_ANALOG}
+    GNSS_HAS_BACKUP_BATTERY=${GNSS_HAS_BACKUP_BATTERY}
     ARGOS_SMD=${ARGOS_SMD_ENABLED}
     $<$<BOOL:${LORA_RAK3172_ENABLED}>:LORA_RAK3172=1>
     # Battery monitor type defines

@@ -120,6 +120,7 @@ private:
 	void setup_simple_navigation_settings();
 	void setup_expert_navigation_settings();
 	void supply_time_assistance();
+	void supply_position_assistance();
 	void disable_odometer();
 	void disable_timepulse_output();
 	void enable_nav_pvt_message();

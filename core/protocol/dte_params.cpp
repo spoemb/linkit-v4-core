@@ -45,8 +45,8 @@ const BaseMap param_map[] = {
 	{ "GNSS_EN", "GNP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "DLOC_ARG_NOM", "ARP11", BaseEncoding::AQPERIOD, 0, 0, { 0U, 1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U, 11U, 12U, 13U, 14U, 15U }, true, true },
 	{ "ARGOS_DEPTH_PILE", "ARP16", BaseEncoding::DEPTHPILE, 0U, 0U, {1U, 2U, 3U, 4U, 8U, 12U, 16U, 20U, 24U}, true, true },
-	{ "_RESERVED_20", "", BaseEncoding::UINT, 0, 0, {}, false, false },  // Reserved: constellation select never implemented
-	{ "GLONASS_CONST_SELECT", "GNP08", BaseEncoding::UINT, 0, 0, {}, false, true },
+	{ "_RESERVED_20", "", BaseEncoding::UINT, 0, 0, {}, false, false },  // Was GPS_CONST_SELECT — replaced by GNP40
+	{ "_RESERVED_21", "", BaseEncoding::UINT, 0, 0, {}, false, false },  // Was GLONASS_CONST_SELECT — replaced by GNP40
 	{ "GNSS_HDOPFILT_EN", "GNP02", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "GNSS_HDOPFILT_THR", "GNP03", BaseEncoding::UINT, 2U, 15U, {}, true, true },
 	{ "GNSS_ACQ_TIMEOUT", "GNP05", BaseEncoding::UINT, 10U, 600U, {}, true, true },
@@ -190,9 +190,9 @@ const BaseMap param_map[] = {
 	{ "UW_SAMPLE_GAP", "UNP07", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 	{ "UW_PIN_SAMPLE_DELAY", "UNP08", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 
-	// SWS Analog parameters (UNP20/UNP21 removed: thresholds are now auto-calibrated)
-	{ "__RESERVED", "", BaseEncoding::UINT, 0U, 0U, {}, false, false },
-	{ "__RESERVED", "", BaseEncoding::UINT, 0U, 0U, {}, false, false },
+	// [132] GNSS constellation bitmask, [133] AssistNow orbit max error
+	{ "GNSS_CONSTELLATION_MASK", "GNP40", BaseEncoding::UINT, 0x01U, 0x3FU, {}, true, true },
+	{ "GNSS_ORBMAXERR", "GNP41", BaseEncoding::UINT, 10U, 1000U, {}, true, true },
 	{ "SWS_ANALOG_HYSTERESIS", "UNP22", BaseEncoding::UINT, 0U, 50U, {}, true, true },
 	{ "SWS_ANALOG_CALIB_INTERVAL", "UNP23", BaseEncoding::UINT, 60U, 0xFFFFFFFFU, {}, true, true },
 	{ "UW_MAX_DIVE_TIME", "UNP24", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true },
@@ -202,9 +202,9 @@ const BaseMap param_map[] = {
 	{ "UW_DIVE_MODE_ENABLE", "UNP12", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "UW_DIVE_MODE_START_TIME", "UNP13", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true },
 
-	// GNSS UW parameters (removed — GNSSDetectorService no longer exists, slots reserved)
-	{ "__RESERVED", "", BaseEncoding::UINT, 0U, 0U, {}, false, false },
-	{ "__RESERVED", "", BaseEncoding::UINT, 0U, 0U, {}, false, false },
+	// [140] GNSS min C/N0, [141] GNSS min elevation (remaining slots reserved)
+	{ "GNSS_MIN_CNO", "GNP42", BaseEncoding::UINT, 0U, 50U, {}, true, true },
+	{ "GNSS_MIN_ELEV", "GNP43", BaseEncoding::UINT, 0U, 90U, {}, true, true },
 	{ "__RESERVED", "", BaseEncoding::UINT, 0U, 0U, {}, false, false },
 	{ "__RESERVED", "", BaseEncoding::UINT, 0U, 0U, {}, false, false },
 	{ "__RESERVED", "", BaseEncoding::UINT, 0U, 0U, {}, false, false },

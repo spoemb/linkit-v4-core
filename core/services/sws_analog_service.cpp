@@ -8,7 +8,16 @@
 #ifndef CPPUTEST
 #include "crc16.h"
 #else
-#define crc16_compute(x, y, z) 0xFFFF
+// Simple CRC16-CCITT for test builds (replaces Nordic SDK crc16.h)
+static inline uint16_t crc16_compute(const uint8_t *data, uint16_t length, const uint16_t *) {
+    uint16_t crc = 0xFFFF;
+    for (uint16_t i = 0; i < length; i++) {
+        crc ^= (uint16_t)data[i] << 8;
+        for (uint8_t j = 0; j < 8; j++)
+            crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : crc << 1;
+    }
+    return crc;
+}
 #endif
 
 // LED for test mode visual feedback
@@ -24,7 +33,6 @@ extern RGBLed *status_led;
 #define DEFAULT_HYSTERESIS_PERCENT 4
 #define DEFAULT_CALIB_INTERVAL_SEC 3600
 #define DEFAULT_MAX_DIVE_TIME_SEC 7200
-#define DEFAULT_MIN_SURFACE_TIME_SEC 10
 
 // Detection tuning
 #define DEFAULT_THRESHOLD_RATIO_PERCENT 35
@@ -103,6 +111,7 @@ extern RGBLed *status_led;
 // Safety
 #define OVERRIDE_MIN_TIME_SEC 1        // Minimum underwater time before any override
 #define SURFACE_LOCKOUT_DURATION_SEC 30
+#define MAX_CONSECUTIVE_DIVE_TIMEOUTS 3 // Force surface after N timeouts without any surface detection
 
 // Adaptive sample delay (µs)
 #define SAMPLE_DELAY_MIN_US     100    // Floor: below this, ADC values approach noise
@@ -426,6 +435,7 @@ void SWSAnalogService::service_init() {
 
     // Safety
     m_surface_lockout_remaining = 0;
+    m_consecutive_dive_timeouts = 0;
 
     // First-sample coherence check
     m_first_sample_done = false;
@@ -459,7 +469,15 @@ uint16_t SWSAnalogService::read_analog_sws() {
     GPIOPins::set(SWS_ENABLE_PIN);
     PMU::delay_us(m_sample_delay_us);
 
-    nrfx_saadc_init(&BSP::ADC_Inits.config, nrfx_saadc_event_handler_sws);
+    nrfx_err_t init_err = nrfx_saadc_init(&BSP::ADC_Inits.config, nrfx_saadc_event_handler_sws);
+    if (init_err == NRFX_ERROR_INVALID_STATE) {
+        nrfx_saadc_uninit();
+        init_err = nrfx_saadc_init(&BSP::ADC_Inits.config, nrfx_saadc_event_handler_sws);
+    }
+    if (init_err != NRFX_SUCCESS) {
+        GPIOPins::clear(SWS_ENABLE_PIN);
+        return 0;
+    }
     nrfx_saadc_channel_init(SWS_ADC, &BSP::ADC_Inits.channel_config[SWS_ADC]);
 
     nrfx_err_t err = nrfx_saadc_sample_convert(SWS_ADC, &raw);
@@ -572,9 +590,11 @@ void SWSAnalogService::calibrate_air_baseline() {
                 // Heuristic: water ≈ air × 3, capped at air × 5 to avoid
                 // unreachable thresholds when air is high (wet electrode startup).
                 m_calib.threshold_water = m_calib.threshold_air * 3;
-                uint16_t max_water_estimate = m_calib.threshold_air * 5;
-                if (max_water_estimate < m_calib.threshold_water)
-                    m_calib.threshold_water = max_water_estimate;
+                uint32_t max_water_estimate = (uint32_t)m_calib.threshold_air * 5;
+                if (max_water_estimate > ADC_INVALID_MAX)
+                    max_water_estimate = ADC_INVALID_MAX;
+                if (m_calib.threshold_water > (uint16_t)max_water_estimate)
+                    m_calib.threshold_water = (uint16_t)max_water_estimate;
             }
             if (m_calib.threshold_water > ADC_INVALID_MAX)
                 m_calib.threshold_water = ADC_INVALID_MAX;
@@ -785,7 +805,8 @@ bool SWSAnalogService::detector_state() {
             update_dynamic_threshold();
             m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
                                          sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
-            save_calibration_to_flash();
+            // Flash save deferred to next state transition (section 10) to avoid
+            // excessive writes during rapid convergence
         }
 
         if (calib_incoherent) {
@@ -1100,12 +1121,15 @@ bool SWSAnalogService::detector_state() {
                    m_calib.threshold_air, m_calib.threshold_water, m_surface_lockout_remaining);
     }
 
-    // === 8. MAX DIVE TIMEOUT — diagnostic recalibration ===
-    // Does NOT force surface: a long dive is legitimate (turtles, seals).
-    // Instead, refreshes water baseline from current reading to correct drift/biofouling,
-    // and resets the timer so the check fires again after another full interval.
+    // === 8. MAX DIVE TIMEOUT — escalating response ===
+    // First timeouts: recalibrate water baseline (legitimate long dives).
+    // After MAX_CONSECUTIVE_DIVE_TIMEOUTS without surface: force surface + lockout
+    // to give GPS/Argos a TX window (biofouling safety net).
     if (timeout_override) {
+        m_consecutive_dive_timeouts++;
         uint16_t old_water = m_calib.threshold_water;
+
+        // Always recalibrate water baseline from current reading
         if (is_value_valid(filtered_value) && filtered_value > m_calib.threshold_air * 2) {
             m_calib.threshold_water = filtered_value;
             update_dynamic_threshold();
@@ -1113,11 +1137,21 @@ bool SWSAnalogService::detector_state() {
                                          sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
             save_calibration_to_flash();
         }
-        // Reset timer so timeout fires again after another full interval
-        m_last_state_change_time = PMU::get_timestamp_ms() / 1000;
-        DEBUG_WARN("SWSAnalog: Max dive recalib | water %u -> %u | air=%u thresh=%u",
-                   old_water, m_calib.threshold_water,
-                   m_calib.threshold_air, m_calib.threshold_current);
+
+        if (m_consecutive_dive_timeouts >= MAX_CONSECUTIVE_DIVE_TIMEOUTS) {
+            // Escalation: force surface after repeated timeouts (biofouling safety net)
+            new_state = false;
+            m_surface_lockout_remaining = SURFACE_LOCKOUT_DURATION_SEC;
+            m_consecutive_dive_timeouts = 0;
+            DEBUG_WARN("SWSAnalog: Dive timeout escalation — forcing surface | water %u -> %u | air=%u",
+                       old_water, m_calib.threshold_water, m_calib.threshold_air);
+        } else {
+            // Reset timer for next interval
+            m_last_state_change_time = PMU::get_timestamp_ms() / 1000;
+            DEBUG_WARN("SWSAnalog: Dive timeout %u/%u — recalib | water %u -> %u | air=%u",
+                       m_consecutive_dive_timeouts, MAX_CONSECUTIVE_DIVE_TIMEOUTS,
+                       old_water, m_calib.threshold_water, m_calib.threshold_air);
+        }
     }
 
     // === 9. SURFACE LOCKOUT (time-based, not sample-count-based) ===
@@ -1139,6 +1173,7 @@ bool SWSAnalogService::detector_state() {
         m_consecutive_samples = 0;
         m_peak_adc_since_underwater = 0;
         m_recent_peak = 0;
+        m_consecutive_dive_timeouts = 0;  // Reset escalation on any state change
 
         // Reset fast drop tracking
         m_consecutive_raw_drops = 0;

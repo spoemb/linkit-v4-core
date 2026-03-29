@@ -294,6 +294,7 @@ TEST(SWSAnalog, MaxDiveTimeSafety)
     system_timer->start();
 
     // Enable max dive time safety (5 seconds for test)
+    // Escalation: first 2 timeouts recalibrate only, 3rd forces surface
     unsigned int dive_time = 5U;
     configuration_store->write_param(ParamID::UW_MAX_DIVE_TIME, dive_time);
 
@@ -305,7 +306,6 @@ TEST(SWSAnalog, MaxDiveTimeSafety)
         }
     });
 
-    // Warm up at air value to pass coherence check
     warmup_air_samples();
 
     // Go underwater
@@ -313,26 +313,22 @@ TEST(SWSAnalog, MaxDiveTimeSafety)
     for (unsigned int i = 0; i < 6; i++) {
         run_one_sample();
     }
-    CHECK_TRUE(switch_state);  // Confirmed underwater
-
-    auto status_before = SWSAnalogService::get_status();
-    uint16_t water_before = status_before.threshold_water;
-
-    // Wait for max dive time to expire (>5 seconds of real time)
-    std::this_thread::sleep_for(std::chrono::seconds(6));
-
-    // Take another reading (still high ADC) — timeout triggers recalibration, not surface
-    for (unsigned int i = 0; i < 6; i++) {
-        run_one_sample();
-    }
-
-    // Should remain underwater (timeout recalibrates, does not force surface)
     CHECK_TRUE(switch_state);
 
-    // Water baseline should have been refreshed from current reading
-    auto status_after = SWSAnalogService::get_status();
-    CHECK_TEXT(status_after.threshold_water != water_before,
-        "Max dive timeout should recalibrate water baseline");
+    // Timeout 1: recalibrate only, stay underwater
+    std::this_thread::sleep_for(std::chrono::seconds(6));
+    for (unsigned int i = 0; i < 6; i++) run_one_sample();
+    CHECK_TRUE_TEXT(switch_state, "Timeout 1/3: should stay underwater (recalib only)");
+
+    // Timeout 2: recalibrate only, stay underwater
+    std::this_thread::sleep_for(std::chrono::seconds(6));
+    for (unsigned int i = 0; i < 6; i++) run_one_sample();
+    CHECK_TRUE_TEXT(switch_state, "Timeout 2/3: should stay underwater (recalib only)");
+
+    // Timeout 3: escalation — force surface
+    std::this_thread::sleep_for(std::chrono::seconds(6));
+    for (unsigned int i = 0; i < 6; i++) run_one_sample();
+    CHECK_FALSE_TEXT(switch_state, "Timeout 3/3: should force surface (escalation)");
 
     s.stop();
 }

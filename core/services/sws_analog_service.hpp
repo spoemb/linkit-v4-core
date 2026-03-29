@@ -198,6 +198,7 @@ public:
         m_peak_adc_since_underwater = 0;
         m_recent_peak = 0;
         m_surface_lockout_remaining = 0;
+        m_consecutive_dive_timeouts = 0;
         m_first_sample_done = false;
         m_contrast_x10 = 0;
         for (int i = 0; i < ADC_HISTORY_SIZE; i++) {
@@ -298,6 +299,7 @@ private:
 
     // Safety
     uint32_t m_surface_lockout_remaining;
+    uint8_t m_consecutive_dive_timeouts;   // Escalation: force surface after N consecutive timeouts
 
     // First-sample coherence check
     bool m_first_sample_done;

@@ -37,6 +37,10 @@ struct GNSSConfig {
 	bool assistnow_enable;
 	bool trigger_on_surfaced;
 	bool assistnow_offline_enable;
+	unsigned int constellation_mask;
+	unsigned int orbmaxerr;
+	unsigned int min_cno;
+	unsigned int min_elev;
 };
 
 struct ArgosConfig {
@@ -119,7 +123,7 @@ protected:
 
 		/* ARGOS_DEPTH_PILE */ BaseDepthPile::DEPTH_PILE_16,
 		/* _RESERVED_20 */ 0U,
-		/* GLONASS_CONST_SELECT */ 0U, // Not implemented
+		/* _RESERVED_21 */ 0U,
 		/* GNSS_HDOPFILT_EN */ (bool)true,
 		/* GNSS_HDOPFILT_THR */ 2U,
 		/* GNSS_ACQ_TIMEOUT */ 120U,
@@ -233,16 +237,16 @@ protected:
 		/* UW_MIN_DRY_SAMPLES */ 1U,
 		/* UW_SAMPLE_GAP */ 1000U,
 		/* UW_PIN_SAMPLE_DELAY */ 1U,
-		/* __RESERVED_132 */ 0U,
-		/* __RESERVED_133 */ 0U,
+		/* GNSS_CONSTELLATION_MASK */ 0x0FU,  // GPS|GAL|GLO|BDS (M10Q factory default)
+		/* GNSS_ORBMAXERR */ 300U,
 		/* SWS_ANALOG_HYSTERESIS */ 4U,
 		/* SWS_ANALOG_CALIB_INTERVAL */ 3600U,
 		/* UW_MAX_DIVE_TIME */ 7200U,
 		/* UW_MIN_SURFACE_TIME */ 2U,
 		/* UW_DIVE_MODE_ENABLE */ (bool)false,
 		/* UW_DIVE_MODE_START_TIME */ 0U,
-		/* __RESERVED_140 */ 0U,
-		/* __RESERVED_141 */ 0U,
+		/* GNSS_MIN_CNO */ 10U,
+		/* GNSS_MIN_ELEV */ 10U,
 		/* __RESERVED_142 */ 0U,
 		/* __RESERVED_143 */ 0U,
 		/* __RESERVED_144 */ 0U,
@@ -621,6 +625,10 @@ public:
 			gnss_config.assistnow_enable = read_param<bool>(ParamID::GNSS_ASSISTNOW_EN);
 			gnss_config.trigger_on_surfaced = read_param<bool>(ParamID::GNSS_TRIGGER_ON_SURFACED);
 			gnss_config.assistnow_offline_enable = read_param<bool>(ParamID::GNSS_ASSISTNOW_OFFLINE_EN);
+			gnss_config.constellation_mask = read_param<unsigned int>(ParamID::GNSS_CONSTELLATION_MASK);
+			gnss_config.orbmaxerr = read_param<unsigned int>(ParamID::GNSS_ORBMAXERR);
+			gnss_config.min_cno = read_param<unsigned int>(ParamID::GNSS_MIN_CNO);
+			gnss_config.min_elev = read_param<unsigned int>(ParamID::GNSS_MIN_ELEV);
 
 			if (m_last_config_mode != ConfigMode::LOW_BATTERY) {
 				DEBUG_INFO("ConfigurationStore: LOW_BATTERY mode detected");
@@ -644,6 +652,10 @@ public:
 			gnss_config.assistnow_enable = read_param<bool>(ParamID::GNSS_ASSISTNOW_EN);
 			gnss_config.trigger_on_surfaced = read_param<bool>(ParamID::GNSS_TRIGGER_ON_SURFACED);
 			gnss_config.assistnow_offline_enable = read_param<bool>(ParamID::GNSS_ASSISTNOW_OFFLINE_EN);
+			gnss_config.constellation_mask = read_param<unsigned int>(ParamID::GNSS_CONSTELLATION_MASK);
+			gnss_config.orbmaxerr = read_param<unsigned int>(ParamID::GNSS_ORBMAXERR);
+			gnss_config.min_cno = read_param<unsigned int>(ParamID::GNSS_MIN_CNO);
+			gnss_config.min_elev = read_param<unsigned int>(ParamID::GNSS_MIN_ELEV);
 
 			if (m_last_config_mode != ConfigMode::OUT_OF_ZONE) {
 				DEBUG_INFO("ConfigurationStore: OUT_OF_ZONE mode detected");
@@ -668,6 +680,10 @@ public:
 			gnss_config.assistnow_enable = read_param<bool>(ParamID::GNSS_ASSISTNOW_EN);
 			gnss_config.trigger_on_surfaced = read_param<bool>(ParamID::GNSS_TRIGGER_ON_SURFACED);
 			gnss_config.assistnow_offline_enable = read_param<bool>(ParamID::GNSS_ASSISTNOW_OFFLINE_EN);
+			gnss_config.constellation_mask = read_param<unsigned int>(ParamID::GNSS_CONSTELLATION_MASK);
+			gnss_config.orbmaxerr = read_param<unsigned int>(ParamID::GNSS_ORBMAXERR);
+			gnss_config.min_cno = read_param<unsigned int>(ParamID::GNSS_MIN_CNO);
+			gnss_config.min_elev = read_param<unsigned int>(ParamID::GNSS_MIN_ELEV);
 
 			if (m_last_config_mode != ConfigMode::NORMAL) {
 				DEBUG_INFO("ConfigurationStore: NORMAL mode detected");

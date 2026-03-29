@@ -84,8 +84,8 @@ enum class ParamID {
 	GNSS_EN                                  = 17,
 	DLOC_ARG_NOM                             = 18,
 	ARGOS_DEPTH_PILE                         = 19,
-	_RESERVED_20                             = 20, // Was GPS_CONST_SELECT — never implemented
-	GLONASS_CONST_SELECT                     = 21,
+	_RESERVED_20                             = 20, // Was GPS_CONST_SELECT — replaced by GNSS_CONSTELLATION_MASK (slot 132)
+	_RESERVED_21                             = 21, // Was GLONASS_CONST_SELECT — replaced by GNSS_CONSTELLATION_MASK (slot 132)
 	GNSS_HDOPFILT_EN                         = 22,
 	GNSS_HDOPFILT_THR                        = 23,
 	GNSS_ACQ_TIMEOUT                         = 24,
@@ -222,16 +222,16 @@ enum class ParamID {
 	UW_MIN_DRY_SAMPLES                      = 129,
 	UW_SAMPLE_GAP                            = 130,
 	UW_PIN_SAMPLE_DELAY                      = 131,
-	__RESERVED_132                           = 132, // was SWS_ANALOG_THRESHOLD_MIN
-	__RESERVED_133                           = 133, // was SWS_ANALOG_THRESHOLD_MAX
+	GNSS_CONSTELLATION_MASK                  = 132,  // bitmask: bit0=GPS, bit1=GAL, bit2=GLO, bit3=BDS, bit4=QZSS, bit5=SBAS
+	GNSS_ORBMAXERR                           = 133,  // uint: AssistNow Autonomous max orbit error [m]
 	SWS_ANALOG_HYSTERESIS                    = 134,
 	SWS_ANALOG_CALIB_INTERVAL                = 135,
 	UW_MAX_DIVE_TIME                         = 136,
 	UW_MIN_SURFACE_TIME                      = 137,
 	UW_DIVE_MODE_ENABLE                      = 138,
 	UW_DIVE_MODE_START_TIME                  = 139,
-	__RESERVED_140                           = 140, // was UW_GNSS_DRY_SAMPLING
-	__RESERVED_141                           = 141, // was UW_GNSS_WET_SAMPLING
+	GNSS_MIN_CNO                             = 140,  // uint: minimum C/N0 for navigation [dBHz]
+	GNSS_MIN_ELEV                            = 141,  // uint: minimum elevation angle [deg]
 	__RESERVED_142                           = 142, // was UW_GNSS_MAX_SAMPLES
 	__RESERVED_143                           = 143, // was UW_GNSS_MIN_DRY_SAMPLES
 	__RESERVED_144                           = 144, // was UW_GNSS_DETECT_THRESH

@@ -78,6 +78,10 @@ void GPSService::service_initiate() {
 	nav_settings.num_consecutive_fixes = gnss_config.min_num_fixes;
 	nav_settings.sat_tracking = true;
 	nav_settings.max_nav_samples = (m_is_first_fix_found ? gnss_config.acquisition_timeout : gnss_config.acquisition_timeout_cold_start);
+	nav_settings.constellation_mask = gnss_config.constellation_mask;
+	nav_settings.orbmaxerr = gnss_config.orbmaxerr;
+	nav_settings.min_cno = gnss_config.min_cno;
+	nav_settings.min_elev = gnss_config.min_elev;
 
 	m_next_schedule = service_current_time();
 	m_is_first_schedule = false;

@@ -20,6 +20,10 @@ struct GPSNavSettings {
     unsigned int     num_consecutive_fixes = 1;
     unsigned int     max_nav_samples = 0;
     unsigned int     max_sat_samples = 0;
+    unsigned int     constellation_mask = 0x0F;  // bit0=GPS, bit1=GAL, bit2=GLO, bit3=BDS, bit4=QZSS, bit5=SBAS
+    unsigned int     orbmaxerr = 300;
+    unsigned int     min_cno = 10;
+    unsigned int     min_elev = 10;
 };
 
 struct GNSSData {

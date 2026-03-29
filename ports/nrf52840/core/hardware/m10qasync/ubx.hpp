@@ -1005,7 +1005,8 @@ namespace UBX
     {
         enum Id : uint8_t
         {
-            ID_INI_TIME_UTC = 0x40,
+            ID_INI          = 0x40,  // MGA-INI (type field selects TIME_UTC=0x10 or POS_LLH=0x01)
+            ID_INI_TIME_UTC = 0x40,  // Alias for backwards compatibility
             ID_ANO = 0x20,
             ID_ACK = 0x60,
             ID_DBD = 0x80
@@ -1055,6 +1056,18 @@ namespace UBX
             uint16_t tAccS;
             uint8_t  reserved2[2];
             uint32_t tAccNs;
+        };
+
+        // MGA-INI-POS_LLH: Initial position assistance (type=0x01)
+        struct __attribute__((__packed__)) MSG_INI_POS_LLH
+        {
+            uint8_t  type;       // 0x01 for position
+            uint8_t  version;    // 0x00
+            uint8_t  reserved1[2];
+            int32_t  lat;        // Latitude [deg * 1e-7]
+            int32_t  lon;        // Longitude [deg * 1e-7]
+            int32_t  alt;        // Altitude [cm]
+            uint32_t posAcc;     // Position accuracy [cm]
         };
     } // namespace ACK
 } // namespace UBX

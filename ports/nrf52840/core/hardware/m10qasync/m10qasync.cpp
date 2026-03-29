@@ -220,7 +220,7 @@ void M10QAsyncReceiver::exit_shutdown() {
     GPIOPins::set(BSP::GPIO::GPIO_GPS_RST);
     PMU::delay_ms(10);
     GPIOPins::set(BSP::GPIO::GPIO_GPS_PWR_EN);
-    PMU::delay_ms(500); // M10Q boot ~30ms, 500ms conservative margin (sync_baud_rate has retries)
+    PMU::delay_ms(100); // M10Q boot ~30ms, 100ms margin (sync_baud_rate has retries)
 }
 
 void M10QAsyncReceiver::state_machine() {
@@ -663,11 +663,35 @@ void M10QAsyncReceiver::state_configure() {
 		if (m_op_state == OpState::IDLE) {
             DEBUG_TRACE("M10QAsyncReceiver:state_configure: step:%u", m_step);
 			m_op_state = OpState::PENDING;
+#if GNSS_HAS_BACKUP_BATTERY
+			// Fast path: when BBR backup battery is present and GNSS was previously
+			// configured, attempt to skip full reconfiguration (UART/GNSS/PM/NAV
+			// settings already persisted in BBR). We validate by syncing at MAX_BAUDRATE
+			// first — if BBR was lost (dead coin cell), the M10Q resets to 9600 baud
+			// and the sync will fail, falling back to full configuration.
+			if (m_gnss_info_valid && m_step == 0) {
+				DEBUG_INFO("M10QAsyncReceiver: attempting fast path (BBR backup battery)");
+				m_step = 100; // Fast path: validate BBR
+				m_op_state = OpState::IDLE;
+				continue;
+			}
+			// Fast path step 100: try sync at MAX_BAUDRATE to validate BBR is intact
+			if (m_step == 100) {
+				sync_baud_rate(MAX_BAUDRATE);
+				break;
+			}
+			// Fast path step 101: BBR validated, skip to assistance data
+			if (m_step == 101) {
+				m_step = 10; // Skip to continuous mode + nav settings
+				m_op_state = OpState::IDLE;
+				continue;
+			}
+#endif
 			if (m_step == 0) {
 				setup_uart_port();
 				m_step++;
 				m_op_state = OpState::IDLE;
-				run_state_machine(1000); // Wait 500 ms for UART config to apply
+				run_state_machine(1000); // Wait for UART config to apply
 				break;
 			} else if (m_step == 1) {
 				sync_baud_rate(MAX_BAUDRATE);
@@ -723,9 +747,12 @@ void M10QAsyncReceiver::state_configure() {
 					m_step++;
 				}
 			} else if (m_step == 14) {
-				query_mon_ver();
+				supply_position_assistance();
 				break;
 			} else if (m_step == 15) {
+				query_mon_ver();
+				break;
+			} else if (m_step == 16) {
 				query_sec_uniqid();
 				break;
 			} else {
@@ -740,6 +767,16 @@ void M10QAsyncReceiver::state_configure() {
 		} else if (m_op_state == OpState::PENDING) {
 			break;
 		} else {
+#if GNSS_HAS_BACKUP_BATTERY
+			// Fast path validation failed — BBR was lost, fall back to full configure
+			if (m_step >= 100) {
+				DEBUG_WARN("M10QAsyncReceiver: fast path failed, BBR lost — full configure");
+				m_step = 0;
+				m_retries = 3;
+				m_op_state = OpState::IDLE;
+				continue;
+			}
+#endif
 			if (--m_retries == 0) {
 				DEBUG_ERROR("M10QAsyncReceiver::state_configure: failed");
 				m_unrecoverable_error = true;
@@ -1322,7 +1359,7 @@ void M10QAsyncReceiver::setup_simple_navigation_settings() {
     CFG::NAVSPG::OUTFIL_TACC.set_value(350);                               // Time accuracy mask
     CFG::NAVSPG::CONSTR_ALT.set_value(0);                                  // Fixed altitude for 2D fix mode
     CFG::NAVSPG::CONSTR_ALTVAR.set_value(10000);                           // Fixed altitude variance
-    CFG::NAVSPG::INFIL_MINELEV.set_value(5);                               // Minimum elevation angle
+    CFG::NAVSPG::INFIL_MINELEV.set_value(m_nav_settings.min_elev);          // Minimum elevation angle [deg]
     CFG::NAVSPG::CONSTR_DGNSSTO.set_value(60);                             // DGNSS timeout
 
     // Collect all parameters in a vector for VALSET
@@ -1355,17 +1392,17 @@ void M10QAsyncReceiver::setup_expert_navigation_settings() {
     // NAVSPG Configuration (Standard Precision Navigation)
     CFG::NAVSPG::INFIL_MINSVS.set_value(3);                         // Minimum satellites for navigation
     CFG::NAVSPG::INFIL_MAXSVS.set_value(32);                        // Maximum satellites for navigation
-    CFG::NAVSPG::INFIL_MINCNO.set_value(6);                         // Minimum satellite signal level for navigation
+    CFG::NAVSPG::INFIL_MINCNO.set_value(m_nav_settings.min_cno);    // Minimum satellite signal level [dBHz]
     CFG::NAVSPG::INIFIX3D.set_value(0);                             // Do not require initial 3D fix
     //CFG::NAVSPG::WKNROLLOVER.set_value(0);                          // Default GPS week rollover min value allowed is 1 - default is 2148, do not update
     CFG::NAVSPG::ACKAIDING.set_value(1);                            // Acknowledge assistance messages
-    CFG::NAVSPG::SIGATTCOMP.set_value(static_cast<uint8_t>(CFG::NAVSPG::SIGATTCOMP_VALUES::SIGCOMP_DISABLE)); // Disable signal attenuation compensation
+    CFG::NAVSPG::SIGATTCOMP.set_value(static_cast<uint8_t>(CFG::NAVSPG::SIGATTCOMP_VALUES::SIGCOMP_AUTO)); // Auto signal attenuation compensation (patch antenna)
 
     // ANA (AssistNow Autonomous) Configuration
     CFG::ANA::USE_ANA.set_value(m_nav_settings.assistnow_autonomous_enable ? 
         static_cast<uint8_t>(CFG::ANA::USE_ANA_VALUES::ANA_ENABLED) : 
         static_cast<uint8_t>(CFG::ANA::USE_ANA_VALUES::ANA_DISABLED));
-    CFG::ANA::ORBMAXERR.set_value(100);                             // Maximum orbit error for AssistNow Autonomous
+    CFG::ANA::ORBMAXERR.set_value(m_nav_settings.orbmaxerr);        // Maximum orbit error for AssistNow Autonomous [m]
 
     // Collect parameters into a vector
     std::vector<CFG::UBXParameter> navspg_ana_config = {
@@ -1419,6 +1456,32 @@ void M10QAsyncReceiver::supply_time_assistance() {
     initiate_timeout();
     m_ubx_comms.send_packet_with_expect(MessageClass::MSG_CLASS_MGA, MGA::ID_INI_TIME_UTC, cfg_msg_ini_time_utc,
     		MessageClass::MSG_CLASS_MGA, MGA::ID_ACK);
+}
+
+void M10QAsyncReceiver::supply_position_assistance() {
+    const auto& last_gps = configuration_store->get_last_gps_entry();
+    if (!last_gps.info.valid) {
+        DEBUG_TRACE("M10QAsyncReceiver::supply_position_assistance: no valid last position");
+        m_op_state = OpState::SUCCESS;
+        return;
+    }
+
+    DEBUG_TRACE("M10QAsyncReceiver::supply_position_assistance: MGA-INI-POS_LLH lat=%f lon=%f ->",
+                last_gps.info.lat, last_gps.info.lon);
+
+    MGA::MSG_INI_POS_LLH msg = {
+        .type      = 0x01,
+        .version   = 0x00,
+        .reserved1 = {0},
+        .lat       = static_cast<int32_t>(last_gps.info.lat * 1e7),
+        .lon       = static_cast<int32_t>(last_gps.info.lon * 1e7),
+        .alt       = last_gps.info.height / 10,   // mm -> cm
+        .posAcc    = last_gps.info.hAcc / 10 + 100, // mm -> cm, add margin
+    };
+
+    initiate_timeout();
+    m_ubx_comms.send_packet_with_expect(MessageClass::MSG_CLASS_MGA, MGA::ID_INI_TIME_UTC, msg,
+            MessageClass::MSG_CLASS_MGA, MGA::ID_ACK);
 }
 
 void M10QAsyncReceiver::disable_odometer() {
@@ -1625,23 +1688,31 @@ void M10QAsyncReceiver::disable_nav_sat_message() {
 }
 
 void M10QAsyncReceiver::setup_gnss_channel_sharing() {
-    DEBUG_TRACE("M10QAsyncReceiver::setup_gnss_channel_sharing: Configuring GNSS signals with VALSET ->");
+    DEBUG_TRACE("M10QAsyncReceiver::setup_gnss_channel_sharing: Configuring GNSS signals with VALSET (mask=0x%02X) ->",
+                m_nav_settings.constellation_mask);
 
-    // Set each GNSS signal parameter to enable (1)
-    CFG::SIGNAL::GPS_ENA.set_value(1);
-    CFG::SIGNAL::GPS_L1CA_ENA.set_value(1);
-    CFG::SIGNAL::SBAS_ENA.set_value(1);
-    CFG::SIGNAL::SBAS_L1CA_ENA.set_value(0);
-    CFG::SIGNAL::GAL_ENA.set_value(1);
-    CFG::SIGNAL::GAL_E1_ENA.set_value(1);
-    CFG::SIGNAL::BDS_ENA.set_value(1);
-    CFG::SIGNAL::BDS_B1_ENA.set_value(0);
-    CFG::SIGNAL::BDS_B1C_ENA.set_value(0);
-    CFG::SIGNAL::QZSS_ENA.set_value(1);
-    CFG::SIGNAL::QZSS_L1CA_ENA.set_value(1);
+    // Decode constellation bitmask: bit0=GPS, bit1=GAL, bit2=GLO, bit3=BDS, bit4=QZSS, bit5=SBAS
+    uint8_t gps_en  = (m_nav_settings.constellation_mask & 0x01) ? 1 : 0;
+    uint8_t gal_en  = (m_nav_settings.constellation_mask & 0x02) ? 1 : 0;
+    uint8_t glo_en  = (m_nav_settings.constellation_mask & 0x04) ? 1 : 0;
+    uint8_t bds_en  = (m_nav_settings.constellation_mask & 0x08) ? 1 : 0;
+    uint8_t qzss_en = (m_nav_settings.constellation_mask & 0x10) ? 1 : 0;
+    uint8_t sbas_en = (m_nav_settings.constellation_mask & 0x20) ? 1 : 0;
+
+    CFG::SIGNAL::GPS_ENA.set_value(gps_en);
+    CFG::SIGNAL::GPS_L1CA_ENA.set_value(gps_en);
+    CFG::SIGNAL::GAL_ENA.set_value(gal_en);
+    CFG::SIGNAL::GAL_E1_ENA.set_value(gal_en);
+    CFG::SIGNAL::GLO_ENA.set_value(glo_en);
+    CFG::SIGNAL::GLO_L1_ENA.set_value(glo_en);
+    CFG::SIGNAL::BDS_ENA.set_value(bds_en);
+    CFG::SIGNAL::BDS_B1C_ENA.set_value(bds_en);   // M10Q uses B1C (not B1I)
+    CFG::SIGNAL::BDS_B1_ENA.set_value(0);          // B1I disabled on M10Q
+    CFG::SIGNAL::QZSS_ENA.set_value(qzss_en);
+    CFG::SIGNAL::QZSS_L1CA_ENA.set_value(qzss_en);
     CFG::SIGNAL::QZSS_L1S_ENA.set_value(0);
-    CFG::SIGNAL::GLO_ENA.set_value(1);
-    CFG::SIGNAL::GLO_L1_ENA.set_value(1);
+    CFG::SIGNAL::SBAS_ENA.set_value(sbas_en);
+    CFG::SIGNAL::SBAS_L1CA_ENA.set_value(sbas_en);
 
     // Collect all parameters in a vector for MSG_VALSET
     std::vector<UBX::CFG::UBXParameter> gnss_signal_config = {
