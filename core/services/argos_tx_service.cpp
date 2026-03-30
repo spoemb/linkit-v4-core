@@ -43,8 +43,8 @@ void ArgosTxService::service_init() {
 	m_session_tx_count = 0;
 	m_is_surfacing_burst = false;
 	m_doppler_burst_count = 0;
-	m_gnss_burst_count = 0;
 	m_has_gnss_fix_since_surfacing = false;
+	m_first_gnss_tx_sent = false;
 	m_last_tx_had_gps = false;
 	m_last_preconfig_mod = KineisModulation::LDA2;
 	m_modulation_preconfig.reset();
@@ -136,14 +136,6 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 
 			// Phase 2: GNSS fix available — switch to normal GNSS TX with tx_interval_s
 			if (m_has_gnss_fix_since_surfacing) {
-				// Check GNSS TX limit (0 = unlimited)
-				unsigned int max_gnss_tx = configuration_store->read_param<unsigned int>(ParamID::SURFACING_GNSS_MAX_TX);
-				if (max_gnss_tx > 0 && m_gnss_burst_count >= max_gnss_tx) {
-					DEBUG_INFO("ArgosTxService::SURFACING_BURST: GNSS TX limit reached (%u/%u), stopping burst", m_gnss_burst_count, max_gnss_tx);
-					m_is_surfacing_burst = false;
-					return Service::SCHEDULE_DISABLED;
-				}
-
 				if (!service_is_time_known()) {
 					DEBUG_TRACE("ArgosTxService::SURFACING_BURST: GNSS phase but RTC not set");
 					return Service::SCHEDULE_DISABLED;
@@ -160,13 +152,14 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 				}
 
 				// First GNSS TX is immediate after fix, then use tx_interval_s
-				if (m_gnss_burst_count == 0) {
+				if (!m_first_gnss_tx_sent) {
 					DEBUG_INFO("ArgosTxService::SURFACING_BURST: GNSS TX #1 (immediate after fix)");
+					m_first_gnss_tx_sent = true;
 					m_sched.schedule_at(now);
 					return 0;
 				}
 
-				DEBUG_INFO("ArgosTxService::SURFACING_BURST: GNSS TX #%u in %u s", m_gnss_burst_count + 1, argos_config.tx_interval_s);
+				DEBUG_INFO("ArgosTxService::SURFACING_BURST: GNSS TX in %u s", argos_config.tx_interval_s);
 				return m_sched.schedule_legacy(argos_config, now);
 			}
 
@@ -251,13 +244,9 @@ void ArgosTxService::service_initiate() {
 		m_modulation_preconfig.reset();
 	}
 
-	// Track burst counts in SURFACING_BURST mode
-	if (m_is_surfacing_burst) {
-		if (!m_has_gnss_fix_since_surfacing) {
-			m_doppler_burst_count++;
-		} else {
-			m_gnss_burst_count++;
-		}
+	// Track Doppler burst count (before TX, for scheduling interval calculation)
+	if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing) {
+		m_doppler_burst_count++;
 	}
 
 	m_scheduled_task();
@@ -330,8 +319,8 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 			// Reset surfacing burst state on dive
 			m_is_surfacing_burst = false;
 			m_doppler_burst_count = 0;
-			m_gnss_burst_count = 0;
 			m_has_gnss_fix_since_surfacing = false;
+			m_first_gnss_tx_sent = false;
 
 			// Adaptive modulation: the modulation switch to VLDA4 should have been
 			// done at TX complete time while the SMD was still on. If for some reason
@@ -361,8 +350,8 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 			if (argos_config.mode == BaseArgosMode::SURFACING_BURST) {
 				m_is_surfacing_burst = true;
 				m_doppler_burst_count = 0;
-				m_gnss_burst_count = 0;
 				m_has_gnss_fix_since_surfacing = false;
+				m_first_gnss_tx_sent = false;
 				DEBUG_INFO("ArgosTxService::SURFACING_BURST: surface detected - starting Doppler burst sequence");
 			}
 		}

@@ -204,6 +204,7 @@ mv LinkIt_RSPB_board.hex LinkIt_RSPB_board-`cat TAG_NAME`.hex
 # Optional files (may not exist)
 if [ -f "LinkIt_RSPB_board_dfu.zip" ]; then
     mv LinkIt_RSPB_board_dfu.zip LinkIt_RSPB_board_dfu-`cat TAG_NAME`.zip
+    arm-none-eabi-objcopy -I ihex -O binary LinkIt_RSPB_board-`cat TAG_NAME`.hex LinkIt_RSPB_board_dfu-`cat TAG_NAME`.bin
 fi
 if [ -f "LinkIt_RSPB_board.img" ]; then
     mv LinkIt_RSPB_board.img LinkIt_RSPB_board-`cat TAG_NAME`.img

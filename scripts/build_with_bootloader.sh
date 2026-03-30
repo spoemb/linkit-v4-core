@@ -253,6 +253,7 @@ cp ${TARGET_NAME}.hex ${TARGET_NAME}-${VERSION}.hex
 
 if [ -f "${TARGET_NAME}_dfu.zip" ]; then
     cp ${TARGET_NAME}_dfu.zip ${TARGET_NAME}_dfu-${VERSION}.zip
+    arm-none-eabi-objcopy -I ihex -O binary ${TARGET_NAME}.hex ${TARGET_NAME}_dfu-${VERSION}.bin
 fi
 if [ -f "${TARGET_NAME}.img" ]; then
     cp ${TARGET_NAME}.img ${TARGET_NAME}-${VERSION}.img
@@ -275,7 +276,7 @@ echo "========================================="
 echo ""
 echo "Output: $APP_BUILD_DIR/"
 echo ""
-ls -lh ${TARGET_NAME}-${VERSION}.* 2>/dev/null || true
+ls -lh ${TARGET_NAME}-${VERSION}.{elf,hex,bin} 2>/dev/null || true
 ls -lh ${TARGET_NAME}_dfu-${VERSION}.* 2>/dev/null || true
 ls -lh ${TARGET_NAME}_merged-${VERSION}.* 2>/dev/null || true
 ls -lh ${TARGET_NAME}_app_settings-${VERSION}.* 2>/dev/null || true

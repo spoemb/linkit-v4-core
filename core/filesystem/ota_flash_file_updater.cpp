@@ -298,7 +298,7 @@ void OTAFlashFileUpdater::apply_file_update() {
 
 		if (result == DFU_RSP_OK) {
 			DEBUG_INFO("OTAFlashFileUpdater: SMD DFU completed successfully");
-			if (status_led) status_led->set(RGBLedColor::GREEN);
+			led_handle::dispatch<SetLEDOTASuccess>({});
 
 			// Send firmware version back to pylinkit via BLE
 			std::string new_version = smd_sat_instance->get_new_firmware_version();
@@ -317,7 +317,7 @@ void OTAFlashFileUpdater::apply_file_update() {
 			m_filesystem->remove("smd_firmware.dat");
 		} else {
 			DEBUG_ERROR("OTAFlashFileUpdater: SMD DFU failed with error %d", result);
-			if (status_led) status_led->set(RGBLedColor::RED);
+			led_handle::dispatch<SetLEDOTAFailed>({});
 
 			// Notify pylinkit of DFU failure
 			std::string resp = DTEEncoder::encode(DTECommand::SMDDFU_RESP,
@@ -328,6 +328,10 @@ void OTAFlashFileUpdater::apply_file_update() {
 				std::string("DFU failed: error " + std::to_string((int)result)));
 			if (ble_service) ble_service->write(resp);
 		}
+
+		// Restore LED to BLE connected state after 3s feedback
+		PMU::delay_ms(3000);
+		led_handle::dispatch<SetLEDConfigConnected>({});
 	}
 #endif
 	else {

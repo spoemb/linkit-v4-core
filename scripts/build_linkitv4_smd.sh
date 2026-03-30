@@ -197,6 +197,7 @@ mv ${TARGET_NAME}.hex ${TARGET_NAME}-`cat TAG_NAME`.hex
 # Optional files (may not exist)
 if [ -f "${TARGET_NAME}_dfu.zip" ]; then
     mv ${TARGET_NAME}_dfu.zip ${TARGET_NAME}_dfu-`cat TAG_NAME`.zip
+    arm-none-eabi-objcopy -I ihex -O binary ${TARGET_NAME}-`cat TAG_NAME`.hex ${TARGET_NAME}_dfu-`cat TAG_NAME`.bin
 fi
 if [ -f "${TARGET_NAME}.img" ]; then
     mv ${TARGET_NAME}.img ${TARGET_NAME}-`cat TAG_NAME`.img

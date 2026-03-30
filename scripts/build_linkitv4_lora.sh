@@ -93,7 +93,7 @@ fi
 # LinkIt V4 LoRa build configuration
 # - LORA_RAK3172=ON: Use RAK3172-SiP LoRa module
 # - ENABLE_AXL_SENSOR=ON: Enable BMA400 accelerometer
-ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR:-ON}
+ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR:-OFF}
 ENABLE_SWS_SENSOR=${ENABLE_SWS_SENSOR:-ON}
 
 echo "Building LinkIt V4 LoRa RAK3172 with configuration:"
@@ -185,6 +185,7 @@ mv ${TARGET_NAME}.hex ${TARGET_NAME}-`cat TAG_NAME`.hex
 
 if [ -f "${TARGET_NAME}_dfu.zip" ]; then
     mv ${TARGET_NAME}_dfu.zip ${TARGET_NAME}_dfu-`cat TAG_NAME`.zip
+    arm-none-eabi-objcopy -I ihex -O binary ${TARGET_NAME}-`cat TAG_NAME`.hex ${TARGET_NAME}_dfu-`cat TAG_NAME`.bin
 fi
 if [ -f "${TARGET_NAME}.img" ]; then
     mv ${TARGET_NAME}.img ${TARGET_NAME}-`cat TAG_NAME`.img

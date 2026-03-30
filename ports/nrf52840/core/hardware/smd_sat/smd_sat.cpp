@@ -327,13 +327,16 @@ void SmdSat::state_load_kmac() {
 			DEBUG_WARN("SmdSat::%s: failed to write TCXO warmup", __func__);
 		}
 
-		// Write LPM mode on every boot — RAM-only register on STM32, lost on reset.
-		try {
-			m_cmd.write_lpm(&m_lpm_mode);
-			DEBUG_TRACE("SmdSat::%s: LPM mode written: 0x%02X", __func__, m_lpm_mode);
-		} catch (...) {
-			DEBUG_WARN("SmdSat::%s: failed to write LPM mode", __func__);
-		}
+		// LPM mode: NOT IMPLEMENTED — SMD is fully powered off between TX
+		// (SAT_PWR_EN=LOW in state_stopped_enter). The AT+LPM command would only
+		// be useful if the SMD stays powered between TX (idle-to-idle without power cycle).
+		// Kept for future use if fast back-to-back TX is needed.
+		// try {
+		// 	m_cmd.write_lpm(&m_lpm_mode);
+		// 	DEBUG_TRACE("SmdSat::%s: LPM mode written: 0x%02X", __func__, m_lpm_mode);
+		// } catch (...) {
+		// 	DEBUG_WARN("SmdSat::%s: failed to write LPM mode", __func__);
+		// }
 
 		SMD_STATE_CHANGE(load_kmac, idle_pending);
 	} else {

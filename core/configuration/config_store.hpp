@@ -318,8 +318,7 @@ protected:
 		/* [210] ARGOS_ADAPTIVE_MODULATION */ (bool)false,
 		/* [211] MIN_SURFACE_CYCLE_INTERVAL_S */ 2700U,  // 45 min default cooldown
 		/* [212] SURFACING_BURST_MAX_MSG */ 0U,  // 0 = unlimited Doppler messages per surfacing
-		/* [213] SURFACING_GNSS_MAX_TX */ 0U,  // 0 = unlimited GNSS TX messages per surfacing burst
-		/* [214] SMD_LPM_MODE */ 0x01U,  // 0x01=NONE (safest, host cuts power)
+		/* [213] SMD_LPM_MODE */ 0x01U,  // 0x01=NONE (safest, host cuts power)
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,

@@ -340,10 +340,9 @@ enum class ParamID {
 	// === Surface cycle cooldown (slot 211 always reserved) ===
 	MIN_SURFACE_CYCLE_INTERVAL_S             = 211,  // 0=disabled, else min seconds between successful surface cycles
 	SURFACING_BURST_MAX_MSG                  = 212,  // 0=unlimited, else max Doppler messages per surfacing burst
-	SURFACING_GNSS_MAX_TX                    = 213,  // 0=unlimited, else max GNSS TX messages per surfacing burst
-	SMD_LPM_MODE                             = 214,  // SMD low-power bitmap: 0x01=NONE, 0x02=SLEEP, 0x04=STOP, 0x08=STANDBY, 0x10=SHUTDOWN
+	SMD_LPM_MODE                             = 213,  // SMD low-power bitmap: 0x01=NONE, 0x02=SLEEP, 0x04=STOP, 0x08=STANDBY, 0x10=SHUTDOWN
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 215,
+	__PARAM_SIZE                             = 214,
 	__NULL_PARAM                             = 0xFFFF
 };
 

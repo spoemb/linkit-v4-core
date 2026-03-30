@@ -108,6 +108,7 @@ mergehex -m LinkIt_board.hex settings.hex -o LinkIt_board_app_settings.hex
 rm -f m1.hex settings.hex
 rm -f LinkIt_board-* LinkIt_board_dfu-* LinkIt_board_merged-*
 mv LinkIt_board_dfu.zip LinkIt_board_dfu-`cat TAG_NAME`.zip
+arm-none-eabi-objcopy -I ihex -O binary LinkIt_board-`cat TAG_NAME`.hex LinkIt_board_dfu-`cat TAG_NAME`.bin
 cp LinkIt_board.elf LinkIt_board-`cat TAG_NAME`.elf
 mv LinkIt_board.hex LinkIt_board-`cat TAG_NAME`.hex
 mv LinkIt_board.img LinkIt_board-`cat TAG_NAME`.img
