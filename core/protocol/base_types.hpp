@@ -294,10 +294,8 @@ enum class ParamID {
 	PRESSURE_SENSOR_FULL_SCALE               = 177,
 #endif
 	GNSS_TOKEN                               = 178,
-	// === Pseudo RTC (slot 179 always reserved) ===
-#ifdef EXTERNAL_WAKEUP
+	// === Last known RTC (slot 179 always reserved) ===
 	LAST_KNOWN_RTC                           = 179,
-#endif
 	// === System status (slot 180 always reserved) ===
 	RTC_CURRENT_TIME                         = 180,
 	// === LoRa RAK3172 parameters (slots 181-194 always reserved) ===
@@ -339,8 +337,10 @@ enum class ParamID {
 	ARGOS_RADIOCONF_LDA2                     = 208,
 	ARGOS_RADIOCONF_VLDA4                    = 209,
 	ARGOS_ADAPTIVE_MODULATION                = 210,  // bool: auto-select modulation based on packet size
+	// === Surface cycle cooldown (slot 211 always reserved) ===
+	MIN_SURFACE_CYCLE_INTERVAL_S             = 211,  // 0=disabled, else min seconds between successful surface cycles
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 211,
+	__PARAM_SIZE                             = 212,
 	__NULL_PARAM                             = 0xFFFF
 };
 

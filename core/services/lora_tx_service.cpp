@@ -462,6 +462,7 @@ void LoRaTxService::service_init() {
 	m_is_first_tx = true;
 	m_is_tx_pending = false;
 	m_session_tx_count = 0;
+	m_last_tx_had_gps = false;
 
 	DEBUG_TRACE("LoRaTxService::service_init: initialized");
 }
@@ -616,6 +617,7 @@ void LoRaTxService::process_gps_burst() {
 
 		DEBUG_INFO("LoRaTxService::process_gps_burst: data=%s sz=%u bits",
 				Binascii::hexlify(packet).c_str(), size_bits);
+		m_last_tx_had_gps = true;
 		m_device.send(KineisModulation::LDA2, packet, size_bits);
 	} else {
 		DEBUG_WARN("LoRaTxService::process_gps_burst: no eligible entries in depth pile");
@@ -654,6 +656,7 @@ void LoRaTxService::process_sensor_burst() {
 
 		DEBUG_INFO("LoRaTxService::process_sensor_burst: data=%s sz=%u bits",
 				Binascii::hexlify(packet).c_str(), size_bits);
+		m_last_tx_had_gps = true;
 		m_device.send(KineisModulation::LDA2, packet, size_bits);
 	} else {
 		DEBUG_WARN("LoRaTxService::process_sensor_burst: no eligible entries in depth pile");
@@ -674,6 +677,7 @@ void LoRaTxService::process_status_burst() {
 
 	DEBUG_INFO("LoRaTxService::process_status_burst: data=%s sz=%u bits",
 			Binascii::hexlify(packet).c_str(), size_bits);
+	m_last_tx_had_gps = false;
 	m_device.send(KineisModulation::LDA2, packet, size_bits);
 }
 
@@ -706,6 +710,13 @@ void LoRaTxService::react(KineisEventTxComplete const&) {
 		configuration_store->save_params();
 		PMU::powerdown();
 		return;
+	}
+
+	// Activate cooldown if this TX contained GPS data
+	if (m_last_tx_had_gps) {
+		std::time_t now = service_current_time();
+		if (now > 0)
+			ServiceManager::set_cycle_complete(now);
 	}
 
 	m_sched.notify_tx_complete();

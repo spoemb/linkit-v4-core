@@ -637,14 +637,12 @@ void M10QAsyncReceiver::state_poweroff() {
 		return;
 	}
 	enter_shutdown();
-#ifdef EXTERNAL_WAKEUP
-	// Persist current RTC for pseudo RTC on next boot (one save per GNSS session)
+	// Persist current RTC for next boot (enables MGA-ANO assistance and faster TTFF)
 	if (rtc->is_set()) {
 		configuration_store->write_param(ParamID::LAST_KNOWN_RTC, static_cast<unsigned int>(rtc->gettime()));
 		configuration_store->save_params();
-		DEBUG_TRACE("EXTERNAL_WAKEUP: Saved LAST_KNOWN_RTC = %u", static_cast<unsigned int>(rtc->gettime()));
+		DEBUG_TRACE("Saved LAST_KNOWN_RTC = %u", static_cast<unsigned int>(rtc->gettime()));
 	}
-#endif
     notify(GPSEventPowerOff(m_fix_was_found));
     STATE_CHANGE(poweroff, idle);
 }
@@ -747,8 +745,14 @@ void M10QAsyncReceiver::state_configure() {
 					m_step++;
 				}
 			} else if (m_step == 14) {
-				supply_position_assistance();
-				break;
+				const auto& last_gps = configuration_store->get_last_gps_entry();
+				if (last_gps.info.valid) {
+					supply_position_assistance();
+					break;
+				} else {
+					m_op_state = OpState::IDLE;
+					m_step++;
+				}
 			} else if (m_step == 15) {
 				query_mon_ver();
 				break;
@@ -1462,7 +1466,6 @@ void M10QAsyncReceiver::supply_position_assistance() {
     const auto& last_gps = configuration_store->get_last_gps_entry();
     if (!last_gps.info.valid) {
         DEBUG_TRACE("M10QAsyncReceiver::supply_position_assistance: no valid last position");
-        m_op_state = OpState::SUCCESS;
         return;
     }
 

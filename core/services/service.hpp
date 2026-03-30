@@ -94,6 +94,7 @@ private:
 	static inline std::function<void(ServiceEvent&)> m_data_notification_callback = nullptr;
 	static inline unsigned int m_unique_identifier = 0;
 	static inline std::map<unsigned int, Service&> m_map;
+	static inline std::time_t m_last_successful_cycle_time = 0;
 
 public:
 	static unsigned int add(Service& s);
@@ -105,4 +106,6 @@ public:
 	static void inject_event(ServiceEvent& event);
 	static Logger *get_logger(ServiceIdentifier service_id);
 	static unsigned int get_unique_id(const char *name);
+	static void set_cycle_complete(std::time_t t);
+	static bool is_in_cooldown(std::time_t now);
 };

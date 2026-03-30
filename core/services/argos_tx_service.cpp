@@ -39,6 +39,7 @@ void ArgosTxService::service_init() {
 	m_is_surfacing_burst = false;
 	m_doppler_burst_count = 0;
 	m_has_gnss_fix_since_surfacing = false;
+	m_last_tx_had_gps = false;
 	m_last_preconfig_mod = KineisModulation::LDA2;
 	m_modulation_preconfig.reset();
 
@@ -381,6 +382,7 @@ void ArgosTxService::process_time_sync_burst() {
 			ensure_modulation(m_scheduled_mode);
 		}
 		DEBUG_INFO("ArgosTxService::process_time_sync_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
+		m_last_tx_had_gps = true;
 		m_kineis.send(m_scheduled_mode, packet, size_bits);
 	} else {
 		// No eligible entries for transmission in the depth pile, so send a doppler burst instead
@@ -457,6 +459,7 @@ void ArgosTxService::process_sensor_burst() {
 		}
 #endif
 		DEBUG_INFO("ArgosTxService::process_sensor_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
+		m_last_tx_had_gps = true;
 		m_kineis.send(m_scheduled_mode, packet, size_bits);
 	} else {
 		// No eligible entries for transmission in the depth pile, so send a doppler burst instead
@@ -486,6 +489,7 @@ void ArgosTxService::process_gnss_burst() {
 		}
 
 		DEBUG_INFO("ArgosTxService::process_gnss_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
+		m_last_tx_had_gps = true;
 		m_kineis.send(m_scheduled_mode, packet, size_bits);
 	} else {
 		// No eligible entries for transmission in the depth pile, so send a doppler burst instead
@@ -531,6 +535,7 @@ void ArgosTxService::process_doppler_burst() {
 
 	DEBUG_INFO("ArgosTxService::process_doppler_burst: mode=%s data=%s sz=%u",
 	           argos_modulation_to_string((BaseArgosModulation)tx_mode), Binascii::hexlify(packet).c_str(), size_bits);
+	m_last_tx_had_gps = false;
 	m_kineis.send(tx_mode, packet, size_bits);
 }
 
@@ -572,6 +577,13 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 		configuration_store->save_params();
 		PMU::powerdown();
 		return;
+	}
+
+	// Activate cooldown if this TX contained GPS data
+	if (m_last_tx_had_gps) {
+		std::time_t now = service_current_time();
+		if (now > 0)
+			ServiceManager::set_cycle_complete(now);
 	}
 
 	m_sched.notify_tx_complete();

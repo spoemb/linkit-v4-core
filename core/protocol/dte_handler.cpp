@@ -1447,12 +1447,10 @@ std::string DTEHandler::RTCW_REQ(int error_code, std::vector<BaseType>& arg_list
 	rtc->settime(static_cast<std::time_t>(timestamp));
 	DEBUG_INFO("DTEHandler::RTCW_REQ: RTC set to %u", timestamp);
 
-#ifdef EXTERNAL_WAKEUP
 	// Also update LAST_KNOWN_RTC so the pseudo RTC chain continues from this value
 	configuration_store->write_param(ParamID::LAST_KNOWN_RTC, timestamp);
 	configuration_store->save_params();
 	DEBUG_TRACE("DTEHandler::RTCW_REQ: LAST_KNOWN_RTC updated to %u", timestamp);
-#endif
 
 	return DTEEncoder::encode(DTECommand::RTCW_RESP, (int)DTEError::OK);
 }

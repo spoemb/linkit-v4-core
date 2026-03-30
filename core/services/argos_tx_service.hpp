@@ -200,6 +200,7 @@ private:
 	bool m_is_surfacing_burst;
 	unsigned int m_doppler_burst_count;
 	bool m_has_gnss_fix_since_surfacing;
+	bool m_last_tx_had_gps;
 
 	void react(KineisEventTxStarted const &) override;
 	void react(KineisEventTxComplete const &) override;

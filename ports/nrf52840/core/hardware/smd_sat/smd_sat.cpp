@@ -269,6 +269,10 @@ void SmdSat::state_load_kmac() {
 			m_cmd.load_kmac_profil(1);
 			wait_cmd();
 			is_kmac_profil_loaded = true;
+			// RCONF just written — skip credential comparison below which would
+			// compare against ARGOS_RADIOCONF (default LDK) and always mismatch
+			// when a different modulation (e.g. VLDA4) was deferred.
+			m_credentials_written = true;
 			DEBUG_INFO("SmdSat::%s: deferred RCONF applied OK", __func__);
 		} catch (...) {
 			DEBUG_ERROR("SmdSat::%s: failed to apply deferred RCONF", __func__);
@@ -278,41 +282,21 @@ void SmdSat::state_load_kmac() {
 
 	// Write credentials from config store to SMD hardware if they differ.
 	// Read-back from SMD and compare to avoid unnecessary flash writes (endurance).
+	// Skipped when deferred RCONF was just applied (m_credentials_written already set).
 	if (!m_credentials_written) {
 		m_credentials_written = true;
 		if (configuration_store) {
-			std::string cfg_seckey = configuration_store->read_param<std::string>(ParamID::ARGOS_SECKEY);
-			std::string cfg_rconf = configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF);
-
-			if (!cfg_seckey.empty() && !cfg_rconf.empty()) {
-				// Read current RCONF from SMD hardware to check if it matches
-				std::string hw_rconf;
-				try {
-					// Use read_rconf_raw to check if RCONF matches
-					uint8_t rconf_raw[SMDSAT_CMD_READ_RCONF_RAW_LEN] = {0};
-					uint16_t rconf_raw_len = 0;
-					m_cmd.read_rconf_raw(rconf_raw, &rconf_raw_len);
-					hw_rconf = Binascii::hexlify(std::string(reinterpret_cast<char *>(rconf_raw),
-					                             rconf_raw_len > 0 ? rconf_raw_len : SMDSAT_CMD_READ_RCONF_RAW_LEN));
-				} catch (...) {
-					hw_rconf = "";  // Read failed — force write
+			// Only rewrite if credentials were changed via DTE since last write
+			if (configuration_store->is_credentials_dirty()) {
+				DEBUG_INFO("SmdSat::%s: credentials dirty, writing to SMD", __func__);
+				if (!write_credentials_from_config()) {
+					DEBUG_ERROR("SmdSat::%s: credential write failed", __func__);
+					SMD_STATE_CHANGE(load_kmac, error);
+					return;
 				}
-				nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
-
-				bool needs_write = (hw_rconf != cfg_rconf) || configuration_store->is_credentials_dirty();
-				if (needs_write) {
-					DEBUG_INFO("SmdSat::%s: credentials differ or dirty, writing to SMD", __func__);
-					if (!write_credentials_from_config()) {
-						DEBUG_ERROR("SmdSat::%s: credential write failed", __func__);
-						SMD_STATE_CHANGE(load_kmac, error);
-						return;
-					}
-					configuration_store->clear_credentials_dirty();
-				} else {
-					DEBUG_TRACE("SmdSat::%s: credentials match SMD hardware, skipping write", __func__);
-				}
+				configuration_store->clear_credentials_dirty();
 			} else {
-				DEBUG_TRACE("SmdSat::%s: no credentials configured, skipping", __func__);
+				DEBUG_TRACE("SmdSat::%s: credentials not dirty, skipping write", __func__);
 			}
 		}
 	}

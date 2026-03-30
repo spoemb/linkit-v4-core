@@ -77,9 +77,6 @@ void PMU::powerdown() {
 // 	GPIOPins::clear(CAM_PWR_BUTT);
 // #endif
 
-#if defined(EXTERNAL_WAKEUP)
-	DEBUG_TRACE("Powerdown with external wakeup enabled");
-
 	// Persist current RTC for pseudo RTC chain on next boot
 	if (configuration_store && rtc && rtc->is_set()) {
 		configuration_store->write_param(ParamID::LAST_KNOWN_RTC,
@@ -88,6 +85,9 @@ void PMU::powerdown() {
 		DEBUG_TRACE("PMU::powerdown: Saved LAST_KNOWN_RTC = %u",
 			static_cast<unsigned int>(rtc->gettime()));
 	}
+
+#if defined(EXTERNAL_WAKEUP)
+	DEBUG_TRACE("Powerdown with external wakeup enabled");
 
 	// Force all LEDs off at hardware level
 	GPIOPins::clear(BSP::GPIO::GPIO_LED_GREEN);

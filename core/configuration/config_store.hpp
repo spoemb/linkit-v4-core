@@ -316,6 +316,7 @@ protected:
 		/* [208] ARGOS_RADIOCONF_LDA2 */ std::string("3d678af16b5a572078f3dbc95a1104e7"),
 		/* [209] ARGOS_RADIOCONF_VLDA4 */ std::string("82d07f9d9ce081ee4492983672d75493"),
 		/* [210] ARGOS_ADAPTIVE_MODULATION */ (bool)false,
+		/* [211] MIN_SURFACE_CYCLE_INTERVAL_S */ 0U,
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,

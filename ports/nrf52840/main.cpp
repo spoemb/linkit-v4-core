@@ -523,11 +523,12 @@ int main()
 	configuration_store = &store;
 	configuration_store->init();
 
-#ifdef EXTERNAL_WAKEUP
+	// Restore last known RTC from flash (enables MGA-ANO assistance and faster GNSS TTFF)
 	{
+		unsigned int last_rtc = configuration_store->read_param<unsigned int>(ParamID::LAST_KNOWN_RTC);
+#ifdef EXTERNAL_WAKEUP
 		// Pseudo RTC: advance the last known RTC by WAKEUP_PERIOD at each boot.
 		// This provides an approximate time immediately, before a GNSS fix corrects it.
-		unsigned int last_rtc = configuration_store->read_param<unsigned int>(ParamID::LAST_KNOWN_RTC);
 		unsigned int wakeup_period = configuration_store->read_param<unsigned int>(ParamID::WAKEUP_PERIOD);
 		if (last_rtc > 0 && wakeup_period > 0) {
 			unsigned int pseudo_rtc = last_rtc + wakeup_period;
@@ -557,8 +558,14 @@ int main()
 			}
 		}
 		DEBUG_INFO("EXTERNAL_WAKEUP: Our turn to run | continuing boot");
-	}
+#else
+		// Non-TPL5111 boards: restore last known RTC directly (stale but enables MGA-ANO validity check)
+		if (last_rtc > 0) {
+			rtc->settime(static_cast<std::time_t>(last_rtc));
+			DEBUG_INFO("Restored LAST_KNOWN_RTC = %u", last_rtc);
+		}
 #endif
+	}
 
 	DEBUG_TRACE("Battery monitor...");
 	unsigned int critical_batt_level = configuration_store->read_param<unsigned int>(ParamID::LB_CRITICAL_THRESH);

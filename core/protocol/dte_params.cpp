@@ -258,8 +258,8 @@ const BaseMap param_map[] = {
 	{ "PRESSURE_SENSOR_FULL_SCALE", "PRP07", BaseEncoding::PRESSURESENSORFULLSCALE, 0, 0, {}, ENABLE_PRESSURE_SENSOR, true },
 	// [178] GNSS token (e.g. u-blox AssistNow/CloudLocate token)
 	{ "GNSS_TOKEN", "GNP31", BaseEncoding::TEXT, "", "", {}, true, true },
-	// [179] Last known RTC timestamp for pseudo RTC at boot (TPL5111)
-	{ "LAST_KNOWN_RTC", "PWP06", BaseEncoding::UINT, 0U, 0U, {}, HAS_EXTERNAL_WAKEUP, false },
+	// [179] Last known RTC timestamp for pseudo RTC at boot
+	{ "LAST_KNOWN_RTC", "PWP06", BaseEncoding::UINT, 0U, 0U, {}, true, false },
 	// [180] Current RTC time (live, refreshed on STATR read)
 	{ "RTC_CURRENT_TIME", "SYT01", BaseEncoding::UINT, 0U, 0U, {}, true, false },
 	// [181-194] LoRa RAK3172 parameters (slots always reserved)
@@ -298,6 +298,8 @@ const BaseMap param_map[] = {
 	{ "ARGOS_RADIOCONF_VLDA4", "ARP53", BaseEncoding::TEXT, std::string(""), std::string(""), {}, true, true },
 	// [210] Adaptive modulation: auto-select LDK/LDA2/VLDA4 based on packet size
 	{ "ARGOS_ADAPTIVE_MODULATION", "ARP54", BaseEncoding::BOOLEAN, false, false, {}, true, true },
+	// [211] Surface cycle cooldown: min seconds between successful GPS+TX cycles (0=disabled)
+	{ "MIN_SURFACE_CYCLE_INTERVAL_S", "UNP20", BaseEncoding::UINT, 0U, 86400U, {}, true, true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

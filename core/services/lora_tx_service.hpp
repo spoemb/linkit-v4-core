@@ -179,6 +179,7 @@ private:
 	bool m_is_first_tx;
 	bool m_is_tx_pending;
 	unsigned int m_session_tx_count;
+	bool m_last_tx_had_gps;
 	std::function<void()> m_scheduled_task;
 
 	void react(KineisEventTxStarted const&) override;

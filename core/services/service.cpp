@@ -66,6 +66,20 @@ void ServiceManager::inject_event(ServiceEvent& event) {
 		m_data_notification_callback(event);
 }
 
+void ServiceManager::set_cycle_complete(std::time_t t) {
+	m_last_successful_cycle_time = t;
+	DEBUG_INFO("ServiceManager: cycle complete at %u, cooldown started", (unsigned int)t);
+}
+
+bool ServiceManager::is_in_cooldown(std::time_t now) {
+	unsigned int interval = configuration_store->read_param<unsigned int>(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S);
+	if (interval == 0)
+		return false;
+	if (m_last_successful_cycle_time == 0)
+		return false;
+	return (now - m_last_successful_cycle_time) < (std::time_t)interval;
+}
+
 Service::Service(ServiceIdentifier service_id, const char *name, Logger *logger) {
 	m_is_started = false;
 	m_name = name;
@@ -129,6 +143,11 @@ void Service::notify_underwater_state(bool state) {
 			notify_service_inactive();
 		m_is_initiated = false;
 	} else {
+		// Check cooldown: skip reschedule if a successful cycle completed recently
+		if (rtc && rtc->is_set() && ServiceManager::is_in_cooldown(rtc->gettime())) {
+			DEBUG_INFO("Service::notify_underwater_state: service %s skipped (cooldown active)", m_name);
+			return;
+		}
 		bool immediate;
 		if (service_is_triggered_on_surfaced(immediate))
 			reschedule(immediate);
