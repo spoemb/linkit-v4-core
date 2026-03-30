@@ -180,6 +180,9 @@ private:
 	bool m_is_tx_pending;
 	unsigned int m_session_tx_count;
 	bool m_last_tx_had_gps;
+	bool m_is_surfacing_burst;
+	bool m_has_gnss_fix_since_surfacing;
+	unsigned int m_status_burst_count;
 	std::function<void()> m_scheduled_task;
 
 	void react(KineisEventTxStarted const&) override;

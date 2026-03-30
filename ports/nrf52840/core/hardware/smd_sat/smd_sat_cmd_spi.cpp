@@ -843,8 +843,13 @@ bool SmdSatCmdSpi::is_tx_finished() {
 	uint16_t rx_len = sizeof(rx);
 
 	if (!send_command_auto(SMDSAT_CMD_READ_SPIMAC_STATE, nullptr, 0, rx, &rx_len)) {
-		DEBUG_WARN("SmdSatCmdSpi::%s: Failed to read SPIMAC state", __func__);
-		return false;
+		// Immediate retry after short delay — avoids waiting a full 500ms poll cycle
+		nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+		rx_len = sizeof(rx);
+		if (!send_command_auto(SMDSAT_CMD_READ_SPIMAC_STATE, nullptr, 0, rx, &rx_len)) {
+			DEBUG_WARN("SmdSatCmdSpi::%s: Failed to read SPIMAC state", __func__);
+			return false;
+		}
 	}
 
 	uint8_t mac_status = rx[1];

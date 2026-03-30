@@ -449,6 +449,8 @@ void LoRaDevice::state_configure()
                     DEBUG_INFO("LoRaDevice: generated DEVEUI=%s", m_config.deveui.c_str());
                     at_error = send_AT(AT_SET_DEVEUI, m_config.deveui);
                 }
+                // Persist to config store so user can read via PARMR (LRP01)
+                configuration_store->write_param(ParamID::LORA_DEVEUI, m_config.deveui);
             } else {
                 at_error = send_AT(AT_SET_DEVEUI, m_config.deveui);
             }

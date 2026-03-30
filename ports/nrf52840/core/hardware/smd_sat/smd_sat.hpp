@@ -60,6 +60,7 @@ private:
 	double      m_tx_freq;
 	bool        m_is_first_tx;
 	uint32_t    m_tcxo_warmup_time;
+	uint8_t     m_lpm_mode;  // SMD LPM bitmap written at every boot
 
 	// New firmware version (cached after DFU)
 	std::string m_new_firmware_version;
@@ -108,6 +109,7 @@ public:
 	void set_frequency(double freq_mhz) override;
 	void set_tcxo_warmup_time(unsigned int time) override;
 	void set_tx_power(unsigned int power) override;
+	void set_lpm_mode(uint8_t lpm_bitmap);
 	void set_credentials(unsigned int dec_id, unsigned int address,
 	                     const std::string& seckey, const std::string& radioconf) override;
 	void read_credentials(unsigned int *dec_id, unsigned int *address,

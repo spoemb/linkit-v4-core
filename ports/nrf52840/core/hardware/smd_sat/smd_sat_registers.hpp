@@ -105,13 +105,14 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 // Inter-transaction delays
 #define SMDSAT_SPI_INTER_TX_DELAY_MS    15     // STM32 DMA re-arm time
 #define SMDSAT_SPI_RETRY_DELAY_MS       50     // Command retry delay
-#define SMDSAT_SPI_BOOT_DELAY_MS        500    // Module boot after reset
+#define SMDSAT_SPI_BOOT_DELAY_MS        100    // SPI ready ~30ms after reset, 100ms = 3x margin
 #define SMDSAT_SPI_DETECT_TIMEOUT_MS    10     // SPI activity detection
 #define SMDSAT_SPI_POST_TX_DELAY_MS     100    // Async processing delay
 
-// Legacy timing (for backward compatibility)
-#define SMDSAT_DELAY_POWER_ON_MS        (1000)
-#define SMDSAT_DELAY_LOAD_KMAC_MS       (1000)
+// Power-on timing: STM32WL boots in ~25ms, SPI ready at ~30ms.
+// 150ms gives >5x margin for supply stabilization + oscillator startup.
+#define SMDSAT_DELAY_POWER_ON_MS        (150)
+#define SMDSAT_DELAY_LOAD_KMAC_MS       (500)
 #define SMDSAT_DELAY_TICK_INTERRUPT_MS  (10)
 #define SMDSAT_DELAY_CMD_MS             SMDSAT_TIMING_STANDARD_MS
 #define SMDSAT_DELAY_CMD_TX             (1000)

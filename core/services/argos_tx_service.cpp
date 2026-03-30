@@ -29,6 +29,11 @@ void ArgosTxService::service_init() {
 
 	m_kineis.subscribe(*this);
 	m_kineis.set_tcxo_warmup_time(argos_config.argos_tcxo_warmup_time);
+
+	// Set SMD LPM mode from configuration (written to SMD at every boot via SPI)
+	uint8_t lpm = static_cast<uint8_t>(configuration_store->read_param<unsigned int>(ParamID::SMD_LPM_MODE));
+	m_kineis.set_lpm_mode(lpm);
+
 	DEBUG_TRACE("ArgosTxService::service_init DEBUG ARGOS ID %d", argos_config.argos_id);
 	m_sched.reset(argos_config.argos_id); // TODO verify if already set at this moment
 	m_depth_pile_manager.clear();
@@ -38,6 +43,7 @@ void ArgosTxService::service_init() {
 	m_session_tx_count = 0;
 	m_is_surfacing_burst = false;
 	m_doppler_burst_count = 0;
+	m_gnss_burst_count = 0;
 	m_has_gnss_fix_since_surfacing = false;
 	m_last_tx_had_gps = false;
 	m_last_preconfig_mod = KineisModulation::LDA2;
@@ -130,6 +136,14 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 
 			// Phase 2: GNSS fix available — switch to normal GNSS TX with tx_interval_s
 			if (m_has_gnss_fix_since_surfacing) {
+				// Check GNSS TX limit (0 = unlimited)
+				unsigned int max_gnss_tx = configuration_store->read_param<unsigned int>(ParamID::SURFACING_GNSS_MAX_TX);
+				if (max_gnss_tx > 0 && m_gnss_burst_count >= max_gnss_tx) {
+					DEBUG_INFO("ArgosTxService::SURFACING_BURST: GNSS TX limit reached (%u/%u), stopping burst", m_gnss_burst_count, max_gnss_tx);
+					m_is_surfacing_burst = false;
+					return Service::SCHEDULE_DISABLED;
+				}
+
 				if (!service_is_time_known()) {
 					DEBUG_TRACE("ArgosTxService::SURFACING_BURST: GNSS phase but RTC not set");
 					return Service::SCHEDULE_DISABLED;
@@ -138,12 +152,21 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 					DEBUG_TRACE("ArgosTxService::SURFACING_BURST: GNSS phase but no eligible entries");
 					return Service::SCHEDULE_DISABLED;
 				}
-				DEBUG_INFO("ArgosTxService::SURFACING_BURST: switching to GNSS phase (tx_interval=%u s)", argos_config.tx_interval_s);
+
 				if (argos_config.sensor_tx_enable) {
 					m_scheduled_task = [this]() { process_sensor_burst(); };
 				} else {
 					m_scheduled_task = [this]() { process_gnss_burst(); };
 				}
+
+				// First GNSS TX is immediate after fix, then use tx_interval_s
+				if (m_gnss_burst_count == 0) {
+					DEBUG_INFO("ArgosTxService::SURFACING_BURST: GNSS TX #1 (immediate after fix)");
+					m_sched.schedule_at(now);
+					return 0;
+				}
+
+				DEBUG_INFO("ArgosTxService::SURFACING_BURST: GNSS TX #%u in %u s", m_gnss_burst_count + 1, argos_config.tx_interval_s);
 				return m_sched.schedule_legacy(argos_config, now);
 			}
 
@@ -228,9 +251,13 @@ void ArgosTxService::service_initiate() {
 		m_modulation_preconfig.reset();
 	}
 
-	// Track Doppler burst count in SURFACING_BURST mode
-	if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing) {
-		m_doppler_burst_count++;
+	// Track burst counts in SURFACING_BURST mode
+	if (m_is_surfacing_burst) {
+		if (!m_has_gnss_fix_since_surfacing) {
+			m_doppler_burst_count++;
+		} else {
+			m_gnss_burst_count++;
+		}
 	}
 
 	m_scheduled_task();
@@ -303,17 +330,24 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 			// Reset surfacing burst state on dive
 			m_is_surfacing_burst = false;
 			m_doppler_burst_count = 0;
+			m_gnss_burst_count = 0;
 			m_has_gnss_fix_since_surfacing = false;
 
-			// Adaptive modulation: pre-configure VLDA4 for first Doppler TX after surfacing.
-			// SMD is powered off here, so we cache the target modulation and apply it
-			// in service_initiate() when the SMD powers on (same pattern as TCXO skip).
+			// Adaptive modulation: the modulation switch to VLDA4 should have been
+			// done at TX complete time while the SMD was still on. If for some reason
+			// the SMD is still in the wrong modulation (e.g. error recovery, first boot),
+			// cache VLDA4 as fallback so it gets applied at next power-on.
 			{
 				ArgosConfig ac;
 				configuration_store->get_argos_configuration(ac);
 				if (ac.adaptive_modulation && ac.mode == BaseArgosMode::SURFACING_BURST) {
-					m_modulation_preconfig = KineisModulation::VLDA4;
-					DEBUG_INFO("ArgosTxService::UW: VLDA4 pre-config cached for surfacing Doppler");
+					if (m_kineis.get_current_modulation() != KineisModulation::VLDA4) {
+						m_modulation_preconfig = KineisModulation::VLDA4;
+						DEBUG_INFO("ArgosTxService::UW: VLDA4 fallback cached (modulation was not pre-switched)");
+					} else {
+						m_modulation_preconfig.reset();
+						DEBUG_TRACE("ArgosTxService::UW: VLDA4 already active, no deferred switch needed");
+					}
 				}
 			}
 		} else {
@@ -327,6 +361,7 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 			if (argos_config.mode == BaseArgosMode::SURFACING_BURST) {
 				m_is_surfacing_burst = true;
 				m_doppler_burst_count = 0;
+				m_gnss_burst_count = 0;
 				m_has_gnss_fix_since_surfacing = false;
 				DEBUG_INFO("ArgosTxService::SURFACING_BURST: surface detected - starting Doppler burst sequence");
 			}
@@ -587,6 +622,24 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 		return;
 	}
 
+	// Adaptive modulation: pre-switch for next TX while SMD is still powered on.
+	// After a GNSS TX (LDK), switch back to VLDA4 so the next surfacing Doppler
+	// can start immediately without RCONF write at power-on.
+	// After a Doppler TX (VLDA4) with GNSS fix, switch to LDK for the GNSS phase.
+	if (argos_config.adaptive_modulation) {
+		KineisModulation current = m_kineis.get_current_modulation();
+		if (m_has_gnss_fix_since_surfacing && current == KineisModulation::VLDA4) {
+			// GNSS fix available: pre-switch to LDK for upcoming GNSS TX
+			DEBUG_INFO("ArgosTxService::react: pre-switch to LDK for GNSS phase");
+			ensure_modulation(KineisModulation::LDK);
+		} else if (!m_has_gnss_fix_since_surfacing && current != KineisModulation::VLDA4
+		           && argos_config.mode == BaseArgosMode::SURFACING_BURST) {
+			// Still in Doppler phase but somehow in wrong modulation: fix it
+			DEBUG_INFO("ArgosTxService::react: pre-switch to VLDA4 for Doppler phase");
+			ensure_modulation(KineisModulation::VLDA4);
+		}
+	}
+
 	// Activate cooldown on any TX during a surfacing cycle (not just GPS).
 	// This ensures aborted cycles (Doppler-only) also trigger cooldown,
 	// preventing rapid re-triggering on short surfacings.
@@ -609,6 +662,20 @@ void ArgosTxService::react(KineisEventDeviceError const&) {
 		m_kineis.set_tcxo_warmup_time(argos_config.argos_tcxo_warmup_time);
 		m_tcxo_skip_on_next_tx = false;
 	}
+
+	// On error, force RCONF reload on next power-on as safety measure.
+	// The SMD may have been in an inconsistent state.
+	{
+		ArgosConfig ac;
+		configuration_store->get_argos_configuration(ac);
+		if (ac.adaptive_modulation && ac.mode == BaseArgosMode::SURFACING_BURST) {
+			KineisModulation target = m_has_gnss_fix_since_surfacing ?
+				KineisModulation::LDK : KineisModulation::VLDA4;
+			m_modulation_preconfig = target;
+			DEBUG_INFO("ArgosTxService::react: error recovery — caching RCONF for modulation %d", (int)target);
+		}
+	}
+
 	if (service_cancel())
 		service_complete();
 }

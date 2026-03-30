@@ -66,6 +66,7 @@ public:
 	virtual void set_frequency(double freq_mhz) = 0;
 	virtual void set_tcxo_warmup_time(unsigned int ms) = 0;
 	virtual void set_tx_power(unsigned int power) { (void)power; }
+	virtual void set_lpm_mode(uint8_t lpm_bitmap) { (void)lpm_bitmap; }
 	virtual void set_credentials(unsigned int dec_id, unsigned int address,
 	                             const std::string& seckey, const std::string& radioconf) {
 		(void)dec_id; (void)address; (void)seckey; (void)radioconf;

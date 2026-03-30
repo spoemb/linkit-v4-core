@@ -62,7 +62,6 @@ extern "C" {
 // It represents the time taken for programming tasks, etc.  We advance the RX task by 3
 // seconds extra relative to the TX task to avoid race conditions when the two might
 // fire at the same time otherwise.
-#define ARGOS_TX_MARGIN_SECS        3  // Advance TX by 3s to account for TCXO warmup and scheduling overhead
 #define ARGOS_RX_MARGIN_SECS        0  // RX always follows TX
 
 // TX certification power off threshold (in seconds)
@@ -412,7 +411,9 @@ uint64_t ArgosScheduler::next_prepass() {
 							((double)schedule / MS_PER_SEC) - curr_time, ((double)next_pass.epoch + (double)next_pass.duration) - curr_time);
 
 		// Check we don't transmit off the end of the prepass window
-		if ((schedule + (ARGOS_TX_MARGIN_SECS * MS_PER_SEC)) < ((uint64_t)next_pass.epoch + next_pass.duration) * MS_PER_SEC) {
+		// Dynamic margin based on TCXO warmup time + 1s scheduling overhead
+		unsigned int tx_margin_ms = (m_argos_config.argos_tcxo_warmup_time + 1) * MS_PER_SEC;
+		if ((schedule + tx_margin_ms) < ((uint64_t)next_pass.epoch + next_pass.duration) * MS_PER_SEC) {
 			// We're good to go for this schedule, compute relative delay until the epoch arrives
 			// and set the required Argos transmission mode
 			DEBUG_INFO("ArgosScheduler::next_prepass: scheduled for %.3f seconds from now", (double)(schedule - (curr_time * MS_PER_SEC)) / MS_PER_SEC);

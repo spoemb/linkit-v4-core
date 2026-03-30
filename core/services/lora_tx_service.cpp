@@ -462,6 +462,9 @@ void LoRaTxService::service_init() {
 	m_is_first_tx = true;
 	m_is_tx_pending = false;
 	m_session_tx_count = 0;
+	m_is_surfacing_burst = false;
+	m_has_gnss_fix_since_surfacing = false;
+	m_status_burst_count = 0;
 	m_last_tx_had_gps = false;
 
 	DEBUG_TRACE("LoRaTxService::service_init: initialized");
@@ -521,10 +524,69 @@ unsigned int LoRaTxService::service_next_schedule_in_ms() {
 	}
 
 	if (argos_config.mode == BaseArgosMode::DUTY_CYCLE) {
+		if (m_is_first_tx && m_depth_pile_manager.eligible()) {
+			m_sched.schedule_at(now);
+			return 0;
+		}
 		return m_sched.schedule_duty_cycle(argos_config, now);
 	}
 	if (argos_config.mode == BaseArgosMode::LEGACY) {
+		if (m_is_first_tx && m_depth_pile_manager.eligible()) {
+			m_sched.schedule_at(now);
+			return 0;
+		}
 		return m_sched.schedule_legacy(argos_config, now);
+	}
+	if (argos_config.mode == BaseArgosMode::SURFACING_BURST) {
+
+		// Phase 1: Status heartbeat burst (battery level) until GNSS fix
+		if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing) {
+
+			// Check max message limit (0 = unlimited)
+			if (argos_config.surfacing_burst_max_msg > 0 &&
+				m_status_burst_count >= argos_config.surfacing_burst_max_msg) {
+				DEBUG_INFO("LoRaTxService::SURFACING_BURST: max status messages reached (%u/%u)",
+				           m_status_burst_count, argos_config.surfacing_burst_max_msg);
+				return Service::SCHEDULE_DISABLED;
+			}
+
+			m_scheduled_task = [this]() { process_status_burst(); };
+
+			// First message is immediate
+			if (m_status_burst_count == 0) {
+				DEBUG_INFO("LoRaTxService::SURFACING_BURST: status #%u (immediate)", m_status_burst_count + 1);
+				m_sched.schedule_at(now);
+				return 0;
+			}
+
+			// Progressive interval: init + (count-1) * step, capped at max
+			unsigned int interval_s = argos_config.surfacing_burst_init_s +
+				(m_status_burst_count - 1) * argos_config.surfacing_burst_step_s;
+			if (interval_s > argos_config.surfacing_burst_max_s)
+				interval_s = argos_config.surfacing_burst_max_s;
+
+			DEBUG_INFO("LoRaTxService::SURFACING_BURST: status #%u in %u s", m_status_burst_count + 1, interval_s);
+			m_sched.schedule_at(now + interval_s);
+			return interval_s * 1000;
+		}
+
+		// Phase 2: GNSS fix available — TX position immediately, then TR_NOM
+		if (m_has_gnss_fix_since_surfacing && m_depth_pile_manager.eligible()) {
+			if (argos_config.sensor_tx_enable) {
+				m_scheduled_task = [this]() { process_sensor_burst(); };
+			} else {
+				m_scheduled_task = [this]() { process_gps_burst(); };
+			}
+
+			if (m_is_first_tx) {
+				DEBUG_INFO("LoRaTxService::SURFACING_BURST: GNSS fix — TX immediate");
+				m_sched.schedule_at(now);
+				return 0;
+			}
+			return m_sched.schedule_legacy(argos_config, now);
+		}
+
+		return Service::SCHEDULE_DISABLED;
 	}
 
 	return Service::SCHEDULE_DISABLED;
@@ -534,6 +596,12 @@ void LoRaTxService::service_initiate() {
 	DEBUG_TRACE("LoRaTxService::service_initiate");
 	m_is_first_tx = false;
 	m_is_tx_pending = true;
+
+	// Track status burst count in SURFACING_BURST phase 1
+	if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing) {
+		m_status_burst_count++;
+	}
+
 	m_scheduled_task();
 }
 
@@ -555,7 +623,10 @@ unsigned int LoRaTxService::service_next_timeout() {
 }
 
 bool LoRaTxService::service_is_triggered_on_surfaced(bool& immediate) {
-	immediate = false;
+	ArgosConfig argos_config;
+	configuration_store->get_argos_configuration(argos_config);
+	// In SURFACING_BURST mode, reschedule immediately on surfacing
+	immediate = (argos_config.mode == BaseArgosMode::SURFACING_BURST);
 	return true;
 }
 
@@ -564,18 +635,45 @@ void LoRaTxService::notify_peer_event(ServiceEvent& e) {
 
 	if (e.event_source == ServiceIdentifier::GNSS_SENSOR &&
 		e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
-		// Reschedule if no existing schedule
-		if (!service_is_scheduled()) {
-			DEBUG_TRACE("LoRaTxService::notify_peer_event: rescheduling as no existing schedule");
+		ArgosConfig argos_config;
+		configuration_store->get_argos_configuration(argos_config);
+		if (argos_config.mode == BaseArgosMode::SURFACING_BURST) {
+			if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing) {
+				// Phase 1 → Phase 2: GNSS fix acquired, switch to GPS TX
+				DEBUG_INFO("LoRaTxService::SURFACING_BURST: GNSS fix after %u status messages — switching to GPS phase",
+				           m_status_burst_count);
+				m_has_gnss_fix_since_surfacing = true;
+				m_is_first_tx = true;  // First GPS TX will be immediate
+				service_reschedule();
+			}
+		} else {
+			// LEGACY / DUTY_CYCLE: GNSS fix → TX immediately, reset TR_NOM timer
+			DEBUG_INFO("LoRaTxService: GNSS fix — reschedule for immediate TX");
+			m_is_first_tx = true;
 			service_reschedule();
 		}
 	} else if (e.event_source == ServiceIdentifier::UW_SENSOR &&
 			e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
-		if (std::get<bool>(e.event_data) == false) {
-			ArgosConfig argos_config;
-			configuration_store->get_argos_configuration(argos_config);
+		ArgosConfig argos_config;
+		configuration_store->get_argos_configuration(argos_config);
+		if (std::get<bool>(e.event_data) == true) {
+			// Dive: reset surfacing burst state
+			if (argos_config.mode == BaseArgosMode::SURFACING_BURST) {
+				m_is_surfacing_burst = false;
+				m_status_burst_count = 0;
+				m_has_gnss_fix_since_surfacing = false;
+			}
+		} else {
+			// Surface
 			std::time_t earliest_schedule = service_current_time() + argos_config.dry_time_before_tx;
 			m_sched.set_earliest_schedule(earliest_schedule);
+			if (argos_config.mode == BaseArgosMode::SURFACING_BURST) {
+				m_is_surfacing_burst = true;
+				m_status_burst_count = 0;
+				m_has_gnss_fix_since_surfacing = false;
+				m_is_first_tx = true;
+				DEBUG_INFO("LoRaTxService::SURFACING_BURST: surface detected — starting status burst");
+			}
 		}
 	}
 

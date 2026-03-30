@@ -56,6 +56,7 @@ SmdSat::SmdSat(SmdSatCmd& cmd, unsigned int idle_shutdown_ms)
 	m_modulation = ARGOS_MOD_LDA2;
 	m_state = SmdSatState::stopped;
 	m_tcxo_warmup_time = DEFAULT_TCXO_WARMUP_TIME_SECONDS;
+	m_lpm_mode = 0x01;  // NONE by default
 	m_tx_power = 0;
 	this->shutdown();
 	is_kmac_profil_loaded = false;
@@ -208,6 +209,12 @@ void SmdSat::state_error() {
 void SmdSat::state_stopped_enter() {
 	m_cmd.deinit();
 
+	// Release wakeup pin LOW so SMD can enter deep sleep (STANDBY/SHUTDOWN)
+	// before power is cut. This allows the STM32 to enter LPM immediately.
+#ifdef SAT_EXTWAKEUP
+	GPIOPins::clear(SAT_EXTWAKEUP);
+#endif
+
 	this->shutdown();
 	GPIOPins::release_sensors_pwr();
 	nrf_gpio_cfg_default(BSP::GPIO_Inits[SAT_RESET].pin_number);
@@ -224,7 +231,7 @@ void SmdSat::state_stopped() {}
 void SmdSat::state_powering_on_enter() {}
 
 void SmdSat::state_powering_on_exit() {
-	m_next_delay = SMDSAT_DELAY_POWER_ON_MS;
+	m_next_delay = SMDSAT_SPI_BOOT_DELAY_MS;
 }
 
 void SmdSat::state_powering_on() {
@@ -235,6 +242,13 @@ void SmdSat::state_powering_on() {
 	GPIOPins::init_pin(SAT_RESET);
 	GPIOPins::clear(SAT_RESET);
 	nrf_delay_ms(10);
+
+	// Assert wakeup pin HIGH before power-on to ensure SMD wakes from
+	// STANDBY/SHUTDOWN (PB3 must be HIGH for the STM32 to stay awake)
+#ifdef SAT_EXTWAKEUP
+	GPIOPins::init_pin(SAT_EXTWAKEUP);
+	GPIOPins::set(SAT_EXTWAKEUP);
+#endif
 
 	GPIOPins::set(SAT_PWR_EN);
 #ifdef SMD_VPA_PIN
@@ -254,7 +268,9 @@ void SmdSat::state_load_kmac_enter() {}
 void SmdSat::state_load_kmac_exit() {}
 
 void SmdSat::state_load_kmac() {
-	// Apply deferred RCONF from switch_modulation() while stopped
+	// Apply deferred RCONF from switch_modulation() while stopped.
+	// This only happens on error recovery — normal modulation switches
+	// are done while the SMD is still powered on (at deinit time).
 	if (!m_pending_rconf.empty()) {
 		DEBUG_INFO("SmdSat::%s: applying deferred RCONF for modulation %d", __func__, (int)m_modulation);
 		auto wait_cmd = []() { nrf_delay_ms(SMDSAT_DELAY_CMD_MS * 2); };
@@ -269,9 +285,6 @@ void SmdSat::state_load_kmac() {
 			m_cmd.load_kmac_profil(1);
 			wait_cmd();
 			is_kmac_profil_loaded = true;
-			// RCONF just written — skip credential comparison below which would
-			// compare against ARGOS_RADIOCONF (default LDK) and always mismatch
-			// when a different modulation (e.g. VLDA4) was deferred.
 			m_credentials_written = true;
 			DEBUG_INFO("SmdSat::%s: deferred RCONF applied OK", __func__);
 		} catch (...) {
@@ -280,24 +293,17 @@ void SmdSat::state_load_kmac() {
 		m_pending_rconf.clear();
 	}
 
-	// Write credentials from config store to SMD hardware if they differ.
-	// Read-back from SMD and compare to avoid unnecessary flash writes (endurance).
-	// Skipped when deferred RCONF was just applied (m_credentials_written already set).
+	// Write credentials only if changed via DTE since last write
 	if (!m_credentials_written) {
 		m_credentials_written = true;
-		if (configuration_store) {
-			// Only rewrite if credentials were changed via DTE since last write
-			if (configuration_store->is_credentials_dirty()) {
-				DEBUG_INFO("SmdSat::%s: credentials dirty, writing to SMD", __func__);
-				if (!write_credentials_from_config()) {
-					DEBUG_ERROR("SmdSat::%s: credential write failed", __func__);
-					SMD_STATE_CHANGE(load_kmac, error);
-					return;
-				}
-				configuration_store->clear_credentials_dirty();
-			} else {
-				DEBUG_TRACE("SmdSat::%s: credentials not dirty, skipping write", __func__);
+		if (configuration_store && configuration_store->is_credentials_dirty()) {
+			DEBUG_INFO("SmdSat::%s: credentials dirty, writing to SMD", __func__);
+			if (!write_credentials_from_config()) {
+				DEBUG_ERROR("SmdSat::%s: credential write failed", __func__);
+				SMD_STATE_CHANGE(load_kmac, error);
+				return;
 			}
+			configuration_store->clear_credentials_dirty();
 		}
 	}
 
@@ -311,6 +317,24 @@ void SmdSat::state_load_kmac() {
 		} else {
 			m_next_delay = SMDSAT_DELAY_CMD_MS;
 		}
+
+		// Write TCXO warmup to SMD on every boot — this register is not
+		// persisted in flash by the STM32 and defaults to factory value.
+		try {
+			m_cmd.write_tcxo_warmup(m_tcxo_warmup_time * 1000);
+			DEBUG_TRACE("SmdSat::%s: TCXO warmup written: %u s", __func__, m_tcxo_warmup_time);
+		} catch (...) {
+			DEBUG_WARN("SmdSat::%s: failed to write TCXO warmup", __func__);
+		}
+
+		// Write LPM mode on every boot — RAM-only register on STM32, lost on reset.
+		try {
+			m_cmd.write_lpm(&m_lpm_mode);
+			DEBUG_TRACE("SmdSat::%s: LPM mode written: 0x%02X", __func__, m_lpm_mode);
+		} catch (...) {
+			DEBUG_WARN("SmdSat::%s: failed to write LPM mode", __func__);
+		}
+
 		SMD_STATE_CHANGE(load_kmac, idle_pending);
 	} else {
 		if (--m_state_counter == 0) {
@@ -516,6 +540,19 @@ void SmdSat::send(const KineisModulation mode, const KineisPacket& user_payload,
 
 void SmdSat::set_tcxo_warmup_time(unsigned int time_s) {
 	m_tcxo_warmup_time = time_s;
+}
+
+void SmdSat::set_lpm_mode(uint8_t lpm_bitmap) {
+	// Sanitize: STANDBY(0x08) and SHUTDOWN(0x10) require SAT_EXTWAKEUP pin
+#ifndef SAT_EXTWAKEUP
+	if (lpm_bitmap & 0x18) {
+		DEBUG_WARN("SmdSat::%s: STANDBY/SHUTDOWN disabled (no SAT_WKUP pin), masking to 0x%02X",
+		           __func__, lpm_bitmap & 0x07);
+		lpm_bitmap &= 0x07;  // Keep only NONE|SLEEP|STOP
+	}
+#endif
+	if (lpm_bitmap == 0) lpm_bitmap = 0x01;  // Fallback to NONE
+	m_lpm_mode = lpm_bitmap;
 }
 
 void SmdSat::set_tx_power(unsigned int power) {
