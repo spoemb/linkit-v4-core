@@ -339,8 +339,9 @@ enum class ParamID {
 	ARGOS_ADAPTIVE_MODULATION                = 210,  // bool: auto-select modulation based on packet size
 	// === Surface cycle cooldown (slot 211 always reserved) ===
 	MIN_SURFACE_CYCLE_INTERVAL_S             = 211,  // 0=disabled, else min seconds between successful surface cycles
+	SURFACING_BURST_MAX_MSG                  = 212,  // 0=unlimited, else max Doppler messages per surfacing burst
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 212,
+	__PARAM_SIZE                             = 213,
 	__NULL_PARAM                             = 0xFFFF
 };
 

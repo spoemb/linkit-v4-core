@@ -95,6 +95,7 @@ private:
 	static inline unsigned int m_unique_identifier = 0;
 	static inline std::map<unsigned int, Service&> m_map;
 	static inline std::time_t m_last_successful_cycle_time = 0;
+	static inline unsigned int m_passive_surfacing_count = 0;
 
 public:
 	static unsigned int add(Service& s);
@@ -108,4 +109,8 @@ public:
 	static unsigned int get_unique_id(const char *name);
 	static void set_cycle_complete(std::time_t t);
 	static bool is_in_cooldown(std::time_t now);
+	static void notify_passive_surfacing();
+	static unsigned int get_passive_surfacing_count();
+	static void save_cooldown_state();
+	static void restore_cooldown_state();
 };

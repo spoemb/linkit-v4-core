@@ -49,6 +49,10 @@ TEST_GROUP(ArgosTxService)
 		// Setup PP_MIN_ELEVATION for 5.0
 		double min_elevation = 5.0;
 		fake_config_store->write_param(ParamID::PP_MIN_ELEVATION, min_elevation);
+
+		// Disable cooldown by default in tests (individual tests can override)
+		unsigned int no_cooldown = 0U;
+		fake_config_store->write_param(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S, no_cooldown);
 	}
 
 	void teardown() {

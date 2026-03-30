@@ -279,9 +279,9 @@ const BaseMap param_map[] = {
 	{ "LORA_FPORT", "LRP14", BaseEncoding::UINT, 1U, 223U, {}, (LORA_RAK3172 == 1), true },
 	{ "LORA_LP_MODE", "LRP15", BaseEncoding::UINT, 0U, 1U, {}, (LORA_RAK3172 == 1), true },
 	// [196-198] Surfacing burst parameters (slots always reserved)
-	{ "SURFACING_BURST_INIT_S", "ARP40", BaseEncoding::UINT, 5U, 120U, {}, true, true },
-	{ "SURFACING_BURST_STEP_S", "ARP41", BaseEncoding::UINT, 0U, 30U, {}, true, true },
-	{ "SURFACING_BURST_MAX_S", "ARP42", BaseEncoding::UINT, 5U, 300U, {}, true, true },
+	{ "SURFACING_BURST_INIT_S", "ARP40", BaseEncoding::UINT, 1U, 120U, {}, true, true },
+	{ "SURFACING_BURST_STEP_S", "ARP41", BaseEncoding::UINT, 0U, 60U, {}, true, true },
+	{ "SURFACING_BURST_MAX_S", "ARP42", BaseEncoding::UINT, 5U, 600U, {}, true, true },
 	// [199-205] Mortality detection parameters (slots always reserved)
 	{ "MORTALITY_ENABLE", "MTP01", BaseEncoding::BOOLEAN, 0, 0, {}, ENABLE_MORTALITY_SENSOR, true },
 	{ "MORTALITY_ACTIVITY_THRESH", "MTP02", BaseEncoding::UINT, 0U, 255U, {}, ENABLE_MORTALITY_SENSOR, true },
@@ -300,6 +300,8 @@ const BaseMap param_map[] = {
 	{ "ARGOS_ADAPTIVE_MODULATION", "ARP54", BaseEncoding::BOOLEAN, false, false, {}, true, true },
 	// [211] Surface cycle cooldown: min seconds between successful GPS+TX cycles (0=disabled)
 	{ "MIN_SURFACE_CYCLE_INTERVAL_S", "UNP20", BaseEncoding::UINT, 0U, 86400U, {}, true, true },
+	// [212] Surfacing burst Doppler limit: 0=unlimited, else stop Doppler phase after N messages
+	{ "SURFACING_BURST_MAX_MSG", "ARP43", BaseEncoding::UINT, 0U, 255U, {}, true, true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

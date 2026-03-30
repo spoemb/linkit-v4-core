@@ -1352,3 +1352,88 @@ TEST(ConfigStore, RetrieveGPSConfigZoneExclusionMode)
 	CHECK_EQUAL(hdop_filter_enable, gnss_config.hdop_filter_enable);
 	CHECK_EQUAL(zone_hdop_filter_threshold, gnss_config.hdop_filter_threshold);
 }
+
+
+// ======== SPEC-EMB-002: Credentials dirty flag tests ========
+
+TEST(ConfigStore, CredentialsDirtyOnInit)
+{
+	store = new LFSConfigurationStore(*main_filesystem);
+	store->init();
+
+	// Credentials should be dirty on first init (ensures first-boot write)
+	CHECK_TRUE(store->is_credentials_dirty());
+}
+
+TEST(ConfigStore, CredentialsDirtyClearedAfterClear)
+{
+	store = new LFSConfigurationStore(*main_filesystem);
+	store->init();
+
+	CHECK_TRUE(store->is_credentials_dirty());
+	store->clear_credentials_dirty();
+	CHECK_FALSE(store->is_credentials_dirty());
+}
+
+TEST(ConfigStore, CredentialsDirtyResetOnArgosHexIdWrite)
+{
+	store = new LFSConfigurationStore(*main_filesystem);
+	store->init();
+	store->clear_credentials_dirty();
+	CHECK_FALSE(store->is_credentials_dirty());
+
+	// Writing ARGOS_HEXID should re-set the dirty flag
+	unsigned int hex_id = 0x12345678;
+	store->write_param(ParamID::ARGOS_HEXID, hex_id);
+	CHECK_TRUE(store->is_credentials_dirty());
+}
+
+TEST(ConfigStore, CredentialsDirtyResetOnRadioconfWrite)
+{
+	store = new LFSConfigurationStore(*main_filesystem);
+	store->init();
+	store->clear_credentials_dirty();
+	CHECK_FALSE(store->is_credentials_dirty());
+
+	// Writing ARGOS_RADIOCONF should re-set the dirty flag
+	std::string rconf = "82d07f9d9ce081ee4492983672d75493"s;
+	store->write_param(ParamID::ARGOS_RADIOCONF, rconf);
+	CHECK_TRUE(store->is_credentials_dirty());
+}
+
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+TEST(ConfigStore, CredentialsDirtyResetOnSecKeyWrite)
+{
+	store = new LFSConfigurationStore(*main_filesystem);
+	store->init();
+	store->clear_credentials_dirty();
+	CHECK_FALSE(store->is_credentials_dirty());
+
+	// Writing ARGOS_SECKEY should re-set the dirty flag
+	std::string seckey = "0123456789ABCDEF0123456789ABCDEF"s;
+	store->write_param(ParamID::ARGOS_SECKEY, seckey);
+	CHECK_TRUE(store->is_credentials_dirty());
+}
+#endif
+
+TEST(ConfigStore, CredentialsDirtyNotAffectedByUnrelatedWrite)
+{
+	store = new LFSConfigurationStore(*main_filesystem);
+	store->init();
+	store->clear_credentials_dirty();
+	CHECK_FALSE(store->is_credentials_dirty());
+
+	// Writing an unrelated param should NOT set the dirty flag
+	unsigned int tr_nom = 60U;
+	store->write_param(ParamID::TR_NOM, tr_nom);
+	CHECK_FALSE(store->is_credentials_dirty());
+}
+
+TEST(ConfigStore, CooldownDefaultIs2700)
+{
+	store = new LFSConfigurationStore(*main_filesystem);
+	store->init();
+
+	unsigned int interval = store->read_param<unsigned int>(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S);
+	CHECK_EQUAL(2700U, interval);
+}

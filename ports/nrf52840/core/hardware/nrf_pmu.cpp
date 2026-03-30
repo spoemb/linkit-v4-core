@@ -14,12 +14,11 @@
 #include "crc16.h"
 #include <string>
 
-#ifdef EXTERNAL_WAKEUP
 #include "rtc.hpp"
 #include "config_store.hpp"
+#include "service.hpp"
 extern RTC *rtc;
 extern ConfigurationStore *configuration_store;
-#endif
 
 static uint32_t m_reset_cause = 0;
 static bool m_firmware_was_updated = false;
@@ -76,6 +75,9 @@ void PMU::powerdown() {
 // 	GPIOPins::clear(CAM_PWR_EN);
 // 	GPIOPins::clear(CAM_PWR_BUTT);
 // #endif
+
+	// Persist cooldown state to noinit RAM before shutdown
+	ServiceManager::save_cooldown_state();
 
 	// Persist current RTC for pseudo RTC chain on next boot
 	if (configuration_store && rtc && rtc->is_set()) {

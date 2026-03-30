@@ -5,6 +5,7 @@
 #include "timer.hpp"
 #include "config_store.hpp"
 #include "battery.hpp"
+#include <cstddef>
 
 extern Timer *system_timer;
 extern Scheduler *system_scheduler;
@@ -25,6 +26,7 @@ void ServiceManager::remove(Service& s) {
 
 void ServiceManager::startall(std::function<void(ServiceEvent&)> data_notification_callback) {
 	m_data_notification_callback = data_notification_callback;
+	restore_cooldown_state();
 	for (auto const& p : m_map) {
 		DEBUG_TRACE("ServiceManager::startall: starting %s id=%u", p.second.get_name(), p.first);
 		p.second.start(data_notification_callback);
@@ -66,8 +68,48 @@ void ServiceManager::inject_event(ServiceEvent& event) {
 		m_data_notification_callback(event);
 }
 
+// Noinit RAM structure for cooldown persistence across System OFF (PSEUDO_POWER_OFF)
+struct CooldownNoinit {
+	std::time_t last_cycle_time;
+	uint16_t    passive_count;
+	uint16_t    crc;
+};
+#ifndef CPPUTEST
+static CooldownNoinit s_cooldown_noinit __attribute__((section(".noinit")));
+#else
+static CooldownNoinit s_cooldown_noinit;
+#endif
+
+static uint16_t cooldown_noinit_crc() {
+	uint16_t crc = 0;
+	const uint8_t *p = reinterpret_cast<const uint8_t *>(&s_cooldown_noinit);
+	for (size_t i = 0; i < offsetof(decltype(s_cooldown_noinit), crc); i++)
+		crc = (crc << 1) ^ p[i];
+	return crc;
+}
+
+void ServiceManager::save_cooldown_state() {
+	s_cooldown_noinit.last_cycle_time = m_last_successful_cycle_time;
+	s_cooldown_noinit.passive_count = static_cast<uint16_t>(m_passive_surfacing_count);
+	s_cooldown_noinit.crc = cooldown_noinit_crc();
+}
+
+void ServiceManager::restore_cooldown_state() {
+	if (s_cooldown_noinit.crc == cooldown_noinit_crc() && s_cooldown_noinit.last_cycle_time > 0) {
+		m_last_successful_cycle_time = s_cooldown_noinit.last_cycle_time;
+		m_passive_surfacing_count = s_cooldown_noinit.passive_count;
+		DEBUG_INFO("ServiceManager: cooldown restored from noinit (last_cycle=%u, passive=%u)",
+		           (unsigned int)m_last_successful_cycle_time, m_passive_surfacing_count);
+	} else {
+		m_last_successful_cycle_time = 0;
+		m_passive_surfacing_count = 0;
+		DEBUG_TRACE("ServiceManager: cooldown noinit invalid, starting fresh");
+	}
+}
+
 void ServiceManager::set_cycle_complete(std::time_t t) {
 	m_last_successful_cycle_time = t;
+	save_cooldown_state();
 	DEBUG_INFO("ServiceManager: cycle complete at %u, cooldown started", (unsigned int)t);
 }
 
@@ -78,6 +120,16 @@ bool ServiceManager::is_in_cooldown(std::time_t now) {
 	if (m_last_successful_cycle_time == 0)
 		return false;
 	return (now - m_last_successful_cycle_time) < (std::time_t)interval;
+}
+
+void ServiceManager::notify_passive_surfacing() {
+	m_passive_surfacing_count++;
+	save_cooldown_state();
+	DEBUG_INFO("ServiceManager: passive surfacing #%u (cooldown active, no GPS/TX)", m_passive_surfacing_count);
+}
+
+unsigned int ServiceManager::get_passive_surfacing_count() {
+	return m_passive_surfacing_count;
 }
 
 Service::Service(ServiceIdentifier service_id, const char *name, Logger *logger) {
@@ -145,6 +197,10 @@ void Service::notify_underwater_state(bool state) {
 	} else {
 		// Check cooldown: skip reschedule if a successful cycle completed recently
 		if (rtc && rtc->is_set() && ServiceManager::is_in_cooldown(rtc->gettime())) {
+			// Log passive surfacing only once per surfacing event (from the first service that checks)
+			if (m_service_id == ServiceIdentifier::GNSS_SENSOR || m_service_id == ServiceIdentifier::ARGOS_TX || m_service_id == ServiceIdentifier::LORA_TX) {
+				ServiceManager::notify_passive_surfacing();
+			}
 			DEBUG_INFO("Service::notify_underwater_state: service %s skipped (cooldown active)", m_name);
 			return;
 		}

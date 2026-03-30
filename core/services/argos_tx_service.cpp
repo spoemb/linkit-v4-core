@@ -100,6 +100,14 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 
 			// Phase 1: Doppler burst with progressive intervals until GNSS fix
 			if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing) {
+				// Check max Doppler message limit (0 = unlimited)
+				unsigned int max_msg = configuration_store->read_param<unsigned int>(ParamID::SURFACING_BURST_MAX_MSG);
+				if (max_msg > 0 && m_doppler_burst_count >= max_msg) {
+					DEBUG_INFO("ArgosTxService::SURFACING_BURST: Doppler limit reached (%u/%u), stopping burst", m_doppler_burst_count, max_msg);
+					m_is_surfacing_burst = false;
+					return Service::SCHEDULE_DISABLED;
+				}
+
 				m_scheduled_task = [this]() { process_doppler_burst(); };
 
 				// First message is immediate (0 delay)
@@ -579,10 +587,12 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 		return;
 	}
 
-	// Activate cooldown if this TX contained GPS data
-	if (m_last_tx_had_gps) {
+	// Activate cooldown on any TX during a surfacing cycle (not just GPS).
+	// This ensures aborted cycles (Doppler-only) also trigger cooldown,
+	// preventing rapid re-triggering on short surfacings.
+	{
 		std::time_t now = service_current_time();
-		if (now > 0)
+		if (now > 0 && (m_last_tx_had_gps || m_is_surfacing_burst))
 			ServiceManager::set_cycle_complete(now);
 	}
 

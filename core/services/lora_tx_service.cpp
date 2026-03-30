@@ -712,8 +712,8 @@ void LoRaTxService::react(KineisEventTxComplete const&) {
 		return;
 	}
 
-	// Activate cooldown if this TX contained GPS data
-	if (m_last_tx_had_gps) {
+	// Activate cooldown on any TX during a surfacing cycle
+	{
 		std::time_t now = service_current_time();
 		if (now > 0)
 			ServiceManager::set_cycle_complete(now);
