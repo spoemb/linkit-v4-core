@@ -57,6 +57,10 @@ public:
 		return m_current_mod;
 	}
 
+	void set_lpm_mode(uint8_t lpm_bitmap) override {
+		(void)lpm_bitmap;  // LPM is SMD-specific, not verified in generic TX tests
+	}
+
 private:
 	KineisModulation m_current_mod = KineisModulation::LDA2;
 };

@@ -111,6 +111,7 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 				if (max_msg > 0 && m_doppler_burst_count >= max_msg) {
 					DEBUG_INFO("ArgosTxService::SURFACING_BURST: Doppler limit reached (%u/%u), stopping burst", m_doppler_burst_count, max_msg);
 					m_is_surfacing_burst = false;
+					m_first_gnss_tx_sent = false;
 					return Service::SCHEDULE_DISABLED;
 				}
 
@@ -611,20 +612,14 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 		return;
 	}
 
-	// Adaptive modulation: pre-switch for next TX while SMD is still powered on.
-	// After a GNSS TX (LDK), switch back to VLDA4 so the next surfacing Doppler
-	// can start immediately without RCONF write at power-on.
-	// After a Doppler TX (VLDA4) with GNSS fix, switch to LDK for the GNSS phase.
-	if (argos_config.adaptive_modulation) {
-		KineisModulation current = m_kineis.get_current_modulation();
-		if (m_has_gnss_fix_since_surfacing && current == KineisModulation::VLDA4) {
-			// GNSS fix available: pre-switch to LDK for upcoming GNSS TX
-			DEBUG_INFO("ArgosTxService::react: pre-switch to LDK for GNSS phase");
-			ensure_modulation(KineisModulation::LDK);
-		} else if (!m_has_gnss_fix_since_surfacing && current != KineisModulation::VLDA4
-		           && argos_config.mode == BaseArgosMode::SURFACING_BURST) {
-			// Still in Doppler phase but somehow in wrong modulation: fix it
-			DEBUG_INFO("ArgosTxService::react: pre-switch to VLDA4 for Doppler phase");
+	// Adaptive modulation: after each TX, always pre-switch to VLDA4 while SMD
+	// is still powered on. This ensures the next surfacing Doppler starts without
+	// any RCONF write at boot (VLDA4 already in flash).
+	// The LDK switch for GNSS TX is done live in process_gnss_burst() via
+	// ensure_modulation() — the SMD is already on at that point.
+	if (argos_config.adaptive_modulation && argos_config.mode == BaseArgosMode::SURFACING_BURST) {
+		if (m_kineis.get_current_modulation() != KineisModulation::VLDA4) {
+			DEBUG_INFO("ArgosTxService::react: pre-switch to VLDA4 for next Doppler");
 			ensure_modulation(KineisModulation::VLDA4);
 		}
 	}

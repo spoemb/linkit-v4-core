@@ -181,7 +181,8 @@ void SmdSat::state_starting_exit() {}
 void SmdSat::state_starting()
 {
 	m_is_first_tx = true;
-	is_kmac_profil_loaded = false;
+	// is_kmac_profil_loaded is NOT reset here — the KMAC profile is persisted
+	// in SMD flash across power cycles. Only reset on credential/RCONF changes.
 	m_credentials_written = false;
 	m_cmd.init();
 	m_state_counter = 3;
@@ -190,6 +191,8 @@ void SmdSat::state_starting()
 }
 
 void SmdSat::state_error_enter() {
+	// Force KMAC reload on next boot — SMD may be in inconsistent state
+	is_kmac_profil_loaded = false;
 	try {
 		uint8_t status = 0;
 		m_cmd.get_kmac_status(&status);
@@ -218,7 +221,9 @@ void SmdSat::state_stopped_enter() {
 	this->shutdown();
 	GPIOPins::release_sensors_pwr();
 	nrf_gpio_cfg_default(BSP::GPIO_Inits[SAT_RESET].pin_number);
-	is_kmac_profil_loaded = false;
+	// Keep is_kmac_profil_loaded = true — the KMAC profile is persisted in
+	// SMD flash and does not need reloading on every boot. It is only reset
+	// to false when credentials change or a deferred RCONF is applied.
 
 	m_packet_buffer.clear();
 
@@ -293,7 +298,8 @@ void SmdSat::state_load_kmac() {
 		m_pending_rconf.clear();
 	}
 
-	// Write credentials only if changed via DTE since last write
+	// Write credentials only if changed via DTE since last write.
+	// Must happen BEFORE load_kmac_profil so the KMAC profile uses the new credentials.
 	if (!m_credentials_written) {
 		m_credentials_written = true;
 		if (configuration_store && configuration_store->is_credentials_dirty()) {
@@ -304,6 +310,9 @@ void SmdSat::state_load_kmac() {
 				return;
 			}
 			configuration_store->clear_credentials_dirty();
+			// Force KMAC reload after credential write so the profile picks up
+			// the new RCONF/seckey/ID — without this, TX fails.
+			is_kmac_profil_loaded = false;
 		}
 	}
 
@@ -636,26 +645,36 @@ bool SmdSat::write_credentials_from_config() {
 	}
 	wait_cmd();
 
-	// Set Radio Configuration
-	{
-		std::string rconf_bin = Binascii::unhexlify(radioconf);
-		smd_uint8_array_t rconf_struct = {static_cast<uint16_t>(rconf_bin.size()),
-		                                  reinterpret_cast<uint8_t *>(rconf_bin.data())};
-		try { m_cmd.set_radio_conf(&rconf_struct); } catch (...) {
-			DEBUG_ERROR("SmdSat::%s: failed to set radio conf", __func__); return false;
+	// Set Radio Configuration — only if adaptive modulation is OFF.
+	// When adaptive modulation is ON, per-modulation RCONFs (VLDA4/LDK/LDA2)
+	// are managed by ensure_modulation() / switch_modulation() and must NOT
+	// be overwritten by the master RCONF here.
+	if (!radioconf.empty()) {
+		bool adaptive = false;
+		if (configuration_store) {
+			adaptive = configuration_store->read_param<bool>(ParamID::ARGOS_ADAPTIVE_MODULATION);
 		}
-	}
-	wait_cmd();
+		if (!adaptive) {
+			std::string rconf_bin = Binascii::unhexlify(radioconf);
+			smd_uint8_array_t rconf_struct = {static_cast<uint16_t>(rconf_bin.size()),
+			                                  reinterpret_cast<uint8_t *>(rconf_bin.data())};
+			try { m_cmd.set_radio_conf(&rconf_struct); } catch (...) {
+				DEBUG_ERROR("SmdSat::%s: failed to set radio conf", __func__); return false;
+			}
+			wait_cmd();
 
-	// Save RCONF to flash
-	try {
-		if (!m_cmd.save_radio_conf()) {
-			DEBUG_ERROR("SmdSat::%s: failed to save RCONF", __func__); return false;
+			try {
+				if (!m_cmd.save_radio_conf()) {
+					DEBUG_ERROR("SmdSat::%s: failed to save RCONF", __func__); return false;
+				}
+			} catch (...) {
+				DEBUG_ERROR("SmdSat::%s: save_radio_conf exception", __func__); return false;
+			}
+			wait_cmd();
+		} else {
+			DEBUG_INFO("SmdSat::%s: adaptive modulation ON — skipping master RCONF write", __func__);
 		}
-	} catch (...) {
-		DEBUG_ERROR("SmdSat::%s: save_radio_conf exception", __func__); return false;
 	}
-	wait_cmd();
 
 	DEBUG_INFO("SmdSat::%s: credentials written successfully", __func__);
 	return true;

@@ -1268,6 +1268,195 @@ TEST(ArgosTxService, SurfacingBurstResetOnDive)
 	CHECK_EQUAL(0U, serv.get_last_schedule());  // Immediate again (reset)
 }
 
+TEST(ArgosTxService, SurfacingBurstFirstGnssTxImmediate)
+{
+	// Test that the first GNSS TX after fix is immediate (delay=0), not TR_NOM
+	fake_config_store->write_param(ParamID::ARGOS_DEPTH_PILE, BaseDepthPile::DEPTH_PILE_1);
+	fake_config_store->write_param(ParamID::ARGOS_MODE, BaseArgosMode::SURFACING_BURST);
+	fake_config_store->write_param(ParamID::ARGOS_HEXID, 0x01234567U);
+	fake_config_store->write_param(ParamID::TR_NOM, 60U);
+	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, (bool)false);
+	fake_config_store->write_param(ParamID::UNDERWATER_EN, (bool)true);
+	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, (bool)false);
+	fake_config_store->write_param(ParamID::DRY_TIME_BEFORE_TX, 0U);
+	fake_config_store->write_param(ParamID::SURFACING_BURST_INIT_S, 5U);
+	fake_config_store->write_param(ParamID::SURFACING_BURST_STEP_S, 5U);
+	fake_config_store->write_param(ParamID::SURFACING_BURST_MAX_S, 60U);
+
+	ArgosTxService serv(*mock_kineis);
+
+	std::time_t t = 1652105502000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	serv.start();
+
+	// Dive
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	notify_underwater_state(true);
+	t += 60000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	// Surface
+	notify_underwater_state(false);
+	CHECK_EQUAL(0U, serv.get_last_schedule());  // Doppler #1 immediate
+
+	// Fire Doppler TX #1
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
+			withUnsignedIntParameter("size_bits", 24);
+	system_scheduler->run();
+
+	// TX complete
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	mock_kineis->notify(KineisEventTxComplete({}));
+
+	// Inject GPS fix → switch to GNSS phase
+	inject_gps_location(true, 11.8768, -33.8232, t/1000);
+
+	// GNSS TX #1 should be IMMEDIATE (0 delay), not 60s
+	CHECK_EQUAL(0U, serv.get_last_schedule());
+
+	// Fire GNSS TX
+	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
+			withUnsignedIntParameter("size_bits", 96);
+	t += serv.get_last_schedule();
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+	system_scheduler->run();
+}
+
+TEST(ArgosTxService, SurfacingBurstDopplerMaxMsg)
+{
+	// Test that Doppler phase stops after SURFACING_BURST_MAX_MSG
+	fake_config_store->write_param(ParamID::ARGOS_DEPTH_PILE, BaseDepthPile::DEPTH_PILE_1);
+	fake_config_store->write_param(ParamID::ARGOS_MODE, BaseArgosMode::SURFACING_BURST);
+	fake_config_store->write_param(ParamID::ARGOS_HEXID, 0x01234567U);
+	fake_config_store->write_param(ParamID::TR_NOM, 60U);
+	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, (bool)false);
+	fake_config_store->write_param(ParamID::UNDERWATER_EN, (bool)true);
+	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, (bool)false);
+	fake_config_store->write_param(ParamID::DRY_TIME_BEFORE_TX, 0U);
+	fake_config_store->write_param(ParamID::SURFACING_BURST_INIT_S, 5U);
+	fake_config_store->write_param(ParamID::SURFACING_BURST_STEP_S, 0U);
+	fake_config_store->write_param(ParamID::SURFACING_BURST_MAX_S, 60U);
+	fake_config_store->write_param(ParamID::SURFACING_BURST_MAX_MSG, 2U);  // Max 2 Doppler
+
+	ArgosTxService serv(*mock_kineis);
+
+	std::time_t t = 1652105502000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	serv.start();
+
+	// Dive and surface
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	notify_underwater_state(true);
+	t += 60000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+	notify_underwater_state(false);
+
+	// Doppler #1 (immediate)
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("send").onObject(mock_kineis).ignoreOtherParameters();
+	system_scheduler->run();
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	mock_kineis->notify(KineisEventTxComplete({}));
+
+	// Doppler #2
+	mock().expectOneCall("send").onObject(mock_kineis).ignoreOtherParameters();
+	t += serv.get_last_schedule();
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+	system_scheduler->run();
+	mock_kineis->notify(KineisEventTxComplete({}));
+
+	// After 2 Doppler, burst should stop (SCHEDULE_DISABLED)
+	CHECK_TRUE(Service::SCHEDULE_DISABLED == serv.get_last_schedule());
+}
+
+TEST(ArgosTxService, SurfacingBurstAdaptiveModulationPreSwitch)
+{
+	// Test that after TX complete in adaptive mode, pre-switch to VLDA4 happens
+	fake_config_store->write_param(ParamID::ARGOS_DEPTH_PILE, BaseDepthPile::DEPTH_PILE_1);
+	fake_config_store->write_param(ParamID::ARGOS_MODE, BaseArgosMode::SURFACING_BURST);
+	fake_config_store->write_param(ParamID::ARGOS_HEXID, 0x01234567U);
+	fake_config_store->write_param(ParamID::TR_NOM, 60U);
+	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, (bool)false);
+	fake_config_store->write_param(ParamID::UNDERWATER_EN, (bool)true);
+	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, (bool)false);
+	fake_config_store->write_param(ParamID::DRY_TIME_BEFORE_TX, 0U);
+	fake_config_store->write_param(ParamID::SURFACING_BURST_INIT_S, 5U);
+	fake_config_store->write_param(ParamID::SURFACING_BURST_STEP_S, 5U);
+	fake_config_store->write_param(ParamID::SURFACING_BURST_MAX_S, 60U);
+	fake_config_store->write_param(ParamID::ARGOS_ADAPTIVE_MODULATION, (bool)true);
+	fake_config_store->write_param(ParamID::ARGOS_RADIOCONF_VLDA4, std::string("82d07f9d9ce081ee4492983672d75493"));
+	fake_config_store->write_param(ParamID::ARGOS_RADIOCONF_LDK, std::string("03921fb104b92859209b18abd009de96"));
+
+	ArgosTxService serv(*mock_kineis);
+
+	std::time_t t = 1652105502000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	serv.start();
+
+	// Dive
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	notify_underwater_state(true);
+	t += 60000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	// Surface → Doppler VLDA4
+	notify_underwater_state(false);
+
+	// Fire Doppler TX (VLDA4 mode)
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("switch_modulation").onObject(mock_kineis)
+		.withUnsignedIntParameter("mode", (unsigned int)KineisModulation::VLDA4)
+		.withStringParameter("rconf", "82d07f9d9ce081ee4492983672d75493");
+	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::VLDA4).
+			withUnsignedIntParameter("size_bits", 24);
+	system_scheduler->run();
+
+	// TX complete → TCXO restored, no pre-switch needed (already VLDA4)
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	mock_kineis->notify(KineisEventTxComplete({}));
+
+	// Inject GPS fix
+	inject_gps_location(true, 11.8768, -33.8232, t/1000);
+
+	// Fire GNSS TX → should switch to LDK
+	mock().expectOneCall("switch_modulation").onObject(mock_kineis)
+		.withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDK)
+		.withStringParameter("rconf", "03921fb104b92859209b18abd009de96");
+	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDK).
+			withUnsignedIntParameter("size_bits", 96);
+	t += serv.get_last_schedule();
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+	system_scheduler->run();
+
+	// TX complete → should pre-switch back to VLDA4
+	mock().expectOneCall("switch_modulation").onObject(mock_kineis)
+		.withUnsignedIntParameter("mode", (unsigned int)KineisModulation::VLDA4)
+		.withStringParameter("rconf", "82d07f9d9ce081ee4492983672d75493");
+	mock_kineis->notify(KineisEventTxComplete({}));
+
+	// Verify device is back to VLDA4
+	CHECK_EQUAL((unsigned int)KineisModulation::VLDA4, (unsigned int)mock_kineis->get_current_modulation());
+}
+
 TEST(ArgosTxService, DepthPileManagerSensorTimeout)
 {
 	bool enable = true;
