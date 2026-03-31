@@ -188,6 +188,14 @@ bool KIM2Device::switch_modulation(KineisModulation mode, const std::string& rco
         return false;
     }
 
+    // If device is powered off, just store the target mode.
+    // state_init() will write the correct RCONF at next power-on.
+    if (m_state == KIM2ManagerState::power_off) {
+        DEBUG_INFO("KIM2Device::%s: device OFF, deferring to next init", __func__);
+        m_current_rconf_mode = mode;
+        return true;
+    }
+
     if (!send_AT(AT_SET_RCONF, rconf_hex)) {
         DEBUG_ERROR("KIM2Device::%s: failed to set RCONF", __func__);
         return false;
@@ -434,11 +442,32 @@ void KIM2Device::state_init()
         configuration_store->write_param(ParamID::ARGOS_HEXID, m_kim2_comm.m_hex_addr);
     }
 
-    // Read RCONF from configuration store, fallback to default if empty
-    std::string rconf = configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF);
+    // Configure RCONF + KMAC
+    // When adaptive modulation is ON, use the per-modulation RCONF matching
+    // m_current_rconf_mode (set by switch_modulation() while device was OFF).
+    // When adaptive is OFF, use the master RCONF entered by the user.
+    std::string rconf;
+    bool adaptive = configuration_store->read_param<bool>(ParamID::ARGOS_ADAPTIVE_MODULATION);
+    if (adaptive) {
+        switch (m_current_rconf_mode) {
+            case KineisModulation::LDK:
+                rconf = configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF_LDK);
+                break;
+            case KineisModulation::VLDA4:
+                rconf = configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF_VLDA4);
+                break;
+            case KineisModulation::LDA2:
+            default:
+                rconf = configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF_LDA2);
+                break;
+        }
+        DEBUG_INFO("KIM2Device::state_init: adaptive ON, using RCONF for mode %d", (int)m_current_rconf_mode);
+    } else {
+        rconf = configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF);
+    }
     if (rconf.empty()) {
         rconf = "03921fb104b92859209b18abd009de96"; // Default: ESS4 - LDK - 27dBm
-        DEBUG_WARN("KIM2Device::state_init: ARGOS_RADIOCONF empty, using default");
+        DEBUG_WARN("KIM2Device::state_init: RCONF empty, using default");
     }
 
     if(!send_AT(AT_SET_RCONF, rconf))
@@ -455,7 +484,9 @@ void KIM2Device::state_init()
         return;
     }
     DEBUG_TRACE("KIM2Device::state_init RCONF and KMAC set");
-    configuration_store->write_param(ParamID::ARGOS_RADIOCONF, rconf);
+    if (!adaptive) {
+        configuration_store->write_param(ParamID::ARGOS_RADIOCONF, rconf);
+    }
 
     std::string lpm_standby = "0x0F";
     if(!send_AT(AT_SET_LPM, lpm_standby))
