@@ -132,6 +132,56 @@ unsigned int ServiceManager::get_passive_surfacing_count() {
 	return m_passive_surfacing_count;
 }
 
+void ServiceManager::enter_cooldown_sleep() {
+	DEBUG_INFO("ServiceManager: entering cooldown sleep — stopping SWS");
+
+	// Stop SWS (UW_SENSOR) to save power during cooldown
+	for (auto& p : m_map) {
+		if (p.second.get_service_id() == ServiceIdentifier::UW_SENSOR) {
+			p.second.pause_for_cooldown();
+		}
+	}
+
+	// Program wake timer for remaining cooldown duration
+	if (rtc && rtc->is_set() && m_last_successful_cycle_time > 0) {
+		unsigned int interval = configuration_store->read_param<unsigned int>(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S);
+		std::time_t elapsed = rtc->gettime() - m_last_successful_cycle_time;
+		if (elapsed < (std::time_t)interval) {
+			unsigned int remaining_ms = (interval - (unsigned int)elapsed) * 1000;
+			system_scheduler->cancel_task(m_cooldown_wake_task);
+			m_cooldown_wake_task = system_scheduler->post_task_prio([]() {
+				exit_cooldown_sleep();
+			}, "CooldownWake", Scheduler::DEFAULT_PRIORITY, remaining_ms);
+			DEBUG_INFO("ServiceManager: cooldown wake timer set for %u s", (interval - (unsigned int)elapsed));
+		} else {
+			// Cooldown already expired — restart immediately
+			exit_cooldown_sleep();
+		}
+	}
+}
+
+void ServiceManager::exit_cooldown_sleep() {
+	DEBUG_INFO("ServiceManager: exiting cooldown sleep — restarting SWS");
+
+	// Restart SWS (UW_SENSOR) — it will detect current state and resume sampling
+	for (auto& p : m_map) {
+		if (p.second.get_service_id() == ServiceIdentifier::UW_SENSOR) {
+			p.second.resume_from_cooldown();
+		}
+	}
+}
+
+void Service::pause_for_cooldown() {
+	DEBUG_INFO("Service::pause_for_cooldown: %s", m_name);
+	deschedule();
+}
+
+void Service::resume_from_cooldown() {
+	DEBUG_INFO("Service::resume_from_cooldown: %s", m_name);
+	if (m_is_started)
+		reschedule();
+}
+
 Service::Service(ServiceIdentifier service_id, const char *name, Logger *logger) {
 	m_is_started = false;
 	m_name = name;
@@ -197,9 +247,10 @@ void Service::notify_underwater_state(bool state) {
 	} else {
 		// Check cooldown: skip reschedule if a successful cycle completed recently
 		if (rtc && rtc->is_set() && ServiceManager::is_in_cooldown(rtc->gettime())) {
-			// Log passive surfacing only once per surfacing event (from the first service that checks)
-			if (m_service_id == ServiceIdentifier::GNSS_SENSOR || m_service_id == ServiceIdentifier::ARGOS_TX || m_service_id == ServiceIdentifier::LORA_TX) {
+			// Log passive surfacing and enter cooldown sleep once per surfacing event
+			if (m_service_id == ServiceIdentifier::GNSS_SENSOR) {
 				ServiceManager::notify_passive_surfacing();
+				ServiceManager::enter_cooldown_sleep();  // Stop SWS + program wake timer
 			}
 			DEBUG_INFO("Service::notify_underwater_state: service %s skipped (cooldown active)", m_name);
 			return;

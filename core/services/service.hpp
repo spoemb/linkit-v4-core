@@ -86,6 +86,11 @@ protected:
 	template <typename T> void service_write_param(ParamID param_id, T& value) {
 		configuration_store->write_param(param_id, value);
 	}
+
+public:
+	// Cooldown sleep: pause/resume service externally (used by ServiceManager)
+	void pause_for_cooldown();
+	void resume_from_cooldown();
 };
 
 class ServiceManager
@@ -113,4 +118,9 @@ public:
 	static unsigned int get_passive_surfacing_count();
 	static void save_cooldown_state();
 	static void restore_cooldown_state();
+	static void enter_cooldown_sleep();
+	static void exit_cooldown_sleep();
+
+private:
+	static inline Scheduler::TaskHandle m_cooldown_wake_task;
 };

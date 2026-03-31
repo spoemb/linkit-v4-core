@@ -46,6 +46,7 @@ void ArgosTxService::service_init() {
 	m_has_gnss_fix_since_surfacing = false;
 	m_first_gnss_tx_sent = false;
 	m_last_tx_had_gps = false;
+	m_cooldown_armed = false;
 	m_last_preconfig_mod = KineisModulation::LDA2;
 	m_modulation_preconfig.reset();
 
@@ -110,6 +111,12 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 				unsigned int max_msg = configuration_store->read_param<unsigned int>(ParamID::SURFACING_BURST_MAX_MSG);
 				if (max_msg > 0 && m_doppler_burst_count >= max_msg) {
 					DEBUG_INFO("ArgosTxService::SURFACING_BURST: Doppler limit reached (%u/%u), stopping burst", m_doppler_burst_count, max_msg);
+					// Arm cooldown if trigger mode is END_OF_DOPPLER (max messages reached without fix)
+					unsigned int trigger = configuration_store->read_param<unsigned int>(ParamID::COOLDOWN_TRIGGER_MODE);
+					if (trigger == (unsigned int)BaseCooldownTrigger::END_OF_DOPPLER && !m_cooldown_armed) {
+						m_cooldown_armed = true;
+						DEBUG_INFO("ArgosTxService: cooldown armed (END_OF_DOPPLER, max msg)");
+					}
 					m_is_surfacing_burst = false;
 					m_first_gnss_tx_sent = false;
 					return Service::SCHEDULE_DISABLED;
@@ -300,6 +307,13 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 				DEBUG_INFO("ArgosTxService::SURFACING_BURST: GNSS fix acquired after %u Doppler messages - switching to GNSS phase",
 				           m_doppler_burst_count);
 				m_has_gnss_fix_since_surfacing = true;
+
+				// Arm cooldown if trigger mode is END_OF_DOPPLER (Doppler phase ends on GNSS fix)
+				unsigned int trigger = configuration_store->read_param<unsigned int>(ParamID::COOLDOWN_TRIGGER_MODE);
+				if (trigger == (unsigned int)BaseCooldownTrigger::END_OF_DOPPLER && !m_cooldown_armed) {
+					m_cooldown_armed = true;
+					DEBUG_INFO("ArgosTxService: cooldown armed (END_OF_DOPPLER, GNSS fix)");
+				}
 				service_reschedule();
 				Service::notify_peer_event(e);
 				return;
@@ -317,6 +331,13 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 			// Device went underwater: skip TCXO warmup on first TX after next surfacing
 			m_tcxo_skip_on_next_tx = true;
 			m_kineis.set_tcxo_warmup_time(0);
+
+			// Activate cooldown on dive if armed during this surfacing session
+			if (m_cooldown_armed) {
+				ServiceManager::set_cycle_complete(service_current_time());
+				m_cooldown_armed = false;
+			}
+
 			// Reset surfacing burst state on dive
 			m_is_surfacing_burst = false;
 			m_doppler_burst_count = 0;
@@ -346,6 +367,13 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 			configuration_store->get_argos_configuration(argos_config);
 			std::time_t earliest_schedule = service_current_time() + argos_config.dry_time_before_tx;
 			m_sched.set_earliest_schedule(earliest_schedule);
+
+			// Arm cooldown immediately if trigger mode is AT_SURFACE
+			unsigned int trigger = configuration_store->read_param<unsigned int>(ParamID::COOLDOWN_TRIGGER_MODE);
+			if (trigger == (unsigned int)BaseCooldownTrigger::AT_SURFACE) {
+				m_cooldown_armed = true;
+				DEBUG_INFO("ArgosTxService: cooldown armed (AT_SURFACE)");
+			}
 
 			// Activate surfacing burst mode
 			if (argos_config.mode == BaseArgosMode::SURFACING_BURST) {
@@ -624,13 +652,23 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 		}
 	}
 
-	// Activate cooldown on any TX during a surfacing cycle (not just GPS).
-	// This ensures aborted cycles (Doppler-only) also trigger cooldown,
-	// preventing rapid re-triggering on short surfacings.
+	// Cooldown arming based on trigger mode.
+	// The cooldown timer actually starts on the next UW event (dive), not here.
 	{
-		std::time_t now = service_current_time();
-		if (now > 0 && (m_last_tx_had_gps || m_is_surfacing_burst))
-			ServiceManager::set_cycle_complete(now);
+		unsigned int trigger = configuration_store->read_param<unsigned int>(ParamID::COOLDOWN_TRIGGER_MODE);
+		if (trigger == (unsigned int)BaseCooldownTrigger::AFTER_LAST_TX) {
+			// Mode 3: arm on every TX complete (timer restarts each time)
+			if (m_last_tx_had_gps || m_is_surfacing_burst) {
+				m_cooldown_armed = true;
+			}
+		} else if (trigger == (unsigned int)BaseCooldownTrigger::AFTER_FIRST_GNSS) {
+			// Mode 2: arm after first GNSS TX only
+			if (m_last_tx_had_gps && !m_cooldown_armed) {
+				m_cooldown_armed = true;
+				DEBUG_INFO("ArgosTxService: cooldown armed (AFTER_FIRST_GNSS)");
+			}
+		}
+		// Modes 0 (AT_SURFACE) and 1 (END_OF_DOPPLER) are handled elsewhere
 	}
 
 	m_sched.notify_tx_complete();

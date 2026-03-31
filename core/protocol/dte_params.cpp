@@ -302,7 +302,9 @@ const BaseMap param_map[] = {
 	{ "MIN_SURFACE_CYCLE_INTERVAL_S", "UNP20", BaseEncoding::UINT, 0U, 86400U, {}, true, true },
 	// [212] Surfacing burst Doppler limit: 0=unlimited, else stop Doppler phase after N messages
 	{ "SURFACING_BURST_MAX_MSG", "ARP43", BaseEncoding::UINT, 0U, 255U, {}, true, true },
-	// [213] SMD LPM mode bitmap: idle sleep between TX (module is powered off between sessions)
+	// [213] Cooldown trigger mode: when to arm the cooldown timer
+	{ "COOLDOWN_TRIGGER_MODE", "UNP30", BaseEncoding::UINT, 0U, 3U, { 0U, 1U, 2U, 3U }, true, true },
+	// [214] SMD LPM mode bitmap: idle sleep between TX (module is powered off between sessions)
 	{ "SMD_LPM_MODE", "ARP60", BaseEncoding::UINT, 0x01U, 0x1FU, {}, (ARGOS_SMD == 1), true },
 };
 
