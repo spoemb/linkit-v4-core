@@ -327,16 +327,17 @@ void SmdSat::state_load_kmac() {
 			DEBUG_WARN("SmdSat::%s: failed to write TCXO warmup", __func__);
 		}
 
-		// LPM mode: NOT IMPLEMENTED — SMD is fully powered off between TX
-		// (SAT_PWR_EN=LOW in state_stopped_enter). The AT+LPM command would only
-		// be useful if the SMD stays powered between TX (idle-to-idle without power cycle).
-		// Kept for future use if fast back-to-back TX is needed.
-		// try {
-		// 	m_cmd.write_lpm(&m_lpm_mode);
-		// 	DEBUG_TRACE("SmdSat::%s: LPM mode written: 0x%02X", __func__, m_lpm_mode);
-		// } catch (...) {
-		// 	DEBUG_WARN("SmdSat::%s: failed to write LPM mode", __func__);
-		// }
+		// Write LPM mode if not NONE — RAM-only register on STM32, lost on reset.
+		// The module is fully powered off between sessions (SAT_PWR_EN=LOW).
+		// LPM is used during idle wait (between TX in same session) to save power.
+		if (m_lpm_mode != 0x01) {
+			try {
+				m_cmd.write_lpm(&m_lpm_mode);
+				DEBUG_INFO("SmdSat::%s: LPM mode written: 0x%02X", __func__, m_lpm_mode);
+			} catch (...) {
+				DEBUG_WARN("SmdSat::%s: failed to write LPM mode", __func__);
+			}
+		}
 
 		SMD_STATE_CHANGE(load_kmac, idle_pending);
 	} else {
@@ -378,9 +379,26 @@ void SmdSat::state_idle_pending() {
 void SmdSat::state_idle_enter() {
 	m_next_delay = SMDSAT_DELAY_TICK_INTERRUPT_MS;
 	m_state_counter = m_idle_timeout_ms / SMDSAT_DELAY_TICK_INTERRUPT_MS;
+
+	// If LPM allows STANDBY/SHUTDOWN, release wakeup pin LOW so SMD can
+	// enter deep sleep while waiting for next TX in this session.
+#ifdef SAT_EXTWAKEUP
+	if (m_lpm_mode & 0x18) {
+		GPIOPins::clear(SAT_EXTWAKEUP);
+		DEBUG_TRACE("SmdSat::%s: WKUP LOW (LPM=0x%02X)", __func__, m_lpm_mode);
+	}
+#endif
 }
 
 void SmdSat::state_idle_exit() {
+	// Wake SMD from deep sleep before any SPI command (TX or stop)
+#ifdef SAT_EXTWAKEUP
+	if (m_lpm_mode & 0x18) {
+		GPIOPins::set(SAT_EXTWAKEUP);
+		nrf_delay_ms(50);  // STM32 wakeup from STANDBY/SHUTDOWN takes ~50ms
+		DEBUG_TRACE("SmdSat::%s: WKUP HIGH (wakeup from LPM)", __func__);
+	}
+#endif
 	m_next_delay = SMDSAT_DELAY_CMD_MS;
 }
 

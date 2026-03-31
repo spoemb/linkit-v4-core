@@ -302,9 +302,8 @@ const BaseMap param_map[] = {
 	{ "MIN_SURFACE_CYCLE_INTERVAL_S", "UNP20", BaseEncoding::UINT, 0U, 86400U, {}, true, true },
 	// [212] Surfacing burst Doppler limit: 0=unlimited, else stop Doppler phase after N messages
 	{ "SURFACING_BURST_MAX_MSG", "ARP43", BaseEncoding::UINT, 0U, 255U, {}, true, true },
-	// [213] SMD LPM mode: NOT IMPLEMENTED — SMD is fully powered off between TX.
-	// Kept as reserved slot for future use (fast back-to-back TX without power cycle).
-	{ "SMD_LPM_MODE", "ARP60", BaseEncoding::UINT, 0x01U, 0x1FU, {}, false, false },
+	// [213] SMD LPM mode bitmap: idle sleep between TX (module is powered off between sessions)
+	{ "SMD_LPM_MODE", "ARP60", BaseEncoding::UINT, 0x01U, 0x1FU, {}, (ARGOS_SMD == 1), true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);
