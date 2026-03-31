@@ -34,6 +34,11 @@ void ArgosTxService::service_init() {
 	uint8_t lpm = static_cast<uint8_t>(configuration_store->read_param<unsigned int>(ParamID::SMD_LPM_MODE));
 	m_kineis.set_lpm_mode(lpm);
 
+	// Warn if SURFACING_BURST mode is configured without underwater detection
+	if (argos_config.mode == BaseArgosMode::SURFACING_BURST && !argos_config.underwater_en) {
+		DEBUG_WARN("ArgosTxService: SURFACING_BURST mode requires UNDERWATER_EN=1 — burst will not trigger without SWS");
+	}
+
 	DEBUG_TRACE("ArgosTxService::service_init DEBUG ARGOS ID %d", argos_config.argos_id);
 	m_sched.reset(argos_config.argos_id); // TODO verify if already set at this moment
 	m_depth_pile_manager.clear();
@@ -100,7 +105,7 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 			return Service::SCHEDULE_DISABLED;
 		} else if (argos_config.mode == BaseArgosMode::DOPPLER) {
 			m_scheduled_task = [this]() { process_doppler_burst(); };
-			m_scheduled_mode = KineisModulation::LDA2;
+			m_scheduled_mode = argos_config.adaptive_modulation ? KineisModulation::VLDA4 : KineisModulation::LDA2;
 			return m_sched.schedule_legacy(argos_config, now);
 		} else if (argos_config.mode == BaseArgosMode::SURFACING_BURST) {
 			m_scheduled_mode = KineisModulation::LDA2;
@@ -178,11 +183,11 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 			if (!argos_config.gnss_en) {
 				m_scheduled_task = [this]() { process_doppler_burst(); };
 				if (argos_config.mode == BaseArgosMode::DUTY_CYCLE) {
-					m_scheduled_mode = KineisModulation::LDA2;
+					m_scheduled_mode = argos_config.adaptive_modulation ? KineisModulation::VLDA4 : KineisModulation::LDA2;
 					return m_sched.schedule_duty_cycle(argos_config, now);
 				}
 				if (argos_config.mode == BaseArgosMode::LEGACY) {
-					m_scheduled_mode = KineisModulation::LDA2;
+					m_scheduled_mode = argos_config.adaptive_modulation ? KineisModulation::VLDA4 : KineisModulation::LDA2;
 					return m_sched.schedule_legacy(argos_config, now);
 				}
 				return Service::SCHEDULE_DISABLED;
@@ -202,6 +207,12 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 			}
 			if (argos_config.mode == BaseArgosMode::DUTY_CYCLE) {
 				m_scheduled_mode = KineisModulation::LDA2;
+#ifdef BOARD_RSPB
+				if (argos_config.adaptive_modulation && argos_config.sensor_tx_enable) {
+					unsigned int pkt_fmt = configuration_store->read_param<unsigned int>(ParamID::RSPB_PACKET_FORMAT);
+					if (pkt_fmt == 1) m_scheduled_mode = KineisModulation::LDK;
+				}
+#endif
 				if (argos_config.sensor_tx_enable) {
 					m_scheduled_task = [this]() { process_sensor_burst(); };
 				} else {
@@ -211,6 +222,12 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 			}
 			if (argos_config.mode == BaseArgosMode::LEGACY) {
 				m_scheduled_mode = KineisModulation::LDA2;
+#ifdef BOARD_RSPB
+				if (argos_config.adaptive_modulation && argos_config.sensor_tx_enable) {
+					unsigned int pkt_fmt = configuration_store->read_param<unsigned int>(ParamID::RSPB_PACKET_FORMAT);
+					if (pkt_fmt == 1) m_scheduled_mode = KineisModulation::LDK;
+				}
+#endif
 				if (argos_config.sensor_tx_enable) {
 					m_scheduled_task = [this]() { process_sensor_burst(); };
 				} else {
@@ -250,6 +267,23 @@ void ArgosTxService::service_initiate() {
 		DEBUG_INFO("ArgosTxService::service_initiate: applying deferred modulation switch to %d", (int)m_modulation_preconfig.value());
 		ensure_modulation(m_modulation_preconfig.value());
 		m_modulation_preconfig.reset();
+	}
+
+	// Adaptive modulation pre-switch for LEGACY/DUTY_CYCLE/DOPPLER modes.
+	// In these modes we switch RCONF + reload KMAC at init time (no timing
+	// constraint). For SURFACING_BURST, the switch is done at TX complete
+	// or during process to avoid KMAC reload at boot.
+	if (!m_modulation_preconfig.has_value()) {
+		ArgosConfig argos_config;
+		configuration_store->get_argos_configuration(argos_config);
+		if (argos_config.adaptive_modulation &&
+			argos_config.mode != BaseArgosMode::SURFACING_BURST) {
+			if (m_kineis.get_current_modulation() != m_scheduled_mode) {
+				DEBUG_INFO("ArgosTxService::service_initiate: adaptive pre-switch to %s",
+				           argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode));
+				ensure_modulation(m_scheduled_mode);
+			}
+		}
 	}
 
 	// Track Doppler burst count (before TX, for scheduling interval calculation)
