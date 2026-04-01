@@ -12,6 +12,7 @@ namespace KIM2 {
         AT_GET_ID,
         AT_GET_ADDR,
         AT_SET_RCONF,
+        AT_SAVE_RCONF,
         AT_SET_KMAC_BASIC,
         AT_SET_LPM,
         AT_TX,

@@ -93,6 +93,7 @@ const std::list<ATCmd_list> cmd_list = {
     {AT_GET_ID, "AT+ID=?\r\n", false},
     {AT_GET_ADDR, "AT+ADDR=?\r\n", false},
     {AT_SET_RCONF, "AT+RCONF=", true},
+    {AT_SAVE_RCONF, "AT+SAVE_RCONF\r\n", false},
     {AT_SET_KMAC_BASIC, "AT+KMAC=1\r\n", false}, // TODO : add BLIND mode support
     {AT_SET_LPM, "AT+LPM=", true},
     {AT_TX, "AT+TX=", true}

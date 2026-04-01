@@ -47,6 +47,7 @@ private:
 	KineisPacket m_packet_buffer;
 	KineisModulation m_tx_mode;
 	KineisModulation m_current_rconf_mode;
+	std::string m_last_saved_rconf;
 	std::atomic<bool> m_tx_done;
 
 	// TX poll state

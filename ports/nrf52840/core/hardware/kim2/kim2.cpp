@@ -201,11 +201,17 @@ bool KIM2Device::switch_modulation(KineisModulation mode, const std::string& rco
         return false;
     }
 
+    if (!send_AT(AT_SAVE_RCONF)) {
+        DEBUG_ERROR("KIM2Device::%s: failed to save RCONF", __func__);
+        return false;
+    }
+
     if (!send_AT(AT_SET_KMAC_BASIC)) {
         DEBUG_ERROR("KIM2Device::%s: failed to reload KMAC", __func__);
         return false;
     }
 
+    m_last_saved_rconf = rconf_hex;
     m_current_rconf_mode = mode;
     DEBUG_INFO("KIM2Device::%s: modulation switched OK", __func__);
     return true;
@@ -470,11 +476,24 @@ void KIM2Device::state_init()
         DEBUG_WARN("KIM2Device::state_init: RCONF empty, using default");
     }
 
-    if(!send_AT(AT_SET_RCONF, rconf))
-    {
-        DEBUG_ERROR("KIM2Device::state_init: can not set RCONF");
-        KIM2_STATE_CHANGE(init, error);
-        return;
+    if (rconf != m_last_saved_rconf) {
+        if(!send_AT(AT_SET_RCONF, rconf))
+        {
+            DEBUG_ERROR("KIM2Device::state_init: can not set RCONF");
+            KIM2_STATE_CHANGE(init, error);
+            return;
+        }
+
+        if(!send_AT(AT_SAVE_RCONF))
+        {
+            DEBUG_ERROR("KIM2Device::state_init: can not save RCONF");
+            KIM2_STATE_CHANGE(init, error);
+            return;
+        }
+        m_last_saved_rconf = rconf;
+        DEBUG_TRACE("KIM2Device::state_init RCONF set and saved");
+    } else {
+        DEBUG_TRACE("KIM2Device::state_init RCONF unchanged, skipping");
     }
 
     if(!send_AT(AT_SET_KMAC_BASIC))
@@ -483,7 +502,7 @@ void KIM2Device::state_init()
         KIM2_STATE_CHANGE(init, error);
         return;
     }
-    DEBUG_TRACE("KIM2Device::state_init RCONF and KMAC set");
+    DEBUG_TRACE("KIM2Device::state_init KMAC set");
     if (!adaptive) {
         configuration_store->write_param(ParamID::ARGOS_RADIOCONF, rconf);
     }
