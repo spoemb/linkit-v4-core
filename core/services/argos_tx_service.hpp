@@ -219,4 +219,12 @@ private:
 	std::string get_rconf_for_modulation(KineisModulation mode);
 	KineisModulation m_last_preconfig_mod;
 	std::optional<KineisModulation> m_modulation_preconfig;  // Cached target for deferred switch
+
+	// Device error backoff: avoid draining battery on persistent hardware failures
+	// (e.g. SMD SPI communication breakdown). After MAX consecutive errors in a
+	// session, TX is suspended until next boot/session.
+	static constexpr unsigned int DEVICE_ERROR_MAX_CONSECUTIVE = 3;
+	static constexpr unsigned int DEVICE_ERROR_BACKOFF_BASE_MS = 60000;  // 1 min base
+	static constexpr unsigned int DEVICE_ERROR_BACKOFF_MAX_MS  = 600000; // 10 min cap
+	unsigned int m_consecutive_device_errors;
 };

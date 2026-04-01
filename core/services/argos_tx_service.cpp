@@ -54,6 +54,7 @@ void ArgosTxService::service_init() {
 	m_cooldown_armed = false;
 	m_last_preconfig_mod = KineisModulation::LDA2;
 	m_modulation_preconfig.reset();
+	m_consecutive_device_errors = 0;
 
 	// Set the idle timeout depending on the configuration settings
 	// i) In certification mode, keep powered on for 10 seconds in idle
@@ -253,6 +254,16 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 
 void ArgosTxService::service_initiate() {
 	DEBUG_TRACE("ArgosTxService::service_initiate");
+
+	// Skip TX if device has failed too many consecutive times this session.
+	// This prevents battery drain from persistent hardware failures (e.g. SPI breakdown).
+	if (m_consecutive_device_errors >= DEVICE_ERROR_MAX_CONSECUTIVE) {
+		DEBUG_WARN("ArgosTxService::service_initiate: skipping TX — %u consecutive device errors, suspending until next session",
+		           m_consecutive_device_errors);
+		service_complete(nullptr, nullptr, false);  // complete without rescheduling
+		return;
+	}
+
 	m_is_first_tx = false;
 	m_is_tx_pending = true;
 
@@ -642,6 +653,7 @@ void ArgosTxService::react(KineisEventTxStarted const&) {
 void ArgosTxService::react(KineisEventTxComplete const&) {
 	DEBUG_TRACE("ArgosTxService::react: KineisEventTxComplete");
 	m_is_tx_pending = false;
+	m_consecutive_device_errors = 0;
 
 	// Restore TCXO warmup after first TX post-submerge
 	if (m_tcxo_skip_on_next_tx) {
@@ -710,7 +722,10 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 }
 
 void ArgosTxService::react(KineisEventDeviceError const&) {
-	DEBUG_TRACE("ArgosTxService::react: KineisEventDeviceError");
+	m_consecutive_device_errors++;
+	DEBUG_WARN("ArgosTxService::react: KineisEventDeviceError (consecutive=%u/%u)",
+	           m_consecutive_device_errors, DEVICE_ERROR_MAX_CONSECUTIVE);
+
 	// Restore TCXO warmup if it was skipped
 	if (m_tcxo_skip_on_next_tx) {
 		ArgosConfig argos_config;
@@ -732,8 +747,22 @@ void ArgosTxService::react(KineisEventDeviceError const&) {
 		}
 	}
 
-	if (service_cancel())
-		service_complete();
+	if (service_cancel()) {
+		if (m_consecutive_device_errors >= DEVICE_ERROR_MAX_CONSECUTIVE) {
+			// Max errors reached — stop rescheduling to save battery.
+			// TX will resume at next boot/session (service_init resets counter).
+			DEBUG_ERROR("ArgosTxService: %u consecutive device errors — suspending TX for this session",
+			            m_consecutive_device_errors);
+			service_complete(nullptr, nullptr, false);  // no reschedule
+		} else {
+			// Apply exponential backoff: 1min, 2min, 4min... capped at 10min
+			unsigned int backoff_ms = DEVICE_ERROR_BACKOFF_BASE_MS << (m_consecutive_device_errors - 1);
+			if (backoff_ms > DEVICE_ERROR_BACKOFF_MAX_MS) backoff_ms = DEVICE_ERROR_BACKOFF_MAX_MS;
+			DEBUG_WARN("ArgosTxService: backoff %u ms before next TX attempt", backoff_ms);
+			m_sched.set_earliest_schedule(service_current_time() + backoff_ms / 1000);
+			service_complete();
+		}
+	}
 }
 
 // ArgosPacketBuilder
