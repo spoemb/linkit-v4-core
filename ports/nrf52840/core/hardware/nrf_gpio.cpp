@@ -38,16 +38,29 @@ void GPIOPins::initialise()
 	drive_low(SMD_VPA_PIN);
 #endif
 
+	// RSPB: SMD UART pins (P0.26/P0.14) not used in SPI mode — pulldown to prevent float
+#if defined(BOARD_RSPB) && !defined(SMD_UART)
+	nrf_gpio_cfg_input(NRF_GPIO_PIN_MAP(0, 26), NRF_GPIO_PIN_PULLDOWN);
+	nrf_gpio_cfg_input(NRF_GPIO_PIN_MAP(0, 14), NRF_GPIO_PIN_PULLDOWN);
+#endif
+
 	clear(SWS_ENABLE_PIN);
 #ifdef GPIO_AG_PWR_PIN
 	set(GPIO_AG_PWR_PIN);	// BMA400 must be ON to avoid leakage current. BMA 400 sleep current is 200nA
 #endif
 #ifdef SENSORS_PWR_PIN
-	// VSENSORS starts OFF - sensors will acquire/release power as needed
+	// FIXME (RSPB): I2C pull-ups R21/R24 are on DCDC_3V3, not VSENSORS.
+	// When VSENSORS is OFF, ~1.3mA backfeeds through sensor ESD diodes.
+	// Workaround: power ON VSENSORS immediately at boot and keep it ON.
+	// Fix in next PCB revision: move R21/R24 to VSENSORS rail.
+#if defined(BOARD_RSPB)
+	set(SENSORS_PWR_PIN);
+	m_sensors_pwr_refcount = 1;  // Prevent release_sensors_pwr() from cutting it
+	reconnect_sensor_pins();
+#else
 	clear(SENSORS_PWR_PIN);
-	// Disconnect all sensor-related pins while VSENSORS is off
-	// to prevent floating inputs and backfeed current through ESD diodes
 	disconnect_sensor_pins();
+#endif
 #endif
 #ifdef ADC_ENABLE
 	set(ADC_ENABLE);		// Enable ADC to avoid leakage current (I2C pull up)
