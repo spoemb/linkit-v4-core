@@ -67,6 +67,7 @@ private:
 
 	void power_off();
 	void power_on();
+	void power_on_blocking();  // Synchronous boot: power + reset + SPI init + wait for ping + VPA release
 	bool write_credentials_from_config();
 
 	// State machine functionality

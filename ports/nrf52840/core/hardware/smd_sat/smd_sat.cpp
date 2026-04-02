@@ -80,6 +80,50 @@ void SmdSat::shutdown(void) {
 #endif
 }
 
+void SmdSat::power_on_blocking() {
+	DEBUG_INFO("SmdSat::%s: synchronous boot sequence", __func__);
+
+	GPIOPins::acquire_sensors_pwr();
+
+	// Hold RESET LOW during power ramp
+	GPIOPins::init_pin(SAT_RESET);
+	GPIOPins::clear(SAT_RESET);
+
+#ifdef SAT_EXTWAKEUP
+	GPIOPins::init_pin(SAT_EXTWAKEUP);
+	GPIOPins::set(SAT_EXTWAKEUP);
+#endif
+
+	// Power ON — VPA stays LOW (driven by nRF) to prevent PA regulator spike
+	GPIOPins::set(SAT_PWR_EN);
+	PMU::kick_watchdog();
+	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
+
+	// Release RESET — STM32WL boots
+	GPIOPins::release_to_highz(SAT_RESET);
+	PMU::kick_watchdog();
+	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
+
+	// Init SPI AFTER boot (avoid MISO backfeed during power ramp)
+	m_cmd.init();
+
+	// Wait for STM32WL to respond
+	bool ready = false;
+	for (uint8_t attempt = 0; attempt < 10; attempt++) {
+		PMU::kick_watchdog();
+		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS / 2);
+		if (m_cmd.ping()) {
+			ready = true;
+			break;
+		}
+	}
+
+	// VPA stays LOW until TX — released in state_transmit_pending, driven LOW again after TX
+	if (!ready) {
+		DEBUG_ERROR("SmdSat::%s: SMD did not respond after boot", __func__);
+	}
+}
+
 void SmdSat::power_off() {
 	DEBUG_TRACE("SmdSat::%s",__func__);
 	if (!SMD_STATE_EQUAL(stopped)) {
@@ -184,7 +228,9 @@ void SmdSat::state_starting()
 	// is_kmac_profil_loaded is NOT reset here — the KMAC profile is persisted
 	// in SMD flash across power cycles. Only reset on credential/RCONF changes.
 	m_credentials_written = false;
-	m_cmd.init();
+	// SPI init is deferred to state_idle_pending (after power-on + reset release).
+	// Initializing SPI here would configure MISO as input without pulldown while
+	// the STM32WL is booting — risk of MISO backfeed via nRF ESD diode.
 	m_state_counter = 3;
 	m_next_delay = 0;
 	SMD_STATE_CHANGE(starting, powering_on);
@@ -221,6 +267,7 @@ void SmdSat::state_stopped_enter() {
 	this->shutdown();
 	GPIOPins::release_sensors_pwr();
 	nrf_gpio_cfg_default(BSP::GPIO_Inits[SAT_RESET].pin_number);
+
 	// Keep is_kmac_profil_loaded = true — the KMAC profile is persisted in
 	// SMD flash and does not need reloading on every boot. It is only reset
 	// to false when credentials change or a deferred RCONF is applied.
@@ -244,27 +291,30 @@ void SmdSat::state_powering_on() {
 
 	GPIOPins::acquire_sensors_pwr();
 
+	// Step 1: Assert RESET LOW before powering on — hold STM32WL in reset
+	// during VDD ramp-up to prevent undefined behavior at low voltage.
+	// SAT_RESET is open-drain (S0D1) with external pull-up on SMD VDD rail.
+	// While SAT_PWR_EN is LOW, the pull-up is unpowered → no leakage.
 	GPIOPins::init_pin(SAT_RESET);
 	GPIOPins::clear(SAT_RESET);
-	nrf_delay_ms(10);
 
-	// Assert wakeup pin HIGH before power-on to ensure SMD wakes from
-	// STANDBY/SHUTDOWN (PB3 must be HIGH for the STM32 to stay awake)
+	// Step 2: Assert wakeup pin HIGH (LinkIt only) before power-on
 #ifdef SAT_EXTWAKEUP
 	GPIOPins::init_pin(SAT_EXTWAKEUP);
 	GPIOPins::set(SAT_EXTWAKEUP);
 #endif
 
+	// Step 3: Power ON — VDD ramp starts, STM32WL held in reset by RESET_B=LOW
+	// VPA stays LOW (driven by nRF) to prevent PA regulator activation during boot.
 	GPIOPins::set(SAT_PWR_EN);
-#ifdef SMD_VPA_PIN
-	GPIOPins::release_to_highz(SMD_VPA_PIN);
-#endif
-	DEBUG_TRACE("SmdSat::%s: Power enabled | waiting for stabilization", __func__);
+	DEBUG_TRACE("SmdSat::%s: SAT_PWR_EN=HIGH, RESET=LOW, VPA=LOW", __func__);
 
+	// Step 4: Wait for VDD stabilization (150ms >> 5ms required)
 	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 
+	// Step 5: Release RESET — pull-up on SMD VDD rail pulls HIGH → STM32WL boots
 	GPIOPins::release_to_highz(SAT_RESET);
-	DEBUG_TRACE("SmdSat::%s: Reset released", __func__);
+	DEBUG_TRACE("SmdSat::%s: RESET released, VPA held LOW until ping OK", __func__);
 
 	SMD_STATE_CHANGE(powering_on, idle_pending);
 }
@@ -360,6 +410,9 @@ void SmdSat::state_load_kmac() {
 }
 
 void SmdSat::state_idle_pending_enter() {
+	// Init SPI here (after power-on + reset release) to avoid MISO backfeed.
+	// STM32WL has booted and its GPIOs are in a defined state now.
+	m_cmd.init();
 	m_next_delay = SMDSAT_DELAY_CMD_MS;
 	m_state_counter = 10;
 }
@@ -370,6 +423,7 @@ void SmdSat::state_idle_pending_exit() {
 
 void SmdSat::state_idle_pending() {
 	if (m_cmd.ping()) {
+		// VPA stays LOW — only released just before TX (state_transmit_pending)
 		if (!is_kmac_profil_loaded) {
 			SMD_STATE_CHANGE(idle_pending, load_kmac);
 		} else {
@@ -440,6 +494,11 @@ void SmdSat::state_transmit_pending_exit() {
 
 void SmdSat::state_transmit_pending() {
 	if (m_tx_buffer.size()) {
+		// Release VPA just before TX — PA regulator needs to be enabled for RF output
+#ifdef SMD_VPA_PIN
+		GPIOPins::release_to_highz(SMD_VPA_PIN);
+		DEBUG_TRACE("SmdSat::%s: VPA released for TX", __func__);
+#endif
 		if (!m_cmd.initiate_tx(m_tx_buffer)) {
 			DEBUG_ERROR("SmdSat::%s: initiate_tx failed, aborting TX", __func__);
 			m_tx_buffer.clear();
@@ -465,6 +524,11 @@ void SmdSat::state_transmitting_enter() {
 
 void SmdSat::state_transmitting_exit() {
 	m_is_first_tx = false;
+	// Drive VPA LOW after TX — PA regulator no longer needed
+#ifdef SMD_VPA_PIN
+	GPIOPins::drive_low(SMD_VPA_PIN);
+	DEBUG_TRACE("SmdSat::%s: VPA driven LOW after TX", __func__);
+#endif
 }
 
 void SmdSat::state_transmitting() {
@@ -694,36 +758,7 @@ void SmdSat::set_credentials(unsigned int dec_id, unsigned int address, const st
 	};
 
 	if (was_stopped) {
-		GPIOPins::acquire_sensors_pwr();
-		GPIOPins::init_pin(SAT_RESET);
-		GPIOPins::clear(SAT_RESET);
-		GPIOPins::set(SAT_PWR_EN);
-#ifdef SMD_VPA_PIN
-		GPIOPins::release_to_highz(SMD_VPA_PIN);
-#endif
-		PMU::kick_watchdog();
-		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
-		GPIOPins::release_to_highz(SAT_RESET);
-		PMU::kick_watchdog();
-		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
-	}
-	m_cmd.init();
-
-	{
-		bool smd_ready = false;
-		for (uint8_t attempt = 0; attempt < 10; attempt++) {
-			PMU::kick_watchdog();
-			nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS / 2);
-			if (m_cmd.ping()) {
-				DEBUG_INFO("SmdSat::%s: SMD ready after %u attempts", __func__, attempt + 1);
-				smd_ready = true;
-				break;
-			}
-		}
-		if (!smd_ready) {
-			DEBUG_ERROR("SmdSat::%s: SMD not ready after power-on | aborting", __func__);
-			goto cleanup;
-		}
+		power_on_blocking();
 	}
 
 	for (uint8_t retry = 0; retry < SMDSAT_SPI_MAX_RETRIES; retry++) {
@@ -866,20 +901,8 @@ void SmdSat::read_credentials(unsigned int *dec_id, unsigned int *address, std::
 	bool was_stopped = (m_state == SmdSatState::stopped);
 
 	if (was_stopped) {
-		GPIOPins::acquire_sensors_pwr();
-		GPIOPins::init_pin(SAT_RESET);
-		GPIOPins::clear(SAT_RESET);
-		GPIOPins::set(SAT_PWR_EN);
-#ifdef SMD_VPA_PIN
-		GPIOPins::release_to_highz(SMD_VPA_PIN);
-#endif
-		PMU::kick_watchdog();
-		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
-		GPIOPins::release_to_highz(SAT_RESET);
-		PMU::kick_watchdog();
-		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
+		power_on_blocking();
 	}
-	m_cmd.init();
 
 	PMU::kick_watchdog();
 	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
@@ -1027,13 +1050,13 @@ bool SmdSat::dfu_enter() {
 	if (was_stopped) {
 		GPIOPins::acquire_sensors_pwr();
 		GPIOPins::set(SAT_PWR_EN);
+		PMU::kick_watchdog();
+		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
+		PMU::kick_watchdog();
+		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 #ifdef SMD_VPA_PIN
 		GPIOPins::release_to_highz(SMD_VPA_PIN);
 #endif
-		PMU::kick_watchdog();
-		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
-		PMU::kick_watchdog();
-		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 
 		// Only init SPI if it wasn't already running
 		m_cmd.init();
@@ -1170,33 +1193,10 @@ SmdDfuResponse SmdSat::firmware_update(const uint8_t *firmware, size_t size,
 	nrf_delay_ms(500);
 	PMU::kick_watchdog();
 
-	GPIOPins::acquire_sensors_pwr();
-	GPIOPins::init_pin(SAT_RESET);
-	GPIOPins::clear(SAT_RESET);
-	nrf_delay_ms(10);
-	GPIOPins::set(SAT_PWR_EN);
-#ifdef SMD_VPA_PIN
-	GPIOPins::release_to_highz(SMD_VPA_PIN);
-#endif
-	PMU::kick_watchdog();
-	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
-	GPIOPins::release_to_highz(SAT_RESET);
-	PMU::kick_watchdog();
-	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
+	power_on_blocking();
 
-	m_cmd.init();
-	bool app_ready = false;
-	for (uint8_t attempt = 0; attempt < 15; attempt++) {
-		PMU::kick_watchdog();
-		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS / 2);
-		if (m_cmd.ping()) {
-			app_ready = true;
-			break;
-		}
-	}
-
-	if (app_ready) {
-		m_new_firmware_version = get_firmware_version();
+	m_new_firmware_version = get_firmware_version();
+	if (!m_new_firmware_version.empty()) {
 		DEBUG_INFO("SmdSat::%s: New firmware: %s", __func__, m_new_firmware_version.c_str());
 	} else {
 		DEBUG_WARN("SmdSat::%s: App not responding after power cycle", __func__);
@@ -1300,35 +1300,10 @@ SmdDfuResponse SmdSat::firmware_update(File *file, size_t size, uint32_t stm32_c
 	nrf_delay_ms(500);  // Capacitors discharge, SRAM loses state
 	PMU::kick_watchdog();
 
-	// Power on
-	GPIOPins::acquire_sensors_pwr();
-	GPIOPins::init_pin(SAT_RESET);
-	GPIOPins::clear(SAT_RESET);
-	nrf_delay_ms(10);
-	GPIOPins::set(SAT_PWR_EN);
-#ifdef SMD_VPA_PIN
-	GPIOPins::release_to_highz(SMD_VPA_PIN);
-#endif
-	PMU::kick_watchdog();
-	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
-	GPIOPins::release_to_highz(SAT_RESET);
-	PMU::kick_watchdog();
-	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
+	power_on_blocking();
 
-	// Re-init SPI and ping new app
-	m_cmd.init();
-	bool app_ready = false;
-	for (uint8_t attempt = 0; attempt < 15; attempt++) {
-		PMU::kick_watchdog();
-		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS / 2);
-		if (m_cmd.ping()) {
-			app_ready = true;
-			break;
-		}
-	}
-
-	if (app_ready) {
-		m_new_firmware_version = get_firmware_version();
+	m_new_firmware_version = get_firmware_version();
+	if (!m_new_firmware_version.empty()) {
 		DEBUG_INFO("SmdSat::%s: New firmware: %s", __func__, m_new_firmware_version.c_str());
 	} else {
 		DEBUG_WARN("SmdSat::%s: App not responding after power cycle", __func__);
@@ -1352,35 +1327,13 @@ std::string SmdSat::get_firmware_version() {
 	bool was_stopped = (m_state == SmdSatState::stopped);
 
 	if (was_stopped) {
-		GPIOPins::acquire_sensors_pwr();
-		GPIOPins::init_pin(SAT_RESET);
-		GPIOPins::clear(SAT_RESET);
-		nrf_delay_ms(10);
-		GPIOPins::set(SAT_PWR_EN);
-#ifdef SMD_VPA_PIN
-		GPIOPins::release_to_highz(SMD_VPA_PIN);
-#endif
-		PMU::kick_watchdog();
-		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
-		GPIOPins::release_to_highz(SAT_RESET);
-		PMU::kick_watchdog();
-		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
+		power_on_blocking();
 	}
-
-	m_cmd.init();
 
 	std::string version = "";
 
 	try {
-		bool smd_ready = false;
-		for (uint8_t attempt = 0; attempt < 10; attempt++) {
-			PMU::kick_watchdog();
-			nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS / 2);
-			if (m_cmd.ping()) {
-				smd_ready = true;
-				break;
-			}
-		}
+		bool smd_ready = !was_stopped || m_cmd.ping();  // Already pinged in power_on_blocking
 
 		if (smd_ready) {
 			uint8_t ver[64] = {0};
@@ -1411,22 +1364,8 @@ std::string SmdSat::smd_spi_test() {
 
 	if (was_stopped) {
 		DEBUG_INFO("SmdSat::%s: Powering on SMD for test...", __func__);
-		GPIOPins::acquire_sensors_pwr();
-		GPIOPins::init_pin(SAT_RESET);
-		GPIOPins::clear(SAT_RESET);
-		nrf_delay_ms(10);
-		GPIOPins::set(SAT_PWR_EN);
-#ifdef SMD_VPA_PIN
-		GPIOPins::release_to_highz(SMD_VPA_PIN);
-#endif
-		PMU::kick_watchdog();
-		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
-		GPIOPins::release_to_highz(SAT_RESET);
-		PMU::kick_watchdog();
-		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
+		power_on_blocking();
 	}
-
-	m_cmd.init();
 
 	std::string result = m_cmd.run_command_test();
 
