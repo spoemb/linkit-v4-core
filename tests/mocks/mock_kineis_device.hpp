@@ -20,6 +20,11 @@ public:
 			.onObject(this);
 	}
 
+	void power_off_immediate() override {
+		mock().actualCall("power_off_immediate")
+			.onObject(this);
+	}
+
 	void start_receive(const KineisModulation mode) override {
 		mock().actualCall("start_receive")
 			.onObject(this)

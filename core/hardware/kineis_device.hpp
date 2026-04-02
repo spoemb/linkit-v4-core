@@ -62,6 +62,7 @@ public:
 	void set_idle_timeout(unsigned int ms) { m_idle_timeout_ms = ms; }
 	virtual void send(const KineisModulation mode, const KineisPacket& packet, const unsigned int size_bits) = 0;
 	virtual void stop_send() = 0;
+	virtual void power_off_immediate() {}  // Hard shutdown (default: no-op for backends without power control)
 	virtual void start_receive(const KineisModulation mode) = 0;
 	virtual bool stop_receive() = 0;
 	virtual void set_frequency(double freq_mhz) = 0;

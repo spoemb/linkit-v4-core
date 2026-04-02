@@ -373,9 +373,13 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 
 	} else if (e.event_source == ServiceIdentifier::UW_SENSOR && e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
 		if (std::get<bool>(e.event_data) == true) {
-			// Device went underwater: skip TCXO warmup on first TX after next surfacing
+			// Device went underwater:
+			// 1. Cache TCXO=0 for next surfacing (RAM only, sent via SPI at next boot)
 			m_tcxo_skip_on_next_tx = true;
 			m_kineis.set_tcxo_warmup_time(0);
+			// 2. Kill SMD to avoid leaving it in a bad state during rapid transitions.
+			//    (service_cancel/stop_send is already called by Service::notify_underwater_state)
+			m_kineis.power_off_immediate();
 
 			// Activate cooldown on dive if armed during this surfacing session
 			if (m_cooldown_armed) {

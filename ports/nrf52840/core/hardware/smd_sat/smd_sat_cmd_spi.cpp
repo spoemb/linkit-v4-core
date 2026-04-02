@@ -163,7 +163,7 @@ bool SmdSatCmdSpi::parse_aplus_response(const uint8_t *rx_buffer, uint16_t rx_le
             DEBUG_TRACE("SmdSatCmdSpi::%s: IDLE pattern - no response ready", __func__);
             response->status = SPI_APLUS_STATUS_NOT_READY;
         } else {
-            DEBUG_WARN("SmdSatCmdSpi::%s: No response magic found (first byte: 0x%02X)", __func__, rx_buffer[0]);
+            DEBUG_TRACE("SmdSatCmdSpi::%s: No response magic found (first byte: 0x%02X)", __func__, rx_buffer[0]);
             response->status = SPI_APLUS_STATUS_FRAME_ERROR;
         }
         return false;

@@ -742,8 +742,9 @@ TEST(ArgosTxService, TxServiceCancelledByUnderwaterBeforeTx)
 	CHECK_FALSE(Service::SCHEDULE_DISABLED == serv.get_last_schedule());
 
 	// Inject UW event
-	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	notify_underwater_state(true);
 
 	CHECK_TRUE(Service::SCHEDULE_DISABLED == serv.get_last_schedule());
@@ -814,8 +815,9 @@ TEST(ArgosTxService, TxServiceCancelledDuringTx)
 	system_scheduler->run();
 
 	// Inject UW event
-	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	notify_underwater_state(true);
 
 	// Inject surfaced event
@@ -928,8 +930,9 @@ TEST(ArgosTxService, UnderwaterFor24HoursBeforeTx)
 	system_scheduler->run();
 
 	// Inject UW event
-	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	notify_underwater_state(true);
 
 	// Keep UW for 25 hours
@@ -1063,8 +1066,9 @@ TEST(ArgosTxService, UnderwaterFor24HoursDryTimeZero)
 	mock_kineis->notify(KineisEventTxComplete({}));
 
 	// Inject UW event
-	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	notify_underwater_state(true);
 
 	// Keep UW for 25 hours
@@ -1115,8 +1119,9 @@ TEST(ArgosTxService, SurfacingBurstDopplerPhase)
 	serv.start();
 
 	// Go underwater
-	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	notify_underwater_state(true);
 
 	// Advance time underwater
@@ -1177,8 +1182,9 @@ TEST(ArgosTxService, SurfacingBurstSwitchToGNSS)
 	serv.start();
 
 	// Dive
-	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	notify_underwater_state(true);
 
 	t += 60000;
@@ -1235,8 +1241,9 @@ TEST(ArgosTxService, SurfacingBurstResetOnDive)
 	serv.start();
 
 	// First dive/surface
-	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	notify_underwater_state(true);
 	t += 60000;
 	fake_rtc->settime(t/1000);
@@ -1255,8 +1262,9 @@ TEST(ArgosTxService, SurfacingBurstResetOnDive)
 	CHECK_EQUAL(5000U, serv.get_last_schedule());
 
 	// Dive again before second TX
-	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	notify_underwater_state(true);
 	CHECK_TRUE(Service::SCHEDULE_DISABLED == serv.get_last_schedule());
 
@@ -1293,8 +1301,9 @@ TEST(ArgosTxService, SurfacingBurstFirstGnssTxImmediate)
 	serv.start();
 
 	// Dive
-	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	notify_underwater_state(true);
 	t += 60000;
 	fake_rtc->settime(t/1000);
@@ -1355,8 +1364,9 @@ TEST(ArgosTxService, SurfacingBurstDopplerMaxMsg)
 	serv.start();
 
 	// Dive and surface
-	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	notify_underwater_state(true);
 	t += 60000;
 	fake_rtc->settime(t/1000);
@@ -1410,8 +1420,9 @@ TEST(ArgosTxService, SurfacingBurstAdaptiveModulationPreSwitch)
 	serv.start();
 
 	// Dive
-	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	notify_underwater_state(true);
 	t += 60000;
 	fake_rtc->settime(t/1000);
