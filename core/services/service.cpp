@@ -133,7 +133,13 @@ unsigned int ServiceManager::get_passive_surfacing_count() {
 }
 
 void ServiceManager::enter_cooldown_sleep() {
-	DEBUG_INFO("ServiceManager: entering cooldown sleep — stopping SWS");
+	unsigned int remaining_s = 0;
+	if (rtc && rtc->is_set() && m_last_successful_cycle_time > 0) {
+		unsigned int interval = configuration_store->read_param<unsigned int>(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S);
+		std::time_t elapsed = rtc->gettime() - m_last_successful_cycle_time;
+		remaining_s = (elapsed < (std::time_t)interval) ? (interval - (unsigned int)elapsed) : 0;
+	}
+	DEBUG_INFO("ServiceManager: entering cooldown sleep (remaining %u s) — stopping SWS", remaining_s);
 
 	// Stop SWS (UW_SENSOR) to save power during cooldown
 	for (auto& p : m_map) {
@@ -152,7 +158,7 @@ void ServiceManager::enter_cooldown_sleep() {
 			m_cooldown_wake_task = system_scheduler->post_task_prio([]() {
 				exit_cooldown_sleep();
 			}, "CooldownWake", Scheduler::DEFAULT_PRIORITY, remaining_ms);
-			DEBUG_INFO("ServiceManager: cooldown wake timer set for %u s", (interval - (unsigned int)elapsed));
+			DEBUG_TRACE("ServiceManager: cooldown wake timer set for %u s", (interval - (unsigned int)elapsed));
 		} else {
 			// Cooldown already expired — restart immediately
 			exit_cooldown_sleep();
@@ -161,7 +167,8 @@ void ServiceManager::enter_cooldown_sleep() {
 }
 
 void ServiceManager::exit_cooldown_sleep() {
-	DEBUG_INFO("ServiceManager: exiting cooldown sleep — restarting SWS");
+	DEBUG_INFO("ServiceManager: exiting cooldown sleep (RTC=%u) — restarting SWS",
+	           (rtc && rtc->is_set()) ? (unsigned int)rtc->gettime() : 0);
 
 	// Restart SWS (UW_SENSOR) — it will detect current state and resume sampling
 	for (auto& p : m_map) {
