@@ -604,7 +604,8 @@ enum class BaseZoneType {
 enum class BaseDebugMode {
 	UART,     // UART debug output on SWO pin (P0.11 for RSPB)
 	USB_CDC,  // USB CDC debug output (default for Linkit V4)
-	BLE_NUS   // Bluetooth Low Energy Nordic UART Service
+	BLE_NUS,  // Bluetooth Low Energy Nordic UART Service
+	NONE      // No debug output (lowest power, system.log still works)
 };
 
 enum class BaseSensorEnableTxMode {

@@ -1025,6 +1025,8 @@ private:
 			return BaseDebugMode::USB_CDC;  // 1 = USB CDC debug output
 		} else if (s == "2") {
 			return BaseDebugMode::BLE_NUS;  // 2 = Bluetooth UART Service
+		} else if (s == "3") {
+			return BaseDebugMode::NONE;     // 3 = No debug output
 		} else {
 			DEBUG_ERROR("DTE_PROTOCOL_VALUE_OUT_OF_RANGE in %s(%s)", __FUNCTION__, s.c_str());
 			throw DTE_PROTOCOL_VALUE_OUT_OF_RANGE;

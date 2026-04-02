@@ -330,16 +330,19 @@ int main()
 	system_timer = &NrfTimer::get_instance();
 	NrfTimer::get_instance().init();
 
-	// Init debug output (UART, USB CDC, or BLE)
+	// Init debug output (UART, USB CDC, BLE, or NONE)
 	m_is_debug_init = true;
 	ConsoleLog console_log;
 	DebugLogger::console_log = &console_log;
+	if (g_debug_mode == BaseDebugMode::NONE) {
+		// No debug peripheral init — system.log still works via filesystem
+	}
 #ifdef DEBUG_UART_TX_PIN
-	if (g_debug_mode == BaseDebugMode::UART) {
+	else if (g_debug_mode == BaseDebugMode::UART) {
 		NrfDebugUart::init(DEBUG_UART_TX_PIN);
-	} else
+	}
 #endif
-	{
+	else {
 		NrfUSB::init();
 	}
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -940,6 +943,10 @@ int main()
 	// This will initialise the FSM
 	GenTracker::start();
 
+	// Deep idle: cut peripheral power rails when no task is due soon.
+	static constexpr uint64_t DEEP_IDLE_THRESHOLD_MS = 5000;
+	static bool in_deep_idle = false;
+
 	// The scheduler should run forever.  Any run-time exceptions should be handled and passed to FSM.
 	while (true)
 	{
@@ -949,7 +956,25 @@ int main()
 #endif
 				NrfUSB::process();
 			system_scheduler->run();
+
+			uint64_t idle_ms = system_scheduler->ms_until_next_task();
+			bool peripherals_active = GPIOPins::get_sensors_pwr_state();
+			if (idle_ms > DEEP_IDLE_THRESHOLD_MS && !in_deep_idle && !peripherals_active) {
+				DEBUG_INFO("DEEP_IDLE: enter (%llu ms idle)", idle_ms);
+				in_deep_idle = true;
+				PMU::enter_deep_idle();
+			}
+
 			PMU::run();
+
+			if (in_deep_idle) {
+				uint64_t remaining = system_scheduler->ms_until_next_task();
+				if (remaining <= DEEP_IDLE_THRESHOLD_MS) {
+					PMU::exit_deep_idle();
+					in_deep_idle = false;
+					DEBUG_INFO("DEEP_IDLE: exit (%llu ms remaining)", remaining);
+				}
+			}
 		} catch (ErrorCode e) {
 			ErrorEvent event;
 			event.error_code = e;

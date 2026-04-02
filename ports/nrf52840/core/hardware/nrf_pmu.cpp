@@ -262,3 +262,28 @@ void PMU::print_stack() {
 bool PMU::was_firmware_updated() {
 	return m_firmware_was_updated;
 }
+
+void PMU::enter_deep_idle() {
+	// FIXME (RSPB only): External I2C pull-ups R21/R24 (4.7K) are connected to
+	// DCDC_3V3 instead of VSENSORS. When VSENSORS is OFF, ~1.3mA backfeeds through
+	// sensor ESD diodes. Keep VSENSORS ON so both sides of the bus sit at 3.3V.
+	// Fix in next PCB revision: connect R21/R24 to VSENSORS rail.
+#if defined(BOARD_RSPB) && defined(SENSORS_PWR_PIN)
+	if (!GPIOPins::get_sensors_pwr_state())
+		GPIOPins::set(SENSORS_PWR_PIN);
+#endif
+
+	// RSPB: Cut RF_MCU power switch (TPS22904 U3). The STM32WL SMD module
+	// idles at ~0.5-0.9mA when powered but not transmitting.
+#if defined(BOARD_RSPB) && defined(POWER_CONTROL_PIN)
+	GPIOPins::clear(POWER_CONTROL_PIN);
+#endif
+}
+
+void PMU::exit_deep_idle() {
+#if defined(BOARD_RSPB) && defined(POWER_CONTROL_PIN)
+	GPIOPins::set(POWER_CONTROL_PIN);
+#endif
+	// RSPB: keep VSENSORS ON — do not cut it here.
+	// Cutting causes bus glitch when SMD re-acquires immediately after.
+}

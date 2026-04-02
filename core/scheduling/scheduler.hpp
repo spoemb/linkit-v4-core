@@ -116,12 +116,12 @@ public:
 		auto iter_timer = m_timer_schedules.begin();
 		while (iter_timer != m_timer_schedules.end())
 		{
-			if (iter_timer->first == *task.m_id)
+			if (iter_timer->id == *task.m_id)
 			{
 #ifdef SCHEDULER_DEBUG
 			DEBUG_TRACE("Scheduler: cancel_task: %s [timer]", task.m_name);
 #endif
-				m_timer->cancel_schedule(iter_timer->second);
+				m_timer->cancel_schedule(iter_timer->handle);
 				iter_timer = m_timer_schedules.erase(iter_timer);
 			}
 			else
@@ -187,7 +187,7 @@ public:
 
 		// Check if this task is in our deferred task list
 		for (auto const& value: m_timer_schedules)
-			if (value.first == *task.m_id)
+			if (value.id == *task.m_id)
 				return true;
 
 		return false;
@@ -202,7 +202,7 @@ public:
 		auto iter = m_timer_schedules.begin();
 		while (iter != m_timer_schedules.end())
 		{
-			m_timer->cancel_schedule(iter->second);
+			m_timer->cancel_schedule(iter->handle);
 			iter = m_timer_schedules.erase(iter);
 		}
 	}
@@ -213,7 +213,29 @@ public:
 		return m_tasks.size() + m_timer_schedules.size();
 	}
 
+	uint64_t ms_until_next_task()
+	{
+		InterruptLock lock;
+		if (m_tasks.size()) return 0;
+		if (m_timer_schedules.empty()) return UINT64_MAX;
+
+		uint64_t now = m_timer->get_counter();
+		uint64_t earliest = UINT64_MAX;
+		for (auto const& entry : m_timer_schedules) {
+			if (entry.target <= now) return 0;
+			uint64_t delta = entry.target - now;
+			if (delta < earliest) earliest = delta;
+		}
+		return earliest;
+	}
+
 private:
+
+	struct DeferredEntry {
+		unsigned int id;
+		Timer::TimerHandle handle;
+		uint64_t target;
+	};
 
 	void schedule_deferred(Task task, unsigned int delay_ms) {
 		InterruptLock lock;
@@ -226,7 +248,7 @@ private:
 			this->timer_callback_handler(id, task);
 		}, t_sched);
 
-		m_timer_schedules.push_back({id, handle});
+		m_timer_schedules.push_back({id, handle, t_sched});
 	}
 
 	void schedule_now(Task task) {
@@ -247,7 +269,7 @@ private:
 		auto iter = m_timer_schedules.begin();
 		while (iter != m_timer_schedules.end())
 		{
-			if (iter->first == task_id)
+			if (iter->id == task_id)
 			{
 				iter = m_timer_schedules.erase(iter);
 			}
@@ -259,7 +281,7 @@ private:
 	}
 
 	etl::list<Task, MAX_NUM_TASKS> m_tasks;
-	etl::vector<std::pair<unsigned int, Timer::TimerHandle>, MAX_NUM_TASKS> m_timer_schedules;
+	etl::vector<DeferredEntry, MAX_NUM_TASKS> m_timer_schedules;
 	Timer *m_timer;
 	unsigned int m_unique_id;
 };

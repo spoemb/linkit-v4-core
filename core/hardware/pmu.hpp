@@ -34,4 +34,6 @@ public:
 	static void print_stack();
 	static uint64_t get_timestamp_ms();
 	static bool was_firmware_updated();
+	static void enter_deep_idle();
+	static void exit_deep_idle();
 };
