@@ -320,6 +320,8 @@ protected:
 		/* [212] SURFACING_BURST_MAX_MSG */ 0U,  // 0 = unlimited Doppler messages per surfacing
 		/* [213] COOLDOWN_TRIGGER_MODE */ 3U,  // 3=AFTER_LAST_TX (backward compatible)
 		/* [214] SMD_LPM_MODE */ 0x01U,  // 0x01=NONE (safest, host cuts power)
+		/* [215] SWS_DELAY_MIN_US */ 100U,   // Adaptive sample delay floor (µs)
+		/* [216] SWS_DELAY_MAX_US */ 5000U,  // Adaptive sample delay ceiling (µs)
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,

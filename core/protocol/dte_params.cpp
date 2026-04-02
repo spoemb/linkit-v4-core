@@ -306,6 +306,9 @@ const BaseMap param_map[] = {
 	{ "COOLDOWN_TRIGGER_MODE", "UNP30", BaseEncoding::UINT, 0U, 3U, { 0U, 1U, 2U, 3U }, true, true },
 	// [214] SMD LPM mode bitmap: idle sleep between TX (module is powered off between sessions)
 	{ "SMD_LPM_MODE", "ARP60", BaseEncoding::UINT, 0x01U, 0x1FU, {}, (ARGOS_SMD == 1), true },
+	// [215-216] SWS adaptive sample delay bounds (µs)
+	{ "SWS_DELAY_MIN_US", "UNP09", BaseEncoding::UINT, 50U, 5000U, {}, true, true },
+	{ "SWS_DELAY_MAX_US", "UNP10", BaseEncoding::UINT, 100U, 10000U, {}, true, true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

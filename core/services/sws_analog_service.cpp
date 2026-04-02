@@ -113,10 +113,14 @@ extern RGBLed *status_led;
 #define SURFACE_LOCKOUT_DURATION_SEC 30
 #define MAX_CONSECUTIVE_DIVE_TIMEOUTS 3 // Force surface after N timeouts without any surface detection
 
-// Adaptive sample delay (µs)
-#define SAMPLE_DELAY_MIN_US     100    // Floor: below this, ADC values approach noise
-#define SAMPLE_DELAY_MAX_US     5000   // Ceiling: above this, biofouled signals converge
-#define SAMPLE_DELAY_DEFAULT_US 1000   // Default: 1ms (good balance for clean electrode)
+// Adaptive sample delay (µs) — defaults, overridden by UNP09/UNP10 params at init
+#define SAMPLE_DELAY_MIN_US_DEFAULT  100    // Floor: below this, ADC values approach noise
+#define SAMPLE_DELAY_MAX_US_DEFAULT  5000   // Ceiling: above this, biofouled signals converge
+#define SAMPLE_DELAY_DEFAULT_US      1000   // Default: 1ms (good balance for clean electrode)
+
+// Air baseline recovery: when air drops below this, readings are likely invalid
+// (RC circuit not charging enough at current delay). Force delay UP to recover.
+#define AIR_BASELINE_RECOVER 50
 #define CONTRAST_LOW_THRESHOLD  50     // contrast_x10 < 5.0x → reduce delay
 #define CONTRAST_HIGH_THRESHOLD 100    // contrast_x10 > 10.0x → increase delay
 
@@ -378,10 +382,16 @@ void SWSAnalogService::service_init() {
     m_threshold_ratio_percent = DEFAULT_THRESHOLD_RATIO_PERCENT;
     m_alpha_percent = DEFAULT_ALPHA_PERCENT;
 
+    // Load configurable delay bounds (UNP09/UNP10)
+    m_delay_min_us = service_read_param<unsigned int>(ParamID::SWS_DELAY_MIN_US);
+    m_delay_max_us = service_read_param<unsigned int>(ParamID::SWS_DELAY_MAX_US);
+    if (m_delay_min_us < 50) m_delay_min_us = 50;
+    if (m_delay_max_us < m_delay_min_us) m_delay_max_us = m_delay_min_us;
+
     // Initialize adaptive sample delay from config (value in ms → convert to µs)
     m_sample_delay_us = m_enable_sample_delay * 1000;
-    if (m_sample_delay_us < SAMPLE_DELAY_MIN_US) m_sample_delay_us = SAMPLE_DELAY_MIN_US;
-    if (m_sample_delay_us > SAMPLE_DELAY_MAX_US) m_sample_delay_us = SAMPLE_DELAY_MAX_US;
+    if (m_sample_delay_us < m_delay_min_us) m_sample_delay_us = m_delay_min_us;
+    if (m_sample_delay_us > m_delay_max_us) m_sample_delay_us = m_delay_max_us;
 
     // Validate observed peak ADC from noinit RAM
     uint16_t peak_crc = crc16_compute((const uint8_t *)&m_observed_peak_adc,
@@ -718,13 +728,27 @@ void SWSAnalogService::adjust_sample_delay() {
     if (m_calib.threshold_air == 0) return;
     uint16_t contrast = m_contrast_x10;
     uint32_t old_delay = m_sample_delay_us;
-    if (contrast < CONTRAST_LOW_THRESHOLD && m_sample_delay_us > SAMPLE_DELAY_MIN_US) {
-        m_sample_delay_us = m_sample_delay_us * 3 / 4;  // -25%
-        if (m_sample_delay_us < SAMPLE_DELAY_MIN_US) m_sample_delay_us = SAMPLE_DELAY_MIN_US;
-    } else if (contrast > CONTRAST_HIGH_THRESHOLD && m_sample_delay_us < SAMPLE_DELAY_MAX_US) {
-        m_sample_delay_us = m_sample_delay_us * 11 / 10;  // +10%
-        if (m_sample_delay_us > SAMPLE_DELAY_MAX_US) m_sample_delay_us = SAMPLE_DELAY_MAX_US;
+
+    // GUARD: if air baseline is near-zero, readings are likely invalid because
+    // the RC circuit doesn't charge enough at the current delay. Force delay UP
+    // to allow proper charging — this breaks the death spiral where low delay →
+    // zero readings → air drops → contrast inflates → delay stays low.
+    if (m_calib.threshold_air < AIR_BASELINE_RECOVER) {
+        if (m_sample_delay_us < m_delay_max_us) {
+            m_sample_delay_us = m_sample_delay_us * 11 / 10;  // +10%
+            if (m_sample_delay_us > m_delay_max_us)
+                m_sample_delay_us = m_delay_max_us;
+        }
     }
+    // Normal adaptive: reduce on low contrast (biofouling), increase on high contrast
+    else if (contrast < CONTRAST_LOW_THRESHOLD && m_sample_delay_us > m_delay_min_us) {
+        m_sample_delay_us = m_sample_delay_us * 3 / 4;  // -25%
+        if (m_sample_delay_us < m_delay_min_us) m_sample_delay_us = m_delay_min_us;
+    } else if (contrast > CONTRAST_HIGH_THRESHOLD && m_sample_delay_us < m_delay_max_us) {
+        m_sample_delay_us = m_sample_delay_us * 11 / 10;  // +10%
+        if (m_sample_delay_us > m_delay_max_us) m_sample_delay_us = m_delay_max_us;
+    }
+
     if (old_delay != m_sample_delay_us) {
         DEBUG_INFO("SWSAnalog: Adaptive delay %uus -> %uus (contrast=%u.%u)",
                    old_delay, m_sample_delay_us, contrast/10, contrast%10);
@@ -801,7 +825,11 @@ bool SWSAnalogService::detector_state() {
             m_time_in_current_state > 2) {
             DEBUG_WARN("SWSAnalog: Continuous coherence - raw=%u >> water=%u, adapting water",
                        raw_value, m_calib.threshold_water);
-            m_calib.threshold_water = raw_value;
+            // Cap at observed peak to prevent runaway water baseline
+            uint16_t new_water = raw_value;
+            if (m_observed_peak_adc > 0 && new_water > m_observed_peak_adc)
+                new_water = m_observed_peak_adc;
+            m_calib.threshold_water = new_water;
             update_dynamic_threshold();
             m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
                                          sizeof(m_calib) - sizeof(m_calib.crc), nullptr);

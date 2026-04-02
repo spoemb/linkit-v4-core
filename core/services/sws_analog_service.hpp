@@ -315,7 +315,9 @@ private:
     uint8_t m_alpha_percent;            // EMA factor for water baseline (19 = 0.19)
 
     // Adaptive sample delay (in µs) — auto-adjusted based on contrast
-    uint32_t m_sample_delay_us;         // Current delay (100-5000 µs)
+    uint32_t m_sample_delay_us;         // Current delay
+    uint32_t m_delay_min_us;            // Configurable floor (UNP09)
+    uint32_t m_delay_max_us;            // Configurable ceiling (UNP10)
 
     // Cached contrast ratio (water/air × 10), updated once per detector_state() call
     uint16_t m_contrast_x10;
