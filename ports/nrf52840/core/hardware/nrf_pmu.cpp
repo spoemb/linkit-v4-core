@@ -265,25 +265,30 @@ bool PMU::was_firmware_updated() {
 
 void PMU::enter_deep_idle() {
 	// FIXME (RSPB only): External I2C pull-ups R21/R24 (4.7K) are connected to
-	// DCDC_3V3 instead of VSENSORS. When VSENSORS is OFF, ~1.3mA backfeeds through
-	// sensor ESD diodes. Keep VSENSORS ON so both sides of the bus sit at 3.3V.
+	// DCDC_3V3 instead of VSENSORS. When VSENSORS is OFF, ~1.3mA backfeeds
+	// through sensor ESD diodes into the unpowered sensor side.
+	// Workaround: keep SENSORS_PWR_PIN always ON while nRF is running.
+	// This wastes ~50µA idle on the I2C sensors but avoids the 1.3mA backfeed.
 	// Fix in next PCB revision: connect R21/R24 to VSENSORS rail.
 #if defined(BOARD_RSPB) && defined(SENSORS_PWR_PIN)
 	if (!GPIOPins::get_sensors_pwr_state())
 		GPIOPins::set(SENSORS_PWR_PIN);
 #endif
 
-	// RSPB: Cut RF_MCU power switch (TPS22904 U3). The STM32WL SMD module
-	// idles at ~0.5-0.9mA when powered but not transmitting.
+	// RSPB: POWER_CONTROL_PIN controls the main board power rail (not just SMD).
+	// Clearing it in deep idle saves ~0.5-0.9mA from the STM32WL SMD idle current
+	// plus any other peripherals on the rail. The TPL5111 also manages this pin,
+	// but we get better power savings by cutting it ourselves during idle periods.
 #if defined(BOARD_RSPB) && defined(POWER_CONTROL_PIN)
 	GPIOPins::clear(POWER_CONTROL_PIN);
 #endif
 }
 
 void PMU::exit_deep_idle() {
+	// RSPB: restore board power rail before any peripheral access
 #if defined(BOARD_RSPB) && defined(POWER_CONTROL_PIN)
 	GPIOPins::set(POWER_CONTROL_PIN);
+	PMU::delay_ms(10);  // Allow power rail stabilization before SPI/I2C access
 #endif
-	// RSPB: keep VSENSORS ON — do not cut it here.
-	// Cutting causes bus glitch when SMD re-acquires immediately after.
+	// RSPB: SENSORS_PWR stays ON (never cut while nRF is running — see FIXME above)
 }

@@ -333,17 +333,19 @@ int main()
 	// Init debug output (UART, USB CDC, BLE, or NONE)
 	m_is_debug_init = true;
 	ConsoleLog console_log;
-	DebugLogger::console_log = &console_log;
 	if (g_debug_mode == BaseDebugMode::NONE) {
-		// No debug peripheral init — system.log still works via filesystem
-	}
+		// No debug peripheral init, no console output — system.log still works via filesystem
+		DebugLogger::console_log = nullptr;
+	} else {
+		DebugLogger::console_log = &console_log;
 #ifdef DEBUG_UART_TX_PIN
-	else if (g_debug_mode == BaseDebugMode::UART) {
-		NrfDebugUart::init(DEBUG_UART_TX_PIN);
-	}
+		if (g_debug_mode == BaseDebugMode::UART) {
+			NrfDebugUart::init(DEBUG_UART_TX_PIN);
+		} else
 #endif
-	else {
-		NrfUSB::init();
+		{
+			NrfUSB::init();
+		}
 	}
     setvbuf(stdout, NULL, _IONBF, 0);
     nrf_log_redirect_init();
@@ -955,26 +957,29 @@ int main()
 			if (g_debug_mode != BaseDebugMode::UART)
 #endif
 				NrfUSB::process();
-			system_scheduler->run();
 
-			uint64_t idle_ms = system_scheduler->ms_until_next_task();
-			bool peripherals_active = GPIOPins::get_sensors_pwr_state();
-			if (idle_ms > DEEP_IDLE_THRESHOLD_MS && !in_deep_idle && !peripherals_active) {
-				DEBUG_INFO("DEEP_IDLE: enter (%llu ms idle)", idle_ms);
-				in_deep_idle = true;
-				PMU::enter_deep_idle();
-			}
-
-			PMU::run();
-
+			// Exit deep idle BEFORE running scheduler tasks — peripherals
+			// need power rail restored before any SPI/I2C/UART access.
 			if (in_deep_idle) {
 				uint64_t remaining = system_scheduler->ms_until_next_task();
 				if (remaining <= DEEP_IDLE_THRESHOLD_MS) {
 					PMU::exit_deep_idle();
 					in_deep_idle = false;
-					DEBUG_INFO("DEEP_IDLE: exit (%llu ms remaining)", remaining);
+					DEBUG_TRACE("DEEP_IDLE: exit (%llu ms remaining)", remaining);
 				}
 			}
+
+			system_scheduler->run();
+
+			// Enter deep idle when no tasks are due for a while
+			uint64_t idle_ms = system_scheduler->ms_until_next_task();
+			if (idle_ms > DEEP_IDLE_THRESHOLD_MS && !in_deep_idle) {
+				DEBUG_TRACE("DEEP_IDLE: enter (%llu ms idle)", idle_ms);
+				in_deep_idle = true;
+				PMU::enter_deep_idle();
+			}
+
+			PMU::run();
 		} catch (ErrorCode e) {
 			ErrorEvent event;
 			event.error_code = e;
