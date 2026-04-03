@@ -127,10 +127,12 @@ public:
      */
     enum class CalibPhase : uint8_t {
         IDLE = 0,
-        AIR_WAITING,      // GREEN flashing — waiting for stable air readings
+        AIR_WAITING,       // GREEN flashing — waiting for stable air readings
         AIR_SAMPLING,      // GREEN fast flash — sampling air
+        AIR_DONE_PAUSE,    // GREEN solid — brief pause before water phase
         WATER_WAITING,     // BLUE flashing — waiting for stable water readings
         WATER_SAMPLING,    // BLUE fast flash — sampling water
+        COMPLETION_PAUSE,  // LED feedback — brief pause before stopping
         DONE,              // Calibration complete
     };
 
@@ -200,6 +202,8 @@ public:
         m_surface_lockout_remaining = 0;
         m_consecutive_dive_timeouts = 0;
         m_first_sample_done = false;
+        m_fast_convergence_count = 0;
+        m_coherence_high_count = 0;
         m_contrast_x10 = 0;
         for (int i = 0; i < ADC_HISTORY_SIZE; i++) {
             m_adc_history[i] = 0;
@@ -297,12 +301,18 @@ private:
     // Level 1: Recent peak for fast drop detection (decays with drift)
     uint16_t m_recent_peak;              // Tracks recent max, slowly decays to follow drift
 
+    // Fast convergence: aggressive alpha for first N water samples when water is estimated
+    uint8_t m_fast_convergence_count;    // Counts samples during fast convergence phase
+
     // Safety
     uint32_t m_surface_lockout_remaining;
     uint8_t m_consecutive_dive_timeouts;   // Escalation: force surface after N consecutive timeouts
 
     // First-sample coherence check
     bool m_first_sample_done;
+
+    // Continuous coherence: consecutive samples exceeding water×2 before adapting
+    uint8_t m_coherence_high_count;
 
     // Configuration parameters (loaded from config store)
     uint16_t m_hysteresis_percent;

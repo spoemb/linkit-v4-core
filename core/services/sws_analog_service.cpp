@@ -449,6 +449,8 @@ void SWSAnalogService::service_init() {
 
     // First-sample coherence check
     m_first_sample_done = false;
+    m_fast_convergence_count = 0;
+    m_coherence_high_count = 0;
 
     DEBUG_INFO("SWSAnalog: Init - hyst=%u%% ratio=%u%%",
                m_hysteresis_percent, m_threshold_ratio_percent);
@@ -625,14 +627,24 @@ void SWSAnalogService::calibrate_air_baseline() {
 }
 
 void SWSAnalogService::calibrate_water_baseline(uint16_t value) {
-    float alpha = m_alpha_percent / 100.0f;
     if (!is_value_valid(value)) return;
-
-    uint16_t threshold_with_margin = m_calib.threshold_current + m_calib.hysteresis_value;
 
     // Relaxed guard when water baseline is still estimated (no real peaks observed yet).
     // Estimated water (air*3) can be wildly off with dirty pins → allow full adaptation.
     bool water_is_estimated = (m_observed_peak_adc == 0);
+
+    // EC-1: Aggressive alpha during first deployment for fast convergence.
+    // When water is still estimated (peak==0), use alpha=0.50 for the first 5 samples
+    // so water baseline converges quickly on the first real immersion.
+    // After 5 samples (or once peak is established), revert to normal alpha.
+    float alpha;
+    if (water_is_estimated && m_fast_convergence_count < 5) {
+        alpha = 0.50f;
+    } else {
+        alpha = m_alpha_percent / 100.0f;
+    }
+
+    uint16_t threshold_with_margin = m_calib.threshold_current + m_calib.hysteresis_value;
     uint16_t min_expected_water = water_is_estimated ?
         (uint16_t)(m_calib.threshold_air * MIN_WATER_AIR_RATIO) :
         (uint16_t)(m_calib.threshold_water * 0.85f);
@@ -658,6 +670,13 @@ void SWSAnalogService::calibrate_water_baseline(uint16_t value) {
         update_dynamic_threshold();
         m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
                                      sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
+
+        // EC-1: Track fast convergence progress
+        if (water_is_estimated && m_fast_convergence_count < 5) {
+            m_fast_convergence_count++;
+            DEBUG_INFO("SWSAnalog: Fast convergence %u/5 alpha=%.2f water=%u",
+                       m_fast_convergence_count, (double)alpha, new_water);
+        }
     }
 }
 
@@ -816,25 +835,29 @@ bool SWSAnalogService::detector_state() {
             }
         }
 
-        // Continuous coherence: if on surface and raw reading exceeds water baseline
-        // by a large margin, the environment has changed (e.g. moved to real water
-        // after indoor calibration). Adapt water baseline immediately instead of
-        // waiting for the slow EMA convergence.
+        // EC-5: Continuous coherence — require 3 consecutive samples > water×2
+        // before adapting. Prevents splash/wave from corrupting water baseline.
         if (!calib_incoherent && !m_current_state && m_calib.threshold_water > 0 &&
             raw_value > m_calib.threshold_water * 2 &&
             m_time_in_current_state > 2) {
-            DEBUG_WARN("SWSAnalog: Continuous coherence - raw=%u >> water=%u, adapting water",
-                       raw_value, m_calib.threshold_water);
-            // Cap at observed peak to prevent runaway water baseline
-            uint16_t new_water = raw_value;
-            if (m_observed_peak_adc > 0 && new_water > m_observed_peak_adc)
-                new_water = m_observed_peak_adc;
-            m_calib.threshold_water = new_water;
-            update_dynamic_threshold();
-            m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
-                                         sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
-            // Flash save deferred to next state transition (section 10) to avoid
-            // excessive writes during rapid convergence
+            m_coherence_high_count++;
+            if (m_coherence_high_count >= 3) {
+                DEBUG_WARN("SWSAnalog: Continuous coherence - raw=%u >> water=%u (%u consecutive), adapting water",
+                           raw_value, m_calib.threshold_water, m_coherence_high_count);
+                // Cap at observed peak to prevent runaway water baseline
+                uint16_t new_water = raw_value;
+                if (m_observed_peak_adc > 0 && new_water > m_observed_peak_adc)
+                    new_water = m_observed_peak_adc;
+                m_calib.threshold_water = new_water;
+                update_dynamic_threshold();
+                m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
+                                             sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
+                m_coherence_high_count = 0;
+                // Flash save deferred to next state transition (section 10) to avoid
+                // excessive writes during rapid convergence
+            }
+        } else {
+            m_coherence_high_count = 0;
         }
 
         if (calib_incoherent) {
@@ -991,7 +1014,9 @@ bool SWSAnalogService::detector_state() {
         }
 
         // LEVEL 5: Cumulative drop from peak during this dive
+        // EC-6: Guard against underflow if filtered_value > peak (shouldn't happen, but defensive)
         if (surface_level == 0 && m_peak_adc_since_underwater > 0 &&
+            filtered_value < m_peak_adc_since_underwater &&
             m_time_in_current_state > L5_MIN_TIME_SEC) {
             uint16_t drop = (uint16_t)((uint32_t)(m_peak_adc_since_underwater - filtered_value) * 100 /
                                         m_peak_adc_since_underwater);
@@ -1108,10 +1133,44 @@ bool SWSAnalogService::detector_state() {
     // === 7b. UPDATE OBSERVED PEAK ADC ===
     // Placed after calibrate_water_baseline() so water_is_estimated (peak==0)
     // is correctly evaluated on the first underwater samples.
-    if (raw_value > m_observed_peak_adc) {
-        m_observed_peak_adc = raw_value;
-        m_observed_peak_crc = crc16_compute((const uint8_t *)&m_observed_peak_adc,
-                                             sizeof(m_observed_peak_adc), nullptr);
+    //
+    // EC-3: Anti-spike filter + slow decay + coherence guard.
+    // - Reject isolated spikes: new peak must be within 120% of current peak (once established)
+    // - Slow EMA decay (0.999) allows recovery from corrupted peaks
+    // - Coherence guard: reset peak if it exceeds water baseline × 3
+    {
+        bool peak_updated = false;
+
+        if (raw_value > m_observed_peak_adc) {
+            // Anti-spike: accept if peak not yet established, or if within 120% of current
+            if (m_observed_peak_adc == 0 || raw_value <= (uint32_t)m_observed_peak_adc * 6 / 5) {
+                m_observed_peak_adc = raw_value;
+                peak_updated = true;
+            } else {
+                DEBUG_WARN("SWSAnalog: Peak spike rejected raw=%u >> peak=%u", raw_value, m_observed_peak_adc);
+            }
+        } else if (m_observed_peak_adc > 0) {
+            // Slow decay: EMA 0.999 allows gradual recovery from stale/corrupted peaks
+            uint16_t decayed = (uint16_t)(m_observed_peak_adc * 0.999f + raw_value * 0.001f);
+            if (decayed != m_observed_peak_adc) {
+                m_observed_peak_adc = decayed;
+                peak_updated = true;
+            }
+        }
+
+        // Coherence guard: peak should not exceed water baseline × 3
+        if (m_observed_peak_adc > 0 && m_calib.threshold_water > 0 &&
+            m_observed_peak_adc > (uint32_t)m_calib.threshold_water * 3) {
+            DEBUG_WARN("SWSAnalog: Peak incoherent peak=%u > water×3=%u, resetting",
+                       m_observed_peak_adc, m_calib.threshold_water * 3);
+            m_observed_peak_adc = m_calib.threshold_water;
+            peak_updated = true;
+        }
+
+        if (peak_updated) {
+            m_observed_peak_crc = crc16_compute((const uint8_t *)&m_observed_peak_adc,
+                                                 sizeof(m_observed_peak_adc), nullptr);
+        }
     }
 
     // Apply multi-level surface override
@@ -1139,9 +1198,12 @@ bool SWSAnalogService::detector_state() {
             adjust_sample_delay();
         }
 
-        // Enforce minimum surface time to prevent immediate re-trigger
-        if (m_min_surface_time_sec > 0) {
-            m_surface_lockout_remaining = m_min_surface_time_sec;
+        // EC-2: Always enforce a lockout after L-override to prevent oscillation.
+        // Use configured min surface time if set, otherwise fall back to default lockout.
+        {
+            uint32_t lockout = (m_min_surface_time_sec > 0) ?
+                m_min_surface_time_sec : SURFACE_LOCKOUT_DURATION_SEC;
+            m_surface_lockout_remaining = lockout;
         }
 
         DEBUG_INFO("SWSAnalog: SURFACE L%u | raw=%u filt=%u ma3=%u air=%u water=%u lockout=%us",
@@ -1306,14 +1368,17 @@ bool SWSAnalogService::detector_state() {
                 if (status_led) status_led->set(RGBLedColor::GREEN);
                 DEBUG_INFO("SWSAnalog: Guided calib — AIR=%u — now place in WATER",
                            m_calib_air_result);
-                // Transition to water phase after brief pause
-                m_calib_phase = CalibPhase::WATER_WAITING;
+                // EC-4: Non-blocking pause — transition via state machine tick
+                m_calib_phase = CalibPhase::AIR_DONE_PAUSE;
                 m_calib_stable_count = 0;
                 m_calib_prev_value = 0;
-                // Short delay then switch LED
-                PMU::delay_ms(1000);
-                if (status_led) status_led->flash(RGBLedColor::BLUE, 500);
             }
+            break;
+
+        case CalibPhase::AIR_DONE_PAUSE:
+            // EC-4: 1 tick pause (1s via service_next_schedule_in_ms) replaces PMU::delay_ms(1000)
+            m_calib_phase = CalibPhase::WATER_WAITING;
+            if (status_led) status_led->flash(RGBLedColor::BLUE, 500);
             break;
 
         case CalibPhase::WATER_WAITING:
@@ -1374,17 +1439,22 @@ bool SWSAnalogService::detector_state() {
                                m_calib_water_result, m_calib_air_result);
                 }
 
-                m_calib_phase = CalibPhase::DONE;
+                m_calib_phase = CalibPhase::COMPLETION_PAUSE;
+                m_calib_count = 0;  // Reuse as tick counter for pause
                 if (m_calib_notify) {
                     CalibResult r = {(uint8_t)(success ? 1 : 2),
                                      m_calib_air_result, m_calib_water_result};
                     m_calib_notify(r);
                 }
+            }
+            break;
 
-                // Stop test mode after short delay for LED feedback
-                PMU::delay_ms(2000);
+        case CalibPhase::COMPLETION_PAUSE:
+            // EC-4: Non-blocking 2s pause for LED feedback (2 ticks × 1s each)
+            m_calib_count++;
+            if (m_calib_count >= 2) {
+                m_calib_phase = CalibPhase::DONE;
                 m_test_mode = false;
-                m_calib_phase = CalibPhase::IDLE;
                 if (s_instance) s_instance->stop();
                 if (m_on_test_stop) m_on_test_stop();
             }
