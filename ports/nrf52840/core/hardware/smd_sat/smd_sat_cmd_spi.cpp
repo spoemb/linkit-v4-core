@@ -585,7 +585,7 @@ void SmdSatCmdSpi::set_radio_conf(smd_uint8_array_t *radio_conf) {
 	if (radio_conf->size != SMDSAT_CMD_WRITECONF_LEN - 1) {
 		DEBUG_ERROR("SmdSatCmdSpi::%s: Size mismatch %u != %u",
 			__func__, radio_conf->size, SMDSAT_CMD_WRITECONF_LEN - 1);
-		return;
+		throw ErrorCode::SPI_COMMS_ERROR;
 	}
 	if (!send_command_2phase(SMDSAT_CMD_WRITE_RCONF_REQ, SMDSAT_CMD_WRITE_RCONF,
 	                         radio_conf->p_data, radio_conf->size)) {

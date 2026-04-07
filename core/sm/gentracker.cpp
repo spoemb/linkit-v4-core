@@ -159,7 +159,7 @@ void GenTracker::kick_watchdog() {
 	PMU::kick_watchdog();
 	system_scheduler->post_task_prio([](){
 		kick_watchdog();
-	}, "KickWatchdog", Scheduler::DEFAULT_PRIORITY, BSP::WDT_Inits[BSP::WDT].config.reload_value * 0.90);
+	}, "KickWatchdog", Scheduler::HIGHEST_PRIORITY, BSP::WDT_Inits[BSP::WDT].config.reload_value * 0.90);
 }
 
 void BootState::entry() {
@@ -262,7 +262,11 @@ void PreOperationalState::entry() {
 	DEBUG_INFO("entry: PreOperationalState");
 	if (configuration_store->is_valid()) {
 		// Force battery monitor to update its levels
-		battery_monitor->update();
+		try {
+			battery_monitor->update();
+		} catch (...) {
+			DEBUG_WARN("PreOperationalState: battery update failed — continuing with defaults");
+		}
 		if (battery_monitor->is_battery_critical()) {
 			transit<BatteryCriticalState>();
 			return;

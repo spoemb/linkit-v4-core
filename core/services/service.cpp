@@ -5,6 +5,7 @@
 #include "timer.hpp"
 #include "config_store.hpp"
 #include "battery.hpp"
+#include "interrupt_lock.hpp"
 #include <cstddef>
 
 extern Timer *system_timer;
@@ -89,6 +90,7 @@ static uint16_t cooldown_noinit_crc() {
 }
 
 void ServiceManager::save_cooldown_state() {
+	InterruptLock lock;
 	s_cooldown_noinit.last_cycle_time = m_last_successful_cycle_time;
 	s_cooldown_noinit.passive_count = static_cast<uint16_t>(m_passive_surfacing_count);
 	s_cooldown_noinit.crc = cooldown_noinit_crc();
@@ -119,6 +121,8 @@ bool ServiceManager::is_in_cooldown(std::time_t now) {
 		return false;
 	if (m_last_successful_cycle_time == 0)
 		return false;
+	if (now <= m_last_successful_cycle_time)
+		return false;  // RTC went backward or same — treat as cooldown expired
 	return (now - m_last_successful_cycle_time) < (std::time_t)interval;
 }
 
@@ -135,9 +139,12 @@ unsigned int ServiceManager::get_passive_surfacing_count() {
 void ServiceManager::enter_cooldown_sleep() {
 	unsigned int remaining_s = 0;
 	if (rtc && rtc->is_set() && m_last_successful_cycle_time > 0) {
-		unsigned int interval = configuration_store->read_param<unsigned int>(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S);
-		std::time_t elapsed = rtc->gettime() - m_last_successful_cycle_time;
-		remaining_s = (elapsed < (std::time_t)interval) ? (interval - (unsigned int)elapsed) : 0;
+		std::time_t now = rtc->gettime();
+		if (now > m_last_successful_cycle_time) {
+			unsigned int interval = configuration_store->read_param<unsigned int>(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S);
+			std::time_t elapsed = now - m_last_successful_cycle_time;
+			remaining_s = (elapsed < (std::time_t)interval) ? (interval - (unsigned int)elapsed) : 0;
+		}
 	}
 	DEBUG_INFO("ServiceManager: entering cooldown sleep (remaining %u s) — stopping SWS", remaining_s);
 
@@ -150,8 +157,14 @@ void ServiceManager::enter_cooldown_sleep() {
 
 	// Program wake timer for remaining cooldown duration
 	if (rtc && rtc->is_set() && m_last_successful_cycle_time > 0) {
+		std::time_t now = rtc->gettime();
+		if (now <= m_last_successful_cycle_time) {
+			// RTC went backward — cooldown expired, restart immediately
+			exit_cooldown_sleep();
+			return;
+		}
 		unsigned int interval = configuration_store->read_param<unsigned int>(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S);
-		std::time_t elapsed = rtc->gettime() - m_last_successful_cycle_time;
+		std::time_t elapsed = now - m_last_successful_cycle_time;
 		if (elapsed < (std::time_t)interval) {
 			unsigned int remaining_ms = (interval - (unsigned int)elapsed) * 1000;
 			system_scheduler->cancel_task(m_cooldown_wake_task);

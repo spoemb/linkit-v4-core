@@ -1,54 +1,39 @@
-#if ENABLE_SWS_ANALOG
-#include "sws_analog_service.hpp"
-#endif
-#if ENABLE_PRESSURE_SENSOR
-#include "pressure_sensor_service.hpp"
-#endif
-#if ENABLE_ALS_SENSOR
-#include "als_sensor_service.hpp"
-#endif
-#if ENABLE_PH_SENSOR
-#include "ph_sensor_service.hpp"
-#endif
-#if ENABLE_SEA_TEMP_SENSOR
-#include "sea_temp_sensor_service.hpp"
-#endif
-#if ENABLE_CDT_SENSOR
-#include "cdt_sensor_service.hpp"
-#endif
-#include "gps_service.hpp"
-#if ENABLE_AXL_SENSOR
-#include "axl_sensor_service.hpp"
-#endif
-#include "cam_service.hpp"
-#if ENABLE_MORTALITY_SENSOR
-#include "mortality_service.hpp"
-#endif
-#include "argos_tx_service.hpp"
-#include "argos_rx_service.hpp"
-#include "sys_log.hpp"
+// --- Nordic SDK ---
 #include "nrf_delay.h"
 #include "nrf_gpio.h"
 #include "nrf_log_redirect.h"
 #include "nrfx_spim.h"
-#include "ble_interface.hpp"
-#include "ota_flash_file_updater.hpp"
-#include "dte_handler.hpp"
-#include "nrf_memory_access.hpp"
+
+// --- BSP & GPIO ---
+#include "bsp.hpp"
+#include "gpio.hpp"
+#include "gpio_buzzer.hpp"
+
+// --- Core system (FSM, scheduler, config, debug, RTC, timer) ---
+#include "gentracker.hpp"
 #include "config_store_fs.hpp"
 #include "debug.hpp"
 #include "console_log.hpp"
-#include "bsp.hpp"
-#include "gentracker.hpp"
+#include "nrf_rtc.hpp"
 #include "nrf_timer.hpp"
 #include "nrf_switch.hpp"
 #include "reed.hpp"
-#include "nrf_rtc.hpp"
-#include "gpio.hpp"
-#include "is25_flash.hpp"
 #include "nrf_rgb_led.hpp"
+#include "gpio_led.hpp"
+#include "nrf_i2c.hpp"
+#include "nrf_usb.hpp"
+#include "nrf_memory_access.hpp"
+#include "is25_flash.hpp"
+#include "fs_log.hpp"
+#include "sys_log.hpp"
+#include "dte_handler.hpp"
+#include "ble_interface.hpp"
+#include "ota_flash_file_updater.hpp"
+#ifdef DEBUG_UART_TX_PIN
+#include "nrf_debug_uart.hpp"
+#endif
 
-// Battery monitor includes based on BATTERY_MONITOR_TYPE
+// --- Battery monitor ---
 #if defined(BATTERY_MONITOR_ANALOG)
 #include "nrf_battery_mon.hpp"
 #elif defined(BATTERY_MONITOR_FAKE)
@@ -57,6 +42,22 @@
 #include "stc3117_gasgauge.hpp"
 #endif
 
+// --- Communication backends (mutually exclusive) ---
+#include "m10qasync.hpp"
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+#include "lora_rak3172.hpp"
+#elif defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+#include "smd_sat.hpp"
+#if defined(SMD_UART) && (SMD_UART == 1)
+#include "smd_sat_cmd_at.hpp"
+#else
+#include "smd_sat_cmd_spi.hpp"
+#endif
+#else
+#include "kim2.hpp"
+#endif
+
+// --- Sensor drivers ---
 #if ENABLE_ALS_SENSOR
 #include "ltr_303.hpp"
 #endif
@@ -80,41 +81,54 @@
 #if ENABLE_AXL_SENSOR
 #include "bma400.hpp"
 #endif
-#include "fs_log.hpp"
-#include "nrf_i2c.hpp"
-#include "nrf_usb.hpp"
-#include "gpio_led.hpp"
-#include "heap.h"
-#include "etl/error_handler.h"
-#include "memory_monitor_service.hpp"
-#include "dive_mode_service.hpp"
-#include "gpio_buzzer.hpp"
+#if ENABLE_THERMISTOR_SENSOR
+#include "thermistor.hpp"
+#endif
 #ifdef CAM_PWR_EN
 #include "runcam.hpp"
 #endif
 
-// Always use M10Q GPS module
-#include "m10qasync.hpp"
+// --- Services ---
+#include "gps_service.hpp"
+#include "argos_tx_service.hpp"
+#include "argos_rx_service.hpp"
+#include "memory_monitor_service.hpp"
+#include "dive_mode_service.hpp"
 #if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
-#include "lora_rak3172.hpp"
 #include "lora_tx_service.hpp"
-#elif defined(ARGOS_SMD) && (ARGOS_SMD == 1)
-#include "smd_sat.hpp"
-#if defined(SMD_UART) && (SMD_UART == 1)
-#include "smd_sat_cmd_at.hpp"
-#else
-#include "smd_sat_cmd_spi.hpp"
 #endif
-#else
-#include "kim2.hpp"
+#if ENABLE_SWS_ANALOG
+#include "sws_analog_service.hpp"
+#endif
+#if ENABLE_PRESSURE_SENSOR
+#include "pressure_sensor_service.hpp"
+#endif
+#if ENABLE_ALS_SENSOR
+#include "als_sensor_service.hpp"
+#endif
+#if ENABLE_PH_SENSOR
+#include "ph_sensor_service.hpp"
+#endif
+#if ENABLE_SEA_TEMP_SENSOR
+#include "sea_temp_sensor_service.hpp"
+#endif
+#if ENABLE_CDT_SENSOR
+#include "cdt_sensor_service.hpp"
+#endif
+#if ENABLE_AXL_SENSOR
+#include "axl_sensor_service.hpp"
 #endif
 #if ENABLE_THERMISTOR_SENSOR
 #include "thermistor_sensor_service.hpp"
-#include "thermistor.hpp"
 #endif
-#ifdef DEBUG_UART_TX_PIN
-#include "nrf_debug_uart.hpp"
+#include "cam_service.hpp"
+#if ENABLE_MORTALITY_SENSOR
+#include "mortality_service.hpp"
 #endif
+
+// --- Utilities ---
+#include "heap.h"
+#include "etl/error_handler.h"
 
 FileSystem *main_filesystem;
 
@@ -160,53 +174,39 @@ FSM_INITIAL_STATE(GenTracker, BootState)
 #define REED_SWITCH_DEBOUNCE_TIME_MS    250
 
 
-extern "C" void HardFault_Handler() {
-	for (;;)
-	{
-#ifdef NDEBUG
-		PMU::save_stack(PMULogType::HARDFAULT);
-		PMU::reset(false);
-#else
-		// Hardfault occurred
+// Fault blink pattern: color ON/OFF forever, kicks watchdog
+// Uses NrfRGBLed::set_color_raw() — bare-metal, no timer dependency
+// Fault color map:
+//   HardFault  = RED 50ms    | MemManagement = YELLOW 50ms
+//   StackCheck = MAGENTA 50ms | MallocFail   = CYAN 50ms
+//   ETL error  = RED 200ms
+[[noreturn]] static void fault_blink_loop(RGBLedColor color, unsigned int delay_ms = 50) {
+	for (;;) {
 #ifdef GPIO_LED_REG
 		GPIOPins::set(GPIO_LED_REG);
 #endif
-		GPIOPins::clear(BSP::GPIO::GPIO_LED_RED);
-		GPIOPins::set(BSP::GPIO::GPIO_LED_GREEN);
-		GPIOPins::set(BSP::GPIO::GPIO_LED_BLUE);
-		nrf_delay_ms(50);
-		GPIOPins::set(BSP::GPIO::GPIO_LED_RED);
-		GPIOPins::set(BSP::GPIO::GPIO_LED_GREEN);
-		GPIOPins::set(BSP::GPIO::GPIO_LED_BLUE);
-		nrf_delay_ms(50);
+		NrfRGBLed::set_color_raw(BSP::GPIO::GPIO_LED_RED, BSP::GPIO::GPIO_LED_GREEN, BSP::GPIO::GPIO_LED_BLUE, color);
+		nrf_delay_ms(delay_ms);
+		NrfRGBLed::set_color_raw(BSP::GPIO::GPIO_LED_RED, BSP::GPIO::GPIO_LED_GREEN, BSP::GPIO::GPIO_LED_BLUE, RGBLedColor::BLACK);
+		nrf_delay_ms(delay_ms);
 		PMU::kick_watchdog();
-#endif
 	}
 }
 
-extern "C" void MemoryManagement_Handler(void)
-{
-	for (;;)
-	{
+extern "C" void HardFault_Handler() {
 #ifdef NDEBUG
-		PMU::save_stack(PMULogType::MMAN);
-		PMU::reset(false);
+	for (;;) { PMU::save_stack(PMULogType::HARDFAULT); PMU::reset(false); }
 #else
-		// Stack overflow detected
-#ifdef GPIO_LED_REG
-		GPIOPins::set(GPIO_LED_REG);
+	fault_blink_loop(RGBLedColor::RED);
 #endif
-		GPIOPins::set(BSP::GPIO::GPIO_LED_GREEN);
-		GPIOPins::set(BSP::GPIO::GPIO_LED_RED);
-		GPIOPins::set(BSP::GPIO::GPIO_LED_BLUE);
-		nrf_delay_ms(50);
-		GPIOPins::clear(BSP::GPIO::GPIO_LED_GREEN);
-		GPIOPins::clear(BSP::GPIO::GPIO_LED_RED);
-		GPIOPins::set(BSP::GPIO::GPIO_LED_BLUE);
-		nrf_delay_ms(50);
-		PMU::kick_watchdog();
+}
+
+extern "C" void MemoryManagement_Handler(void) {
+#ifdef NDEBUG
+	for (;;) { PMU::save_stack(PMULogType::MMAN); PMU::reset(false); }
+#else
+	fault_blink_loop(RGBLedColor::YELLOW);
 #endif
-	}
 }
 
 extern "C" {
@@ -216,75 +216,27 @@ extern "C" {
 		PMU::save_stack(PMULogType::STACK);
 		PMU::reset(false);
 #else
-		for (;;)
-		{
-			// Stack corruption detected
-#ifdef GPIO_LED_REG
-			GPIOPins::set(GPIO_LED_REG);
-#endif
-			GPIOPins::set(BSP::GPIO::GPIO_LED_RED);
-			GPIOPins::set(BSP::GPIO::GPIO_LED_GREEN);
-			GPIOPins::set(BSP::GPIO::GPIO_LED_BLUE);
-			nrf_delay_ms(50);
-			GPIOPins::clear(BSP::GPIO::GPIO_LED_RED);
-			GPIOPins::set(BSP::GPIO::GPIO_LED_GREEN);
-			GPIOPins::clear(BSP::GPIO::GPIO_LED_BLUE);
-			nrf_delay_ms(50);
-			PMU::kick_watchdog();
-		}
+		fault_blink_loop(RGBLedColor::MAGENTA);
 #endif
 	}
 }
 
 extern "C" void vApplicationMallocFailedHook() {
-	for (;;)
-	{
 #ifdef NDEBUG
-		PMU::save_stack(PMULogType::MALLOC);
-		PMU::reset(false);
+	for (;;) { PMU::save_stack(PMULogType::MALLOC); PMU::reset(false); }
 #else
-		// Out of heap memory occurred
-#ifdef GPIO_LED_REG
-		GPIOPins::set(GPIO_LED_REG);
+	fault_blink_loop(RGBLedColor::CYAN);
 #endif
-		GPIOPins::set(BSP::GPIO::GPIO_LED_RED);
-		GPIOPins::clear(BSP::GPIO::GPIO_LED_GREEN);
-		GPIOPins::clear(BSP::GPIO::GPIO_LED_BLUE);
-		nrf_delay_ms(50);
-		GPIOPins::set(BSP::GPIO::GPIO_LED_RED);
-		GPIOPins::set(BSP::GPIO::GPIO_LED_GREEN);
-		GPIOPins::set(BSP::GPIO::GPIO_LED_BLUE);
-		nrf_delay_ms(50);
-		PMU::kick_watchdog();
-#endif
-	}
 }
 
 void etl_error_handler(const etl::exception& e)
 {
 	DEBUG_TRACE("ETL error: %s in %s : %u", e.what(), e.file_name(), e.line_number());
-
-	for (;;)
-	{
 #ifdef NDEBUG
-		PMU::save_stack(PMULogType::ETL);
-		PMU::reset(false);
+	for (;;) { PMU::save_stack(PMULogType::ETL); PMU::reset(false); }
 #else
-		// ETL error occurred
-#ifdef GPIO_LED_REG
-		GPIOPins::set(GPIO_LED_REG);
+	fault_blink_loop(RGBLedColor::RED, 200);
 #endif
-		GPIOPins::clear(BSP::GPIO::GPIO_LED_RED);
-		GPIOPins::set(BSP::GPIO::GPIO_LED_GREEN);
-		GPIOPins::set(BSP::GPIO::GPIO_LED_BLUE);
-		nrf_delay_ms(200);
-		GPIOPins::set(BSP::GPIO::GPIO_LED_RED);
-		GPIOPins::set(BSP::GPIO::GPIO_LED_GREEN);
-		GPIOPins::set(BSP::GPIO::GPIO_LED_BLUE);
-		nrf_delay_ms(200);
-		PMU::kick_watchdog();
-#endif
-	}
 }
 
 // Redirect std::cout and printf output to UART, USB CDC, or BLE NUS
@@ -316,13 +268,6 @@ int main()
 
 	etl::error_handler::set_callback<etl_error_handler>();
 
-// NOT NECESSARY : On linkit v4 i2c pullups are on V_ADC, not VSYS
-// #ifdef GPIO_AG_PWR_PIN
-// 	// Current backfeeds from 3V3 -> i2c pullups -> BMA400 -> GPIO_AG_PWR
-// 	// Because of this we need to float our GPIO_AG_PWR pin to avoid sinking that current and thus increasing our sleep current
-// 	nrf_gpio_cfg_default(BSP::GPIO_Inits[GPIO_AG_PWR_PIN].pin_number);
-// #endif
-
 	rtc = &NrfRTC::get_instance();
 	NrfRTC::get_instance().init();
 
@@ -349,6 +294,16 @@ int main()
 	}
     setvbuf(stdout, NULL, _IONBF, 0);
     nrf_log_redirect_init();
+
+	// Verify NFC pins are configured as GPIO (P0.09/P0.10 used for SPI CS and SWS_OUT)
+	{
+		uint32_t nfcpins = NRF_UICR->NFCPINS;
+		if ((nfcpins & UICR_NFCPINS_PROTECT_Msk) == (UICR_NFCPINS_PROTECT_NFC << UICR_NFCPINS_PROTECT_Pos)) {
+			DEBUG_ERROR("UICR: NFC pins still in NFC mode (0x%08X) — P0.09/P0.10 unusable as GPIO!", nfcpins);
+		} else {
+			DEBUG_INFO("UICR: NFC pins configured as GPIO (0x%08X)", nfcpins);
+		}
+	}
 
 	DEBUG_TRACE("RGB LED...");
 	NrfRGBLed nrf_status_led("STATUS", BSP::GPIO::GPIO_LED_RED, BSP::GPIO::GPIO_LED_GREEN, BSP::GPIO::GPIO_LED_BLUE, RGBLedColor::WHITE);
@@ -389,6 +344,20 @@ int main()
 
 	// Note: VSENSORS power is now managed by each sensor via SensorsPowerGuard (reference counting)
 
+	// POWER_ON_RESET_REQUIRES_REED_SWITCH: On power-on reset, the user must hold
+	// a magnet on the reed switch for 3 seconds to confirm intentional boot.
+	// Without this gesture the device powers down immediately, preventing
+	// accidental wake from battery insertion or transient power glitches.
+	//
+	// PSEUDO_POWER_OFF (LinkIt V4): The nRF52 has no true power switch — it uses
+	// VSYS_SEL to latch its own supply via a load switch. "Power off" is a soft
+	// shutdown (System OFF mode) with VSYS_SEL de-asserted. A reed switch GPIO
+	// event wakes the chip, which sees "Pseudo Power On Reset" instead of a real
+	// "Power On Reset". This branch handles both reset causes.
+	//
+	// Without PSEUDO_POWER_OFF (RSPB/gentracker): The board has a real power path
+	// (TPL5111 or physical switch), so only true "Power On Reset" is checked with
+	// a simple 3-second polling countdown — no timer/callback needed.
 #ifdef POWER_ON_RESET_REQUIRES_REED_SWITCH
 #ifdef PSEUDO_POWER_OFF
 
@@ -597,7 +566,7 @@ int main()
     #error "No battery monitor type defined! Set BATTERY_MONITOR_TYPE in CMake"
 #endif
 
-	DEBUG_TRACE("LFS System Log...");
+	DEBUG_INFO("Creating log files...");
 	SysLogFormatter sys_log_formatter;
 	FsLog fs_system_log(&lfs_file_system, "system.log", 1024*1024);
 	fs_system_log.set_log_formatter(&sys_log_formatter);
@@ -690,7 +659,7 @@ int main()
 	ota_updater = &ota_flash_file_updater;
 
 #if ENABLE_SWS_ANALOG
-	DEBUG_TRACE("SWS Analog...");
+	DEBUG_INFO(">> Creating services...");
 	static SWSAnalogService sws_analog;
 
 #if ENABLE_SWS_LOG

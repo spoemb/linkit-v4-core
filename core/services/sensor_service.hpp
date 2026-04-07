@@ -167,6 +167,11 @@ private:
 		m_sensor_background_active = false;
 		m_sample_number = 0;
 		reset_samples();
+		unsigned int max_s = sensor_max_samples();
+		if (max_s > 0) {
+			for (unsigned int chan = 0; chan < safe_num_channels(); chan++)
+				m_samples[chan].reserve(max_s);
+		}
 		sensor_init();
 	}
 

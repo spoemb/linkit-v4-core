@@ -3,6 +3,9 @@
 #include "gpio.hpp"
 #include "pmu.hpp"
 #include "nrfx_saadc.h"
+#ifndef CPPUTEST
+#include "nrf_gpio.h"
+#endif
 #include "rgb_led.hpp"
 
 #ifndef CPPUTEST
@@ -112,11 +115,17 @@ extern RGBLed *status_led;
 #define OVERRIDE_MIN_TIME_SEC 1        // Minimum underwater time before any override
 #define SURFACE_LOCKOUT_DURATION_SEC 30
 #define MAX_CONSECUTIVE_DIVE_TIMEOUTS 3 // Force surface after N timeouts without any surface detection
+#define GUIDED_CALIB_TIMEOUT_TICKS 300  // 300 ticks × 1s = 5 minutes max for guided calibration
 
 // Adaptive sample delay (µs) — defaults, overridden by UNP09/UNP10 params at init
-#define SAMPLE_DELAY_MIN_US_DEFAULT  100    // Floor: below this, ADC values approach noise
-#define SAMPLE_DELAY_MAX_US_DEFAULT  5000   // Ceiling: above this, biofouled signals converge
-#define SAMPLE_DELAY_DEFAULT_US      1000   // Default: 1ms (good balance for clean electrode)
+// No series R on SWS line: cap charges through GPIO impedance (~100Ω) + water R.
+// Salt water (1K): τ = 1K × 100nF = 100µs → 500µs = 5τ → 99% charge
+// Tap water (50K): τ = 50K × 100nF = 5ms → 1ms = 0.2τ → 18% charge (enough for detection)
+// Biofouling (>100K): τ > 10ms → need longer delay → adaptive increases up to max
+// Air (>1M): τ > 100ms → stays near 0 at any delay
+#define SAMPLE_DELAY_MIN_US_DEFAULT  200    // Floor: salt water fully charges in ~500µs
+#define SAMPLE_DELAY_MAX_US_DEFAULT  10000  // Ceiling: biofouled electrodes need longer charge
+#define SAMPLE_DELAY_DEFAULT_US      1000   // Default: 1ms (good balance clean electrode)
 
 // Air baseline recovery: when air drops below this, readings are likely invalid
 // (RC circuit not charging enough at current delay). Force delay UP to recover.
@@ -152,6 +161,7 @@ uint16_t SWSAnalogService::m_calib_air_result = 0;
 uint16_t SWSAnalogService::m_calib_water_result = 0;
 uint8_t SWSAnalogService::m_calib_stable_count = 0;
 uint16_t SWSAnalogService::m_calib_prev_value = 0;
+uint16_t SWSAnalogService::m_calib_timeout_ticks = 0;
 std::function<void(const SWSAnalogService::CalibResult&)> SWSAnalogService::m_calib_notify;
 std::function<void(const SWSAnalogService::Status&)> SWSAnalogService::m_status_notify;
 std::function<void()> SWSAnalogService::m_on_test_stop;
@@ -211,6 +221,7 @@ void SWSAnalogService::start_guided_calibration() {
     if (!s_instance) return;
 
     m_calib_phase = CalibPhase::AIR_WAITING;
+    m_calib_timeout_ticks = 0;
     m_calib_sum = 0;
     m_calib_count = 0;
     m_calib_air_result = 0;
@@ -369,6 +380,13 @@ void SWSAnalogService::service_init() {
     // samples). Multi-sample batching is redundant and wastes CPU in sample_gap waits.
     m_max_samples = 1;
 
+    // One-time SAADC offset calibration — retained until power reset.
+    // Without this, readings can be offset by hundreds of ADC counts.
+    nrfx_saadc_init(&BSP::ADC_Inits.config, nrfx_saadc_event_handler_sws);
+    nrfx_saadc_calibrate_offset();
+    while (nrfx_saadc_is_busy()) {}
+    nrfx_saadc_uninit();
+
     // Load configuration
     m_hysteresis_percent = service_read_param<unsigned int>(ParamID::SWS_ANALOG_HYSTERESIS);
     m_calib_interval_sec = service_read_param<unsigned int>(ParamID::SWS_ANALOG_CALIB_INTERVAL);
@@ -474,10 +492,14 @@ unsigned int SWSAnalogService::service_next_schedule_in_ms() {
 }
 
 uint16_t SWSAnalogService::read_analog_sws() {
-    nrf_saadc_value_t raw = 0;
+#ifndef CPPUTEST
+    // Disconnect digital input buffer on SWS pin to prevent analog loading.
+    uint32_t sws_pin = BSP::GPIO_Inits[SWS_SAMPLE_PIN].pin_number;
+    nrf_gpio_cfg(sws_pin, NRF_GPIO_PIN_DIR_INPUT, NRF_GPIO_PIN_INPUT_DISCONNECT,
+                 NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_S0S1, NRF_GPIO_PIN_NOSENSE);
+#endif
 
     // RC discrimination: 100nF cap charges through water resistance.
-    // Short delay → better contrast between water (τ≈1ms) and wet film (τ≈5-10ms).
     GPIOPins::set(SWS_ENABLE_PIN);
     PMU::delay_us(m_sample_delay_us);
 
@@ -492,6 +514,7 @@ uint16_t SWSAnalogService::read_analog_sws() {
     }
     nrfx_saadc_channel_init(SWS_ADC, &BSP::ADC_Inits.channel_config[SWS_ADC]);
 
+    nrf_saadc_value_t raw = 0;
     nrfx_err_t err = nrfx_saadc_sample_convert(SWS_ADC, &raw);
     if (err != NRFX_SUCCESS) {
         DEBUG_ERROR("SWSAnalog: ADC conversion failed %d", err);
@@ -1338,6 +1361,18 @@ bool SWSAnalogService::detector_state() {
 #endif
 
     // === 13. GUIDED CALIBRATION STATE MACHINE ===
+    if (m_calib_phase != CalibPhase::IDLE && m_calib_phase != CalibPhase::DONE) {
+        m_calib_timeout_ticks++;
+        if (m_calib_timeout_ticks >= GUIDED_CALIB_TIMEOUT_TICKS) {
+            DEBUG_WARN("SWSAnalog: Guided calibration TIMEOUT after %u ticks — cancelling",
+                       m_calib_timeout_ticks);
+            cancel_guided_calibration();
+            if (m_calib_notify) {
+                CalibResult r = {0, 0, 0};  // status 0 = timeout
+                m_calib_notify(r);
+            }
+        }
+    }
     if (m_calib_phase != CalibPhase::IDLE) {
         switch (m_calib_phase) {
         case CalibPhase::AIR_WAITING:

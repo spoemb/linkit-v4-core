@@ -149,15 +149,18 @@ int GaugeBatteryMonitor::i2c_write(int I2cSlaveAddr, int RegAddress, unsigned ch
     buffer[0] = reg_addr;
     memcpy(&buffer[1], TxBuffer, NumberOfBytes);
 
-    NrfI2C::write(STC3117_DEVICE, I2cSlaveAddr, buffer, NumberOfBytes + sizeof(reg_addr), false);
+    if (!NrfI2C::write_safe(STC3117_DEVICE, I2cSlaveAddr, buffer, NumberOfBytes + sizeof(reg_addr), false))
+        return STC3117_E_COM_FAIL;
     return STC3117_OK;
 }
 
 int GaugeBatteryMonitor::i2c_read(int I2cSlaveAddr, int RegAddress, unsigned char* RxBuffer, int NumberOfBytes)
 {
     uint8_t reg_addr = static_cast<uint8_t>(RegAddress);
-    NrfI2C::write(STC3117_DEVICE, I2cSlaveAddr, &reg_addr, sizeof(reg_addr), true);
-    NrfI2C::read(STC3117_DEVICE, I2cSlaveAddr, RxBuffer, NumberOfBytes);
+    if (!NrfI2C::write_safe(STC3117_DEVICE, I2cSlaveAddr, &reg_addr, sizeof(reg_addr), true))
+        return STC3117_E_COM_FAIL;
+    if (!NrfI2C::read_safe(STC3117_DEVICE, I2cSlaveAddr, RxBuffer, NumberOfBytes))
+        return STC3117_E_COM_FAIL;
     return STC3117_OK;
 }
 

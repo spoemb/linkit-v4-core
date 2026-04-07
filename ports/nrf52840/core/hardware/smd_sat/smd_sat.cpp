@@ -674,6 +674,16 @@ bool SmdSat::write_credentials_from_config() {
 		return true;  // Not an error, just nothing to write
 	}
 
+	// Validate credential sizes before writing (seckey = 16 bytes = 32 hex chars)
+	if (seckey.size() != 32) {
+		DEBUG_ERROR("SmdSat::%s: invalid seckey length %u (expected 32 hex chars)", __func__, (unsigned)seckey.size());
+		return false;
+	}
+	if (radioconf.size() < 2 || (radioconf.size() % 2) != 0) {
+		DEBUG_ERROR("SmdSat::%s: invalid radioconf length %u (must be even hex string)", __func__, (unsigned)radioconf.size());
+		return false;
+	}
+
 	DEBUG_INFO("SmdSat::%s: writing credentials from config store (id=%u addr=0x%08X)",
 	           __func__, dec_id, address);
 
@@ -1104,6 +1114,12 @@ SmdDfuResponse SmdSat::firmware_update(const uint8_t *firmware, size_t size,
 		return DFU_RSP_ERROR;
 	}
 
+	// DFU failure cleanup: exit DFU mode so SMD returns to normal operation
+	auto dfu_fail = [this](SmdDfuResponse r) -> SmdDfuResponse {
+		m_cmd.dfu_exit();
+		return r;
+	};
+
 	// Enter DFU mode
 	if (!dfu_enter()) {
 		DEBUG_ERROR("SmdSat::%s: Failed to enter DFU mode", __func__);
@@ -1116,13 +1132,13 @@ SmdDfuResponse SmdSat::firmware_update(const uint8_t *firmware, size_t size,
 	SmdDfuInfo dfu_info;
 	if (!m_cmd.dfu_get_bootloader_info(&dfu_info)) {
 		DEBUG_ERROR("SmdSat::%s: Failed to get bootloader info", __func__);
-		return DFU_RSP_ERROR;
+		return dfu_fail(DFU_RSP_ERROR);
 	}
 
 	if (size > dfu_info.app_max_size) {
 		DEBUG_ERROR("SmdSat::%s: Firmware too large (%u > %u)", __func__,
 		            (unsigned int)size, dfu_info.app_max_size);
-		return DFU_RSP_SIZE_ERROR;
+		return dfu_fail(DFU_RSP_SIZE_ERROR);
 	}
 
 	if (progress_callback) progress_callback(15);
@@ -1131,7 +1147,7 @@ SmdDfuResponse SmdSat::firmware_update(const uint8_t *firmware, size_t size,
 	result = m_cmd.dfu_erase();
 	if (result != DFU_RSP_OK) {
 		DEBUG_ERROR("SmdSat::%s: Flash erase failed", __func__);
-		return result;
+		return dfu_fail(result);
 	}
 
 	if (progress_callback) progress_callback(25);
@@ -1151,7 +1167,7 @@ SmdDfuResponse SmdSat::firmware_update(const uint8_t *firmware, size_t size,
 		result = m_cmd.dfu_write_chunk(addr, &firmware[offset], chunk_size);
 		if (result != DFU_RSP_OK) {
 			DEBUG_ERROR("SmdSat::%s: Write failed at offset %u", __func__, (unsigned int)offset);
-			return result;
+			return dfu_fail(result);
 		}
 
 		addr += chunk_size;
@@ -1177,7 +1193,7 @@ SmdDfuResponse SmdSat::firmware_update(const uint8_t *firmware, size_t size,
 	result = m_cmd.dfu_verify(crc);
 	if (result != DFU_RSP_OK) {
 		DEBUG_ERROR("SmdSat::%s: CRC verification failed", __func__);
-		return result;
+		return dfu_fail(result);
 	}
 
 	if (progress_callback) progress_callback(95);
@@ -1223,6 +1239,12 @@ SmdDfuResponse SmdSat::firmware_update(File *file, size_t size, uint32_t stm32_c
 
 	SmdDfuResponse result;
 
+	// DFU failure cleanup: exit DFU mode so SMD returns to normal operation
+	auto dfu_fail = [this](SmdDfuResponse r) -> SmdDfuResponse {
+		m_cmd.dfu_exit();
+		return r;
+	};
+
 	if (!dfu_enter()) {
 		return DFU_RSP_NOT_READY;
 	}
@@ -1231,17 +1253,17 @@ SmdDfuResponse SmdSat::firmware_update(File *file, size_t size, uint32_t stm32_c
 
 	SmdDfuInfo dfu_info;
 	if (!m_cmd.dfu_get_bootloader_info(&dfu_info)) {
-		return DFU_RSP_ERROR;
+		return dfu_fail(DFU_RSP_ERROR);
 	}
 
 	if (size > dfu_info.app_max_size) {
-		return DFU_RSP_SIZE_ERROR;
+		return dfu_fail(DFU_RSP_SIZE_ERROR);
 	}
 
 	if (progress_callback) progress_callback(15);
 
 	result = m_cmd.dfu_erase();
-	if (result != DFU_RSP_OK) return result;
+	if (result != DFU_RSP_OK) return dfu_fail(result);
 
 	if (progress_callback) progress_callback(25);
 
@@ -1259,11 +1281,11 @@ SmdDfuResponse SmdSat::firmware_update(File *file, size_t size, uint32_t stm32_c
 
 		lfs_ssize_t bytes_read = file->read(chunk_buf, chunk_size);
 		if (bytes_read != (lfs_ssize_t)chunk_size) {
-			return DFU_RSP_ERROR;
+			return dfu_fail(DFU_RSP_ERROR);
 		}
 
 		result = m_cmd.dfu_write_chunk(addr, chunk_buf, chunk_size);
-		if (result != DFU_RSP_OK) return result;
+		if (result != DFU_RSP_OK) return dfu_fail(result);
 
 		addr += chunk_size;
 		offset += chunk_size;
@@ -1283,7 +1305,7 @@ SmdDfuResponse SmdSat::firmware_update(File *file, size_t size, uint32_t stm32_c
 	if (progress_callback) progress_callback(90);
 
 	result = m_cmd.dfu_verify(stm32_crc32);
-	if (result != DFU_RSP_OK) return result;
+	if (result != DFU_RSP_OK) return dfu_fail(result);
 
 	if (progress_callback) progress_callback(95);
 

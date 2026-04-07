@@ -88,6 +88,25 @@ private:
 		}
 	}
 public:
+	// Bare-metal LED control — no timer/interrupt dependency, safe for fault handlers and ISR context
+	static void set_color_raw(int pin_red, int pin_green, int pin_blue, RGBLedColor color) {
+		bool r = false, g = false, b = false;
+		switch (color) {
+		case RGBLedColor::BLACK:   break;
+		case RGBLedColor::RED:     r = true; break;
+		case RGBLedColor::GREEN:   g = true; break;
+		case RGBLedColor::BLUE:    b = true; break;
+		case RGBLedColor::CYAN:    g = true; b = true; break;
+		case RGBLedColor::MAGENTA: r = true; b = true; break;
+		case RGBLedColor::YELLOW:  r = true; g = true; break;
+		case RGBLedColor::WHITE:   r = true; g = true; b = true; break;
+		default: break;
+		}
+		r ? GPIOPins::clear(pin_red)   : GPIOPins::set(pin_red);
+		g ? GPIOPins::clear(pin_green) : GPIOPins::set(pin_green);
+		b ? GPIOPins::clear(pin_blue)  : GPIOPins::set(pin_blue);
+	}
+
 	NrfRGBLed(const char *name, int red, int green, int blue, RGBLedColor color = RGBLedColor::BLACK) {
 		m_name = name;
 		m_pin_red = red;

@@ -10,7 +10,7 @@
 #include "etl/list.h"
 #include "etl/vector.h"
 
-#define MAX_NUM_TASKS 48
+#define MAX_NUM_TASKS 64
 
 #ifndef INPLACE_FUNCTION_SIZE_SCHEDULER
 #define INPLACE_FUNCTION_SIZE_SCHEDULER 12
@@ -239,6 +239,11 @@ private:
 
 	void schedule_deferred(Task task, unsigned int delay_ms) {
 		InterruptLock lock;
+		if (m_timer_schedules.full()) {
+			DEBUG_ERROR("Scheduler: deferred queue FULL (%u/%u) — dropping '%s'",
+			            (unsigned)m_timer_schedules.size(), (unsigned)m_timer_schedules.max_size(), task.m_name);
+			return;
+		}
 		// If this task was delayed then schedule a timer to start it
 		uint64_t t_sched = m_timer->get_counter() + delay_ms;
 
@@ -253,6 +258,11 @@ private:
 
 	void schedule_now(Task task) {
 		InterruptLock lock;
+		if (m_tasks.full()) {
+			DEBUG_ERROR("Scheduler: task queue FULL (%u/%u) — dropping '%s'",
+			            (unsigned)m_tasks.size(), (unsigned)m_tasks.max_size(), task.m_name);
+			return;
+		}
 		// Task is requested to be processed on next run()
 		// Safetly add this task to our task list in priority order
 		auto iter = m_tasks.begin();

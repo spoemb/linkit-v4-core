@@ -238,6 +238,7 @@ private:
     static uint16_t m_calib_water_result;
     static uint8_t m_calib_stable_count;
     static uint16_t m_calib_prev_value;
+    static uint16_t m_calib_timeout_ticks;  // Timeout counter for guided calibration
     static std::function<void(const CalibResult&)> m_calib_notify;
 
     // Calibration data structure (stored in noinit RAM to survive resets)

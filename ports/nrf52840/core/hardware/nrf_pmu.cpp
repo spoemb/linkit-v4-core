@@ -8,9 +8,11 @@
 #include "nrfx_wdt.h"
 #include "nrf_power.h"
 #include "nrf_sdh.h"
+#include "nrf_sdh_soc.h"
 #include "nrfx_twim.h"
 #include "cm_backtrace.h"
 #include "debug.hpp"
+#include "nrf_rgb_led.hpp"
 #include "crc16.h"
 #include <string>
 
@@ -21,6 +23,21 @@ extern RTC *rtc;
 extern ConfigurationStore *configuration_store;
 
 static uint32_t m_reset_cause = 0;
+
+#ifdef SOFTDEVICE_PRESENT
+static void pof_soc_evt_handler(uint32_t evt_id, void * p_context) {
+	(void)p_context;
+	if (evt_id == NRF_EVT_POWER_FAILURE_WARNING) {
+		ServiceManager::save_cooldown_state();
+		if (configuration_store && rtc && rtc->is_set()) {
+			configuration_store->write_param(ParamID::LAST_KNOWN_RTC,
+				static_cast<unsigned int>(rtc->gettime()));
+			configuration_store->save_params();
+		}
+	}
+}
+NRF_SDH_SOC_OBSERVER(m_pof_soc_observer, 0, pof_soc_evt_handler, NULL);
+#endif
 static bool m_firmware_was_updated = false;
 
 static __attribute__((section(".noinit"))) volatile uint32_t m_callstack[8];
@@ -52,10 +69,15 @@ void PMU::initialise() {
 
 	nrf_pwr_mgmt_init();
 
+	NRF_POWER->POFCON = (POWER_POFCON_POF_Enabled << POWER_POFCON_POF_Pos) |
+	                     (POWER_POFCON_THRESHOLD_V27 << POWER_POFCON_THRESHOLD_Pos);
+
 #ifdef SOFTDEVICE_PRESENT
 	if (nrf_sdh_is_enabled())
 	{
 		sd_power_dcdc0_mode_set(NRF_POWER_DCDC_ENABLE);
+		sd_power_pof_enable(true);
+		sd_power_pof_threshold_set(NRF_POWER_THRESHOLD_V27);
 	}
 	else
 #endif
@@ -92,9 +114,7 @@ void PMU::powerdown() {
 	DEBUG_TRACE("Powerdown with external wakeup enabled");
 
 	// Force all LEDs off at hardware level
-	GPIOPins::clear(BSP::GPIO::GPIO_LED_GREEN);
-	GPIOPins::clear(BSP::GPIO::GPIO_LED_RED);
-	GPIOPins::clear(BSP::GPIO::GPIO_LED_BLUE);
+	NrfRGBLed::set_color_raw(BSP::GPIO::GPIO_LED_RED, BSP::GPIO::GPIO_LED_GREEN, BSP::GPIO::GPIO_LED_BLUE, RGBLedColor::BLACK);
 
 	// Disable all power rails to peripherals
 #ifdef SENSORS_PWR_PIN
