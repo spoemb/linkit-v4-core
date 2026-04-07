@@ -49,7 +49,7 @@ unsigned int LoRaPacketBuilder::convert_altitude(double x) {
 
 unsigned int LoRaPacketBuilder::max_gps_entries(unsigned int max_payload_bytes) {
 	unsigned int max_bits = max_payload_bytes * BITS_PER_BYTE;
-	// Header(12) + count(4) + delta(4) + first_gps(86) = 106 bits minimum
+	// Header(14) + count(4) + delta(4) + first_gps(86) = 108 bits minimum
 	unsigned int overhead_bits = BITS_HEADER + BITS_GPS_COUNT + BITS_DELTA_TIME + BITS_GPS_FULL;
 	if (max_bits < overhead_bits)
 		return 0;
@@ -84,11 +84,11 @@ KineisPacket LoRaPacketBuilder::build_gps_packet(std::vector<GPSLogEntry*>& v,
 	uint8_t pkt_type = (num_entries <= 1) ? PKT_TYPE_GPS_SINGLE : PKT_TYPE_GPS_MULTI;
 	PACK_BITS((unsigned int)pkt_type, packet, base_pos, BITS_PKT_TYPE);
 
-	// Flags: out_of_zone(1) + low_battery(1) + valid(1)
+	// Flags (4 bits): out_of_zone, low_battery, valid, fastloc=0
 	bool valid = (num_entries > 0 && v[0]->info.valid);
-	unsigned int flags = ((is_out_of_zone ? 1U : 0U) << 2) |
-	                     ((is_low_battery ? 1U : 0U) << 1) |
-	                     (valid ? 1U : 0U);
+	unsigned int flags = ((is_out_of_zone ? 1U : 0U) << 3) |
+	                     ((is_low_battery ? 1U : 0U) << 2) |
+	                     ((valid ? 1U : 0U) << 1);
 	PACK_BITS(flags, packet, base_pos, BITS_FLAGS);
 
 	// Voltage from first entry (or 0)
@@ -173,6 +173,9 @@ KineisPacket LoRaPacketBuilder::build_sensor_packet(GPSLogEntry* gps,
 
 	DEBUG_TRACE("LoRaPacketBuilder::build_sensor_packet");
 
+	// Detect fastloc
+	bool is_fastloc = (gps != nullptr && gps->info.event_type == GPSEventType::FASTLOC);
+
 	// Compute presence bitmask
 	uint8_t mask = 0;
 	if (gps != nullptr)       mask |= 0x20;  // bit 5
@@ -185,6 +188,7 @@ KineisPacket LoRaPacketBuilder::build_sensor_packet(GPSLogEntry* gps,
 	// Compute total size
 	size_bits = BITS_HEADER + BITS_SENSOR_MASK;
 	if (gps)      size_bits += BITS_GPS_FULL;
+	if (is_fastloc) size_bits += BITS_FASTLOC_QUALITY;
 	if (als)      size_bits += BITS_ALS;
 	if (ph)       size_bits += BITS_PH;
 	if (pressure) size_bits += BITS_PRESSURE_FULL;
@@ -200,11 +204,12 @@ KineisPacket LoRaPacketBuilder::build_sensor_packet(GPSLogEntry* gps,
 	// Header
 	PACK_BITS((unsigned int)PKT_TYPE_SENSOR, packet, base_pos, BITS_PKT_TYPE);
 
-	// Flags
+	// Flags (4 bits): out_of_zone, low_battery, valid, fastloc
 	bool valid = (gps != nullptr && gps->info.valid);
-	unsigned int flags = ((is_out_of_zone ? 1U : 0U) << 2) |
-	                     ((is_low_battery ? 1U : 0U) << 1) |
-	                     (valid ? 1U : 0U);
+	unsigned int flags = ((is_out_of_zone ? 1U : 0U) << 3) |
+	                     ((is_low_battery ? 1U : 0U) << 2) |
+	                     ((valid ? 1U : 0U) << 1) |
+	                     (is_fastloc ? 1U : 0U);
 	PACK_BITS(flags, packet, base_pos, BITS_FLAGS);
 
 	// Voltage
@@ -251,6 +256,22 @@ KineisPacket LoRaPacketBuilder::build_sensor_packet(GPSLogEntry* gps,
 		}
 	}
 
+	// Fastloc quality metadata (appended after GPS data when fastloc flag is set)
+	if (is_fastloc) {
+		unsigned int fixType = std::min((unsigned int)gps->info.fixType, 3U);
+		PACK_BITS(fixType, packet, base_pos, BITS_FIXTYPE);
+		unsigned int hAcc_m = std::min(gps->info.hAcc / (unsigned int)MM_PER_METER, 65535U);
+		PACK_BITS(hAcc_m, packet, base_pos, BITS_HACC);
+		unsigned int vAcc_m = std::min(gps->info.vAcc / (unsigned int)MM_PER_METER, 65535U);
+		PACK_BITS(vAcc_m, packet, base_pos, BITS_VACC);
+		unsigned int pdop = std::min((unsigned int)(gps->info.pDOP * 10.0f), 255U);
+		PACK_BITS(pdop, packet, base_pos, BITS_PDOP);
+		unsigned int hdop = std::min((unsigned int)(gps->info.hDOP * 10.0f), 255U);
+		PACK_BITS(hdop, packet, base_pos, BITS_HDOP);
+		unsigned int ontime_s = std::min(gps->info.onTime / 1000U, 1023U);
+		PACK_BITS(ontime_s, packet, base_pos, BITS_ONTIME);
+	}
+
 	// ALS sensor
 	if (als) {
 		PACK_BITS((unsigned int)als->port[0], packet, base_pos, BITS_ALS);
@@ -292,7 +313,7 @@ KineisPacket LoRaPacketBuilder::build_status_packet(unsigned int battery_voltage
 
 	DEBUG_TRACE("LoRaPacketBuilder::build_status_packet");
 
-	size_bits = BITS_HEADER;  // 12 bits
+	size_bits = BITS_HEADER;  // 14 bits
 	unsigned int packet_bytes = (size_bits + 7) / 8;  // 2 bytes
 	KineisPacket packet;
 	packet.assign(packet_bytes, 0);
@@ -301,8 +322,8 @@ KineisPacket LoRaPacketBuilder::build_status_packet(unsigned int battery_voltage
 
 	PACK_BITS((unsigned int)PKT_TYPE_STATUS, packet, base_pos, BITS_PKT_TYPE);
 
-	// Flags: out_of_zone=0, low_battery, valid=0
-	unsigned int flags = (is_low_battery ? 1U : 0U) << 1;
+	// Flags (4 bits): out_of_zone=0, low_battery, valid=0, fastloc=0
+	unsigned int flags = (is_low_battery ? 1U : 0U) << 2;
 	PACK_BITS(flags, packet, base_pos, BITS_FLAGS);
 
 	unsigned int batt = convert_battery_voltage(battery_voltage);
@@ -313,7 +334,6 @@ KineisPacket LoRaPacketBuilder::build_status_packet(unsigned int battery_voltage
 
 	return packet;
 }
-
 
 // ============================================================================
 // LoRaTxScheduler
@@ -708,16 +728,26 @@ void LoRaTxService::process_gps_burst() {
 	std::vector<GPSLogEntry*> v = m_depth_pile_manager.retrieve_gps((unsigned int)argos_config.depth_pile);
 
 	if (v.size()) {
-		// Trim to max entries that fit in payload
-		if (v.size() > max_entries)
-			v.resize(max_entries);
-
+		KineisPacket packet;
 		unsigned int size_bits;
-		KineisPacket packet = LoRaPacketBuilder::build_gps_packet(v,
-				argos_config.is_out_of_zone, argos_config.is_lb,
-				argos_config.delta_time_loc,
-				max_payload,
-				size_bits);
+
+		// Fastloc entries: send as unified sensor packet (GPS + fastloc quality metadata)
+		if (v.back()->info.event_type == GPSEventType::FASTLOC) {
+			packet = LoRaPacketBuilder::build_sensor_packet(v.back(),
+					nullptr, nullptr, nullptr, nullptr, nullptr,
+					argos_config.is_out_of_zone, argos_config.is_lb,
+					size_bits);
+		} else {
+			// Trim to max entries that fit in payload
+			if (v.size() > max_entries)
+				v.resize(max_entries);
+
+			packet = LoRaPacketBuilder::build_gps_packet(v,
+					argos_config.is_out_of_zone, argos_config.is_lb,
+					argos_config.delta_time_loc,
+					max_payload,
+					size_bits);
+		}
 
 		DEBUG_INFO("LoRaTxService::process_gps_burst: data=%s sz=%u bits",
 				Binascii::hexlify(packet).c_str(), size_bits);
@@ -739,6 +769,8 @@ void LoRaTxService::process_sensor_burst() {
 	GPSLogEntry* gps = m_depth_pile_manager.retrieve_gps_single((unsigned int)argos_config.depth_pile);
 
 	if (gps != nullptr) {
+		// Fastloc entries are handled transparently by build_sensor_packet
+		// (the fastloc flag bit is set automatically when event_type == FASTLOC)
 		unsigned int size_bits;
 		KineisPacket packet = LoRaPacketBuilder::build_sensor_packet(gps,
 				m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::ALS_SENSOR),

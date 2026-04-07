@@ -234,6 +234,64 @@ void GPSService::task_process_gnss_data()
     service_complete(&event_data, &gps_entry);
 }
 
+void GPSService::task_process_degraded_gnss_data()
+{
+    DEBUG_INFO("GPSService::task_process_degraded_gnss_data");
+
+    GPSLogEntry gps_entry{};
+    gps_entry.header.log_type = LOG_GPS;
+    populate_gps_log_with_time(gps_entry, service_current_time());
+
+    service_update_battery();
+    gps_entry.info.batt_voltage = service_get_voltage();
+
+    // Store GPS data (same as normal fix)
+    gps_entry.info.iTOW          = m_gnss_data.data.iTOW;
+    gps_entry.info.year          = m_gnss_data.data.year;
+    gps_entry.info.month         = m_gnss_data.data.month;
+    gps_entry.info.day           = m_gnss_data.data.day;
+    gps_entry.info.hour          = m_gnss_data.data.hour;
+    gps_entry.info.min           = m_gnss_data.data.min;
+    gps_entry.info.sec           = m_gnss_data.data.sec;
+    gps_entry.info.valid         = m_gnss_data.data.valid;
+    gps_entry.info.fixType       = m_gnss_data.data.fixType;
+    gps_entry.info.flags         = m_gnss_data.data.flags;
+    gps_entry.info.flags2        = m_gnss_data.data.flags2;
+    gps_entry.info.flags3        = m_gnss_data.data.flags3;
+    gps_entry.info.numSV         = m_gnss_data.data.numSV;
+    gps_entry.info.lon           = m_gnss_data.data.lon;
+    gps_entry.info.lat           = m_gnss_data.data.lat;
+    gps_entry.info.height        = m_gnss_data.data.height;
+    gps_entry.info.hMSL          = m_gnss_data.data.hMSL;
+    gps_entry.info.hAcc          = m_gnss_data.data.hAcc;
+    gps_entry.info.vAcc          = m_gnss_data.data.vAcc;
+    gps_entry.info.velN          = m_gnss_data.data.velN;
+    gps_entry.info.velE          = m_gnss_data.data.velE;
+    gps_entry.info.velD          = m_gnss_data.data.velD;
+    gps_entry.info.gSpeed        = m_gnss_data.data.gSpeed;
+    gps_entry.info.headMot       = m_gnss_data.data.headMot;
+    gps_entry.info.sAcc          = m_gnss_data.data.sAcc;
+    gps_entry.info.headAcc       = m_gnss_data.data.headAcc;
+    gps_entry.info.pDOP          = m_gnss_data.data.pDOP;
+    gps_entry.info.vDOP          = m_gnss_data.data.vDOP;
+    gps_entry.info.hDOP          = m_gnss_data.data.hDOP;
+    gps_entry.info.headVeh       = m_gnss_data.data.headVeh;
+    gps_entry.info.ttff          = m_gnss_data.data.ttff;
+    gps_entry.info.onTime        = service_current_timer() - m_wakeup_time;
+    gps_entry.info.schedTime     = m_next_schedule;
+
+    // Mark as fastloc (degraded position — valid but low quality)
+    gps_entry.info.event_type = GPSEventType::FASTLOC;
+    gps_entry.info.valid = true;
+
+    DEBUG_INFO("GPSService::task_process_degraded_gnss_data: lat=%lf lon=%lf hAcc=%u numSV=%u fixType=%u",
+               gps_entry.info.lat, gps_entry.info.lon,
+               gps_entry.info.hAcc, gps_entry.info.numSV, gps_entry.info.fixType);
+
+    ServiceEventData event_data = gps_entry;
+    service_complete(&event_data, &gps_entry);
+}
+
 void GPSService::react(const GPSEventMaxNavSamples&) {
 	if (!m_is_active)
 		return;
@@ -275,12 +333,37 @@ void GPSService::react(const GPSEventPVT& e) {
     gnss_data_callback(e.data);
 }
 
+void GPSService::react(const GPSEventPVTDegraded& e) {
+	if (!m_is_active)
+		return;
+	m_is_active = false;
+	m_device.power_off();
+
+	// Only emit fastloc if enabled in config
+	if (configuration_store->read_param<bool>(ParamID::GNSS_FASTLOC_ENABLE)) {
+		DEBUG_INFO("GPSService::react(GPSEventPVTDegraded): fastloc hAcc=%u fixType=%u numSV=%u",
+		           e.data.hAcc, e.data.fixType, e.data.numSV);
+		gnss_degraded_callback(e.data);
+	} else {
+		DEBUG_INFO("GPSService::react(GPSEventPVTDegraded): fastloc disabled, treating as no fix");
+		GPSLogEntry log_entry = invalid_log_entry();
+		ServiceEventData event_data = log_entry;
+		service_complete(&event_data, &log_entry);
+	}
+}
+
 void GPSService::gnss_data_callback(GNSSData data) {
     // Mark first fix flag
     m_gnss_data.data = data;
     m_is_first_fix_found = true;
     m_num_gps_fixes++;
     task_process_gnss_data();
+}
+
+void GPSService::gnss_degraded_callback(GNSSData data) {
+    m_gnss_data.data = data;
+    // Don't set m_is_first_fix_found — degraded fix should not change cold start behavior
+    task_process_degraded_gnss_data();
 }
 
 void GPSService::populate_gps_log_with_time(GPSLogEntry &entry, std::time_t time)

@@ -39,15 +39,15 @@ struct LoRaPayloadLimits {
 
 class LoRaPacketBuilder {
 public:
-	// Packet type identifiers (2 bits)
-	static constexpr uint8_t PKT_TYPE_GPS_SINGLE  = 0b00;
-	static constexpr uint8_t PKT_TYPE_GPS_MULTI   = 0b01;
-	static constexpr uint8_t PKT_TYPE_SENSOR      = 0b10;
-	static constexpr uint8_t PKT_TYPE_STATUS       = 0b11;
+	// Packet type identifiers (3 bits)
+	static constexpr uint8_t PKT_TYPE_GPS_SINGLE  = 0b000;
+	static constexpr uint8_t PKT_TYPE_GPS_MULTI   = 0b001;
+	static constexpr uint8_t PKT_TYPE_SENSOR      = 0b010;
+	static constexpr uint8_t PKT_TYPE_STATUS      = 0b011;
 
 	// Field bit widths
-	static constexpr unsigned int BITS_PKT_TYPE    = 2;
-	static constexpr unsigned int BITS_FLAGS       = 3;   // out_of_zone, low_battery, valid
+	static constexpr unsigned int BITS_PKT_TYPE    = 3;
+	static constexpr unsigned int BITS_FLAGS       = 4;   // out_of_zone, low_battery, valid, fastloc
 	static constexpr unsigned int BITS_VOLTAGE     = 7;
 	static constexpr unsigned int BITS_GPS_COUNT   = 4;   // 0-15 entries
 	static constexpr unsigned int BITS_DELTA_TIME  = 4;
@@ -72,8 +72,17 @@ public:
 	static constexpr unsigned int BITS_AXL_AXIS    = 15;
 	static constexpr unsigned int BITS_AXL_ACT     = 8;
 
+	// Fastloc quality field bit widths
+	static constexpr unsigned int BITS_FIXTYPE     = 2;
+	static constexpr unsigned int BITS_HACC        = 16;  // hAcc in meters (0-65535m)
+	static constexpr unsigned int BITS_VACC        = 16;  // vAcc in meters (0-65535m)
+	static constexpr unsigned int BITS_PDOP        = 8;   // pDOP × 10 (0-25.5)
+	static constexpr unsigned int BITS_HDOP        = 8;   // hDOP × 10 (0-25.5)
+	static constexpr unsigned int BITS_ONTIME      = 10;  // GPS on time in seconds (0-1023)
+
 	// Composite sizes
-	static constexpr unsigned int BITS_HEADER      = BITS_PKT_TYPE + BITS_FLAGS + BITS_VOLTAGE;  // 12
+	static constexpr unsigned int BITS_HEADER      = BITS_PKT_TYPE + BITS_FLAGS + BITS_VOLTAGE;  // 14
+	static constexpr unsigned int BITS_FASTLOC_QUALITY = BITS_FIXTYPE + BITS_HACC + BITS_VACC + BITS_PDOP + BITS_HDOP + BITS_ONTIME;  // 60
 	static constexpr unsigned int BITS_GPS_FULL    = BITS_DAY + BITS_HOUR + BITS_MIN +
 	                                                  BITS_LATITUDE + BITS_LONGITUDE +
 	                                                  BITS_SPEED + BITS_HEADING +

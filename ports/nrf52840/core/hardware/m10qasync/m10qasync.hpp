@@ -43,6 +43,10 @@ private:
 	UBXCommsEventNavReport m_pending_nav;
 	UBXCommsEventSatReport m_pending_sat;
 
+	// Best degraded PVT: stores the best (lowest hAcc) 2D/3D fix that failed quality filters
+	bool m_has_degraded_pvt;
+	GNSSData m_degraded_pvt;
+
 	struct Timeout {
 		Scheduler::TaskHandle handle;
 	} m_timeout;

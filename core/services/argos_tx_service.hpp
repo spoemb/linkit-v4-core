@@ -22,6 +22,10 @@ public:
 	static inline const unsigned int LONG_PACKET_PAYLOAD_BITS    = 192;
 	static inline const unsigned int LONG_PACKET_BYTES			 = 26;  // Buffer for max 4 GPS entries (208 bits)
 
+	static inline const unsigned int FASTLOC_PACKET_HEADER		 = 0b010;
+	static inline const unsigned int FASTLOC_PACKET_BITS		 = 192;   // LDA2 modulation
+	static inline const unsigned int FASTLOC_PACKET_BYTES		 = 24;
+
 	static inline const unsigned int SENSOR_PACKET_HEADER 		 = 0b001;
 	// Internal buffer allocation: must cover worst-case packing before truncation
 	// GPS(75) + ALS(17) + PH(14) + pressure(29) + thermistor(14) + AXL(67) = 216 bits = 27 bytes
@@ -73,6 +77,8 @@ public:
 			bool is_out_of_zone,
 			bool is_low_battery,
 			BaseDeltaTimeLoc delta_time_loc);
+	static KineisPacket build_fastloc_packet(GPSLogEntry* v,
+			bool is_low_battery);
 	static KineisPacket build_gnss_packet(std::vector<GPSLogEntry*> &v,
 			bool is_out_of_zone,
 			bool is_low_battery,

@@ -64,7 +64,7 @@ struct __attribute__((packed)) LogEntry {
 
 static_assert(sizeof(LogEntry) == MAX_LOG_SIZE, "LogEntry wrong size");
 
-enum class GPSEventType : uint8_t { ON, OFF, UPDATE, FIX, NO_FIX };
+enum class GPSEventType : uint8_t { ON, OFF, UPDATE, FIX, NO_FIX, FASTLOC };
 
 struct __attribute__((packed)) GPSInfo {
 	GPSEventType event_type;

@@ -18,6 +18,20 @@ public:
     	notify(GPSEventPVT(gnss_data));
     }
 
+    void notify_degraded_gnss_data(std::time_t time, double lat=0, double lon=0,
+    		double hdop = 0, double hacc = 0, uint8_t fixType = 2, uint8_t numSV = 3) {
+    	GNSSData gnss_data{};
+    	gnss_data.lat = lat;
+    	gnss_data.lon = lon;
+    	gnss_data.valid = 1;
+    	gnss_data.hDOP = hdop;
+    	gnss_data.hAcc = hacc;
+    	gnss_data.fixType = fixType;
+    	gnss_data.numSV = numSV;
+    	convert_datetime_to_epoch(time, gnss_data.year, gnss_data.month, gnss_data.day, gnss_data.hour, gnss_data.min, gnss_data.sec);
+    	notify(GPSEventPVTDegraded(gnss_data));
+    }
+
     void notify_max_nav_samples() {
     	notify<GPSEventMaxNavSamples>({});
     }

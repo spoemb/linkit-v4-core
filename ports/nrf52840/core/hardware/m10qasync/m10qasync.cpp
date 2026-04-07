@@ -57,6 +57,8 @@ M10QAsyncReceiver::M10QAsyncReceiver() {
 	m_fix_was_found = false;
 	m_unrecoverable_error = false;
 	m_database_overflow = false;
+	m_has_degraded_pvt = false;
+	std::memset(&m_degraded_pvt, 0, sizeof(m_degraded_pvt));
 	m_uart_error_count = 0;
 	m_expected_dbd_messages = 0;
 	m_mga_ack_count = 0;
@@ -78,6 +80,10 @@ void M10QAsyncReceiver::power_on(const GPSNavSettings& nav_settings) {
 
     // Cancel any ongoing poweroff request
     m_powering_off = false;
+
+    // Reset degraded PVT tracking
+    m_has_degraded_pvt = false;
+    std::memset(&m_degraded_pvt, 0, sizeof(m_degraded_pvt));
 
     // Reset observation counters of interest
     if (nav_settings.max_nav_samples) {
@@ -437,12 +443,48 @@ void M10QAsyncReceiver::react(const UBXCommsEventNavReport& n) {
 
             if (m_nav_settings.hacc_filter_en &&
                 (m_nav_settings.hacc_filter_threshold * 1000) < nav.pvt.hAcc) {
+                // Fix exists but fails hAcc filter — store as degraded if best so far
+                if (!m_has_degraded_pvt || nav.pvt.hAcc < m_degraded_pvt.hAcc) {
+                    m_degraded_pvt = {
+                        .iTOW = nav.pvt.iTow, .year = nav.pvt.year, .month = nav.pvt.month,
+                        .day = nav.pvt.day, .hour = nav.pvt.hour, .min = nav.pvt.min, .sec = nav.pvt.sec,
+                        .valid = nav.pvt.valid, .tAcc = nav.pvt.tAcc, .nano = nav.pvt.nano,
+                        .fixType = nav.pvt.fixType, .flags = nav.pvt.flags, .flags2 = nav.pvt.flags2, .flags3 = nav.pvt.flags3,
+                        .numSV = nav.pvt.numSV, .lon = nav.pvt.lon / 10000000.0, .lat = nav.pvt.lat / 10000000.0,
+                        .height = nav.pvt.height, .hMSL = nav.pvt.hMSL, .hAcc = nav.pvt.hAcc, .vAcc = nav.pvt.vAcc,
+                        .velN = nav.pvt.velN, .velE = nav.pvt.velE, .velD = nav.pvt.velD,
+                        .gSpeed = nav.pvt.gSpeed, .headMot = nav.pvt.headMot / 100000.0f,
+                        .sAcc = nav.pvt.sAcc, .headAcc = nav.pvt.headAcc / 100000.0f,
+                        .pDOP = nav.dop.pDOP / 100.0f, .vDOP = nav.dop.vDOP / 100.0f, .hDOP = nav.dop.hDOP / 100.0f,
+                        .headVeh = nav.pvt.headVeh / 100000.0f, .ttff = nav.status.ttff
+                    };
+                    m_has_degraded_pvt = true;
+                    DEBUG_TRACE("M10QAsyncReceiver: degraded PVT stored (hAcc=%u mm)", nav.pvt.hAcc);
+                }
                 m_num_consecutive_fixes = m_nav_settings.num_consecutive_fixes;
                 break;
             }
 
             if (m_nav_settings.hdop_filter_en &&
                 (100 * m_nav_settings.hdop_filter_threshold) < nav.dop.hDOP) {
+                // Fix exists but fails hDOP filter — store as degraded if best so far
+                if (!m_has_degraded_pvt || nav.pvt.hAcc < m_degraded_pvt.hAcc) {
+                    m_degraded_pvt = {
+                        .iTOW = nav.pvt.iTow, .year = nav.pvt.year, .month = nav.pvt.month,
+                        .day = nav.pvt.day, .hour = nav.pvt.hour, .min = nav.pvt.min, .sec = nav.pvt.sec,
+                        .valid = nav.pvt.valid, .tAcc = nav.pvt.tAcc, .nano = nav.pvt.nano,
+                        .fixType = nav.pvt.fixType, .flags = nav.pvt.flags, .flags2 = nav.pvt.flags2, .flags3 = nav.pvt.flags3,
+                        .numSV = nav.pvt.numSV, .lon = nav.pvt.lon / 10000000.0, .lat = nav.pvt.lat / 10000000.0,
+                        .height = nav.pvt.height, .hMSL = nav.pvt.hMSL, .hAcc = nav.pvt.hAcc, .vAcc = nav.pvt.vAcc,
+                        .velN = nav.pvt.velN, .velE = nav.pvt.velE, .velD = nav.pvt.velD,
+                        .gSpeed = nav.pvt.gSpeed, .headMot = nav.pvt.headMot / 100000.0f,
+                        .sAcc = nav.pvt.sAcc, .headAcc = nav.pvt.headAcc / 100000.0f,
+                        .pDOP = nav.dop.pDOP / 100.0f, .vDOP = nav.dop.vDOP / 100.0f, .hDOP = nav.dop.hDOP / 100.0f,
+                        .headVeh = nav.pvt.headVeh / 100000.0f, .ttff = nav.status.ttff
+                    };
+                    m_has_degraded_pvt = true;
+                    DEBUG_TRACE("M10QAsyncReceiver: degraded PVT stored (hDOP=%u)", nav.dop.hDOP);
+                }
                 m_num_consecutive_fixes = m_nav_settings.num_consecutive_fixes;
                 break;
             }
@@ -497,7 +539,14 @@ void M10QAsyncReceiver::react(const UBXCommsEventNavReport& n) {
         // Check if max number of samples has been reached
         if (STATE_EQUAL(receive) && m_nav_settings.max_nav_samples && m_num_nav_samples >= m_nav_settings.max_nav_samples) {
             m_nav_settings.max_nav_samples = 0;
-            notify<GPSEventMaxNavSamples>({});
+            // If we have a degraded fix (passed 2D/3D but failed quality filters), emit it
+            if (m_has_degraded_pvt) {
+                DEBUG_INFO("M10QAsyncReceiver: timeout with degraded PVT (hAcc=%u mm, fixType=%u, numSV=%u)",
+                           m_degraded_pvt.hAcc, m_degraded_pvt.fixType, m_degraded_pvt.numSV);
+                notify(GPSEventPVTDegraded(m_degraded_pvt));
+            } else {
+                notify<GPSEventMaxNavSamples>({});
+            }
         }
     }, "NavReport");
 }

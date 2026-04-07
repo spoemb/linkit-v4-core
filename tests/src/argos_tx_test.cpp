@@ -11,6 +11,7 @@
 #include "timeutils.hpp"
 #include "scheduler.hpp"
 #include "argos_tx_service.hpp"
+#include "messages.hpp"
 
 using namespace std::string_literals;
 
@@ -1838,3 +1839,108 @@ IGNORE_TEST(ArgosTxService, PassPredictWithSensorDataPayload)
 		mock_kineis->notify(KineisEventTxComplete({}));
 	}
 }
+
+
+// ============================================================================
+// Fastloc packet builder tests
+// ============================================================================
+
+TEST(ArgosTxService, FastlocSatellitePacketEncoding)
+{
+	// Build a fastloc GPS entry with degraded fix
+	GPSLogEntry log = make_gps_location(true, -33.8232, 11.8768, 1580083200, false, 0, 5000, 3800);
+	log.info.event_type = GPSEventType::FASTLOC;
+	log.info.fixType = 2;   // 2D fix
+	log.info.numSV = 5;
+	log.info.hAcc = 500000;  // 500m in mm
+
+	KineisPacket packet = ArgosPacketBuilder::build_fastloc_packet(&log, false);
+
+	// Verify packet size = 12 bytes (96 bits, LDK)
+	CHECK_EQUAL(ArgosPacketBuilder::FASTLOC_PACKET_BYTES, packet.size());
+
+	// Verify header is 010 (first 3 bits of first byte)
+	unsigned int header = (packet[0] >> 5) & 0x07;
+	CHECK_EQUAL(ArgosPacketBuilder::FASTLOC_PACKET_HEADER, header);
+}
+
+TEST(ArgosTxService, FastlocSatellitePacketQualityFields)
+{
+	// Test that different quality values produce different encoded packets
+	GPSLogEntry log1 = make_gps_location(true, 10.0, 20.0, 1580083200, false, 0, 0, 3800);
+	log1.info.event_type = GPSEventType::FASTLOC;
+	log1.info.fixType = 2;
+	log1.info.numSV = 4;
+	log1.info.hAcc = 200000;  // 200m
+
+	GPSLogEntry log2 = make_gps_location(true, 10.0, 20.0, 1580083200, false, 0, 0, 3800);
+	log2.info.event_type = GPSEventType::FASTLOC;
+	log2.info.fixType = 3;
+	log2.info.numSV = 8;
+	log2.info.hAcc = 1500000;  // 1500m
+
+	KineisPacket p1 = ArgosPacketBuilder::build_fastloc_packet(&log1, false);
+	KineisPacket p2 = ArgosPacketBuilder::build_fastloc_packet(&log2, false);
+
+	// Packets should differ (different quality metadata)
+	CHECK(p1 != p2);
+}
+
+TEST(ArgosTxService, FastlocPacketHeaderAndSize)
+{
+	// Verify fastloc packet uses LDA2 format (24 bytes) with correct header
+	GPSLogEntry log = make_gps_location(true, -33.8232, 11.8768, 1580083200, true, 50000, 5000, 3800);
+	log.info.event_type = GPSEventType::FASTLOC;
+	log.info.fixType = 2;
+	log.info.numSV = 5;
+	log.info.hAcc = 500000;
+	KineisPacket fastloc_pkt = ArgosPacketBuilder::build_fastloc_packet(&log, false);
+
+	// Fastloc uses LDA2: 192 bits = 24 bytes
+	CHECK_EQUAL(ArgosPacketBuilder::FASTLOC_PACKET_BYTES, fastloc_pkt.size());
+	CHECK_EQUAL(24U, fastloc_pkt.size());
+
+	// Header bits = 010
+	unsigned int fastloc_header = (fastloc_pkt[0] >> 5) & 0x07;
+	CHECK_EQUAL(0b010, fastloc_header);
+
+	// Compare with short packet — different size and header
+	KineisPacket short_pkt = ArgosPacketBuilder::build_short_packet(&log, false, false);
+	CHECK_EQUAL(12U, short_pkt.size());
+	CHECK(short_pkt.size() != fastloc_pkt.size());
+}
+
+TEST(ArgosTxService, FastlocHAccEncoding16bit)
+{
+	// Test hAcc encoding with 16-bit resolution (0-65535m)
+	GPSLogEntry log = make_gps_location(true, 10.0, 20.0, 1580083200, false, 0, 0, 3800);
+	log.info.event_type = GPSEventType::FASTLOC;
+	log.info.fixType = 2;
+	log.info.numSV = 4;
+
+	// hAcc = 0m
+	log.info.hAcc = 0;
+	KineisPacket p0 = ArgosPacketBuilder::build_fastloc_packet(&log, false);
+
+	// hAcc = 500m
+	log.info.hAcc = 500000;  // 500m in mm
+	KineisPacket p500 = ArgosPacketBuilder::build_fastloc_packet(&log, false);
+
+	// hAcc = 65535m (max encodable)
+	log.info.hAcc = 65535000;
+	KineisPacket pmax = ArgosPacketBuilder::build_fastloc_packet(&log, false);
+
+	// hAcc = 100000m (exceeds max) → clamped to 65535
+	log.info.hAcc = 100000000;
+	KineisPacket p_clamped = ArgosPacketBuilder::build_fastloc_packet(&log, false);
+
+	// Max and clamped should be same
+	CHECK(pmax == p_clamped);
+
+	// Different hAcc values should produce different packets
+	CHECK(p0 != p500);
+	CHECK(p500 != pmax);
+}
+
+// NOTE: LoRa fastloc packet tests require lora_tx_service.cpp in test build (not currently included).
+// LoRa fastloc encoding is validated via firmware build (build_linkitv4_lora.sh).

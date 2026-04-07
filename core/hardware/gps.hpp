@@ -98,6 +98,10 @@ struct GPSEventPVT {
     GNSSData& data;
     GPSEventPVT(GNSSData& a) : data(a) {}
 };
+struct GPSEventPVTDegraded {
+    GNSSData& data;
+    GPSEventPVTDegraded(GNSSData& a) : data(a) {}
+};
 
 class GPSEventListener {
 public:
@@ -108,6 +112,7 @@ public:
     virtual void react(const GPSEventPVT&) {}
     virtual void react(const GPSEventSatReport&) {}
     virtual void react(const GPSEventMaxNavSamples&) {}
+    virtual void react(const GPSEventPVTDegraded&) {}
     virtual void react(const GPSEventMaxSatSamples&) {}
     virtual void react(const GPSEventDeviceInfoReady&) {}
 };

@@ -345,8 +345,9 @@ enum class ParamID {
 	SWS_DELAY_MIN_US                         = 215,  // Adaptive sample delay floor (µs)
 	SWS_DELAY_MAX_US                         = 216,  // Adaptive sample delay ceiling (µs)
 	GNSS_ANO_STALE_DAYS                      = 217,  // uint: ANO staleness threshold in days (0=use all data regardless of age)
+	GNSS_FASTLOC_ENABLE                      = 218,  // bool: enable degraded GPS fix (fastloc) when quality filters fail
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 218,
+	__PARAM_SIZE                             = 219,
 	__NULL_PARAM                             = 0xFFFF
 };
 

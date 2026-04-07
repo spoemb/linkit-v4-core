@@ -342,12 +342,14 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 	{
 		GPSLogEntry& entry = std::get<GPSLogEntry>(e.event_data);
 
-		// Update last known location
-		if (entry.info.valid) {
+		// Update last known location (real fix only — fastloc is too inaccurate for scheduling)
+		if (entry.info.valid && entry.info.event_type != GPSEventType::FASTLOC) {
 			DEBUG_TRACE("ArgosTxService::notify_peer_event: updated GPS location");
 			m_sched.set_last_location(entry.info.lon, entry.info.lat);
 
 			// SURFACING_BURST: GNSS fix received — switch from Doppler to GNSS phase
+			// Fastloc (degraded) does NOT end Doppler phase — let satellite Doppler
+			// compute a potentially better position from the ongoing burst
 			if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing) {
 				DEBUG_INFO("ArgosTxService::SURFACING_BURST: GNSS fix acquired after %u Doppler messages - switching to GNSS phase",
 				           m_doppler_burst_count);
@@ -508,6 +510,24 @@ void ArgosTxService::process_sensor_burst() {
 	unsigned int size_bits;
 	GPSLogEntry *gps = m_depth_pile_manager.retrieve_gps_single((unsigned int)argos_config.depth_pile);
 	if (gps != nullptr) {
+		// If GPS entry is a fastloc (degraded fix), send fastloc packet instead of sensor packet
+		if (gps->info.event_type == GPSEventType::FASTLOC) {
+			KineisPacket packet = ArgosPacketBuilder::build_fastloc_packet(gps, argos_config.is_lb);
+			size_bits = ArgosPacketBuilder::FASTLOC_PACKET_BITS;
+			m_scheduled_mode = KineisModulation::LDA2;
+			if (argos_config.adaptive_modulation) {
+				if (!ensure_modulation(m_scheduled_mode)) {
+					DEBUG_WARN("ArgosTxService::process_sensor_burst: fastloc modulation switch failed, using current");
+					m_scheduled_mode = m_kineis.get_current_modulation();
+				}
+			}
+			DEBUG_INFO("ArgosTxService::process_sensor_burst: fastloc mode=%s data=%s sz=%u",
+			           argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
+			m_last_tx_had_gps = true;
+			m_kineis.send(m_scheduled_mode, packet, size_bits);
+			return;
+		}
+
 		KineisPacket packet;
 #ifdef BOARD_RSPB
 		// RSPB uses dedicated packet format with compact AXL + mortality confidence
@@ -585,11 +605,20 @@ void ArgosTxService::process_gnss_burst() {
 	unsigned int size_bits;
 	std::vector<GPSLogEntry*> v = m_depth_pile_manager.retrieve_gps((unsigned int)argos_config.depth_pile);
 	if (v.size()) {
-		KineisPacket packet = ArgosPacketBuilder::build_gnss_packet(v, argos_config.is_out_of_zone, argos_config.is_lb,
-				argos_config.delta_time_loc,
-				size_bits);
+		KineisPacket packet;
 
-		// Adaptive modulation: short GNSS packet (96 bits) fits LDK, long needs LDA2
+		// Check if the latest entry is a fastloc (degraded fix) — always LDA2
+		if (v.back()->info.event_type == GPSEventType::FASTLOC) {
+			packet = ArgosPacketBuilder::build_fastloc_packet(v.back(), argos_config.is_lb);
+			size_bits = ArgosPacketBuilder::FASTLOC_PACKET_BITS;
+			m_scheduled_mode = KineisModulation::LDA2;
+		} else {
+			packet = ArgosPacketBuilder::build_gnss_packet(v, argos_config.is_out_of_zone, argos_config.is_lb,
+					argos_config.delta_time_loc,
+					size_bits);
+		}
+
+		// Adaptive modulation: short/fastloc packet (96 bits) fits LDK, long needs LDA2
 		if (argos_config.adaptive_modulation) {
 			m_scheduled_mode = (size_bits <= 128) ? KineisModulation::LDK : KineisModulation::LDA2;
 			if (!ensure_modulation(m_scheduled_mode)) {
@@ -871,6 +900,89 @@ KineisPacket ArgosPacketBuilder::build_short_packet(GPSLogEntry* gps_entry,
 	// LOWBATERY_FLAG
 	PACK_BITS(is_low_battery, packet, base_pos, 1);
 	DEBUG_TRACE("ArgosPacketBuilder::build_short_packet: is_lb=%u", is_low_battery);
+
+	return packet;
+}
+
+KineisPacket ArgosPacketBuilder::build_fastloc_packet(GPSLogEntry* gps_entry,
+		bool is_low_battery) {
+
+	DEBUG_TRACE("ArgosPacketBuilder::build_fastloc_packet");
+	unsigned int base_pos = 0;
+	KineisPacket packet;
+
+	packet.assign(FASTLOC_PACKET_BYTES, 0);
+
+	// Header (3 bits) — type 010 = fastloc
+	PACK_BITS(FASTLOC_PACKET_HEADER, packet, base_pos, 3);
+
+	// Timestamp (16 bits)
+	uint16_t year;
+	uint8_t month, day, hour, min, sec;
+	convert_datetime_to_epoch(gps_entry->info.schedTime, year, month, day, hour, min, sec);
+	PACK_BITS(day, packet, base_pos, 5);
+	PACK_BITS(hour, packet, base_pos, 5);
+	PACK_BITS(min, packet, base_pos, 6);
+
+	// Position (43 bits)
+	unsigned int lat = convert_latitude(gps_entry->info.lat);
+	PACK_BITS(lat, packet, base_pos, 21);
+	DEBUG_TRACE("ArgosPacketBuilder::build_fastloc_packet: lat=%u (%lf)", lat, gps_entry->info.lat);
+	unsigned int lon = convert_longitude(gps_entry->info.lon);
+	PACK_BITS(lon, packet, base_pos, 22);
+	DEBUG_TRACE("ArgosPacketBuilder::build_fastloc_packet: lon=%u (%lf)", lon, gps_entry->info.lon);
+
+	// Speed + heading (15 bits)
+	unsigned int gspeed = convert_speed((double)gps_entry->info.gSpeed);
+	PACK_BITS(gspeed, packet, base_pos, 7);
+	unsigned int heading = convert_heading(gps_entry->info.headMot);
+	PACK_BITS(heading, packet, base_pos, 8);
+
+	// Altitude (8 bits)
+	if (gps_entry->info.fixType == FIXTYPE_3D) {
+		PACK_BITS(convert_altitude((double)gps_entry->info.hMSL), packet, base_pos, 8);
+	} else {
+		PACK_BITS(INVALID_ALTITUDE, packet, base_pos, 8);
+	}
+
+	// Battery (8 bits)
+	unsigned int batt = convert_battery_voltage((unsigned int)gps_entry->info.batt_voltage);
+	PACK_BITS(batt, packet, base_pos, 7);
+	PACK_BITS(is_low_battery, packet, base_pos, 1);
+
+	// Quality metadata (64 bits)
+	unsigned int fixType = std::min((unsigned int)gps_entry->info.fixType, 3U);
+	PACK_BITS(fixType, packet, base_pos, 2);
+
+	unsigned int numSV = std::min((unsigned int)gps_entry->info.numSV, 15U);
+	PACK_BITS(numSV, packet, base_pos, 4);
+
+	// hAcc in meters (16 bits, 0-65535m)
+	unsigned int hAcc_m = std::min(gps_entry->info.hAcc / MM_PER_METER, 65535U);
+	PACK_BITS(hAcc_m, packet, base_pos, 16);
+	DEBUG_TRACE("ArgosPacketBuilder::build_fastloc_packet: hAcc=%um", hAcc_m);
+
+	// vAcc in meters (16 bits, 0-65535m)
+	unsigned int vAcc_m = std::min(gps_entry->info.vAcc / MM_PER_METER, 65535U);
+	PACK_BITS(vAcc_m, packet, base_pos, 16);
+
+	// pDOP × 10 (8 bits, 0-25.5)
+	unsigned int pdop = std::min((unsigned int)(gps_entry->info.pDOP * 10.0f), 255U);
+	PACK_BITS(pdop, packet, base_pos, 8);
+
+	// hDOP × 10 (8 bits, 0-25.5)
+	unsigned int hdop = std::min((unsigned int)(gps_entry->info.hDOP * 10.0f), 255U);
+	PACK_BITS(hdop, packet, base_pos, 8);
+
+	// GPS on time in seconds (10 bits, 0-1023)
+	unsigned int ontime_s = std::min(gps_entry->info.onTime / MS_PER_SEC, 1023U);
+	PACK_BITS(ontime_s, packet, base_pos, 10);
+
+	// Reserved (35 bits) — zero-filled for future use
+	// Total: 3+16+43+15+8+8+2+4+16+16+8+8+10+35 = 192 bits
+
+	DEBUG_INFO("ArgosPacketBuilder::build_fastloc_packet: fixType=%u numSV=%u hAcc=%um pDOP=%.1f batt=%u",
+	           fixType, numSV, hAcc_m, (double)gps_entry->info.pDOP, (unsigned int)gps_entry->info.batt_voltage);
 
 	return packet;
 }
