@@ -456,6 +456,11 @@ void LoRaTxService::service_init() {
 
 	m_device.subscribe(*this);
 
+	// Warn if SURFACING_BURST mode is configured without underwater detection
+	if (argos_config.mode == BaseArgosMode::SURFACING_BURST && !argos_config.underwater_en) {
+		DEBUG_WARN("LoRaTxService: SURFACING_BURST mode requires UNDERWATER_EN=1 — burst will not trigger without SWS");
+	}
+
 	// Use argos_id as seed for scheduler jitter (or any unique device identifier)
 	m_sched.reset(argos_config.argos_id);
 	m_depth_pile_manager.clear();

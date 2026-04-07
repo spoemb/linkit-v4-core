@@ -1,5 +1,8 @@
 #include "dte_handler.hpp"
 #include "argos_tx_service.hpp"
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+#include "lora_tx_service.hpp"
+#endif
 #include "scheduler.hpp"
 #include "pmu.hpp"
 #include "rgb_led.hpp"
@@ -823,6 +826,14 @@ std::string DTEHandler::LORATX_REQ(int error_code, std::vector<BaseType>& arg_li
 
 	if (!lora_device_instance) {
 		DEBUG_WARN("DTEHandler::LORATX_REQ: LoRa device not available");
+		return DTEEncoder::encode(DTECommand::LORATX_RESP, (int)DTEError::INCORRECT_DATA);
+	}
+
+	// Validate payload size against configured data rate limit
+	uint8_t dr = (uint8_t)configuration_store->read_param<unsigned int>(ParamID::LORA_DR);
+	unsigned int max_bytes = LoRaPayloadLimits::max_payload_for_dr(dr);
+	if (num_bytes == 0 || num_bytes > max_bytes) {
+		DEBUG_WARN("DTEHandler::LORATX_REQ: size %u exceeds DR%u max %u bytes", num_bytes, dr, max_bytes);
 		return DTEEncoder::encode(DTECommand::LORATX_RESP, (int)DTEError::INCORRECT_DATA);
 	}
 

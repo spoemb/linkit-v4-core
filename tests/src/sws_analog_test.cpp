@@ -1596,16 +1596,20 @@ TEST(SWSAnalogFlash, AirBaselineFloor_PreventsCollapse)
  * Test 28: Flash persistence across reboots
  * Calibration saved to SWS.CAL survives service destruction/recreation.
  * First instance calibrates and dives; second instance loads from flash.
+ *
+ * Boot in water (ADC=10000 > WATER_DETECT_HEURISTIC=7000) to establish
+ * proper baselines and peak. Surface to trigger save, then restore.
+ * 14-bit ADC: salt water ~10000-15000, air ~100-500.
  */
 TEST(SWSAnalogFlash, FlashPersistence_SurvivesReboot)
 {
     uint16_t saved_air = 0, saved_water = 0;
 
-    // First instance: calibrate and dive to establish baselines
+    // First instance: boot in water to establish proper baselines
     {
         SWSAnalogService s;
         system_timer->start();
-        SAADC::set_adc_value(200);
+        SAADC::set_adc_value(10000);  // Boot in salt water (> WATER_DETECT_HEURISTIC)
         bool switch_state = false;
 
         s.start([&switch_state](ServiceEvent &event) {
@@ -1613,10 +1617,7 @@ TEST(SWSAnalogFlash, FlashPersistence_SurvivesReboot)
                 switch_state = std::get<bool>(event.event_data);
         });
 
-        warmup_air_samples(5);
-
-        // Dive to establish water baseline
-        SAADC::set_adc_value(3000);
+        // Stabilize underwater — establishes peak and water baseline
         for (int i = 0; i < 10; i++) run_one_sample();
         CHECK_TRUE(switch_state);
 
@@ -1629,7 +1630,7 @@ TEST(SWSAnalogFlash, FlashPersistence_SurvivesReboot)
         saved_water = status.threshold_water;
 
         CHECK_TEXT(saved_air > 0, "Flash: air baseline should be set");
-        CHECK_TEXT(saved_water > 0, "Flash: water baseline should be set");
+        CHECK_TEXT(saved_water > 3000, "Flash: water baseline should be set from water boot");
 
         s.stop();
     }
@@ -1656,7 +1657,7 @@ TEST(SWSAnalogFlash, FlashPersistence_SurvivesReboot)
         CHECK_TRUE_TEXT(status.is_calibrated,
             "Flash persistence: calibration should be valid after reboot");
         // Water baseline should be close to what was saved (not re-estimated as air*3)
-        CHECK_TEXT(status.threshold_water > 1000,
+        CHECK_TEXT(status.threshold_water > 3000,
             "Flash persistence: water baseline should be restored from flash (not re-estimated)");
 
         s.stop();
@@ -1671,6 +1672,10 @@ TEST(SWSAnalogFlash, FlashPersistence_SurvivesReboot)
  * Note: guided calibration stops the service on completion (DONE → IDLE),
  * so we must check results after the state machine finishes, and avoid
  * calling run_one_sample() after the service has stopped.
+ *
+ * 14-bit ADC: air ~150, water ~10000 (realistic salt water).
+ * Break water loop on notify callback (calib_result.status != 0) to avoid
+ * calling run_one_sample() after the service stops in COMPLETION_PAUSE.
  */
 TEST(SWSAnalogFlash, GuidedCalibration_FullCycle)
 {
@@ -1700,19 +1705,19 @@ TEST(SWSAnalogFlash, GuidedCalibration_FullCycle)
     // Need CALIB_STABILITY_THRESHOLD (3) consecutive stable readings, then CALIB_NUM_SAMPLES (5)
     SAADC::set_adc_value(150);
     for (int i = 0; i < 15; i++) {
-        if (!SWSAnalogService::is_guided_calibration_running()) break;
+        if (calib_result.status != 0) break;
         run_one_sample();
     }
 
-    // Phase 2: WATER — provide stable water readings (3500)
+    // Phase 2: WATER — provide stable water readings (10000, realistic salt water)
     // Must be > air_result * 2 to enter WATER_WAITING
-    SAADC::set_adc_value(3500);
-    for (int i = 0; i < 15; i++) {
-        if (!SWSAnalogService::is_guided_calibration_running()) break;
+    SAADC::set_adc_value(10000);
+    for (int i = 0; i < 20; i++) {
+        if (calib_result.status != 0) break;
         run_one_sample();
     }
 
-    // Wait for service stop (guided calib calls PMU::delay_ms then stops)
+    // Wait for service stop (guided calib COMPLETION_PAUSE then stops)
     std::this_thread::sleep_for(std::chrono::seconds(4));
 
     // Should be done now — check via notify callback (most reliable)
@@ -1722,8 +1727,8 @@ TEST(SWSAnalogFlash, GuidedCalibration_FullCycle)
     if (calib_result.status == 1) {
         CHECK_TEXT(calib_result.air > 100 && calib_result.air < 250,
             "Guided calib: air result should be ~150");
-        CHECK_TEXT(calib_result.water > 3000 && calib_result.water < 4000,
-            "Guided calib: water result should be ~3500");
+        CHECK_TEXT(calib_result.water > 8000 && calib_result.water < 12000,
+            "Guided calib: water result should be ~10000");
     }
 
     SWSAnalogService::clear_guided_calib_notify();
@@ -1845,8 +1850,8 @@ TEST(SWSAnalogFlash, QA1_TurtleDeploymentFullSequence)
         "QA1: Water estimé doit être > air");
 
     // 2. Immersion progressive (simule descente lente dans l'eau)
-    //    ADC monte progressivement de 150 à 5000
-    uint16_t immersion_ramp[] = {300, 800, 1500, 2500, 3500, 4500, 5000, 5000, 5000, 5000};
+    //    ADC monte progressivement de 150 à 12000 (14-bit: salt water ~10000-15000)
+    uint16_t immersion_ramp[] = {500, 1500, 3000, 5000, 7000, 9000, 11000, 12000, 12000, 12000};
     unsigned int samples_to_underwater = 0;
     bool detected_underwater = false;
     callbacks = 0;
@@ -1866,7 +1871,7 @@ TEST(SWSAnalogFlash, QA1_TurtleDeploymentFullSequence)
         "QA1: Détection underwater doit arriver pendant la rampe");
 
     // 4. Stabiliser underwater et vérifier convergence water baseline
-    SAADC::set_adc_value(5000);
+    SAADC::set_adc_value(12000);
     for (int i = 0; i < 10; i++) run_one_sample();
 
     auto status_uw = SWSAnalogService::get_status();
@@ -1906,7 +1911,7 @@ TEST(SWSAnalogFlash, QA1_TurtleDeploymentFullSequence)
     std::this_thread::sleep_for(std::chrono::seconds(4));
     for (int i = 0; i < 3; i++) run_one_sample();  // Tick time
 
-    SAADC::set_adc_value(5000);
+    SAADC::set_adc_value(12000);
     bool re_detected = false;
     for (int i = 0; i < 10; i++) {
         run_one_sample();
@@ -1918,7 +1923,7 @@ TEST(SWSAnalogFlash, QA1_TurtleDeploymentFullSequence)
     // 7. 10 cycles complets de dive/surface — vérifier stabilité
     for (int cycle = 0; cycle < 10; cycle++) {
         // Underwater
-        SAADC::set_adc_value(5000);
+        SAADC::set_adc_value(12000);
         std::this_thread::sleep_for(std::chrono::seconds(2));
         for (int i = 0; i < 5; i++) run_one_sample();
 
@@ -1944,9 +1949,9 @@ TEST(SWSAnalogFlash, QA1_TurtleDeploymentFullSequence)
     // Air baseline ne doit pas dériver significativement de ~150
     CHECK_TEXT(status_final.threshold_air < 1000,
         "QA1: Air baseline ne doit pas dériver excessivement après 10 cycles");
-    // Water baseline doit rester dans la plage raisonnable
-    CHECK_TEXT(status_final.threshold_water > 2000,
-        "QA1: Water baseline doit rester > 2000 après 10 cycles");
+    // Water baseline doit rester dans la plage raisonnable (14-bit ADC)
+    CHECK_TEXT(status_final.threshold_water > 5000,
+        "QA1: Water baseline doit rester > 5000 après 10 cycles");
 
     s.stop();
 }
@@ -2083,9 +2088,12 @@ TEST(SWSAnalogFlash, QA3A_AntiSpikeBlocksPeakGrowth)
 /**
  * QA-3B: Spike rejection with established peak
  *
- * Start in water to establish peak at actual water ADC, then inject spike.
- * This tests the anti-spike filter in its intended use case (rejecting
- * electrical spikes, not blocking legitimate peak growth).
+ * Boot in water (ADC=10000 > WATER_DETECT_HEURISTIC=7000) to establish
+ * proper peak at water level. Once peak >= threshold_current,
+ * first_water_contact is false and anti-spike rejects values > 120% of peak.
+ * Inject spike at 15000 (> 10000 * 1.2 = 12000) → must be rejected.
+ *
+ * 14-bit ADC: salt water ~10000, spike ~15000.
  */
 TEST(SWSAnalogFlash, QA3B_SpikeRejectionWithEstablishedPeak)
 {
@@ -2094,34 +2102,35 @@ TEST(SWSAnalogFlash, QA3B_SpikeRejectionWithEstablishedPeak)
 
     system_timer->start();
 
-    // Boot directly in water — calibrate_air_baseline detects avg > 2500
-    // and swaps logic: water=5000, air=5000/3≈1666
-    SAADC::set_adc_value(5000);
+    // Boot directly in water (>7000 triggers "started in water" path)
+    // → air=10000/3≈3333, water=10000, threshold≈5666
+    // After 10 samples at 10000, peak=10000 > threshold → first_water_contact=false
+    SAADC::set_adc_value(10000);
 
     s.start([&switch_state](ServiceEvent &event) {
         if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED)
             switch_state = std::get<bool>(event.event_data);
     });
 
-    // Peak starts at 0, first sample at 5000 is accepted (peak==0 branch)
+    // Peak starts at 0, first sample at 10000 is accepted (peak==0 branch)
     for (int i = 0; i < 10; i++) run_one_sample();
 
     auto status_before = SWSAnalogService::get_status();
     uint16_t peak_before = status_before.observed_peak;
-    CHECK_TEXT(peak_before > 3000, "QA3B: Peak doit être > 3000 (boot in water)");
+    CHECK_TEXT(peak_before > 8000, "QA3B: Peak doit être > 8000 (boot in water at 10000)");
 
-    // Inject spike (15000 > 5000 * 1.5 = 7500) → anti-spike must reject
+    // Inject spike (15000 > 10000 * 6/5 = 12000) → anti-spike must reject
     SAADC::set_adc_value(15000);
     run_one_sample();
 
     auto status_after = SWSAnalogService::get_status();
-    CHECK_TEXT(status_after.observed_peak < 10000,
+    CHECK_TEXT(status_after.observed_peak < 13000,
         "QA3B: Peak ne doit pas sauter à 15000");
-    CHECK_TEXT(status_after.observed_peak <= (uint32_t)peak_before * 3 / 2,
-        "QA3B: Peak doit rester <= 150% de l'original");
+    CHECK_TEXT(status_after.observed_peak <= (uint32_t)peak_before * 6 / 5,
+        "QA3B: Peak doit rester <= 120% de l'original");
 
     // System must remain functional after spike
-    SAADC::set_adc_value(5000);
+    SAADC::set_adc_value(10000);
     for (int i = 0; i < 5; i++) run_one_sample();
 
     // Surface detection must still work
@@ -2133,7 +2142,7 @@ TEST(SWSAnalogFlash, QA3B_SpikeRejectionWithEstablishedPeak)
     // May or may not have detected surface depending on threshold positioning
     // with the water-boot calibration. The key assertion is peak protection.
     auto status_final = SWSAnalogService::get_status();
-    CHECK_TEXT(status_final.observed_peak < 10000,
+    CHECK_TEXT(status_final.observed_peak < 13000,
         "QA3B: Peak stable après spike + retour normal");
 
     s.stop();
@@ -2279,10 +2288,14 @@ TEST(SWSAnalogFlash, QA5_SplashWaveOnSurface)
  * QA-6: Biofouling progressif long terme (100 cycles)
  *
  * Simule un déploiement d'un an avec dégradation progressive :
- *   - Contrast décroissant : 10x → 5x → 3x → 2x
+ *   - Contrast décroissant : 60x → 12x → 4x → 1.7x
  *   - Vérifie que les L-overrides continuent de fonctionner
  *   - Vérifie que les thresholds s'adaptent
  *   - Vérifie que le safety timeout escalation fonctionne si besoin
+ *
+ * Boot in water (ADC=12000 > WATER_DETECT_HEURISTIC=7000) to establish
+ * proper peak and baselines before starting biofouling cycles.
+ * 14-bit ADC: salt water ~10000-15000, air ~200-3000 (biofouling raises air).
  *
  * Note: test allégé (20 cycles par stage, pas 100) pour ne pas bloquer CI.
  */
@@ -2298,7 +2311,8 @@ TEST(SWSAnalogFlash, QA6_BiofoulingProgressiveLongTerm)
     unsigned int lockout_sec = 3U;
     configuration_store->write_param(ParamID::UW_MIN_SURFACE_TIME, lockout_sec);
 
-    SAADC::set_adc_value(150);
+    // Boot in water to establish proper peak and baselines
+    SAADC::set_adc_value(12000);
 
     s.start([&switch_state, &callbacks](ServiceEvent &event) {
         if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
@@ -2307,9 +2321,18 @@ TEST(SWSAnalogFlash, QA6_BiofoulingProgressiveLongTerm)
         }
     });
 
-    warmup_air_samples();
+    // Stabilize underwater
+    for (int i = 0; i < 10; i++) run_one_sample();
 
-    // Stages de biofouling avec contrast décroissant
+    // Return to surface to establish air baseline
+    SAADC::set_adc_value(200);
+    for (int i = 0; i < 10; i++) run_one_sample();
+
+    // Wait lockout
+    std::this_thread::sleep_for(std::chrono::seconds(4));
+    for (int i = 0; i < 3; i++) run_one_sample();
+
+    // Stages de biofouling avec contrast décroissant (14-bit ADC values)
     struct Stage {
         uint16_t water;
         uint16_t air;
@@ -2318,10 +2341,10 @@ TEST(SWSAnalogFlash, QA6_BiofoulingProgressiveLongTerm)
     };
 
     Stage stages[] = {
-        {3000, 150, 5, "Clean (contrast ~20x)"},
-        {2800, 500, 5, "Light biofouling (contrast ~5.6x)"},
-        {2500, 800, 5, "Moderate biofouling (contrast ~3.1x)"},
-        {2200, 1100, 5, "Heavy biofouling (contrast ~2x)"},
+        {12000, 200,  5, "Clean (contrast ~60x)"},
+        {10000, 800,  5, "Light biofouling (contrast ~12x)"},
+        {8000,  2000, 5, "Moderate biofouling (contrast ~4x)"},
+        {5000,  3000, 5, "Heavy biofouling (contrast ~1.7x)"},
     };
 
     unsigned int total_surface_detected = 0;
@@ -2366,8 +2389,8 @@ TEST(SWSAnalogFlash, QA6_BiofoulingProgressiveLongTerm)
     auto status_final = SWSAnalogService::get_status();
     CHECK_TRUE_TEXT(status_final.is_calibrated,
         "QA6: Calibration doit rester valide après biofouling long terme");
-    // Air baseline doit avoir augmenté par rapport au 150 initial
-    CHECK_TEXT(status_final.threshold_air > 150,
+    // Air baseline doit avoir augmenté par rapport au 200 initial (biofouling raises air)
+    CHECK_TEXT(status_final.threshold_air > 200,
         "QA6: Air baseline doit s'être adapté à la hausse (biofouling)");
 
     s.stop();
@@ -2421,12 +2444,13 @@ TEST(SWSAnalogFlash, QA7_GuidedCalibrationNonBlocking)
     }
 
     // Phase WATER: provide stable water readings (must be > air * 2 = 300)
-    SAADC::set_adc_value(3500);
+    // 14-bit ADC: use realistic salt water value
+    SAADC::set_adc_value(10000);
     int ticks_water = 0;
     for (int i = 0; i < 20; i++) {
+        if (calib_result.status != 0) break;  // Notify fired = completed, stop before service stops
         run_one_sample();
         ticks_water++;
-        if (calib_result.status != 0) break;  // Notify fired = completed
     }
 
     // The notify fires during WATER_SAMPLING (before COMPLETION_PAUSE).
@@ -2440,8 +2464,8 @@ TEST(SWSAnalogFlash, QA7_GuidedCalibrationNonBlocking)
     if (calib_result.status == 1) {
         CHECK_TEXT(calib_result.air > 100 && calib_result.air < 250,
             "QA7: Air calibré doit être ~150");
-        CHECK_TEXT(calib_result.water > 3000 && calib_result.water < 4000,
-            "QA7: Water calibré doit être ~3500");
+        CHECK_TEXT(calib_result.water > 8000 && calib_result.water < 12000,
+            "QA7: Water calibré doit être ~10000");
     }
 
     // Verify the state machine progressed without getting stuck

@@ -136,6 +136,8 @@ private:
 	void query_sec_uniqid();
 	void sync_baud_rate(unsigned int baud);
 	void dump_navigation_database(unsigned int);
+	void save_dbd_to_flash();
+	bool load_dbd_from_flash();
 
 	// Power management
 	void enter_shutdown();

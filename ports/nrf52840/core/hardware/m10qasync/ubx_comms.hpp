@@ -178,7 +178,8 @@ public:
 			UBX::MessageClass msg_cls, uint8_t msg_id);
 	void copy_mga_ano_to_buffer(File& file, uint8_t *dest_buffer, const unsigned int buffer_size, std::time_t now,
 			unsigned int& num_bytes_copied, unsigned int& num_msg_copied,
-			unsigned int& ano_start_pos);
+			unsigned int& ano_start_pos,
+			unsigned int ano_stale_threshold_s = 24*3600);
 	void set_debug_enable(bool e) {
 	    m_debug_enable = e;
 	}

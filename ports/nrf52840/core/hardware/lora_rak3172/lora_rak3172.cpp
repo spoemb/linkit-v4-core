@@ -45,6 +45,7 @@ LoRaDevice::LoRaDevice()
     m_is_configured = false;
     m_power_on_retry = 0;
     m_nwm_reboot_pending = false;
+    m_consecutive_errors = 0;
     load_config_from_store();
     LORA_STATE_CHANGE(power_off, power_on);
 }
@@ -459,6 +460,11 @@ void LoRaDevice::state_configure()
         case 4:
             // Set Application EUI (OTAA only)
             if (m_config.njm == 1 && !m_config.appeui.empty()) {
+                if (m_config.appeui.size() != 16) {
+                    DEBUG_ERROR("LoRaDevice: invalid APPEUI length %u (expected 16 hex chars)", (unsigned)m_config.appeui.size());
+                    at_error = true;
+                    break;
+                }
                 at_error = send_AT(AT_SET_APPEUI, m_config.appeui);
             }
             break;
@@ -466,14 +472,37 @@ void LoRaDevice::state_configure()
         case 5:
             // Set Application Key (OTAA) or session keys (ABP)
             if (m_config.njm == 1 && !m_config.appkey.empty()) {
+                if (m_config.appkey.size() != 32) {
+                    DEBUG_ERROR("LoRaDevice: invalid APPKEY length %u (expected 32 hex chars)", (unsigned)m_config.appkey.size());
+                    at_error = true;
+                    break;
+                }
                 at_error = send_AT(AT_SET_APPKEY, m_config.appkey);
             } else if (m_config.njm == 0) {
-                if (!m_config.devaddr.empty())
+                if (!m_config.devaddr.empty()) {
+                    if (m_config.devaddr.size() != 8) {
+                        DEBUG_ERROR("LoRaDevice: invalid DEVADDR length %u (expected 8 hex chars)", (unsigned)m_config.devaddr.size());
+                        at_error = true;
+                        break;
+                    }
                     at_error = send_AT(AT_SET_DEVADDR, m_config.devaddr);
-                if (!at_error && !m_config.nwkskey.empty())
+                }
+                if (!at_error && !m_config.nwkskey.empty()) {
+                    if (m_config.nwkskey.size() != 32) {
+                        DEBUG_ERROR("LoRaDevice: invalid NWKSKEY length %u (expected 32 hex chars)", (unsigned)m_config.nwkskey.size());
+                        at_error = true;
+                        break;
+                    }
                     at_error = send_AT(AT_SET_NWKSKEY, m_config.nwkskey);
-                if (!at_error && !m_config.appskey.empty())
+                }
+                if (!at_error && !m_config.appskey.empty()) {
+                    if (m_config.appskey.size() != 32) {
+                        DEBUG_ERROR("LoRaDevice: invalid APPSKEY length %u (expected 32 hex chars)", (unsigned)m_config.appskey.size());
+                        at_error = true;
+                        break;
+                    }
                     at_error = send_AT(AT_SET_APPSKEY, m_config.appskey);
+                }
             }
             break;
 
@@ -725,6 +754,7 @@ void LoRaDevice::state_transmit()
     if (m_tx_done)
     {
         m_tx_done = false;
+        m_consecutive_errors = 0;  // Reset error counter on successful TX
         DEBUG_TRACE("LoRaDevice::state_transmit: TX complete");
         m_packet_buffer.clear();
         notify(KineisEventTxComplete({}));
@@ -756,9 +786,19 @@ void LoRaDevice::state_error_enter() {
 
 void LoRaDevice::state_error()
 {
-    DEBUG_ERROR("LoRaDevice::state_error");
-    notify(KineisEventDeviceError({}));
-    LORA_STATE_CHANGE(error, power_off);
+    m_consecutive_errors++;
+    if (m_consecutive_errors <= MAX_CONSECUTIVE_ERRORS) {
+        // Transient error — retry from idle (module may still be responsive)
+        DEBUG_WARN("LoRaDevice::state_error: retry %u/%u", m_consecutive_errors, MAX_CONSECUTIVE_ERRORS);
+        m_is_error = false;
+        LORA_STATE_CHANGE(error, idle);
+    } else {
+        // Persistent error — power cycle
+        DEBUG_ERROR("LoRaDevice::state_error: max retries reached, powering off");
+        m_consecutive_errors = 0;
+        notify(KineisEventDeviceError({}));
+        LORA_STATE_CHANGE(error, power_off);
+    }
 }
 
 void LoRaDevice::state_error_exit() {

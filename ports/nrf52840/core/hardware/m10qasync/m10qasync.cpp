@@ -383,6 +383,15 @@ void M10QAsyncReceiver::react(const UBXCommsEventSatReport& s) {
             }
             notify(e);
 
+        	// Early abort: if after 10 sat reports no satellite has qualityInd >= 2
+        	// (signal acquired), the antenna is likely obstructed or underwater
+        	if (m_num_sat_samples == 10 && e.bestSignalQuality < 2) {
+        		DEBUG_WARN("M10QAsyncReceiver: no signal acquired after %u sat reports (best quality=%u) | aborting",
+        		           m_num_sat_samples, e.bestSignalQuality);
+        		notify<GPSEventMaxSatSamples>({});
+        		return;
+        	}
+
         	// Check if max number of samples has been reached
         	if (m_nav_settings.max_sat_samples && m_num_sat_samples >= m_nav_settings.max_sat_samples) {
         		m_nav_settings.max_sat_samples = 0;
@@ -943,6 +952,64 @@ void M10QAsyncReceiver::state_stopreceive() {
 void M10QAsyncReceiver::state_stopreceive_exit() {
 }
 
+void M10QAsyncReceiver::save_dbd_to_flash() {
+	if (!main_filesystem || m_ana_database_len == 0)
+		return;
+
+	try {
+		LFSFile file(main_filesystem, "gnss_dbd.dat", LFS_O_WRONLY | LFS_O_CREAT | LFS_O_TRUNC);
+		// Write a 4-byte timestamp header followed by the database
+		uint32_t save_time = rtc->is_set() ? (uint32_t)rtc->gettime() : 0;
+		file.write(&save_time, sizeof(save_time));
+		file.write(m_navigation_database, m_ana_database_len);
+		DEBUG_TRACE("M10QAsyncReceiver::save_dbd_to_flash: saved %u bytes (t=%u)", m_ana_database_len, save_time);
+	} catch (...) {
+		DEBUG_WARN("M10QAsyncReceiver::save_dbd_to_flash: write failed");
+	}
+}
+
+bool M10QAsyncReceiver::load_dbd_from_flash() {
+	if (!main_filesystem)
+		return false;
+
+	try {
+		LFSFile file(main_filesystem, "gnss_dbd.dat", LFS_O_RDONLY);
+		if ((unsigned int)file.size() <= sizeof(uint32_t))
+			return false;
+
+		// Read timestamp header and check freshness (max 12 hours)
+		uint32_t save_time = 0;
+		file.read(&save_time, sizeof(save_time));
+
+		if (rtc->is_set() && save_time > 0) {
+			uint32_t age_s = (uint32_t)rtc->gettime() - save_time;
+			if (age_s > 12 * 3600) {
+				DEBUG_TRACE("M10QAsyncReceiver::load_dbd_from_flash: stale (%u s old)", age_s);
+				return false;
+			}
+		}
+
+		unsigned int data_len = (unsigned int)(file.size() - sizeof(uint32_t));
+		if (data_len > sizeof(m_navigation_database)) {
+			DEBUG_WARN("M10QAsyncReceiver::load_dbd_from_flash: file too large (%u)", data_len);
+			return false;
+		}
+
+		lfs_ssize_t read = file.read(m_navigation_database, data_len);
+		if (read != (lfs_ssize_t)data_len) {
+			DEBUG_WARN("M10QAsyncReceiver::load_dbd_from_flash: short read");
+			return false;
+		}
+
+		m_ana_database_len = data_len;
+		DEBUG_TRACE("M10QAsyncReceiver::load_dbd_from_flash: loaded %u bytes (age=%u s)",
+		            data_len, rtc->is_set() ? ((uint32_t)rtc->gettime() - save_time) : 0);
+		return true;
+	} catch (...) {
+		return false;
+	}
+}
+
 void M10QAsyncReceiver::state_fetchdatabase_enter() {
 	m_step = 0;
 	m_retries = 3;
@@ -1007,6 +1074,10 @@ void M10QAsyncReceiver::state_fetchdatabase() {
 					// Subtract the size of the MGA-ACK message from the database length
 					// so it doesn't get sent out
 					m_ana_database_len = m_ana_database_len - std::min(m_ana_database_len, msg_size<MGA::MSG_ACK>());
+					// Persist to flash if a fix was obtained (useful data for next session)
+					if (m_fix_was_found) {
+						save_dbd_to_flash();
+					}
 				}
 				STATE_CHANGE(fetchdatabase, poweroff);
 				break;
@@ -1036,6 +1107,12 @@ void M10QAsyncReceiver::state_senddatabase_enter() {
 	m_step = 0;
 	m_op_state = OpState::IDLE;
 	m_mga_ack_count = 0;
+
+	// If no ANA data in RAM and ANO is not in use, try loading persisted DBD from flash
+	if (m_ana_database_len == 0 && m_ano_database_len == 0 && m_nav_settings.assistnow_autonomous_enable) {
+		load_dbd_from_flash();
+	}
+
 	m_ubx_comms.start_dbd_filter();
 	DEBUG_TRACE("M10QAsyncReceiver::state_senddatabase: sending length %u bytes", m_ana_database_len);
 }
@@ -1109,7 +1186,8 @@ void M10QAsyncReceiver::state_sendofflinedatabase_enter() {
         LFSFile file(main_filesystem, "gps_config.dat", LFS_O_RDONLY);
         m_ubx_comms.copy_mga_ano_to_buffer(file, m_navigation_database, sizeof(m_navigation_database),
                                            rtc->gettime(),
-                                           m_ano_database_len, m_expected_dbd_messages, m_ano_start_pos);
+                                           m_ano_database_len, m_expected_dbd_messages, m_ano_start_pos,
+                                           m_nav_settings.ano_stale_threshold_s);
         m_ubx_comms.start_dbd_filter();
         DEBUG_TRACE("M10QAsyncReceiver::state_sendofflinedatabase: database len %u bytes",
                     m_ano_database_len);
@@ -1873,7 +1951,7 @@ GNSSAlmanacStatus M10QAsyncReceiver::get_almanac_status() const {
 		status.total_records = total_records;
 		status.valid_records = valid_records;
 
-		if (!rtc_available || deltatime >= (24 * 3600)) {
+		if (!rtc_available || (m_nav_settings.ano_stale_threshold_s > 0 && deltatime >= m_nav_settings.ano_stale_threshold_s)) {
 			status.stale = true;
 			status.valid_records = 0;
 		}

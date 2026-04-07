@@ -458,7 +458,8 @@ bool UBXComms::is_expected_msg_count(uint8_t *buffer, unsigned int length, unsig
 
 void UBXComms::copy_mga_ano_to_buffer(File& file, uint8_t *dest_buffer, const unsigned int buffer_size, std::time_t now,
 		unsigned int& num_bytes_copied, unsigned int& num_msg_copied,
-		unsigned int& ano_start_pos) {
+		unsigned int& ano_start_pos,
+		unsigned int ano_stale_threshold_s) {
 	uint8_t buffer[UBX::MAX_PACKET_LEN];
 	lfs_soff_t offset = ano_start_pos;
 	num_bytes_copied = 0;
@@ -537,10 +538,11 @@ void UBXComms::copy_mga_ano_to_buffer(File& file, uint8_t *dest_buffer, const un
 		}
 	}
 
-	// If deltatime > 24 hours then the database is stale and we should no longer process
-	// this file
-	if (deltatime >= (24*3600)) {
-	    DEBUG_TRACE("UBXComms::copy_mga_ano_to_buffer: ANO file is stale");
+	// If deltatime exceeds the staleness threshold, discard the data.
+	// threshold=0 means never discard (use all data regardless of age).
+	if (ano_stale_threshold_s > 0 && deltatime >= ano_stale_threshold_s) {
+	    DEBUG_TRACE("UBXComms::copy_mga_ano_to_buffer: ANO file is stale (delta=%us > threshold=%us)",
+	                (unsigned int)deltatime, ano_stale_threshold_s);
 	    ano_start_pos = file.size();
 	    num_bytes_copied = 0;
 	    num_msg_copied = 0;

@@ -344,8 +344,9 @@ enum class ParamID {
 	SMD_LPM_MODE                             = 214,  // SMD low-power bitmap: 0x01=NONE, 0x02=SLEEP, 0x04=STOP, 0x08=STANDBY, 0x10=SHUTDOWN
 	SWS_DELAY_MIN_US                         = 215,  // Adaptive sample delay floor (µs)
 	SWS_DELAY_MAX_US                         = 216,  // Adaptive sample delay ceiling (µs)
+	GNSS_ANO_STALE_DAYS                      = 217,  // uint: ANO staleness threshold in days (0=use all data regardless of age)
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 217,
+	__PARAM_SIZE                             = 218,
 	__NULL_PARAM                             = 0xFFFF
 };
 

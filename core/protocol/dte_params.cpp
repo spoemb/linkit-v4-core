@@ -309,6 +309,8 @@ const BaseMap param_map[] = {
 	// [215-216] SWS adaptive sample delay bounds (µs)
 	{ "SWS_DELAY_MIN_US", "UNP09", BaseEncoding::UINT, 50U, 15000U, {}, true, true },
 	{ "SWS_DELAY_MAX_US", "UNP10", BaseEncoding::UINT, 100U, 30000U, {}, true, true },
+	// [217] GNSS ANO staleness threshold in days (0=never discard stale ANO data)
+	{ "GNSS_ANO_STALE_DAYS", "GNP44", BaseEncoding::UINT, 0U, 365U, {}, true, true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

@@ -24,6 +24,7 @@ struct GPSNavSettings {
     unsigned int     orbmaxerr = 300;
     unsigned int     min_cno = 10;
     unsigned int     min_elev = 10;
+    unsigned int     ano_stale_threshold_s = 5 * 24 * 3600;  // ANO staleness threshold in seconds (default: 5 days)
 };
 
 struct GNSSData {

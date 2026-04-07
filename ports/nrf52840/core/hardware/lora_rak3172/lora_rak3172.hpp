@@ -103,6 +103,10 @@ private:
     unsigned int m_power_on_retry;      // AT ping retry counter during power_on
     bool         m_nwm_reboot_pending;  // Waiting for module reboot after AT+NWM=1
 
+    // Error retry: allow transient errors (RF interference, UART glitch) before power_off
+    static constexpr uint8_t MAX_CONSECUTIVE_ERRORS = 2;
+    uint8_t m_consecutive_errors;
+
     // State machine methods
     void state_machine();
     void run_state_machine(uint16_t delay_ms = 100);

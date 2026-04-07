@@ -43,12 +43,11 @@ extern RGBLed *status_led;
 #define DEFAULT_MIN_DRY_SAMPLES 1        // Immediate surface on threshold crossing
 
 // Water baseline protection
-#define ABSOLUTE_MIN_WATER_ADC 2000
 #define MIN_WATER_AIR_RATIO 3
 
 // Minimum air baseline floor: prevents adaptive DOWN from collapsing to near-zero.
-// Even a clean dry electrode reads ~20-50 ADC with RC circuit.
-#define AIR_BASELINE_FLOOR 20
+// With 14-bit ADC, a clean dry electrode reads ~50-200 ADC with RC circuit.
+#define AIR_BASELINE_FLOOR 50
 
 // SWS.CAL offsets for Calibration class persistence
 // 0 = manual water hint (SCALW/SWSCAL)
@@ -129,7 +128,7 @@ extern RGBLed *status_led;
 
 // Air baseline recovery: when air drops below this, readings are likely invalid
 // (RC circuit not charging enough at current delay). Force delay UP to recover.
-#define AIR_BASELINE_RECOVER 50
+#define AIR_BASELINE_RECOVER 150
 #define CONTRAST_LOW_THRESHOLD  50     // contrast_x10 < 5.0x → reduce delay
 #define CONTRAST_HIGH_THRESHOLD 100    // contrast_x10 > 10.0x → increase delay
 
@@ -214,7 +213,7 @@ bool SWSAnalogService::is_test_running() {
 
 #define CALIB_NUM_SAMPLES 5            // samples per phase (air/water)
 #define CALIB_STABILITY_THRESHOLD 3    // consecutive stable readings to start sampling
-#define CALIB_STABILITY_TOLERANCE 200  // ADC counts variation allowed for "stable"
+#define CALIB_STABILITY_TOLERANCE 500  // ADC counts variation allowed for "stable" (~3% of full scale)
 #define CALIB_SAMPLE_INTERVAL_MS 1000  // 1s sampling during guided calibration
 
 void SWSAnalogService::start_guided_calibration() {
@@ -594,9 +593,9 @@ void SWSAnalogService::calibrate_air_baseline() {
     uint16_t avg = (uint16_t)(sum / valid_count);
 
     // Heuristic: if avg > WATER_DETECT_HEURISTIC, we're likely in water already.
-    // A dry electrode typically reads < 2000 ADC counts. If reading is high,
-    // treat it as water baseline and estimate air as avg/3.
-    const uint16_t WATER_DETECT_HEURISTIC = 2500;
+    // With 14-bit ADC (0-16383): dry electrode reads ~100-500, water reads ~8000-15000.
+    // Threshold at ~50% of full scale to distinguish reliably.
+    const uint16_t WATER_DETECT_HEURISTIC = 7000;
 
     if (avg > WATER_DETECT_HEURISTIC) {
         // Started calibration IN WATER — swap logic
@@ -672,9 +671,9 @@ void SWSAnalogService::calibrate_water_baseline(uint16_t value) {
         (uint16_t)(m_calib.threshold_air * MIN_WATER_AIR_RATIO) :
         (uint16_t)(m_calib.threshold_water * 0.85f);
 
-    // Only apply air ratio guard when air baseline is reasonable (< 1000 ADC).
+    // Only apply air ratio guard when air baseline is reasonable (< 3000 ADC).
     // If air is high (e.g. from corrupted calibration), skip this check to allow recovery.
-    bool air_ratio_ok = (m_calib.threshold_air >= 1000) ||
+    bool air_ratio_ok = (m_calib.threshold_air >= 3000) ||
                         (value >= (uint16_t)(m_calib.threshold_air * MIN_WATER_AIR_RATIO));
 
     // Water must exceed threshold and maintain minimum ratio to air.
@@ -851,7 +850,7 @@ bool SWSAnalogService::detector_state() {
                 calib_incoherent = true;
             }
             // Case 2: Stored air is high (calibrated in water), but reading is low → in air
-            else if (raw_value < m_calib.threshold_air * 0.5f && m_calib.threshold_air > 2000) {
+            else if (raw_value < m_calib.threshold_air * 0.5f && m_calib.threshold_air > 5000) {
                 DEBUG_WARN("SWSAnalog: Coherence fail - raw=%u << air=%u, recalibrating",
                            raw_value, m_calib.threshold_air);
                 calib_incoherent = true;
@@ -885,7 +884,7 @@ bool SWSAnalogService::detector_state() {
 
         if (calib_incoherent) {
             memset(&m_calib, 0, sizeof(m_calib));
-            if (raw_value > 2500) {
+            if (raw_value > 7000) {
                 m_calib.threshold_water = raw_value;
                 m_calib.threshold_air = raw_value / 3;
             } else {
@@ -1165,8 +1164,13 @@ bool SWSAnalogService::detector_state() {
         bool peak_updated = false;
 
         if (raw_value > m_observed_peak_adc) {
-            // Anti-spike: accept if peak not yet established, or if within 120% of current
-            if (m_observed_peak_adc == 0 || raw_value <= (uint32_t)m_observed_peak_adc * 6 / 5) {
+            // Anti-spike: accept unconditionally during first water contact (peak < water baseline)
+            // or if within 120% of current established peak.
+            // This allows rapid peak convergence on first immersion (air=150 → water=12000)
+            // while still rejecting isolated spikes once the peak is established in water.
+            bool first_water_contact = (m_observed_peak_adc < m_calib.threshold_current);
+            if (m_observed_peak_adc == 0 || first_water_contact ||
+                raw_value <= (uint32_t)m_observed_peak_adc * 6 / 5) {
                 m_observed_peak_adc = raw_value;
                 peak_updated = true;
             } else {

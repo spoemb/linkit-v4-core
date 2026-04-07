@@ -77,11 +77,26 @@ void GPSService::service_initiate() {
 
 	nav_settings.num_consecutive_fixes = gnss_config.min_num_fixes;
 	nav_settings.sat_tracking = true;
-	nav_settings.max_nav_samples = (m_is_first_fix_found ? gnss_config.acquisition_timeout : gnss_config.acquisition_timeout_cold_start);
-	nav_settings.constellation_mask = gnss_config.constellation_mask;
+
+	// Adaptive timeout: use shorter timeout when assistance data is available
+	if (m_is_first_fix_found) {
+		nav_settings.max_nav_samples = gnss_config.acquisition_timeout;
+	} else {
+		// Check if ANO data is available and fresh — if so, use warm timeout
+		GNSSAlmanacStatus ano_status = m_device.get_almanac_status();
+		if (ano_status.file_present && !ano_status.stale && ano_status.valid_records > 0) {
+			DEBUG_TRACE("GPSService: ANO data fresh (%u records) | using warm timeout", ano_status.valid_records);
+			nav_settings.max_nav_samples = gnss_config.acquisition_timeout;
+		} else {
+			nav_settings.max_nav_samples = gnss_config.acquisition_timeout_cold_start;
+		}
+	}
+	// Cold start: enable all constellations (GPS+GAL+GLO+BDS) to maximize visible SVs
+	nav_settings.constellation_mask = m_is_first_fix_found ? gnss_config.constellation_mask : (gnss_config.constellation_mask | 0x0F);
 	nav_settings.orbmaxerr = gnss_config.orbmaxerr;
 	nav_settings.min_cno = gnss_config.min_cno;
 	nav_settings.min_elev = gnss_config.min_elev;
+	nav_settings.ano_stale_threshold_s = gnss_config.ano_stale_days ? gnss_config.ano_stale_days * 24 * 3600 : 0;
 
 	m_next_schedule = service_current_time();
 	m_is_first_schedule = false;

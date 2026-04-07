@@ -41,6 +41,7 @@ struct GNSSConfig {
 	unsigned int orbmaxerr;
 	unsigned int min_cno;
 	unsigned int min_elev;
+	unsigned int ano_stale_days;
 };
 
 struct ArgosConfig {
@@ -322,6 +323,7 @@ protected:
 		/* [214] SMD_LPM_MODE */ 0x01U,  // 0x01=NONE (safest, host cuts power)
 		/* [215] SWS_DELAY_MIN_US */ 200U,    // Adaptive sample delay floor (µs)
 		/* [216] SWS_DELAY_MAX_US */ 10000U,  // Adaptive sample delay ceiling (µs)
+		/* [217] GNSS_ANO_STALE_DAYS */ 5U,   // ANO staleness threshold: 5 days (0=never discard)
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,
@@ -635,6 +637,7 @@ public:
 			gnss_config.orbmaxerr = read_param<unsigned int>(ParamID::GNSS_ORBMAXERR);
 			gnss_config.min_cno = read_param<unsigned int>(ParamID::GNSS_MIN_CNO);
 			gnss_config.min_elev = read_param<unsigned int>(ParamID::GNSS_MIN_ELEV);
+			gnss_config.ano_stale_days = read_param<unsigned int>(ParamID::GNSS_ANO_STALE_DAYS);
 
 			if (m_last_config_mode != ConfigMode::LOW_BATTERY) {
 				DEBUG_INFO("ConfigurationStore: LOW_BATTERY mode detected");
@@ -662,6 +665,7 @@ public:
 			gnss_config.orbmaxerr = read_param<unsigned int>(ParamID::GNSS_ORBMAXERR);
 			gnss_config.min_cno = read_param<unsigned int>(ParamID::GNSS_MIN_CNO);
 			gnss_config.min_elev = read_param<unsigned int>(ParamID::GNSS_MIN_ELEV);
+			gnss_config.ano_stale_days = read_param<unsigned int>(ParamID::GNSS_ANO_STALE_DAYS);
 
 			if (m_last_config_mode != ConfigMode::OUT_OF_ZONE) {
 				DEBUG_INFO("ConfigurationStore: OUT_OF_ZONE mode detected");
@@ -690,6 +694,7 @@ public:
 			gnss_config.orbmaxerr = read_param<unsigned int>(ParamID::GNSS_ORBMAXERR);
 			gnss_config.min_cno = read_param<unsigned int>(ParamID::GNSS_MIN_CNO);
 			gnss_config.min_elev = read_param<unsigned int>(ParamID::GNSS_MIN_ELEV);
+			gnss_config.ano_stale_days = read_param<unsigned int>(ParamID::GNSS_ANO_STALE_DAYS);
 
 			if (m_last_config_mode != ConfigMode::NORMAL) {
 				DEBUG_INFO("ConfigurationStore: NORMAL mode detected");
