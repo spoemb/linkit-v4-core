@@ -245,10 +245,8 @@ void LoRaDevice::power_off_immediate(void)
  * Blocking send of an AT command with polling for OK response.
  * Returns false on success (OK received), true on error/timeout.
  */
-bool LoRaDevice::send_AT(ATCmd cmd, const std::optional<std::string>& params)
+bool LoRaDevice::send_AT(ATCmd cmd, const std::optional<std::string>& params, uint16_t timeout_ms)
 {
-    uint16_t timeout_ms = 1000;
-
     m_cmd_is_ok = false;
     m_is_error = false;
 

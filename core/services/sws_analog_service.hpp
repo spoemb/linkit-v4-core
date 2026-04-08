@@ -270,6 +270,8 @@ private:
     // Timing tracking for safety timeouts
     uint64_t m_last_state_change_time;
     uint64_t m_time_in_current_state;
+    uint64_t m_last_flash_save_time = 0;
+    static constexpr uint64_t FLASH_SAVE_MIN_INTERVAL_SEC = 60;
 
     // Sample confirmation counters (for robust detection)
     uint8_t m_consecutive_samples;      // Consecutive samples in same direction
@@ -401,6 +403,7 @@ private:
      * Called on state transitions and significant calibration changes.
      */
     void save_calibration_to_flash();
+    void save_calibration_to_flash_debounced();
 
     /**
      * @brief Load calibration data from flash

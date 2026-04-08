@@ -103,6 +103,8 @@ void GenTracker::react(ReedSwitchEvent const &event)
 			// Magnet released during confirmation — start 2s re-engage window
 			m_awaiting_re_engage = true;
 			led_handle::dispatch<SetLEDMagnetDisengaged>({});
+			// Cancel any previous timeout before posting a new one
+			system_scheduler->cancel_task(m_confirmation_timeout_task);
 			m_confirmation_timeout_task = system_scheduler->post_task_prio([this](){
 				DEBUG_INFO("Reed confirmation timeout");
 				m_confirmation_pending = ConfirmationPending::NONE;
@@ -162,6 +164,27 @@ void GenTracker::kick_watchdog() {
 	}, "KickWatchdog", Scheduler::HIGHEST_PRIORITY, BSP::WDT_Inits[BSP::WDT].config.reload_value * 0.90);
 }
 
+// Periodic flush of config store to flash (counters live in RAM between flushes)
+static constexpr unsigned int CONFIG_FLUSH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+
+void GenTracker::periodic_config_flush() {
+	if (!m_config_flush_active)
+		return;
+	if (configuration_store->is_valid()) {
+		DEBUG_TRACE("GenTracker::periodic_config_flush: saving counters to flash");
+		try {
+			configuration_store->save_params();
+		} catch (...) {
+			DEBUG_ERROR("GenTracker::periodic_config_flush: save_params failed");
+		}
+	}
+	if (m_config_flush_active) {
+		system_scheduler->post_task_prio([](){
+			periodic_config_flush();
+		}, "ConfigFlush", Scheduler::DEFAULT_PRIORITY, CONFIG_FLUSH_INTERVAL_MS);
+	}
+}
+
 void BootState::entry() {
 
 	DEBUG_INFO("entry: BootState");
@@ -214,7 +237,9 @@ void BootState::entry() {
 		if (PMU::was_firmware_updated()) {
 			DEBUG_INFO("Firmware update was applied successfully!");
 			led_handle::dispatch<SetLEDFirmwareApplied>({});
+			PMU::kick_watchdog();
 			PMU::delay_ms(3000);
+			PMU::kick_watchdog();
 		}
 
 		// Transition to PreOperational state after initialisation
@@ -305,6 +330,10 @@ void PreOperationalState::exit() {
 void OperationalState::entry() {
 	DEBUG_INFO("entry: OperationalState");
 
+	// Start periodic config flush (counters → flash every 30 min)
+	m_config_flush_active = true;
+	periodic_config_flush();
+
 	battery_monitor->subscribe(*this);
 	led_handle::dispatch<SetLEDOff>({});
 	buzz_handle::dispatch<SetBuzzOff>({});
@@ -367,6 +396,12 @@ void OperationalState::service_event_handler(ServiceEvent& e) {
 
 void OperationalState::exit() {
 	DEBUG_INFO("exit: OperationalState");
+	// Stop periodic config flush and do a final save to persist counters
+	m_config_flush_active = false;
+	if (configuration_store->is_valid()) {
+		try { configuration_store->save_params(); }
+		catch (...) { DEBUG_ERROR("OperationalState::exit: save_params failed"); }
+	}
 	led_handle::dispatch<SetLEDOff>({});
 	ServiceManager::stopall();
 	BaseDebugMode debug_mode = configuration_store->read_param<BaseDebugMode>(ParamID::DEBUG_OUTPUT_MODE);
@@ -504,6 +539,10 @@ void ConfigurationState::process_received_data() {
 		do
 		{
 			action = dte_handler->handle_dte_message(req, resp);
+
+			// Kick watchdog every iteration (not just when resp produced)
+			PMU::kick_watchdog();
+
 			if (resp.size())
 			{
 				DEBUG_TRACE("responding: %s", resp.c_str());
@@ -516,10 +555,6 @@ void ConfigurationState::process_received_data() {
 				// This is important during a command sequences that can take
 				// a long time to complete (eg DUMPD)
 				restart_inactivity_timeout();
-
-				// We must also kick the watchdog here since the main scheduler
-				// is being deferred
-				PMU::kick_watchdog();
 			}
 
 			if (action == DTEAction::FACTR)
@@ -657,14 +692,15 @@ void ConfigurationState::process_usb_data() {
 
 			do {
 				action = dte_handler->handle_dte_message(req, resp);
+
+				// Kick watchdog every iteration (not just when resp produced)
+				PMU::kick_watchdog();
+
 				if (resp.size()) {
 					usb.write(resp);
 
 					// Reset inactivity timeout on USB activity too
 					restart_inactivity_timeout();
-
-					// Kick the watchdog
-					PMU::kick_watchdog();
 				}
 
 				if (action == DTEAction::FACTR) {
@@ -702,6 +738,7 @@ void ConfigurationState::process_usb_data() {}
 
 void BatteryCriticalState::entry() {
 	DEBUG_INFO("entry: BatteryCriticalState");
+	PMU::kick_watchdog();
 #ifdef EXTERNAL_WAKEUP
 	// If magnet is present, user wants to configure via BLE - don't powerdown
 	if (reed_switch->is_engaged()) {
@@ -732,6 +769,7 @@ void BatteryCriticalState::exit() {
 
 void ErrorState::entry() {
 	DEBUG_INFO("entry: ErrorState");
+	PMU::kick_watchdog();
 	led_handle::dispatch<SetLEDError>({});
 	buzz_handle::dispatch<SetBuzzOff>({});
 	m_shutdown_task = system_scheduler->post_task_prio([this](){

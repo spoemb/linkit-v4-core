@@ -82,11 +82,8 @@ bool ArgosRxService::service_is_triggered_on_surfaced(bool& immediate) {
 void ArgosRxService::react(KineisEventRxPacket const& e) {
 	DEBUG_INFO("ArgosRxService::react(KineisEventRxPacket): packet=%s length=%u", Binascii::hexlify(e.packet).c_str(), e.size_bits);
 
-	// Increment RX counter
+	// Increment RX counter (RAM only — flash deferred to periodic flush / powerdown)
 	configuration_store->increment_rx_counter();
-
-	// Save configuration params
-	configuration_store->save_params();
 
 	// Attempt to decode the queue of packets
 	BasePassPredict pass_predict;
@@ -106,7 +103,7 @@ void ArgosRxService::react(KineisEventPowerOff const&) {
 	if (m_cumulative_rx_time) {
 		DEBUG_INFO("ArgosRxService::react: KineisEventPowerOff: cumulative_rx=%u ms", m_cumulative_rx_time);
 		configuration_store->increment_rx_time((m_cumulative_rx_time + 999) / 1000); // Stored in seconds
-		configuration_store->save_params();
+		// RAM updated — flash deferred to periodic flush / powerdown
 		m_cumulative_rx_time = 0;
 	}
 }

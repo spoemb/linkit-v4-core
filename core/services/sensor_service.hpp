@@ -21,7 +21,8 @@ protected:
 			if (m_sensor_background_active) {
 				m_sample_number++;
 				for (unsigned int chan = 0; chan < safe_num_channels(); chan++) {
-					m_samples[chan].push_back(m_sensor.read(chan));
+					if (m_samples[chan].size() < sensor_max_samples() + 1)
+						m_samples[chan].push_back(m_sensor.read(chan));
 				}
 
 				// Update progressive ready value after each sample (Option 3: best-effort aggregation)

@@ -298,6 +298,8 @@ bool NrfI2C::wait_for_transfer(uint8_t bus, uint32_t timeout_ms) {
 
 	uint64_t start_time = system_timer->get_counter();
 
+	uint64_t next_wdt_kick = 500;
+
 	while (!m_transfer_done[bus]) {
 		uint64_t elapsed = system_timer->get_counter() - start_time;
 		if (elapsed >= timeout_ms) {
@@ -314,6 +316,12 @@ bool NrfI2C::wait_for_transfer(uint8_t bus, uint32_t timeout_ms) {
 			nrf_twim_event_clear(p_twim, NRF_TWIM_EVENT_ERROR);
 
 			return false;
+		}
+
+		// Kick watchdog during long waits to prevent WDT reset
+		if (elapsed >= next_wdt_kick) {
+			PMU::kick_watchdog();
+			next_wdt_kick = elapsed + 500;
 		}
 
 		// Small delay to avoid busy-waiting

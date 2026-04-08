@@ -104,6 +104,12 @@ void SmdSatCmdAt::handle_tx_done()
 
 void SmdSatCmdAt::handle_rx_buffer(uint8_t *buffer, uint8_t length)
 {
+	// Guard against unbounded growth from corrupted data without line terminators
+	if (m_rx_buffer.size() + length > 512) {
+		DEBUG_ERROR("SmdSatCmdAt: RX buffer overflow — flushing");
+		m_rx_buffer.clear();
+	}
+
 	// Append to RX buffer
 	m_rx_buffer.append(reinterpret_cast<const char *>(buffer), length);
 
@@ -336,7 +342,8 @@ uint16_t SmdSatCmdAt::hex_to_bytes(const std::string& hex, uint8_t *data, uint16
 	if (len > max_len) len = max_len;
 	for (uint16_t i = 0; i < len; i++) {
 		unsigned int val;
-		sscanf(hex.c_str() + i * 2, "%2x", &val);
+		if (sscanf(hex.c_str() + i * 2, "%2x", &val) != 1)
+			return i;  // Return number of bytes successfully converted
 		data[i] = (uint8_t)val;
 	}
 	return len;

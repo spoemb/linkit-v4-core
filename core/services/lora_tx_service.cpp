@@ -802,8 +802,7 @@ void LoRaTxService::react(KineisEventTxComplete const&) {
 	std::time_t t = service_current_time();
 	configuration_store->write_param(ParamID::LAST_TX, t);
 
-	// Save configuration params
-	configuration_store->save_params();
+	// Counters updated in RAM — flash persistence deferred to periodic flush / powerdown
 
 	// Check session TX limit
 	ArgosConfig argos_config;
@@ -811,7 +810,7 @@ void LoRaTxService::react(KineisEventTxComplete const&) {
 	if (argos_config.shutdown_ntime_sat > 0 && m_session_tx_count >= argos_config.shutdown_ntime_sat) {
 		DEBUG_INFO("LoRaTxService: Session TX limit reached (%u/%u) | shutdown",
 		           m_session_tx_count, argos_config.shutdown_ntime_sat);
-		configuration_store->save_params();
+		configuration_store->save_params();  // Flush before shutdown
 		PMU::powerdown();
 		return;
 	}

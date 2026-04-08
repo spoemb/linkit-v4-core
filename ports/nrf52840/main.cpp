@@ -938,6 +938,9 @@ int main()
 				}
 			}
 
+			// Process timer callbacks deferred from ISR context
+			NrfTimer::process_pending();
+
 			system_scheduler->run();
 
 			// Enter deep idle when no tasks are due for a while
@@ -947,6 +950,9 @@ int main()
 				in_deep_idle = true;
 				PMU::enter_deep_idle();
 			}
+
+			// Safety watchdog kick — reduces dependency on scheduled task
+			PMU::kick_watchdog();
 
 			PMU::run();
 		} catch (ErrorCode e) {

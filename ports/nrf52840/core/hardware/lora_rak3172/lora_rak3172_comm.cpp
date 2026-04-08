@@ -380,6 +380,12 @@ void LoRaComm::process_rx()
         return;
     }
 
+    // Guard against unbounded growth if data arrives without line terminators
+    if (m_rx_buffer.size() + local_len > LoRa::MAX_RX_BUFFER_SIZE) {
+        DEBUG_ERROR("LoRaComm: RX buffer overflow (%u bytes) — flushing", (unsigned)(m_rx_buffer.size() + local_len));
+        m_rx_buffer.clear();
+    }
+
     // Append to line accumulator and process complete lines
     m_rx_buffer.append(reinterpret_cast<const char*>(local_buf), local_len);
     process_rx_lines();

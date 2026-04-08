@@ -676,8 +676,7 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 	std::time_t t = service_current_time();
 	configuration_store->write_param(ParamID::LAST_TX, t);
 
-	// Save configuration params
-	configuration_store->save_params();
+	// Counters updated in RAM — flash persistence deferred to periodic flush / powerdown
 
 	// Check session TX limit (SHUTDOWN_NTIME_SAT / LB_SHUTDOWN_NTIME_SAT)
 	ArgosConfig argos_config;
@@ -685,7 +684,7 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 	if (argos_config.shutdown_ntime_sat > 0 && m_session_tx_count >= argos_config.shutdown_ntime_sat) {
 		DEBUG_INFO("ArgosTxService: Session TX limit reached (%u/%u) | shutdown",
 		           m_session_tx_count, argos_config.shutdown_ntime_sat);
-		configuration_store->save_params();
+		configuration_store->save_params();  // Flush before shutdown
 		PMU::powerdown();
 		return;
 	}

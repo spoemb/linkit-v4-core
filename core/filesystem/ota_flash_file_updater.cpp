@@ -33,6 +33,8 @@ OTAFlashFileUpdater::OTAFlashFileUpdater(LFSFileSystem *filesystem, FlashInterfa
 	m_flash_if = flash_if;
 	m_reserved_block_offset = reserved_block_offset;
 	m_reserved_blocks = reserved_blocks;
+	m_file_id = OTAFileIdentifier::MCU_FIRMWARE;
+	m_file = nullptr;
 	m_file_size = 0;
 }
 

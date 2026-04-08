@@ -331,8 +331,16 @@ void SWSAnalogService::save_calibration_to_flash() {
     s_instance->m_manual_calib.write(CAL_OFFSET_RUN_AIR, (double)m_calib.threshold_air);
     s_instance->m_manual_calib.write(CAL_OFFSET_PEAK, (double)m_observed_peak_adc);
     s_instance->m_manual_calib.save(true);
+    m_last_flash_save_time = PMU::get_timestamp_ms() / 1000;
     DEBUG_TRACE("SWSAnalog: Calibration saved to SWS.CAL (air=%u water=%u peak=%u)",
                 m_calib.threshold_air, m_calib.threshold_water, m_observed_peak_adc);
+}
+
+void SWSAnalogService::save_calibration_to_flash_debounced() {
+    uint64_t now_sec = PMU::get_timestamp_ms() / 1000;
+    if ((now_sec - m_last_flash_save_time) >= FLASH_SAVE_MIN_INTERVAL_SEC) {
+        save_calibration_to_flash();
+    }
 }
 
 bool SWSAnalogService::load_calibration_from_flash() {
@@ -1309,8 +1317,8 @@ bool SWSAnalogService::detector_state() {
                    raw_value, filtered_value,
                    m_calib.threshold_current, m_calib.threshold_air, m_calib.threshold_water);
 
-        // Persist calibration to flash on state transitions (infrequent, important)
-        save_calibration_to_flash();
+        // Persist calibration to flash on state transitions — debounced to reduce flash wear
+        save_calibration_to_flash_debounced();
 
         // Test mode: override LED to show SWS state
         if (m_test_mode && status_led) {

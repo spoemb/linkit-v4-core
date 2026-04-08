@@ -156,7 +156,7 @@ private:
     bool m_bridge_active = false;
 
     // Helpers
-    bool send_AT(LoRa::ATCmd cmd, const std::optional<std::string>& params = std::nullopt);
+    bool send_AT(LoRa::ATCmd cmd, const std::optional<std::string>& params = std::nullopt, uint16_t timeout_ms = 2000);
     void start_device();
     void power_off_immediate();
     void cancel_timeout();

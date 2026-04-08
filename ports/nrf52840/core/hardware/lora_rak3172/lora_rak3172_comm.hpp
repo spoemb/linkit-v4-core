@@ -107,6 +107,9 @@ namespace LoRa {
 
     // ISR buffer size for deferred RX processing
     static constexpr size_t ISR_BUF_SIZE = 256;
+
+    // Max accumulated RX buffer size before flush (guards against garbage without newlines)
+    static constexpr size_t MAX_RX_BUFFER_SIZE = 512;
 }
 
 // Events emitted by LoRaComm

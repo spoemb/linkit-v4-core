@@ -191,7 +191,7 @@ RespType KIM2Comm::parse_rx_message(const std::string& buffer, uint8_t start_ind
     }
     // -- +TX=
     else if ((message.compare(position, TX_RESPONSE.size(), TX_RESPONSE) == 0)
-            && (message.find(END_CHAR_1)) && (message.find(END_CHAR_2)))
+            && (message.find(END_CHAR_1) != std::string::npos) && (message.find(END_CHAR_2) != std::string::npos))
     {
         std::string resp = message.substr(position + TX_RESPONSE.size()); // extract response after "+TX="
         m_tx_status = std::stoi(resp.substr(0, resp.find(','))); // extract first response field (error code) and convert into integer

@@ -654,8 +654,8 @@ void M10QAsyncReceiver::state_poweroff() {
 	// Persist current RTC for next boot (enables MGA-ANO assistance and faster TTFF)
 	if (rtc->is_set()) {
 		configuration_store->write_param(ParamID::LAST_KNOWN_RTC, static_cast<unsigned int>(rtc->gettime()));
-		configuration_store->save_params();
-		DEBUG_TRACE("Saved LAST_KNOWN_RTC = %u", static_cast<unsigned int>(rtc->gettime()));
+		// RAM updated — flash deferred to periodic flush / powerdown
+		DEBUG_TRACE("Updated LAST_KNOWN_RTC = %u (RAM)", static_cast<unsigned int>(rtc->gettime()));
 	}
     notify(GPSEventPowerOff(m_fix_was_found));
     STATE_CHANGE(poweroff, idle);

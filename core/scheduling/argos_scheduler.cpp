@@ -1041,11 +1041,8 @@ void ArgosScheduler::handle_event(ArgosAsyncEvent event) {
 
 		configuration_store->write_param(ParamID::LAST_TX, last_tx);
 
-		// Increment TX counter
+		// Increment TX counter (RAM only — flash deferred to periodic flush / powerdown)
 		configuration_store->increment_tx_counter();
-
-		// Save configuration params
-		configuration_store->save_params();
 
 		// Update the schedule for the next transmission and also any pending RX
 		process_rx();
@@ -1105,11 +1102,8 @@ void ArgosScheduler::handle_rx_packet() {
 
 	DEBUG_INFO("ArgosScheduler::handle_rx_packet: packet=%s length=%u", Binascii::hexlify(packet).c_str(), length);
 
-	// Increment RX counter
+	// Increment RX counter (RAM only — flash deferred to periodic flush / powerdown)
 	configuration_store->increment_rx_counter();
-
-	// Save configuration params
-	configuration_store->save_params();
 
 	// Attempt to decode the queue of packets
 	PassPredictCodec::decode(m_orbit_params_map, m_constellation_status_map, packet, pass_predict);
@@ -1124,7 +1118,7 @@ void ArgosScheduler::update_rx_time(void) {
 	if (t) {
 		DEBUG_TRACE("ArgosScheduler::update_rx_time: RX ran for %llu secs", t);
 		configuration_store->increment_rx_time(t);
-		configuration_store->save_params();
+		// RAM updated — flash deferred to periodic flush / powerdown
 	}
 }
 

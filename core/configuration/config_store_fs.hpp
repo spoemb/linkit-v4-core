@@ -36,59 +36,76 @@ protected:
 				std::memset(entry_buffer, 0, sizeof(entry_buffer));
 				std::memcpy(entry_buffer, s.data(), s.size());
 			};
-			// BaseGNSSDynModel
 			void operator()(unsigned int &s) {
+				std::memset(entry_buffer, 0, sizeof(entry_buffer));
 				std::memcpy(entry_buffer, &s, sizeof(s));
 			};
 			void operator()(int &s) {
+				std::memset(entry_buffer, 0, sizeof(entry_buffer));
 				std::memcpy(entry_buffer, &s, sizeof(s));
 			};
 			void operator()(double &s) {
+				std::memset(entry_buffer, 0, sizeof(entry_buffer));
 				std::memcpy(entry_buffer, &s, sizeof(s));
 			};
 			void operator()(std::time_t &s) {
+				std::memset(entry_buffer, 0, sizeof(entry_buffer));
 				std::memcpy(entry_buffer, &s, sizeof(s));
 			};
 			void operator()(BaseArgosMode &s) {
+				std::memset(entry_buffer, 0, sizeof(entry_buffer));
 				std::memcpy(entry_buffer, &s, sizeof(s));
 			};
 			void operator()(BaseArgosPower &s) {
+				std::memset(entry_buffer, 0, sizeof(entry_buffer));
 				std::memcpy(entry_buffer, &s, sizeof(s));
 			};
 			void operator()(BaseDepthPile &s) {
+				std::memset(entry_buffer, 0, sizeof(entry_buffer));
 				std::memcpy(entry_buffer, &s, sizeof(s));
 			};
 			void operator()(bool &s) {
+				std::memset(entry_buffer, 0, sizeof(entry_buffer));
 				std::memcpy(entry_buffer, &s, sizeof(s));
 			};
 			void operator()(BaseGNSSFixMode &s) {
+				std::memset(entry_buffer, 0, sizeof(entry_buffer));
 				std::memcpy(entry_buffer, &s, sizeof(s));
 			};
 			void operator()(BaseGNSSDynModel &s) {
+				std::memset(entry_buffer, 0, sizeof(entry_buffer));
 				std::memcpy(entry_buffer, &s, sizeof(s));
 			};
 			void operator()(BaseLEDMode &s) {
+				std::memset(entry_buffer, 0, sizeof(entry_buffer));
 				std::memcpy(entry_buffer, &s, sizeof(s));
 			};
 			void operator()(BaseZoneType &s) {
+				std::memset(entry_buffer, 0, sizeof(entry_buffer));
 				std::memcpy(entry_buffer, &s, sizeof(s));
 			};
 			void operator()(BaseArgosModulation &s) {
+				std::memset(entry_buffer, 0, sizeof(entry_buffer));
 				std::memcpy(entry_buffer, &s, sizeof(s));
 			};
 			void operator()(BaseUnderwaterDetectSource &s) {
+				std::memset(entry_buffer, 0, sizeof(entry_buffer));
 				std::memcpy(entry_buffer, &s, sizeof(s));
 			};
 			void operator()(BaseDebugMode &s) {
+				std::memset(entry_buffer, 0, sizeof(entry_buffer));
 				std::memcpy(entry_buffer, &s, sizeof(s));
 			};
 			void operator()(BasePressureSensorLoggingMode &s) {
+				std::memset(entry_buffer, 0, sizeof(entry_buffer));
 				std::memcpy(entry_buffer, &s, sizeof(s));
 			};
 			void operator()(BasePressureSensorFullScale &s) {
+				std::memset(entry_buffer, 0, sizeof(entry_buffer));
 				std::memcpy(entry_buffer, &s, sizeof(s));
 			};
 			void operator()(BaseSensorEnableTxMode &s) {
+				std::memset(entry_buffer, 0, sizeof(entry_buffer));
 				std::memcpy(entry_buffer, &s, sizeof(s));
 			};
 			void operator()(BaseRawData &) {
@@ -119,7 +136,7 @@ protected:
 		switch (entry->encoding) {
 		case BaseEncoding::DECIMAL:
 		{
-			int value = *(int *)param_value;
+			int value; std::memcpy(&value, param_value, sizeof(value));
 			m_params.at(index) = value;
 			break;
 		}
@@ -127,7 +144,7 @@ protected:
 		case BaseEncoding::HEXADECIMAL:
 		case BaseEncoding::UINT:
 		{
-			unsigned int value = *(unsigned int *)param_value;
+			unsigned int value; std::memcpy(&value, param_value, sizeof(value));
 			m_params.at(index) = value;
 			break;
 		}
@@ -139,98 +156,98 @@ protected:
 		}
 		case BaseEncoding::DATESTRING:
 		{
-			std::time_t value = *(std::time_t *)param_value;
+			std::time_t value; std::memcpy(&value, param_value, sizeof(value));
 			m_params.at(index) = value;
 			break;
 		}
 		case BaseEncoding::BOOLEAN:
 		{
-			bool value = *(bool *)param_value;
+			bool value; std::memcpy(&value, param_value, sizeof(value));
 			m_params.at(index) = value;
 			break;
 		}
 		case BaseEncoding::ARGOSFREQ:
 		case BaseEncoding::FLOAT:
 		{
-			double value = *(double *)param_value;
+			double value; std::memcpy(&value, param_value, sizeof(value));
 			m_params.at(index) = value;
 			break;
 		}
 		case BaseEncoding::DEPTHPILE:
 		{
-			BaseDepthPile value = *(BaseDepthPile *)param_value;
+			BaseDepthPile value; std::memcpy(&value, param_value, sizeof(value));
 			m_params.at(index) = value;
 			break;
 		}
 		case BaseEncoding::ARGOSMODE:
 		{
-			BaseArgosMode value = *(BaseArgosMode *)param_value;
+			BaseArgosMode value; std::memcpy(&value, param_value, sizeof(value));
 			m_params.at(index) = value;
 			break;
 		}
 		case BaseEncoding::ARGOSPOWER:
 		{
-			BaseArgosPower value = *(BaseArgosPower *)param_value;
+			BaseArgosPower value; std::memcpy(&value, param_value, sizeof(value));
 			m_params.at(index) = value;
 			break;
 		}
 		case BaseEncoding::UWDETECTSOURCE:
 		{
-			BaseUnderwaterDetectSource value = *(BaseUnderwaterDetectSource *)param_value;
+			BaseUnderwaterDetectSource value; std::memcpy(&value, param_value, sizeof(value));
 			m_params.at(index) = value;
 			break;
 		}
 		case BaseEncoding::GNSSFIXMODE:
 		{
-			BaseGNSSFixMode value = *(BaseGNSSFixMode *)param_value;
+			BaseGNSSFixMode value; std::memcpy(&value, param_value, sizeof(value));
 			m_params.at(index) = value;
 			break;
 		}
 		case BaseEncoding::GNSSDYNMODEL:
 		{
-			BaseGNSSDynModel value = *(BaseGNSSDynModel *)param_value;
+			BaseGNSSDynModel value; std::memcpy(&value, param_value, sizeof(value));
 			m_params.at(index) = value;
 			break;
 		}
 		case BaseEncoding::LEDMODE:
 		{
-			BaseLEDMode value = *(BaseLEDMode *)param_value;
+			BaseLEDMode value; std::memcpy(&value, param_value, sizeof(value));
 			m_params.at(index) = value;
 			break;
 		}
 		case BaseEncoding::ZONETYPE:
 		{
-			BaseZoneType value = *(BaseZoneType *)param_value;
+			BaseZoneType value; std::memcpy(&value, param_value, sizeof(value));
 			m_params.at(index) = value;
 			break;
 		}
 		case BaseEncoding::MODULATION:
 		{
-			BaseArgosModulation value = *(BaseArgosModulation *)param_value;
+			BaseArgosModulation value; std::memcpy(&value, param_value, sizeof(value));
 			m_params.at(index) = value;
 			break;
 		}
 		case BaseEncoding::DEBUGMODE:
 		{
-			BaseDebugMode value = *(BaseDebugMode *)param_value;
+			BaseDebugMode value; std::memcpy(&value, param_value, sizeof(value));
 			m_params.at(index) = value;
 			break;
 		}
 		case BaseEncoding::PRESSURESENSORLOGGINGMODE:
 		{
-			BasePressureSensorLoggingMode value = *(BasePressureSensorLoggingMode *)param_value;
+			BasePressureSensorLoggingMode value; std::memcpy(&value, param_value, sizeof(value));
 			m_params.at(index) = value;
 			break;
 		}
 		case BaseEncoding::PRESSURESENSORFULLSCALE:
 		{
-			BasePressureSensorFullScale value = *(BasePressureSensorFullScale *)param_value;
+			BasePressureSensorFullScale value; std::memcpy(&value, param_value, sizeof(value));
 			m_params.at(index) = value;
 			break;
 		}
 		case BaseEncoding::SENSORENABLETXMODE:
 		{
-			BaseSensorEnableTxMode value = *(BaseSensorEnableTxMode *)param_value;
+			BaseSensorEnableTxMode value; std::memcpy(&value, param_value, sizeof(value));
 			m_params.at(index) = value;
 			break;
 		}

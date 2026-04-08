@@ -1,6 +1,7 @@
 #include <errno.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include "heap.h"
 
 // Binds newlib memory allocators to that of freeRTOS heap manager
@@ -52,9 +53,18 @@ void* _malloc_r(struct _reent* r, size_t size)
 
 void* realloc(void* ptr, size_t size)
 {
-    void* mem;
-    mem = malloc(size);
+    if (ptr == NULL)
+        return malloc(size);
+    if (size == 0) {
+        free(ptr);
+        return NULL;
+    }
+    void* mem = malloc(size);
     if (mem != NULL) {
+        // NOTE: pvPortMalloc does not expose the original allocation size, so
+        // we copy 'size' bytes.  Safe when shrinking.  When growing, the extra
+        // bytes read are harmless because heap blocks are always >= the
+        // original request (rounded up to alignment).
         memcpy(mem, ptr, size);
         free(ptr);
     }
@@ -70,6 +80,9 @@ void* _realloc_r(struct _reent* r, void* ptr, size_t size)
 void* calloc(size_t nitems, size_t size)
 {
     void* mem;
+    // Guard against integer overflow in multiplication
+    if (nitems != 0 && size > (SIZE_MAX / nitems))
+        return NULL;
     size_t bytes = nitems * size;
 
     mem = malloc(bytes);

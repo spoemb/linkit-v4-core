@@ -23,6 +23,8 @@ public:
 	void set_ble_device_name();
 
 	static void kick_watchdog();
+	static void periodic_config_flush();
+	static inline bool m_config_flush_active = false;
 	static void notify_bad_filesystem_error();
 
 protected:
