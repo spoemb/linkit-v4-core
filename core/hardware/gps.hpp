@@ -24,7 +24,7 @@ struct GPSNavSettings {
     unsigned int     orbmaxerr = 300;
     unsigned int     min_cno = 10;
     unsigned int     min_elev = 10;
-    unsigned int     ano_stale_threshold_s = 5 * 24 * 3600;  // ANO staleness threshold in seconds (default: 5 days)
+    unsigned int     ano_stale_threshold_s = 25 * 24 * 3600;  // ANO staleness threshold in seconds (default: 25 days)
 };
 
 struct GNSSData {
@@ -121,7 +121,7 @@ public:
     virtual void power_off() = 0;
     virtual void power_on(const GPSNavSettings& nav_settings) = 0;
     virtual GNSSDeviceInfo get_device_info() const { return {}; }
-    virtual GNSSAlmanacStatus get_almanac_status() const { return {}; }
+    virtual GNSSAlmanacStatus get_almanac_status(unsigned int ano_stale_threshold_s = 25 * 24 * 3600) const { (void)ano_stale_threshold_s; return {}; }
 
     // Bridge/passthrough mode (default: not supported)
     virtual bool start_bridge(PassthroughCallback) { return false; }

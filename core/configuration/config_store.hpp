@@ -323,7 +323,7 @@ protected:
 		/* [214] SMD_LPM_MODE */ 0x01U,  // 0x01=NONE (safest, host cuts power)
 		/* [215] SWS_DELAY_MIN_US */ 200U,    // Adaptive sample delay floor (µs)
 		/* [216] SWS_DELAY_MAX_US */ 10000U,  // Adaptive sample delay ceiling (µs)
-		/* [217] GNSS_ANO_STALE_DAYS */ 5U,   // ANO staleness threshold: 5 days (0=never discard)
+		/* [217] GNSS_ANO_STALE_DAYS */ 25U,  // ANO staleness threshold: 25 days (0=never discard)
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,

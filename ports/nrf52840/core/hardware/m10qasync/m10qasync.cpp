@@ -202,6 +202,9 @@ void M10QAsyncReceiver::enter_shutdown() {
     GPIOPins::clear(BSP::GPIO::GPIO_GPS_PWR_EN);
     GPIOPins::release_to_highz(BSP::GPIO::GPIO_GPS_RST);  // Disconnect (ext pull-up)
 
+    // Note: m_ubx_comms.deinit() already disconnects UART TX/RX pins
+    // via nrf_gpio_cfg_default() in the libuarte driver uninit path.
+
     // Release VSENSORS - GPS requires VSENSORS rail to be stable
     GPIOPins::release_sensors_pwr();
 }
@@ -384,7 +387,9 @@ void M10QAsyncReceiver::react(const UBXCommsEventSatReport& s) {
             notify(e);
 
         	// Early abort: if after 10 sat reports no satellite has qualityInd >= 2
-        	// (signal acquired), the antenna is likely obstructed or underwater
+        	// (signal acquired), the antenna is likely obstructed or underwater.
+        	// 10 reports (~10s) gives enough time for partial surfacing scenarios
+        	// where signal ramps slowly from qualityInd 0→1→2.
         	if (m_num_sat_samples == 10 && e.bestSignalQuality < 2) {
         		DEBUG_WARN("M10QAsyncReceiver: no signal acquired after %u sat reports (best quality=%u) | aborting",
         		           m_num_sat_samples, e.bestSignalQuality);
@@ -981,8 +986,18 @@ bool M10QAsyncReceiver::load_dbd_from_flash() {
 		uint32_t save_time = 0;
 		file.read(&save_time, sizeof(save_time));
 
+		if (save_time > 0 && (!rtc || !rtc->is_set())) {
+			// RTC not available — cannot verify freshness, reject to avoid stale data
+			DEBUG_TRACE("M10QAsyncReceiver::load_dbd_from_flash: RTC not set — cannot verify freshness");
+			return false;
+		}
 		if (rtc->is_set() && save_time > 0) {
-			uint32_t age_s = (uint32_t)rtc->gettime() - save_time;
+			uint32_t now_t = (uint32_t)rtc->gettime();
+			if (now_t < save_time) {
+				DEBUG_TRACE("M10QAsyncReceiver::load_dbd_from_flash: RTC went backward — discarding");
+				return false;
+			}
+			uint32_t age_s = now_t - save_time;
 			if (age_s > 12 * 3600) {
 				DEBUG_TRACE("M10QAsyncReceiver::load_dbd_from_flash: stale (%u s old)", age_s);
 				return false;
@@ -1894,7 +1909,7 @@ GNSSDeviceInfo M10QAsyncReceiver::get_device_info() const {
 	return info;
 }
 
-GNSSAlmanacStatus M10QAsyncReceiver::get_almanac_status() const {
+GNSSAlmanacStatus M10QAsyncReceiver::get_almanac_status(unsigned int ano_stale_threshold_s) const {
 	GNSSAlmanacStatus status = {};
 
 	if (!main_filesystem) {
@@ -1951,7 +1966,7 @@ GNSSAlmanacStatus M10QAsyncReceiver::get_almanac_status() const {
 		status.total_records = total_records;
 		status.valid_records = valid_records;
 
-		if (!rtc_available || (m_nav_settings.ano_stale_threshold_s > 0 && deltatime >= m_nav_settings.ano_stale_threshold_s)) {
+		if (!rtc_available || (ano_stale_threshold_s > 0 && deltatime >= ano_stale_threshold_s)) {
 			status.stale = true;
 			status.valid_records = 0;
 		}

@@ -548,10 +548,11 @@ unsigned int LoRaTxService::service_next_schedule_in_ms() {
 		if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing) {
 
 			// Check max message limit (0 = unlimited)
-			if (argos_config.surfacing_burst_max_msg > 0 &&
-				m_status_burst_count >= argos_config.surfacing_burst_max_msg) {
+			unsigned int burst_max_msg = configuration_store->read_param<unsigned int>(ParamID::SURFACING_BURST_MAX_MSG);
+			if (burst_max_msg > 0 &&
+				m_status_burst_count >= burst_max_msg) {
 				DEBUG_INFO("LoRaTxService::SURFACING_BURST: max status messages reached (%u/%u)",
-				           m_status_burst_count, argos_config.surfacing_burst_max_msg);
+				           m_status_burst_count, burst_max_msg);
 				return Service::SCHEDULE_DISABLED;
 			}
 

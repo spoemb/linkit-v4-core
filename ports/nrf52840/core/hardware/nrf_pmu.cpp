@@ -302,9 +302,26 @@ void PMU::enter_deep_idle() {
 #if defined(BOARD_RSPB) && defined(POWER_CONTROL_PIN)
 	GPIOPins::clear(POWER_CONTROL_PIN);
 #endif
+
+	// LinkIt V4: Switch VSYS to 1.8V during deep idle to reduce nRF52840 core
+	// and DCDC quiescent current. Only safe when all peripherals are powered off
+	// (GPS, SMD, sensors all use separate power rails at 3.3V and are not affected).
+	// The nRF52840 DCDC operates down to 1.8V with full functionality (CPU, RAM, BLE, RTC).
+#if defined(VSYS_SEL) && !defined(BOARD_RSPB)
+	if (!GPIOPins::get_sensors_pwr_state()) {
+		GPIOPins::clear(VSYS_SEL);  // Switch to 1.8V
+	}
+#endif
 }
 
 void PMU::exit_deep_idle() {
+	// LinkIt V4: Restore VSYS to 3.3V before any peripheral access.
+	// Must settle before SPI/I2C/UART transactions with 3.3V peripherals.
+#if defined(VSYS_SEL) && !defined(BOARD_RSPB)
+	GPIOPins::set(VSYS_SEL);  // Switch to 3.3V
+	PMU::delay_ms(2);  // Allow VSYS rail to stabilize from 1.8V → 3.3V
+#endif
+
 	// RSPB: restore board power rail before any peripheral access
 #if defined(BOARD_RSPB) && defined(POWER_CONTROL_PIN)
 	GPIOPins::set(POWER_CONTROL_PIN);

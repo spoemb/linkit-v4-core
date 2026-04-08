@@ -94,6 +94,7 @@ private:
 	bool m_is_active;
 
     void react(const GPSEventMaxNavSamples&) override;
+    void react(const GPSEventMaxSatSamples&) override;
     void react(const GPSEventPVT&) override;
     void react(const GPSEventError&) override;
 

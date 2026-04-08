@@ -83,7 +83,8 @@ void GPSService::service_initiate() {
 		nav_settings.max_nav_samples = gnss_config.acquisition_timeout;
 	} else {
 		// Check if ANO data is available and fresh — if so, use warm timeout
-		GNSSAlmanacStatus ano_status = m_device.get_almanac_status();
+		unsigned int stale_threshold_s = gnss_config.ano_stale_days ? gnss_config.ano_stale_days * 24 * 3600 : 0;
+		GNSSAlmanacStatus ano_status = m_device.get_almanac_status(stale_threshold_s);
 		if (ano_status.file_present && !ano_status.stale && ano_status.valid_records > 0) {
 			DEBUG_TRACE("GPSService: ANO data fresh (%u records) | using warm timeout", ano_status.valid_records);
 			nav_settings.max_nav_samples = gnss_config.acquisition_timeout;
@@ -122,9 +123,12 @@ bool GPSService::service_cancel() {
 }
 
 unsigned int GPSService::service_next_timeout() {
-	// GPS device handles its own timeout, but add a safety net
-	// in case the device never responds (e.g., hardware failure)
-	return 120000; // 120s safety timeout
+	// Safety net in case the device never responds (e.g., hardware failure)
+	// Must exceed the GNSS acquisition timeout to avoid premature termination
+	GNSSConfig gnss_config;
+	configuration_store->get_gnss_configuration(gnss_config);
+	unsigned int timeout_s = m_is_first_fix_found ? gnss_config.acquisition_timeout : gnss_config.acquisition_timeout_cold_start;
+	return (timeout_s + 30) * 1000;  // Add 30s margin over GNSS timeout
 }
 
 bool GPSService::service_is_triggered_on_surfaced(bool& immediate) {
@@ -234,6 +238,17 @@ void GPSService::react(const GPSEventMaxNavSamples&) {
 	if (!m_is_active)
 		return;
     DEBUG_TRACE("GPSService::react(GPSEventMaxNavSamples)");
+    m_is_active = false;
+    m_device.power_off();
+    GPSLogEntry log_entry = invalid_log_entry();
+    ServiceEventData event_data = log_entry;
+    service_complete(&event_data, &log_entry);
+}
+
+void GPSService::react(const GPSEventMaxSatSamples&) {
+	if (!m_is_active)
+		return;
+    DEBUG_TRACE("GPSService::react(GPSEventMaxSatSamples) — no signal acquired, aborting");
     m_is_active = false;
     m_device.power_off();
     GPSLogEntry log_entry = invalid_log_entry();
