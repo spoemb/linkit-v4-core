@@ -275,6 +275,7 @@ private:
 
     // Sample confirmation counters (for robust detection)
     uint8_t m_consecutive_samples;      // Consecutive samples in same direction
+    uint8_t m_consecutive_spike_rejects = 0; // Consecutive peak spike rejections
 
     // Surface readings buffer for adaptive air baseline
     static constexpr int SURFACE_BUFFER_SIZE = 10;

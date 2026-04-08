@@ -328,7 +328,9 @@ void SmdSat::state_load_kmac() {
 	// are done while the SMD is still powered on (at deinit time).
 	if (!m_pending_rconf.empty()) {
 		DEBUG_INFO("SmdSat::%s: applying deferred RCONF for modulation %d", __func__, (int)m_modulation);
-		auto wait_cmd = []() { nrf_delay_ms(SMDSAT_DELAY_CMD_MS * 2); };
+		// Use longer delay than normal (150ms) to ensure STM32 flash write completes
+		// before next SPI command — save_radio_conf() needs ~100ms for flash persistence
+		auto wait_cmd = []() { nrf_delay_ms(150); };
 		std::string rconf_bin = Binascii::unhexlify(m_pending_rconf);
 		smd_uint8_array_t rconf_struct = {static_cast<uint16_t>(rconf_bin.size()),
 		                                  reinterpret_cast<uint8_t *>(rconf_bin.data())};
@@ -343,7 +345,7 @@ void SmdSat::state_load_kmac() {
 			m_credentials_written = true;
 			DEBUG_INFO("SmdSat::%s: deferred RCONF applied OK", __func__);
 		} catch (...) {
-			DEBUG_ERROR("SmdSat::%s: failed to apply deferred RCONF", __func__);
+			DEBUG_ERROR("SmdSat::%s: failed to apply deferred RCONF — continuing with previous config", __func__);
 		}
 		m_pending_rconf.clear();
 	}

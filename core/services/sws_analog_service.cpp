@@ -1181,8 +1181,24 @@ bool SWSAnalogService::detector_state() {
                 raw_value <= (uint32_t)m_observed_peak_adc * 6 / 5) {
                 m_observed_peak_adc = raw_value;
                 peak_updated = true;
+                m_consecutive_spike_rejects = 0;
             } else {
-                DEBUG_WARN("SWSAnalog: Peak spike rejected raw=%u >> peak=%u", raw_value, m_observed_peak_adc);
+                m_consecutive_spike_rejects++;
+                if (m_consecutive_spike_rejects >= 10) {
+                    // Peak is stuck far below actual readings — force reset
+                    DEBUG_WARN("SWSAnalog: Peak stuck (10 consecutive rejects) raw=%u >> peak=%u, resetting peak",
+                               raw_value, m_observed_peak_adc);
+                    m_observed_peak_adc = raw_value;
+                    m_calib.threshold_water = raw_value;
+                    update_dynamic_threshold();
+                    m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
+                                                 sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
+                    save_calibration_to_flash();
+                    peak_updated = true;
+                    m_consecutive_spike_rejects = 0;
+                } else {
+                    DEBUG_WARN("SWSAnalog: Peak spike rejected raw=%u >> peak=%u", raw_value, m_observed_peak_adc);
+                }
             }
         } else if (m_observed_peak_adc > 0) {
             // Slow decay: EMA 0.999 allows gradual recovery from stale/corrupted peaks

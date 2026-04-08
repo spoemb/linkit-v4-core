@@ -52,7 +52,11 @@ typedef enum {
 } SpiAplusStatus;
 
 // Check if status is recoverable (should retry)
-#define SPI_APLUS_IS_RECOVERABLE(s) ((s) == SPI_APLUS_STATUS_BUSY || (s) == SPI_APLUS_STATUS_FRAME_CRC_ERROR)
+// NOT_READY and FRAME_ERROR are transient after RCONF/KMAC operations
+#define SPI_APLUS_IS_RECOVERABLE(s) ((s) == SPI_APLUS_STATUS_BUSY || \
+                                     (s) == SPI_APLUS_STATUS_FRAME_CRC_ERROR || \
+                                     (s) == SPI_APLUS_STATUS_NOT_READY || \
+                                     (s) == SPI_APLUS_STATUS_FRAME_ERROR)
 
 // Protocol detection: legacy commands are in range 0x01-0x2A
 #define SPI_PROTOCOL_IS_LEGACY_CMD(byte) ((byte) >= 0x01 && (byte) <= 0x2A)
