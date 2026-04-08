@@ -260,15 +260,15 @@ KineisPacket LoRaPacketBuilder::build_sensor_packet(GPSLogEntry* gps,
 	if (is_fastloc) {
 		unsigned int fixType = std::min((unsigned int)gps->info.fixType, 3U);
 		PACK_BITS(fixType, packet, base_pos, BITS_FIXTYPE);
-		unsigned int hAcc_m = std::min(gps->info.hAcc / (unsigned int)MM_PER_METER, 65535U);
+		unsigned int hAcc_m = std::min((unsigned int)(gps->info.hAcc / MM_PER_METER), 65535U);
 		PACK_BITS(hAcc_m, packet, base_pos, BITS_HACC);
-		unsigned int vAcc_m = std::min(gps->info.vAcc / (unsigned int)MM_PER_METER, 65535U);
+		unsigned int vAcc_m = std::min((unsigned int)(gps->info.vAcc / MM_PER_METER), 65535U);
 		PACK_BITS(vAcc_m, packet, base_pos, BITS_VACC);
 		unsigned int pdop = std::min((unsigned int)(gps->info.pDOP * 10.0f), 255U);
 		PACK_BITS(pdop, packet, base_pos, BITS_PDOP);
 		unsigned int hdop = std::min((unsigned int)(gps->info.hDOP * 10.0f), 255U);
 		PACK_BITS(hdop, packet, base_pos, BITS_HDOP);
-		unsigned int ontime_s = std::min(gps->info.onTime / 1000U, 1023U);
+		unsigned int ontime_s = std::min((unsigned int)(gps->info.onTime / 1000U), 1023U);
 		PACK_BITS(ontime_s, packet, base_pos, BITS_ONTIME);
 	}
 

@@ -958,12 +958,12 @@ KineisPacket ArgosPacketBuilder::build_fastloc_packet(GPSLogEntry* gps_entry,
 	PACK_BITS(numSV, packet, base_pos, 4);
 
 	// hAcc in meters (16 bits, 0-65535m)
-	unsigned int hAcc_m = std::min(gps_entry->info.hAcc / MM_PER_METER, 65535U);
+	unsigned int hAcc_m = std::min((unsigned int)(gps_entry->info.hAcc / MM_PER_METER), 65535U);
 	PACK_BITS(hAcc_m, packet, base_pos, 16);
 	DEBUG_TRACE("ArgosPacketBuilder::build_fastloc_packet: hAcc=%um", hAcc_m);
 
 	// vAcc in meters (16 bits, 0-65535m)
-	unsigned int vAcc_m = std::min(gps_entry->info.vAcc / MM_PER_METER, 65535U);
+	unsigned int vAcc_m = std::min((unsigned int)(gps_entry->info.vAcc / MM_PER_METER), 65535U);
 	PACK_BITS(vAcc_m, packet, base_pos, 16);
 
 	// pDOP × 10 (8 bits, 0-25.5)
@@ -975,7 +975,7 @@ KineisPacket ArgosPacketBuilder::build_fastloc_packet(GPSLogEntry* gps_entry,
 	PACK_BITS(hdop, packet, base_pos, 8);
 
 	// GPS on time in seconds (10 bits, 0-1023)
-	unsigned int ontime_s = std::min(gps_entry->info.onTime / MS_PER_SEC, 1023U);
+	unsigned int ontime_s = std::min((unsigned int)(gps_entry->info.onTime / MS_PER_SEC), 1023U);
 	PACK_BITS(ontime_s, packet, base_pos, 10);
 
 	// Reserved (35 bits) — zero-filled for future use
