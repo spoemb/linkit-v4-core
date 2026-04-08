@@ -13,9 +13,6 @@ public:
 	void init();
 	void uninit();
 
-	// Drain timer callbacks deferred from ISR — call from main loop
-	static void process_pending();
-
 	uint64_t get_counter() override;
 	TimerHandle add_schedule(stdext::inplace_function<void(), INPLACE_FUNCTION_SIZE_TIMER> const &task_func, uint64_t target_count) override;
 	void cancel_schedule(TimerHandle &handle) override;

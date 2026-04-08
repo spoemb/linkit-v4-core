@@ -938,9 +938,6 @@ int main()
 				}
 			}
 
-			// Process timer callbacks deferred from ISR context
-			NrfTimer::process_pending();
-
 			system_scheduler->run();
 
 			// Enter deep idle when no tasks are due for a while

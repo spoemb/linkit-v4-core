@@ -21,6 +21,7 @@
 #include "service.hpp"
 extern RTC *rtc;
 extern ConfigurationStore *configuration_store;
+extern RGBLed *status_led;
 
 static uint32_t m_reset_cause = 0;
 
@@ -308,7 +309,9 @@ void PMU::enter_deep_idle() {
 	// (GPS, SMD, sensors all use separate power rails at 3.3V and are not affected).
 	// The nRF52840 DCDC operates down to 1.8V with full functionality (CPU, RAM, BLE, RTC).
 #if defined(VSYS_SEL) && !defined(BOARD_RSPB)
-	if (!GPIOPins::get_sensors_pwr_state()) {
+	// Only switch to 1.8V if LED is off — LED forward voltage (~3V) requires 3.3V rail
+	if (!GPIOPins::get_sensors_pwr_state() &&
+	    status_led && status_led->get_state() == RGBLedColor::BLACK && !status_led->is_flashing()) {
 		GPIOPins::clear(VSYS_SEL);  // Switch to 1.8V
 	}
 #endif

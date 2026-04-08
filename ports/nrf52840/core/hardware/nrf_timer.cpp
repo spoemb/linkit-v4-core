@@ -35,11 +35,6 @@ struct Schedule
 static etl::list<Schedule, MAX_NUM_TIMERS> g_schedules;
 static unsigned int g_unique_id;
 
-// Pending callbacks: populated by ISR, drained by process_pending() in main context.
-// Using a fixed-capacity array to avoid STL operations in ISR.
-static stdext::inplace_function<void(), INPLACE_FUNCTION_SIZE_TIMER> g_pending[MAX_NUM_TIMERS];
-static volatile uint8_t g_pending_count;
-
 
 // Return current 64 bit tick count
 static uint64_t current_ticks()
@@ -108,14 +103,8 @@ static void rtc_time_keeping_event_handler(drv_rtc_t const * const  p_instance)
             {
                 schedule_itr = g_schedules.erase(schedule_itr);
 
-                // Defer callback to main context via process_pending()
-                if (schedule.m_func) {
-                    uint8_t idx = g_pending_count;
-                    if (idx < MAX_NUM_TIMERS) {
-                        g_pending[idx] = schedule.m_func;
-                        g_pending_count = idx + 1;
-                    }
-                }
+                if (schedule.m_func)
+                    schedule.m_func();
             }
             else
             {
@@ -131,32 +120,11 @@ static void rtc_time_keeping_event_handler(drv_rtc_t const * const  p_instance)
     setup_compare_interrupt();
 }
 
-void NrfTimer::process_pending()
-{
-    while (g_pending_count > 0) {
-        stdext::inplace_function<void(), INPLACE_FUNCTION_SIZE_TIMER> func;
-        {
-            InterruptLock lock;
-            if (g_pending_count == 0)
-                break;
-            func = g_pending[0];
-            // Shift remaining entries down
-            uint8_t cnt = g_pending_count;
-            for (uint8_t i = 1; i < cnt; i++)
-                g_pending[i - 1] = g_pending[i];
-            g_pending_count = cnt - 1;
-        }
-        if (func)
-            func();
-    }
-}
-
 void NrfTimer::init()
 {
 	m_start_ticks = 0;
     g_overflows_occured = 0;
     g_stamp64 = 0;
-    g_pending_count = 0;
 
     drv_rtc_config_t rtc_config = {
         .prescaler          = RTC_TIMER_PRESCALER,
@@ -176,7 +144,6 @@ void NrfTimer::uninit()
     nrf_delay_us(50);
 
     g_schedules.clear();
-    g_pending_count = 0;
 }
 
 uint64_t NrfTimer::get_counter()
