@@ -8,10 +8,10 @@ Hardware repository: [linkit-v4-hw](https://github.com/arribada/linkit-v4-hw)
 
 | Board | Communication | Interface | Use Case | Documentation |
 |-------|--------------|-----------|----------|---------------|
-| **LinkIt V4 KIM** | Argos (CLS KIM2) | UART | Open ocean, remote areas | [docs/boards/LinkIt-V4-KIM.md](docs/boards/LinkIt-V4-KIM.md) |
-| **LinkIt V4 SMD** | Argos (Arribada SMD) | SPI | Open ocean, remote areas | [docs/boards/LinkIt-V4-SMD.md](docs/boards/LinkIt-V4-SMD.md) |
-| **LinkIt V4 LoRa** | LoRaWAN (RAK3172-SiP) | UART | Coastal, urban, farm | [docs/boards/LinkIt-V4-LoRa.md](docs/boards/LinkIt-V4-LoRa.md) |
-| **RSPB** | Argos (SMD) | SPI | Bird tracking (TPL5111 duty cycle) | [docs/boards/RSPB.md](docs/boards/RSPB.md) |
+| **LinkIt V4 KIM** | Argos (CLS KIM2) | UART | Open ocean, remote areas | [Wiki: Boards](https://github.com/arribada/linkit-v4-core/wiki/05-%E2%80%90-Boards) |
+| **LinkIt V4 SMD** | Argos (Arribada SMD) | SPI | Open ocean, remote areas | [Wiki: Boards](https://github.com/arribada/linkit-v4-core/wiki/05-%E2%80%90-Boards) |
+| **LinkIt V4 LoRa** | LoRaWAN (RAK3172-SiP) | UART | Coastal, urban, farm | [Wiki: Boards](https://github.com/arribada/linkit-v4-core/wiki/05-%E2%80%90-Boards) |
+| **RSPB** | Argos (SMD) | SPI | Bird tracking (TPL5111 duty cycle) | [Wiki: Boards](https://github.com/arribada/linkit-v4-core/wiki/05-%E2%80%90-Boards) |
 
 ## Platform
 
@@ -66,7 +66,7 @@ cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
 make -j$(nproc)
 ```
 
-See [docs/2-Building.md](docs/2-Building.md) for all CMake options and per-board examples.
+See [Building](https://github.com/arribada/linkit-v4-core/wiki/03-%E2%80%90-Building) for all CMake options and per-board examples.
 
 ### 3. Flash (Debug, SoftDevice + App)
 
@@ -149,22 +149,28 @@ Parameters are read/written via the DTE protocol (USB, BLE, or UART) using `PARM
 | Power/Wakeup | `PWP` | `PWP01` (shutdown timer), `PWP03` (boot modulo) |
 | Identity | `IDP`/`IDT` | `IDP12` (Argos ID), `IDP13` (SMD seckey) |
 
-See [docs/4-DTE-Commands/Parameter-Reference.md](docs/4-DTE-Commands/Parameter-Reference.md) for the complete parameter reference.
+See [Parameters](https://github.com/arribada/linkit-v4-core/wiki/09-%E2%80%90-Parameters) for the complete parameter reference.
 
 ## Documentation
 
+All documentation is on the [GitHub Wiki](https://github.com/arribada/linkit-v4-core/wiki):
+
 | Document | Description |
 |----------|-------------|
-| [Quick Start](docs/1-Quick-Start.md) | First-time setup guide |
-| [Building](docs/2-Building.md) | Detailed build instructions |
-| [Programming](docs/3-Programming.md) | Flashing and debugging |
-| [DTE Commands](docs/4-DTE-Commands/README.md) | DTE protocol and commands reference |
-| [Parameter Reference](docs/4-DTE-Commands/Parameter-Reference.md) | All configurable parameters |
-| [Architecture](docs/5-Architecture/README.md) | System architecture overview |
-| [Board: LinkIt V4 KIM](docs/boards/LinkIt-V4-KIM.md) | KIM module board details |
-| [Board: LinkIt V4 SMD](docs/boards/LinkIt-V4-SMD.md) | SMD module board details |
-| [Board: LinkIt V4 LoRa](docs/boards/LinkIt-V4-LoRa.md) | LoRa RAK3172 board details |
-| [Board: RSPB](docs/boards/RSPB.md) | RSPB board details |
+| [User Guide](https://github.com/arribada/linkit-v4-core/wiki/01-%E2%80%90-User-Guide) | Activate, configure, and deploy your tracker |
+| [Developer Quick Start](https://github.com/arribada/linkit-v4-core/wiki/02-%E2%80%90-Developer-quick-start) | Build firmware from source |
+| [Building](https://github.com/arribada/linkit-v4-core/wiki/03-%E2%80%90-Building) | CMake configuration and build options |
+| [Programming](https://github.com/arribada/linkit-v4-core/wiki/04-%E2%80%90-Programming) | Flashing, debugging, DFU |
+| [Boards](https://github.com/arribada/linkit-v4-core/wiki/05-%E2%80%90-Boards) | Hardware specs and configuration per board |
+| [DTE Commands](https://github.com/arribada/linkit-v4-core/wiki/06-%E2%80%90-DTE-commands) | DTE protocol and commands reference |
+| [Architecture](https://github.com/arribada/linkit-v4-core/wiki/07-%E2%80%90-Architecture) | Code structure and design patterns |
+| [Development Guide](https://github.com/arribada/linkit-v4-core/wiki/08-%E2%80%90-Development-Guide) | Adding parameters, services, sensors |
+| [Parameters](https://github.com/arribada/linkit-v4-core/wiki/09-%E2%80%90-Parameters) | All configurable parameters |
+| [Satellite Message Format](https://github.com/arribada/linkit-v4-core/wiki/10-%E2%80%90-Satellite-Message-Format) | Argos & LoRa packet encoding, bit layouts, decoding |
+| [LinkIt UW Behavior](https://github.com/arribada/linkit-v4-core/wiki/11-%E2%80%90-Linkit-UW-Behavior) | Underwater mode and SWS algorithm |
+| [RSPB Mortality Tracker](https://github.com/arribada/linkit-v4-core/wiki/12-%E2%80%90-RSPB-Mortality-Tracker) | TPL5111 duty cycling, mortality detection |
+| [SWS Algorithm](https://github.com/arribada/linkit-v4-core/wiki/13-%E2%80%90-SWS-Algorithm) | SWS analog detection deep-dive |
+| [Argos TX Modes](https://github.com/arribada/linkit-v4-core/wiki/14-%E2%80%90-Argos-TX-Modes) | All Argos modes and decision guide |
 
 Compatible with:
 - [PyLinkit](https://github.com/arribada/CLS-Argos-Linkit-pylinkit) - Python configuration tool
