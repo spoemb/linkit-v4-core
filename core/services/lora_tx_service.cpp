@@ -2,6 +2,7 @@
 #include <algorithm>
 
 #include "lora_tx_service.hpp"
+#include "gps.hpp"
 #include "messages.hpp"
 #include "timeutils.hpp"
 #include "bitpack.hpp"
@@ -11,6 +12,7 @@
 
 extern ConfigurationStore *configuration_store;
 extern Scheduler *system_scheduler;
+extern GPSDevice *gps_device;
 
 
 // ============================================================================
@@ -806,6 +808,56 @@ void LoRaTxService::process_status_burst() {
 
 	service_update_battery();
 	unsigned int size_bits;
+
+	// Progressive fastloc: after the first status ping, if fastloc is enabled
+	// and the GPS has a degraded PVT available, send a fastloc sensor packet
+	// instead of status-only. Same logic as Argos process_doppler_burst().
+	bool fastloc_en = configuration_store->read_param<bool>(ParamID::GNSS_FASTLOC_ENABLE);
+	if (fastloc_en && m_status_burst_count > 0 && gps_device && gps_device->has_degraded_pvt()) {
+		GNSSData degraded = gps_device->get_degraded_pvt();
+
+		// Build a temporary GPSLogEntry from the degraded PVT
+		GPSLogEntry fastloc_entry{};
+		fastloc_entry.header.log_type = LOG_GPS;
+		fastloc_entry.info.lat = degraded.lat;
+		fastloc_entry.info.lon = degraded.lon;
+		fastloc_entry.info.height = degraded.height;
+		fastloc_entry.info.hMSL = degraded.hMSL;
+		fastloc_entry.info.hAcc = degraded.hAcc;
+		fastloc_entry.info.vAcc = degraded.vAcc;
+		fastloc_entry.info.velN = degraded.velN;
+		fastloc_entry.info.velE = degraded.velE;
+		fastloc_entry.info.velD = degraded.velD;
+		fastloc_entry.info.gSpeed = degraded.gSpeed;
+		fastloc_entry.info.headMot = degraded.headMot;
+		fastloc_entry.info.sAcc = degraded.sAcc;
+		fastloc_entry.info.headAcc = degraded.headAcc;
+		fastloc_entry.info.pDOP = degraded.pDOP;
+		fastloc_entry.info.vDOP = degraded.vDOP;
+		fastloc_entry.info.hDOP = degraded.hDOP;
+		fastloc_entry.info.headVeh = degraded.headVeh;
+		fastloc_entry.info.fixType = degraded.fixType;
+		fastloc_entry.info.numSV = degraded.numSV;
+		fastloc_entry.info.ttff = degraded.ttff;
+		fastloc_entry.info.onTime = degraded.ttff;
+		fastloc_entry.info.batt_voltage = service_get_voltage();
+		fastloc_entry.info.schedTime = service_current_time();
+		fastloc_entry.info.valid = true;
+		fastloc_entry.info.event_type = GPSEventType::FASTLOC;
+
+		KineisPacket packet = LoRaPacketBuilder::build_sensor_packet(
+			&fastloc_entry, nullptr, nullptr, nullptr, nullptr, nullptr,
+			false, service_is_battery_level_low(), size_bits);
+
+		DEBUG_INFO("LoRaTxService::process_status_burst: FASTLOC #%u hAcc=%um numSV=%u data=%s",
+		           m_status_burst_count + 1, degraded.hAcc, degraded.numSV,
+		           Binascii::hexlify(packet).c_str());
+		m_last_tx_had_gps = true;
+		m_device.send(KineisModulation::LDA2, packet, size_bits);
+		return;
+	}
+
+	// Standard status packet (first ping, or fastloc not available)
 	KineisPacket packet = LoRaPacketBuilder::build_status_packet(
 			service_get_voltage(),
 			service_is_battery_level_low(),

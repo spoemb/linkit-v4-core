@@ -2,6 +2,7 @@
 #include <algorithm>
 
 #include "argos_tx_service.hpp"
+#include "gps.hpp"
 #include "messages.hpp"
 #include "timeutils.hpp"
 #include "bitpack.hpp"
@@ -10,6 +11,7 @@
 #include "binascii.hpp"
 extern ConfigurationStore *configuration_store;
 extern Scheduler *system_scheduler;
+extern GPSDevice *gps_device;
 #if defined(BOARD_RSPB) && ENABLE_MORTALITY_SENSOR
 #include "mortality_service.hpp"
 extern MortalityService *mortality_service;
@@ -644,6 +646,62 @@ void ArgosTxService::process_doppler_burst() {
 	ArgosConfig argos_config;
 	configuration_store->get_argos_configuration(argos_config);
 
+	// Progressive fastloc: after the first Doppler ping, if fastloc is enabled
+	// and the GPS has a degraded PVT available, send a fastloc packet instead
+	// of Doppler. The position improves over time as the GPS refines its fix.
+	bool fastloc_en = configuration_store->read_param<bool>(ParamID::GNSS_FASTLOC_ENABLE);
+	if (fastloc_en && m_doppler_burst_count > 0 && gps_device && gps_device->has_degraded_pvt()) {
+		GNSSData degraded = gps_device->get_degraded_pvt();
+
+		// Build a temporary GPSLogEntry from the degraded PVT
+		GPSLogEntry fastloc_entry{};
+		fastloc_entry.header.log_type = LOG_GPS;
+		fastloc_entry.info.lat = degraded.lat;
+		fastloc_entry.info.lon = degraded.lon;
+		fastloc_entry.info.height = degraded.height;
+		fastloc_entry.info.hMSL = degraded.hMSL;
+		fastloc_entry.info.hAcc = degraded.hAcc;
+		fastloc_entry.info.vAcc = degraded.vAcc;
+		fastloc_entry.info.velN = degraded.velN;
+		fastloc_entry.info.velE = degraded.velE;
+		fastloc_entry.info.velD = degraded.velD;
+		fastloc_entry.info.gSpeed = degraded.gSpeed;
+		fastloc_entry.info.headMot = degraded.headMot;
+		fastloc_entry.info.sAcc = degraded.sAcc;
+		fastloc_entry.info.headAcc = degraded.headAcc;
+		fastloc_entry.info.pDOP = degraded.pDOP;
+		fastloc_entry.info.vDOP = degraded.vDOP;
+		fastloc_entry.info.hDOP = degraded.hDOP;
+		fastloc_entry.info.headVeh = degraded.headVeh;
+		fastloc_entry.info.fixType = degraded.fixType;
+		fastloc_entry.info.numSV = degraded.numSV;
+		fastloc_entry.info.ttff = degraded.ttff;
+		fastloc_entry.info.onTime = degraded.ttff;  // Best approximation of GPS on time
+		fastloc_entry.info.batt_voltage = service_get_voltage();
+		fastloc_entry.info.schedTime = service_current_time();
+		fastloc_entry.info.valid = true;
+		fastloc_entry.info.event_type = GPSEventType::FASTLOC;
+
+		KineisPacket packet = ArgosPacketBuilder::build_fastloc_packet(&fastloc_entry, argos_config.is_lb);
+		size_bits = ArgosPacketBuilder::FASTLOC_PACKET_BITS;
+
+		KineisModulation tx_mode = KineisModulation::LDA2;
+		if (argos_config.adaptive_modulation) {
+			if (!ensure_modulation(tx_mode)) {
+				DEBUG_WARN("ArgosTxService::process_doppler_burst: fastloc modulation switch failed, using current");
+				tx_mode = m_kineis.get_current_modulation();
+			}
+		}
+
+		DEBUG_INFO("ArgosTxService::process_doppler_burst: FASTLOC #%u hAcc=%um numSV=%u mode=%s data=%s",
+		           m_doppler_burst_count + 1, degraded.hAcc, degraded.numSV,
+		           argos_modulation_to_string((BaseArgosModulation)tx_mode), Binascii::hexlify(packet).c_str());
+		m_last_tx_had_gps = true;
+		m_kineis.send(tx_mode, packet, size_bits);
+		return;
+	}
+
+	// Standard Doppler packet (first ping, or fastloc not available)
 	KineisPacket packet;
 
 #if defined(BOARD_RSPB) && ENABLE_MORTALITY_SENSOR

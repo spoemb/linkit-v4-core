@@ -128,6 +128,10 @@ public:
     virtual GNSSDeviceInfo get_device_info() const { return {}; }
     virtual GNSSAlmanacStatus get_almanac_status(unsigned int ano_stale_threshold_s = 25 * 24 * 3600) const { (void)ano_stale_threshold_s; return {}; }
 
+    // Fastloc: query best degraded PVT accumulated during current acquisition
+    virtual bool has_degraded_pvt() const { return false; }
+    virtual GNSSData get_degraded_pvt() const { return {}; }
+
     // Bridge/passthrough mode (default: not supported)
     virtual bool start_bridge(PassthroughCallback) { return false; }
     virtual void stop_bridge() {}

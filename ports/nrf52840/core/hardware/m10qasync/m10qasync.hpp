@@ -167,6 +167,8 @@ private:
 public:
 	GNSSDeviceInfo get_device_info() const override;
 	GNSSAlmanacStatus get_almanac_status(unsigned int ano_stale_threshold_s = 25 * 24 * 3600) const override;
+	bool has_degraded_pvt() const override { return m_has_degraded_pvt; }
+	GNSSData get_degraded_pvt() const override { return m_degraded_pvt; }
 
 	// Bridge/passthrough mode: direct USB ↔ GNSS UART access
 	bool start_bridge(PassthroughCallback rx_callback) override;
