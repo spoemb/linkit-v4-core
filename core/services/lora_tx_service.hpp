@@ -44,6 +44,10 @@ public:
 	static constexpr uint8_t PKT_TYPE_GPS_MULTI   = 0b001;
 	static constexpr uint8_t PKT_TYPE_SENSOR      = 0b010;
 	static constexpr uint8_t PKT_TYPE_STATUS      = 0b011;
+	static constexpr uint8_t PKT_TYPE_CLOUDLOCATE = 0b100;  // CloudLocate raw GNSS measurement
+
+	// CloudLocate format field (2 bits)
+	static constexpr unsigned int BITS_CL_FORMAT   = 2;
 
 	// Field bit widths
 	static constexpr unsigned int BITS_PKT_TYPE    = 3;
@@ -133,6 +137,10 @@ public:
 
 	static KineisPacket build_status_packet(unsigned int battery_voltage,
 			bool is_low_battery, unsigned int& size_bits);
+
+	static KineisPacket build_cloudlocate_packet(const uint8_t* blob, unsigned int blob_size,
+			uint8_t format_id, bool is_low_battery, unsigned int battery_voltage,
+			unsigned int& size_bits);
 };
 
 

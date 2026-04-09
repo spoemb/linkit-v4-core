@@ -26,6 +26,15 @@ public:
 	static inline const unsigned int FASTLOC_PACKET_BITS		 = 192;   // LDA2 modulation
 	static inline const unsigned int FASTLOC_PACKET_BYTES		 = 24;
 
+	// CloudLocate packet (Type 7): header(3) + format(2) + blob(variable) + battery(8) + padding
+	static inline const unsigned int CLOUDLOCATE_PACKET_HEADER   = 0b111;  // Type 7
+	// MEASC12: header(3) + format(2) + blob(96) + battery(8) = 109 bits → fits LDK (128)
+	static inline const unsigned int CLOUDLOCATE_MEASC12_BITS    = 128;    // LDK modulation
+	static inline const unsigned int CLOUDLOCATE_MEASC12_BYTES   = 16;
+	// MEAS20: header(3) + format(2) + blob(160) + battery(8) + reserved(19) = 192 bits → LDA2
+	static inline const unsigned int CLOUDLOCATE_MEAS20_BITS     = 192;    // LDA2 modulation
+	static inline const unsigned int CLOUDLOCATE_MEAS20_BYTES    = 24;
+
 	static inline const unsigned int SENSOR_PACKET_HEADER 		 = 0b001;
 	// Internal buffer allocation: must cover worst-case packing before truncation
 	// GPS(75) + ALS(17) + PH(14) + pressure(29) + thermistor(14) + AXL(67) = 216 bits = 27 bytes
@@ -79,6 +88,9 @@ public:
 			BaseDeltaTimeLoc delta_time_loc);
 	static KineisPacket build_fastloc_packet(GPSLogEntry* v,
 			bool is_low_battery);
+	static KineisPacket build_cloudlocate_packet(const uint8_t* blob, unsigned int blob_size,
+			uint8_t format_id, unsigned int battery_voltage, bool is_low_battery);
+	static unsigned int cloudlocate_packet_bits(uint8_t format_id);
 	static KineisPacket build_gnss_packet(std::vector<GPSLogEntry*> &v,
 			bool is_out_of_zone,
 			bool is_low_battery,

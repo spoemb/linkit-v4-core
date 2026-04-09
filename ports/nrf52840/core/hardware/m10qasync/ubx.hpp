@@ -362,7 +362,12 @@ namespace UBX
             inline UBXParameter NAV_DOP_UART1   = {0x20910039, 1, {}}; // Output rate of the UBX-NAV-DOP message on UART1
             inline UBXParameter NAV_STATUS_UART1 = {0x2091001b, 1, {}}; // Output rate of the UBX-NAV-STATUS message on UART1
             inline UBXParameter NAV_SAT_UART1   = {0x20910016, 1, {}}; // Output rate of the UBX-NAV-SAT message on UART1
-    
+
+            // CloudLocate raw measurement output rates on UART1
+            // TODO: verify key IDs against u-blox M10 SPG 5.10 interface description (UBX-21035062)
+            inline UBXParameter RXM_MEASC12_UART1 = {0x20910c01, 1, {}};  // Output rate of UBX-RXM-MEASC12 on UART1
+            inline UBXParameter RXM_MEAS20_UART1  = {0x20910303, 1, {}};  // Output rate of UBX-RXM-MEAS20 on UART1
+            inline UBXParameter RXM_MEAS50_UART1  = {0x20910306, 1, {}};  // Output rate of UBX-RXM-MEAS50 on UART1
         }
 
 
@@ -974,7 +979,10 @@ namespace UBX
 	{
 		enum Id : uint8_t
 		{
-			ID_PMREQ = 0x41
+			ID_PMREQ  = 0x41,
+			ID_MEAS20 = 0x72,  // RXM-MEAS20: 20-byte compact raw GNSS measurement (CloudLocate)
+			ID_MEAS50 = 0x73,  // RXM-MEAS50: 50-byte extended raw GNSS measurement (CloudLocate)
+			ID_MEASC12 = 0x82  // RXM-MEASC12: 12-byte minimal raw GNSS measurement (CloudLocate)
 		};
 
 		enum PMREQFlags : uint8_t
@@ -999,6 +1007,11 @@ namespace UBX
             uint32_t flags;
             uint32_t wakeupSources;
         };
+
+        // CloudLocate raw measurement blobs (opaque, forwarded as-is to u-blox cloud)
+        struct __attribute__((__packed__)) MSG_MEASC12 { uint8_t data[12]; };
+        struct __attribute__((__packed__)) MSG_MEAS20  { uint8_t data[20]; };
+        struct __attribute__((__packed__)) MSG_MEAS50  { uint8_t data[50]; };
 	}
 
     namespace MGA

@@ -257,6 +257,7 @@ void UBXComms::handle_rx_buffer(uint8_t * buffer, unsigned int length) {
             while ((msg = parse_message(&curr_buffer, &curr_length))) {
                 run_expect_filter(msg);
                 run_nav_filter(msg);
+                run_rxm_filter(msg);
             }
 
             // Shift any surplus remaining data to the start of RX buffer
@@ -429,6 +430,24 @@ void UBXComms::run_nav_filter(const UBX::HeaderAndPayloadCRC * const msg) {
 		m_nav_report_iTOW == m_nav_report.dop.iTow) {
 		m_nav_report_iTOW = -1; // Reset this report as now notified
 		notify(m_nav_report);
+	}
+}
+
+void UBXComms::run_rxm_filter(const UBX::HeaderAndPayloadCRC * const msg) {
+	if (msg->msgClass != UBX::MessageClass::MSG_CLASS_RXM) return;
+
+	if (msg->msgId == UBX::RXM::ID_MEASC12 && msg->msgLength >= sizeof(UBX::RXM::MSG_MEASC12)) {
+		std::memcpy(m_raw_meas.measc12, msg->payload, sizeof(UBX::RXM::MSG_MEASC12));
+		m_raw_meas.has_measc12 = true;
+		notify(m_raw_meas);
+	} else if (msg->msgId == UBX::RXM::ID_MEAS20 && msg->msgLength >= sizeof(UBX::RXM::MSG_MEAS20)) {
+		std::memcpy(m_raw_meas.meas20, msg->payload, sizeof(UBX::RXM::MSG_MEAS20));
+		m_raw_meas.has_meas20 = true;
+		notify(m_raw_meas);
+	} else if (msg->msgId == UBX::RXM::ID_MEAS50 && msg->msgLength >= sizeof(UBX::RXM::MSG_MEAS50)) {
+		std::memcpy(m_raw_meas.meas50, msg->payload, sizeof(UBX::RXM::MSG_MEAS50));
+		m_raw_meas.has_meas50 = true;
+		notify(m_raw_meas);
 	}
 }
 

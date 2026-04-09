@@ -311,8 +311,10 @@ const BaseMap param_map[] = {
 	{ "SWS_DELAY_MAX_US", "UNP10", BaseEncoding::UINT, 100U, 30000U, {}, true, true },
 	// [217] GNSS ANO staleness threshold in days (0=never discard stale ANO data)
 	{ "GNSS_ANO_STALE_DAYS", "GNP44", BaseEncoding::UINT, 0U, 365U, {}, true, true },
-	// [218] Enable fastloc: send degraded GPS fix (2D/high-hAcc) when quality filters fail at timeout
-	{ "GNSS_FASTLOC_ENABLE", "GNP45", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
+	// [218] Fastloc mode: 0=OFF, 1=DEGRADED_PVT (degraded GPS fix), 2=CLOUDLOCATE (raw GNSS measurements)
+	{ "GNSS_FASTLOC_MODE", "GNP45", BaseEncoding::UINT, 0U, 2U, {}, true, true },
+	// [219] CloudLocate format: 0=MEASC12 (12B, sensor compatible), 1=MEAS20 (20B), 2=MEAS50 (50B, LoRa only)
+	{ "GNSS_CLOUDLOCATE_FORMAT", "GNP46", BaseEncoding::UINT, 0U, 2U, {}, true, true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

@@ -47,6 +47,10 @@ private:
 	bool m_has_degraded_pvt;
 	GNSSData m_degraded_pvt;
 
+	// CloudLocate: latest raw GNSS measurement snapshot
+	bool m_has_raw_measurement;
+	GNSSRawMeasurement m_raw_measurement;
+
 	struct Timeout {
 		Scheduler::TaskHandle handle;
 	} m_timeout;
@@ -135,6 +139,9 @@ private:
 	void disable_nav_dop_message();
 	void disable_nav_status_message();
     void disable_nav_sat_message();
+	void enable_rxm_measc12_message();
+	void enable_rxm_meas20_message();
+	void enable_rxm_meas50_message();
 	void fetch_navigation_database();
 	void query_mon_ver();
 	void query_sec_uniqid();
@@ -161,6 +168,7 @@ private:
 	void react(const UBXCommsEventMgaDBD&) override;
 	void react(const UBXCommsEventMonVer&) override;
 	void react(const UBXCommsEventSecUniqId&) override;
+	void react(const UBXCommsEventRawMeasurement&) override;
 	void react(const UBXCommsEventDebug&) override;
 	void react(const UBXCommsEventError&) override;
 
@@ -169,6 +177,8 @@ public:
 	GNSSAlmanacStatus get_almanac_status(unsigned int ano_stale_threshold_s = 25 * 24 * 3600) const override;
 	bool has_degraded_pvt() const override { return m_has_degraded_pvt; }
 	GNSSData get_degraded_pvt() const override { return m_degraded_pvt; }
+	bool has_raw_measurement() const override { return m_has_raw_measurement; }
+	GNSSRawMeasurement get_raw_measurement() const override { return m_raw_measurement; }
 
 	// Bridge/passthrough mode: direct USB ↔ GNSS UART access
 	bool start_bridge(PassthroughCallback rx_callback) override;

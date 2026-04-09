@@ -56,6 +56,20 @@ struct UBXCommsEventMgaDBD {
 	UBXCommsEventMgaDBD(uint8_t * const a, unsigned int b) : database(a), length(b) {}
 };
 
+struct UBXCommsEventRawMeasurement {
+	uint8_t measc12[12];
+	uint8_t meas20[20];
+	uint8_t meas50[50];
+	bool has_measc12;
+	bool has_meas20;
+	bool has_meas50;
+	UBXCommsEventRawMeasurement() : has_measc12(false), has_meas20(false), has_meas50(false) {
+		std::memset(measc12, 0, sizeof(measc12));
+		std::memset(meas20, 0, sizeof(meas20));
+		std::memset(meas50, 0, sizeof(meas50));
+	}
+};
+
 struct UBXCommsEventSendComplete {};
 
 struct UBXCommsEventMonVer {
@@ -95,6 +109,7 @@ public:
 	virtual void react(const UBXCommsEventMgaDBD&) {}
 	virtual void react(const UBXCommsEventMonVer&) {}
 	virtual void react(const UBXCommsEventSecUniqId&) {}
+	virtual void react(const UBXCommsEventRawMeasurement&) {}
 	virtual void react(const UBXCommsEventDebug&) {}
 	virtual void react(const UBXCommsEventError&) {}
 };
@@ -193,6 +208,7 @@ private:
 
 	UBXCommsEventNavReport m_nav_report;
     UBXCommsEventSatReport m_sat_report;
+	UBXCommsEventRawMeasurement m_raw_meas;
 	unsigned int m_instance;
 	volatile bool m_is_send_busy;
 	bool         m_notify_sent;
@@ -222,6 +238,7 @@ private:
 	void compute_crc(const uint8_t * const buffer, const unsigned int length, uint8_t &ck_a, uint8_t &ck_b);
 	void run_expect_filter(const UBX::HeaderAndPayloadCRC * const msg);
 	void run_nav_filter(const UBX::HeaderAndPayloadCRC * const msg);
+	void run_rxm_filter(const UBX::HeaderAndPayloadCRC * const msg);
 	void run_dbd_filter(uint8_t *buffer, unsigned int length);
 
 	friend AsyncLowLevel;
