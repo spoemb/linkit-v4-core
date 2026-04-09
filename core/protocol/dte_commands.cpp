@@ -1414,6 +1414,56 @@ const DTECommandMap command_map[] = {
 		.command = DTECommand::SATVF_RESP,
 		.prototype =
 		{
+			{
+				.name = "hw_id",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = (unsigned int)0,
+				.max_value = (unsigned int)0,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "hw_addr",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = (unsigned int)0,
+				.max_value = (unsigned int)0,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "hw_seckey",
+				.key = "",
+				.encoding = BaseEncoding::TEXT,
+				.min_value = "",
+				.max_value = "",
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "hw_rconf",
+				.key = "",
+				.encoding = BaseEncoding::TEXT,
+				.min_value = "",
+				.max_value = "",
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			},
+			{
+				.name = "match",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = (unsigned int)0,
+				.max_value = (unsigned int)0,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
 		}
 	},
 #if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)

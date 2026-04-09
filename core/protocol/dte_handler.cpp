@@ -683,15 +683,15 @@ std::string DTEHandler::SATVF_REQ(int error_code, std::vector<BaseType>& arg_lis
 		DEBUG_INFO("SATVF: hw_id=%u cfg_id=%u hw_addr=0x%08X cfg_addr=0x%08X match=%d",
 		           hw_id, cfg_id, hw_addr, cfg_addr, match);
 
-		// Encode response: id,addr,seckey,radioconf,match
-		std::vector<BaseType> resp_args;
-		resp_args.push_back(hw_id);
-		resp_args.push_back(hw_addr);
-		resp_args.push_back(hw_seckey);
-		resp_args.push_back(hw_rconf);
-		resp_args.push_back(match ? 1U : 0U);
-
-		return DTEEncoder::encode(DTECommand::SATVF_RESP, resp_args);
+		// Encode response: error_code=0, hw_id, hw_addr, hw_seckey, hw_rconf, match
+		// DTEEncoder::encode uses C varargs — pass args directly, not in a vector.
+		return DTEEncoder::encode(DTECommand::SATVF_RESP,
+			(unsigned int)0,         // error_code = success
+			(unsigned int)hw_id,
+			(unsigned int)hw_addr,
+			hw_seckey,               // std::string
+			hw_rconf,                // std::string
+			(unsigned int)(match ? 1U : 0U));
 	} catch (...) {
 		error_code = (int)DTEError::INCORRECT_DATA;
 	}

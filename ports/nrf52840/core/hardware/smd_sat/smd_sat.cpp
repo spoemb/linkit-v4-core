@@ -962,6 +962,25 @@ void SmdSat::read_credentials(unsigned int *dec_id, unsigned int *address, std::
 	PMU::kick_watchdog();
 	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
 
+	// Write pending credentials to SMD before reading them back.
+	// PARMW saves credentials to the nRF config store but does NOT push
+	// them to the SMD. Without this, SATVF reads stale/empty flash.
+	if (configuration_store && configuration_store->is_credentials_dirty()) {
+		DEBUG_INFO("SmdSat::%s: credentials dirty — writing to SMD before verify", __func__);
+		if (write_credentials_from_config()) {
+			configuration_store->clear_credentials_dirty();
+			// KMAC reload so the MAC picks up the new RCONF
+			try {
+				m_cmd.load_kmac_profil(1);
+				nrf_delay_ms(SMDSAT_DELAY_LOAD_KMAC_MS);
+			} catch (...) {
+				DEBUG_WARN("SmdSat::%s: KMAC reload failed after credential write", __func__);
+			}
+		} else {
+			DEBUG_ERROR("SmdSat::%s: credential write failed before verify", __func__);
+		}
+	}
+
 	try {
 		if (dec_id) {
 			uint32_t dec_id_val = 0;
