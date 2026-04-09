@@ -1599,27 +1599,14 @@ std::string SmdSatCmdSpi::run_tx_flow_test() {
 	uint8_t tx_pass = 0;
 	uint8_t tx_total = 0;
 
-	// Read current modulation from RCONF to send a compatible payload.
-	// Sending a wrong-sized payload gives MAC_ERROR (e.g. 3 bytes with LDA2 RCONF).
-	SmdArgosModulation current_mod = ARGOS_MOD_LDA2;
-	try { read_radio_conf(&current_mod); } catch (...) {}
-
-	// Build payload matching the current modulation
+	// Payloads for each modulation
 	uint8_t dummy_lda2[ARGOS_TX_LDA2_MIN_BYTE_SIZE] = {0xFF, 0xFF, 0xFF, 0xFF};
 	uint8_t dummy_ldk[ARGOS_TX_LDK_PAYLOAD_BYTE_SIZE] = {};
 	uint8_t dummy_vlda4[ARGOS_TX_VLDA4_PAYLOAD_BYTE_SIZE] = {0x00, 0x92, 0x00};
 	memset(dummy_ldk, 0xFF, sizeof(dummy_ldk));
-
-	KineisPacket pkt_default;
+	KineisPacket pkt_lda2(dummy_lda2, dummy_lda2 + sizeof(dummy_lda2));
 	KineisPacket pkt_ldk(dummy_ldk, dummy_ldk + sizeof(dummy_ldk));
-	switch (current_mod) {
-		case ARGOS_MOD_VLDA4: pkt_default.assign(dummy_vlda4, dummy_vlda4 + sizeof(dummy_vlda4)); break;
-		case ARGOS_MOD_LDK:   pkt_default = pkt_ldk; break;
-		case ARGOS_MOD_LDA2:
-		default:              pkt_default.assign(dummy_lda2, dummy_lda2 + sizeof(dummy_lda2)); break;
-	}
-	DEBUG_INFO("SmdSatCmdSpi::%s: current modulation=%d, payload=%u bytes",
-	           __func__, (int)current_mod, (unsigned)pkt_default.size());
+	KineisPacket pkt_vlda4(dummy_vlda4, dummy_vlda4 + sizeof(dummy_vlda4));
 
 	// Helper: resync SPI A+ protocol after TX.
 	// The TX flow (TX_REQ + TX_SIZE + WRITE_TX + multiple polls) increments
@@ -1683,170 +1670,67 @@ std::string SmdSatCmdSpi::run_tx_flow_test() {
 		return false;
 	};
 
-	// NOTE: No set_radio_conf() in the test — writing RCONF through the test
-	// has caused device corruption in the past. The test only uses SAVE (re-persist
-	// current flash) and KMAC reload to test SPI timing without altering config.
+	// Helper: get the right packet for a given modulation
+	auto pkt_for_mod = [&](SmdArgosModulation mod) -> const KineisPacket& {
+		switch (mod) {
+			case ARGOS_MOD_VLDA4: return pkt_vlda4;
+			case ARGOS_MOD_LDK:   return pkt_ldk;
+			case ARGOS_MOD_LDA2:
+			default:              return pkt_lda2;
+		}
+	};
 
-	// ================================================================
-	// Init: resync SPI, load KMAC, poll MAC_OK.
-	// Per firmware spec: KMAC triggers KNS_MAC_INIT → MAC → MAC_OK.
-	// If MAC stays in MAC_ERROR after KMAC, the RCONF in STM32 flash is
-	// likely corrupted — the test cannot fix this (needs DFU or SMDCD).
-	// ================================================================
-	{
-		// Resync SPI after the 13 read commands in run_command_test()
+	// Helper: resync + KMAC load + wait MAC_OK + read modulation
+	auto init_and_get_mod = [&]() -> SmdArgosModulation {
 		m_sequence_number = 0;
 		nrf_delay_ms(100);
-		if (!ping()) {
-			return "0/0 RESYNC_FAIL";
-		}
+		if (!ping()) return ARGOS_MOD_LDA2;
 
-		// Load KMAC profile → triggers MAC init
-		try {
-			load_kmac_profil(1);
-		} catch (...) {
-			return "0/0 KMAC_LOAD_FAIL";
-		}
+		try { load_kmac_profil(1); } catch (...) { return ARGOS_MOD_LDA2; }
 
-		// Poll READ_SPIMAC_STATE (0x27) for MAC_OK
-		bool mac_ready = false;
-		for (uint8_t attempt = 0; attempt < 20; attempt++) {
-			PMU::kick_watchdog();
-			nrf_delay_ms(100);
-			uint8_t spi_st = 0, mac_st = 0;
-			try { read_spimac_state(&spi_st, &mac_st); } catch (...) { continue; }
-			if (mac_st == MAC_OK) {
-				DEBUG_INFO("SmdSatCmdSpi::%s: MAC_OK after KMAC load (%ums)", __func__, (attempt+1)*100);
-				mac_ready = true;
-				break;
+		if (!wait_mac_ok()) return ARGOS_MOD_LDA2;
+
+		// Read parsed RCONF (CMD 0x0A) — returns modulation as byte[9]
+		// This works after MAC_OK. Don't use RCONF_RAW (0x2B) which is
+		// raw flash with different byte layout.
+		// read_radio_conf returns the Kineis KNS_tx_mod_t value directly:
+		//   KNS_TX_MOD_LDA2=2, LDA2L=3, VLDA4=4, HDA4=5, LDK=6
+		// Our enum: ARGOS_MOD_LDA2=0, ARGOS_MOD_LDK=1, ARGOS_MOD_VLDA4=2
+		// We read the raw byte and map it ourselves.
+		uint8_t rx_rconf[13] = {0};
+		uint16_t rx_len = sizeof(rx_rconf);
+		SmdArgosModulation mod = ARGOS_MOD_LDA2;
+		if (send_command_auto(SMDSAT_CMD_READ_RCONF, nullptr, 0, rx_rconf, &rx_len) && rx_len >= 10) {
+			uint8_t kineis_mod = rx_rconf[9];
+			switch (kineis_mod) {
+				case 2: case 3: mod = ARGOS_MOD_LDA2; break;   // KNS_TX_MOD_LDA2 / LDA2L
+				case 4:         mod = ARGOS_MOD_VLDA4; break;  // KNS_TX_MOD_VLDA4
+				case 6:         mod = ARGOS_MOD_LDK; break;    // KNS_TX_MOD_LDK
+				default:        mod = ARGOS_MOD_LDA2; break;
 			}
-			DEBUG_TRACE("SmdSatCmdSpi::%s: waiting MAC_OK (spi=%u mac=%u)", __func__, spi_st, mac_st);
+			DEBUG_INFO("SmdSatCmdSpi::%s: Kineis mod=%u → enum=%d", __func__, kineis_mod, (int)mod);
 		}
-		if (!mac_ready) {
-			// Recovery: MAC_ERROR means RCONF is corrupted in STM32 flash.
-			// Write credentials (including RCONF) then re-attempt KMAC.
-			DEBUG_WARN("SmdSatCmdSpi::%s: MAC_ERROR after KMAC — attempting RCONF recovery via SATTX path", __func__);
-			// The SATTX command path (DTEHandler::ARGOSTX_REQ) triggers a full
-			// power cycle with state_load_kmac which now has RCONF recovery.
-			// For the test, we can't do that — just report the issue.
-			return "0/0 MAC_ERR(RCONF_bad_in_STM32,recovery_will_run_at_next_TX)";
-		}
-	}
+		return mod;
+	};
 
 	// ================================================================
-	// T1: TX VLDA4 baseline — no RCONF change
+	// Init: resync + KMAC + read current modulation
 	// ================================================================
-	DEBUG_INFO("SmdSatCmdSpi::%s: [T1] TX VLDA4 baseline", __func__);
-	run_tx("T1", pkt_default);
+	SmdArgosModulation cur_mod = init_and_get_mod();
+	DEBUG_INFO("SmdSatCmdSpi::%s: current modulation=%d", __func__, (int)cur_mod);
+
+	// ================================================================
+	// T1: TX with current modulation (baseline)
+	// ================================================================
+	DEBUG_INFO("SmdSatCmdSpi::%s: [T1] TX mod=%d (%u bytes)", __func__, (int)cur_mod, (unsigned)pkt_for_mod(cur_mod).size());
+	run_tx("T1", pkt_for_mod(cur_mod));
 	resync_after_tx();
 
 	// ================================================================
-	// T2: KMAC reload only (no RCONF change) → TX
-	// Isolates: does KMAC reload alone break TX?
+	// T2: Back-to-back TX (no config change — verifies resync works)
 	// ================================================================
-	DEBUG_INFO("SmdSatCmdSpi::%s: [T2] KMAC only → TX", __func__);
-	{
-		tx_total++;
-		bool ok = false;
-		try { load_kmac_profil(1); ok = wait_mac_ok(); } catch (...) {}
-		if (ok) {
-			bool tx_ok = initiate_tx(pkt_default);
-			if (!tx_ok) {
-				result += "T2:REQ_FAIL ";
-			} else {
-				uint8_t r = poll_tx_result(6000);
-				if (r == MAC_TX_DONE || r == MAC_TX_TIMEOUT) { tx_pass++; result += "T2:OK "; }
-				else { result += "T2:MAC" + std::to_string(r) + " "; }
-			}
-		} else {
-			result += "T2:SETUP_FAIL ";
-		}
-	}
-	resync_after_tx();
-
-	// ================================================================
-	// T3: SAVE_RCONF only (no set_radio_conf, no KMAC) → TX
-	// Isolates: does save_radio_conf alone break TX?
-	// ================================================================
-	DEBUG_INFO("SmdSatCmdSpi::%s: [T3] SAVE only → TX", __func__);
-	{
-		tx_total++;
-		bool ok = false;
-		try { ok = save_radio_conf(); } catch (...) {}
-		if (ok) {
-			nrf_delay_ms(200);
-			bool tx_ok = initiate_tx(pkt_default);
-			if (!tx_ok) {
-				result += "T3:REQ_FAIL ";
-			} else {
-				uint8_t r = poll_tx_result(6000);
-				if (r == MAC_TX_DONE || r == MAC_TX_TIMEOUT) { tx_pass++; result += "T3:OK "; }
-				else { result += "T3:MAC" + std::to_string(r) + " "; }
-			}
-		} else {
-			result += "T3:SETUP_FAIL ";
-		}
-	}
-	resync_after_tx();
-
-	// ================================================================
-	// T4: SAVE_RCONF + KMAC → TX
-	// Isolates: does save + KMAC break TX?
-	// ================================================================
-	DEBUG_INFO("SmdSatCmdSpi::%s: [T4] SAVE+KMAC → TX", __func__);
-	{
-		tx_total++;
-		bool ok = false;
-		try {
-			ok = save_radio_conf();
-			if (ok) { nrf_delay_ms(150); load_kmac_profil(1); ok = wait_mac_ok(); }
-		} catch (...) { ok = false; }
-		if (ok) {
-			bool tx_ok = initiate_tx(pkt_default);
-			if (!tx_ok) {
-				result += "T4:REQ_FAIL ";
-			} else {
-				uint8_t r = poll_tx_result(6000);
-				if (r == MAC_TX_DONE || r == MAC_TX_TIMEOUT) { tx_pass++; result += "T4:OK "; }
-				else { result += "T4:MAC" + std::to_string(r) + " "; }
-			}
-		} else {
-			result += "T4:SETUP_FAIL ";
-		}
-	}
-	resync_after_tx();
-
-	// ================================================================
-	// T5: SAVE + KMAC → TX
-	// ================================================================
-	DEBUG_INFO("SmdSatCmdSpi::%s: [T5] SAVE+KMAC → TX", __func__);
-	{
-		tx_total++;
-		bool ok = false;
-		try {
-			ok = save_radio_conf();
-			if (ok) { nrf_delay_ms(150); load_kmac_profil(1); ok = wait_mac_ok(); }
-		} catch (...) { ok = false; }
-		if (ok) {
-			bool tx_ok = initiate_tx(pkt_default);
-			if (!tx_ok) {
-				result += "T5:REQ_FAIL ";
-			} else {
-				uint8_t r = poll_tx_result(6000);
-				if (r == MAC_TX_DONE || r == MAC_TX_TIMEOUT) { tx_pass++; result += "T5:OK "; }
-				else { result += "T5:MAC" + std::to_string(r) + " "; }
-			}
-		} else {
-			result += "T5:SETUP_FAIL ";
-		}
-	}
-	resync_after_tx();
-
-	// ================================================================
-	// T6: Back-to-back TX (no config change)
-	// ================================================================
-	DEBUG_INFO("SmdSatCmdSpi::%s: [T6] Back-to-back TX", __func__);
-	run_tx("T6", pkt_default);
+	DEBUG_INFO("SmdSatCmdSpi::%s: [T2] Back-to-back TX", __func__);
+	run_tx("T2", pkt_for_mod(cur_mod));
 	resync_after_tx();
 
 	std::string summary = std::to_string(tx_pass) + "/" + std::to_string(tx_total);
