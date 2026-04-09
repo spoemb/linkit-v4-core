@@ -1511,16 +1511,18 @@ bool SmdSatCmdSpi::dfu_get_bootloader_info(SmdDfuInfo *info) {
 std::string SmdSatCmdSpi::run_command_test() {
 	DEBUG_INFO("SmdSatCmdSpi::%s: === COMMAND TEST START ===", __func__);
 
-	m_protocol_detected = true;
-	m_protocol_mode = SpiProtocolMode::APLUS;
-	m_sequence_number = 0;
-
-	bool smd_ready = false;
-	for (uint8_t attempt = 0; attempt < 10; attempt++) {
-		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS / 2);
-		if (ping()) {
-			smd_ready = true;
-			break;
+	// Verify SPI communication is alive. If ping fails, the A+ sequence
+	// may be desynced (e.g. from a previous failed test) — reset and retry.
+	bool smd_ready = ping();
+	if (!smd_ready) {
+		DEBUG_WARN("SmdSatCmdSpi::%s: first ping failed, resync seq", __func__);
+		m_sequence_number = 0;
+		for (uint8_t attempt = 0; attempt < 10; attempt++) {
+			nrf_delay_ms(100);
+			if (ping()) {
+				smd_ready = true;
+				break;
+			}
 		}
 	}
 
@@ -1580,5 +1582,301 @@ std::string SmdSatCmdSpi::run_command_test() {
 		result += " FAIL:" + fails;
 	}
 
+	// ================================================================
+	// Phase 2: TX flow test — reproduces the field failure pattern
+	// Tests: RCONF save → KMAC reload → immediate TX → poll result
+	// ================================================================
+	std::string tx_result = run_tx_flow_test();
+	result += " | TX:" + tx_result;
+
 	return result;
+}
+
+std::string SmdSatCmdSpi::run_tx_flow_test() {
+	DEBUG_INFO("SmdSatCmdSpi::%s: === TX FLOW TEST START ===", __func__);
+
+	std::string result;
+	uint8_t tx_pass = 0;
+	uint8_t tx_total = 0;
+
+	// Read current modulation from RCONF to send a compatible payload.
+	// Sending a wrong-sized payload gives MAC_ERROR (e.g. 3 bytes with LDA2 RCONF).
+	SmdArgosModulation current_mod = ARGOS_MOD_LDA2;
+	try { read_radio_conf(&current_mod); } catch (...) {}
+
+	// Build payload matching the current modulation
+	uint8_t dummy_lda2[ARGOS_TX_LDA2_MIN_BYTE_SIZE] = {0xFF, 0xFF, 0xFF, 0xFF};
+	uint8_t dummy_ldk[ARGOS_TX_LDK_PAYLOAD_BYTE_SIZE] = {};
+	uint8_t dummy_vlda4[ARGOS_TX_VLDA4_PAYLOAD_BYTE_SIZE] = {0x00, 0x92, 0x00};
+	memset(dummy_ldk, 0xFF, sizeof(dummy_ldk));
+
+	KineisPacket pkt_default;
+	KineisPacket pkt_ldk(dummy_ldk, dummy_ldk + sizeof(dummy_ldk));
+	switch (current_mod) {
+		case ARGOS_MOD_VLDA4: pkt_default.assign(dummy_vlda4, dummy_vlda4 + sizeof(dummy_vlda4)); break;
+		case ARGOS_MOD_LDK:   pkt_default = pkt_ldk; break;
+		case ARGOS_MOD_LDA2:
+		default:              pkt_default.assign(dummy_lda2, dummy_lda2 + sizeof(dummy_lda2)); break;
+	}
+	DEBUG_INFO("SmdSatCmdSpi::%s: current modulation=%d, payload=%u bytes",
+	           __func__, (int)current_mod, (unsigned)pkt_default.size());
+
+	// Helper: resync SPI A+ protocol after TX.
+	// The TX flow (TX_REQ + TX_SIZE + WRITE_TX + multiple polls) increments
+	// the A+ sequence number many times. If any SPI transfer fails or the
+	// response is missed, the sequence numbers on nRF and STM32 diverge.
+	// All subsequent commands then fail with SEQ_ERROR or INVALID_CMD.
+	// A ping is the simplest way to resync — the STM32 accepts it regardless
+	// of sequence state.
+	// NOTE: No KMAC reload needed here. MAC terminal states (TX_DONE etc.)
+	// are overwritten by the next TX initiation. Flash operations (SAVE_RCONF)
+	// do not depend on MAC status.
+	auto resync_after_tx = [&]() -> bool {
+		PMU::kick_watchdog();
+		// After TX+poll, the A+ sequence number is heavily desynced
+		// (TX_REQ + TX_SIZE + WRITE_TX + N polls = ~16 transactions).
+		// A single ping won't fix it. Hard-reset the seq and flush the
+		// SPI pipeline with multiple pings, like power_on_blocking() does.
+		m_sequence_number = 0;
+		nrf_delay_ms(200);
+		for (uint8_t attempt = 0; attempt < 5; attempt++) {
+			if (ping()) return true;
+			nrf_delay_ms(100);
+		}
+		DEBUG_ERROR("SmdSatCmdSpi::%s: resync failed after 5 pings", __func__);
+		return false;
+	};
+
+	// Helper: poll READ_SPIMAC_STATE for MAC_OK after KMAC load
+	auto wait_mac_ok = [&](uint32_t timeout_ms = 2000) -> bool {
+		uint32_t elapsed = 0;
+		while (elapsed < timeout_ms) {
+			PMU::kick_watchdog();
+			uint8_t spi_st = 0, mac_st = 0;
+			try { read_spimac_state(&spi_st, &mac_st); } catch (...) {}
+			if (mac_st == MAC_OK) return true;
+			nrf_delay_ms(100);
+			elapsed += 100;
+		}
+		return false;
+	};
+
+	// Helper: run a single TX and return result string
+	auto run_tx = [&](const char *tag, const KineisPacket& pkt) -> bool {
+		PMU::kick_watchdog();
+		tx_total++;
+		bool tx_ok = initiate_tx(pkt);
+		if (!tx_ok) {
+			uint8_t spi_st = 0, mac_st = 0;
+			try { read_spimac_state(&spi_st, &mac_st); } catch (...) {}
+			result += std::string(tag) + ":REQ_FAIL(spi=" + std::to_string(spi_st) +
+			          ",mac=" + std::to_string(mac_st) + ") ";
+			return false;
+		}
+		uint8_t mac_result = poll_tx_result(6000);
+		if (mac_result == MAC_TX_DONE || mac_result == MAC_TX_TIMEOUT) {
+			tx_pass++;
+			result += std::string(tag) + ":OK ";
+			return true;
+		}
+		result += std::string(tag) + ":MAC" + std::to_string(mac_result) + " ";
+		return false;
+	};
+
+	// NOTE: No set_radio_conf() in the test — writing RCONF through the test
+	// has caused device corruption in the past. The test only uses SAVE (re-persist
+	// current flash) and KMAC reload to test SPI timing without altering config.
+
+	// ================================================================
+	// Init: resync SPI, load KMAC, poll MAC_OK.
+	// Per firmware spec: KMAC triggers KNS_MAC_INIT → MAC → MAC_OK.
+	// If MAC stays in MAC_ERROR after KMAC, the RCONF in STM32 flash is
+	// likely corrupted — the test cannot fix this (needs DFU or SMDCD).
+	// ================================================================
+	{
+		// Resync SPI after the 13 read commands in run_command_test()
+		m_sequence_number = 0;
+		nrf_delay_ms(100);
+		if (!ping()) {
+			return "0/0 RESYNC_FAIL";
+		}
+
+		// Load KMAC profile → triggers MAC init
+		try {
+			load_kmac_profil(1);
+		} catch (...) {
+			return "0/0 KMAC_LOAD_FAIL";
+		}
+
+		// Poll READ_SPIMAC_STATE (0x27) for MAC_OK
+		bool mac_ready = false;
+		for (uint8_t attempt = 0; attempt < 20; attempt++) {
+			PMU::kick_watchdog();
+			nrf_delay_ms(100);
+			uint8_t spi_st = 0, mac_st = 0;
+			try { read_spimac_state(&spi_st, &mac_st); } catch (...) { continue; }
+			if (mac_st == MAC_OK) {
+				DEBUG_INFO("SmdSatCmdSpi::%s: MAC_OK after KMAC load (%ums)", __func__, (attempt+1)*100);
+				mac_ready = true;
+				break;
+			}
+			DEBUG_TRACE("SmdSatCmdSpi::%s: waiting MAC_OK (spi=%u mac=%u)", __func__, spi_st, mac_st);
+		}
+		if (!mac_ready) {
+			// Recovery: MAC_ERROR means RCONF is corrupted in STM32 flash.
+			// Write credentials (including RCONF) then re-attempt KMAC.
+			DEBUG_WARN("SmdSatCmdSpi::%s: MAC_ERROR after KMAC — attempting RCONF recovery via SATTX path", __func__);
+			// The SATTX command path (DTEHandler::ARGOSTX_REQ) triggers a full
+			// power cycle with state_load_kmac which now has RCONF recovery.
+			// For the test, we can't do that — just report the issue.
+			return "0/0 MAC_ERR(RCONF_bad_in_STM32,recovery_will_run_at_next_TX)";
+		}
+	}
+
+	// ================================================================
+	// T1: TX VLDA4 baseline — no RCONF change
+	// ================================================================
+	DEBUG_INFO("SmdSatCmdSpi::%s: [T1] TX VLDA4 baseline", __func__);
+	run_tx("T1", pkt_default);
+	resync_after_tx();
+
+	// ================================================================
+	// T2: KMAC reload only (no RCONF change) → TX
+	// Isolates: does KMAC reload alone break TX?
+	// ================================================================
+	DEBUG_INFO("SmdSatCmdSpi::%s: [T2] KMAC only → TX", __func__);
+	{
+		tx_total++;
+		bool ok = false;
+		try { load_kmac_profil(1); ok = wait_mac_ok(); } catch (...) {}
+		if (ok) {
+			bool tx_ok = initiate_tx(pkt_default);
+			if (!tx_ok) {
+				result += "T2:REQ_FAIL ";
+			} else {
+				uint8_t r = poll_tx_result(6000);
+				if (r == MAC_TX_DONE || r == MAC_TX_TIMEOUT) { tx_pass++; result += "T2:OK "; }
+				else { result += "T2:MAC" + std::to_string(r) + " "; }
+			}
+		} else {
+			result += "T2:SETUP_FAIL ";
+		}
+	}
+	resync_after_tx();
+
+	// ================================================================
+	// T3: SAVE_RCONF only (no set_radio_conf, no KMAC) → TX
+	// Isolates: does save_radio_conf alone break TX?
+	// ================================================================
+	DEBUG_INFO("SmdSatCmdSpi::%s: [T3] SAVE only → TX", __func__);
+	{
+		tx_total++;
+		bool ok = false;
+		try { ok = save_radio_conf(); } catch (...) {}
+		if (ok) {
+			nrf_delay_ms(200);
+			bool tx_ok = initiate_tx(pkt_default);
+			if (!tx_ok) {
+				result += "T3:REQ_FAIL ";
+			} else {
+				uint8_t r = poll_tx_result(6000);
+				if (r == MAC_TX_DONE || r == MAC_TX_TIMEOUT) { tx_pass++; result += "T3:OK "; }
+				else { result += "T3:MAC" + std::to_string(r) + " "; }
+			}
+		} else {
+			result += "T3:SETUP_FAIL ";
+		}
+	}
+	resync_after_tx();
+
+	// ================================================================
+	// T4: SAVE_RCONF + KMAC → TX
+	// Isolates: does save + KMAC break TX?
+	// ================================================================
+	DEBUG_INFO("SmdSatCmdSpi::%s: [T4] SAVE+KMAC → TX", __func__);
+	{
+		tx_total++;
+		bool ok = false;
+		try {
+			ok = save_radio_conf();
+			if (ok) { nrf_delay_ms(150); load_kmac_profil(1); ok = wait_mac_ok(); }
+		} catch (...) { ok = false; }
+		if (ok) {
+			bool tx_ok = initiate_tx(pkt_default);
+			if (!tx_ok) {
+				result += "T4:REQ_FAIL ";
+			} else {
+				uint8_t r = poll_tx_result(6000);
+				if (r == MAC_TX_DONE || r == MAC_TX_TIMEOUT) { tx_pass++; result += "T4:OK "; }
+				else { result += "T4:MAC" + std::to_string(r) + " "; }
+			}
+		} else {
+			result += "T4:SETUP_FAIL ";
+		}
+	}
+	resync_after_tx();
+
+	// ================================================================
+	// T5: SAVE + KMAC → TX
+	// ================================================================
+	DEBUG_INFO("SmdSatCmdSpi::%s: [T5] SAVE+KMAC → TX", __func__);
+	{
+		tx_total++;
+		bool ok = false;
+		try {
+			ok = save_radio_conf();
+			if (ok) { nrf_delay_ms(150); load_kmac_profil(1); ok = wait_mac_ok(); }
+		} catch (...) { ok = false; }
+		if (ok) {
+			bool tx_ok = initiate_tx(pkt_default);
+			if (!tx_ok) {
+				result += "T5:REQ_FAIL ";
+			} else {
+				uint8_t r = poll_tx_result(6000);
+				if (r == MAC_TX_DONE || r == MAC_TX_TIMEOUT) { tx_pass++; result += "T5:OK "; }
+				else { result += "T5:MAC" + std::to_string(r) + " "; }
+			}
+		} else {
+			result += "T5:SETUP_FAIL ";
+		}
+	}
+	resync_after_tx();
+
+	// ================================================================
+	// T6: Back-to-back TX (no config change)
+	// ================================================================
+	DEBUG_INFO("SmdSatCmdSpi::%s: [T6] Back-to-back TX", __func__);
+	run_tx("T6", pkt_default);
+	resync_after_tx();
+
+	std::string summary = std::to_string(tx_pass) + "/" + std::to_string(tx_total);
+	if (tx_pass == tx_total) {
+		summary += " ALL_OK";
+	}
+	summary += " [" + result + "]";
+
+	DEBUG_INFO("SmdSatCmdSpi::%s: === TX FLOW TEST END: %s ===", __func__, summary.c_str());
+	return summary;
+}
+
+uint8_t SmdSatCmdSpi::poll_tx_result(uint32_t timeout_ms) {
+	uint32_t elapsed = 0;
+	while (elapsed < timeout_ms) {
+		PMU::kick_watchdog();
+		uint8_t rx[4] = {0};
+		uint16_t rx_len = sizeof(rx);
+		if (send_command_auto(SMDSAT_CMD_READ_SPIMAC_STATE, nullptr, 0, rx, &rx_len)) {
+			uint8_t mac_status = rx[1];
+			if (mac_status == MAC_TX_DONE || mac_status == MAC_TX_TIMEOUT ||
+			    mac_status == MAC_ERROR || mac_status == MAC_RF_ABORTED ||
+			    mac_status == MAC_TX_SIZE_ERROR) {
+				DEBUG_INFO("SmdSatCmdSpi::%s: result=%u after %ums", __func__, mac_status, elapsed);
+				return mac_status;
+			}
+		}
+		nrf_delay_ms(SMDSAT_TIMING_POLL_MS);
+		elapsed += SMDSAT_TIMING_POLL_MS;
+	}
+	DEBUG_WARN("SmdSatCmdSpi::%s: poll timeout after %ums", __func__, timeout_ms);
+	return MAC_ERROR;
 }

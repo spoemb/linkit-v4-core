@@ -594,8 +594,12 @@ void ArgosTxService::process_sensor_burst() {
 		m_last_tx_had_gps = true;
 		m_kineis.send(m_scheduled_mode, packet, size_bits);
 	} else {
-		// No eligible entries for transmission in the depth pile, so send a doppler burst instead
 		DEBUG_WARN("ArgosTxService::process_sensor_burst: no entries eligible in depth pile");
+		if (m_is_surfacing_burst) {
+			DEBUG_INFO("ArgosTxService::process_sensor_burst: ending surfacing burst (depth pile exhausted)");
+			m_is_surfacing_burst = false;
+			m_first_gnss_tx_sent = false;
+		}
 		service_complete();
 	}
 }
@@ -633,8 +637,12 @@ void ArgosTxService::process_gnss_burst() {
 		m_last_tx_had_gps = true;
 		m_kineis.send(m_scheduled_mode, packet, size_bits);
 	} else {
-		// No eligible entries for transmission in the depth pile, so send a doppler burst instead
 		DEBUG_WARN("ArgosTxService::process_gnss_burst: no entries eligible in depth pile");
+		if (m_is_surfacing_burst) {
+			DEBUG_INFO("ArgosTxService::process_gnss_burst: ending surfacing burst (depth pile exhausted)");
+			m_is_surfacing_burst = false;
+			m_first_gnss_tx_sent = false;
+		}
 		service_complete();
 	}
 }

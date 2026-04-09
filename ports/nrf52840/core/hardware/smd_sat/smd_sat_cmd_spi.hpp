@@ -104,6 +104,8 @@ public:
 
 	// Debug / test
 	std::string run_command_test() override;
+	std::string run_tx_flow_test();
+	uint8_t poll_tx_result(uint32_t timeout_ms);
 
 	// SPI-specific: direct access to NrfSPIM (needed by SmdSat for power management)
 	NrfSPIM* get_spim() const { return m_nrf_spim; }

@@ -50,6 +50,7 @@ private:
 	bool m_stopping;
 	bool is_kmac_profil_loaded = false;
 	bool m_credentials_written = false;
+	bool m_rconf_recovery_attempted = false;
 
 	// TX state
 	KineisPacket m_tx_buffer;

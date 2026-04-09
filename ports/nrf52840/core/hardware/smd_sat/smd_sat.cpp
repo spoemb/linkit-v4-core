@@ -228,6 +228,7 @@ void SmdSat::state_starting()
 	// is_kmac_profil_loaded is NOT reset here — the KMAC profile is persisted
 	// in SMD flash across power cycles. Only reset on credential/RCONF changes.
 	m_credentials_written = false;
+	m_rconf_recovery_attempted = false;
 	// SPI init is deferred to state_idle_pending (after power-on + reset release).
 	// Initializing SPI here would configure MISO as input without pulldown while
 	// the STM32WL is booting — risk of MISO backfeed via nRF ESD diode.
@@ -323,13 +324,16 @@ void SmdSat::state_load_kmac_enter() {}
 void SmdSat::state_load_kmac_exit() {}
 
 void SmdSat::state_load_kmac() {
-	// Apply deferred RCONF from switch_modulation() while stopped.
-	// This only happens on error recovery — normal modulation switches
-	// are done while the SMD is still powered on (at deinit time).
+	// Sequence per firmware spec:
+	// 1. Write RCONF/credentials (flash operations — don't need MAC_OK)
+	// 2. Load KMAC (triggers KNS_MAC_INIT with the RCONF now in flash)
+	// 3. Poll READ_SPIMAC_STATE (0x27) until MAC_OK
+	// Writing credentials BEFORE KMAC is critical: KMAC init reads RCONF
+	// from flash, so the flash must contain valid data first.
+
+	// Step 1a: Apply deferred RCONF from switch_modulation() while stopped.
 	if (!m_pending_rconf.empty()) {
 		DEBUG_INFO("SmdSat::%s: applying deferred RCONF for modulation %d", __func__, (int)m_modulation);
-		// Use longer delay than normal (150ms) to ensure STM32 flash write completes
-		// before next SPI command — save_radio_conf() needs ~100ms for flash persistence
 		auto wait_cmd = []() { nrf_delay_ms(150); };
 		std::string rconf_bin = Binascii::unhexlify(m_pending_rconf);
 		smd_uint8_array_t rconf_struct = {static_cast<uint16_t>(rconf_bin.size()),
@@ -339,10 +343,8 @@ void SmdSat::state_load_kmac() {
 			wait_cmd();
 			m_cmd.save_radio_conf();
 			wait_cmd();
-			m_cmd.load_kmac_profil(1);
-			wait_cmd();
-			is_kmac_profil_loaded = true;
 			m_credentials_written = true;
+			is_kmac_profil_loaded = false;  // Force KMAC reload with new RCONF
 			DEBUG_INFO("SmdSat::%s: deferred RCONF applied OK", __func__);
 		} catch (...) {
 			DEBUG_ERROR("SmdSat::%s: failed to apply deferred RCONF — continuing with previous config", __func__);
@@ -350,8 +352,7 @@ void SmdSat::state_load_kmac() {
 		m_pending_rconf.clear();
 	}
 
-	// Write credentials only if changed via DTE since last write.
-	// Must happen BEFORE load_kmac_profil so the KMAC profile uses the new credentials.
+	// Step 1b: Write credentials if changed via DTE.
 	if (!m_credentials_written) {
 		m_credentials_written = true;
 		if (configuration_store && configuration_store->is_credentials_dirty()) {
@@ -362,25 +363,30 @@ void SmdSat::state_load_kmac() {
 				return;
 			}
 			configuration_store->clear_credentials_dirty();
-			// Force KMAC reload after credential write so the profile picks up
-			// the new RCONF/seckey/ID — without this, TX fails.
-			is_kmac_profil_loaded = false;
+			is_kmac_profil_loaded = false;  // Force KMAC reload with new credentials
 		}
 	}
 
-	uint8_t kmac_status = 0;
-	m_cmd.get_kmac_status(&kmac_status);
-	if (kmac_status == MAC_OK) {
-		if (!is_kmac_profil_loaded) {
+	// Step 2: Load KMAC profile — triggers KNS_MAC_INIT on the STM32.
+	// The MAC reads RCONF from flash during init, so credentials must be
+	// written first (step 1). KMAC load is idempotent — safe to call even
+	// if already loaded (just re-inits the MAC).
+	if (!is_kmac_profil_loaded) {
+		try {
 			m_cmd.load_kmac_profil(1);
-			m_next_delay = SMDSAT_DELAY_LOAD_KMAC_MS;
 			is_kmac_profil_loaded = true;
-		} else {
-			m_next_delay = SMDSAT_DELAY_CMD_MS;
+		} catch (...) {
+			DEBUG_ERROR("SmdSat::%s: KMAC load failed", __func__);
+			SMD_STATE_CHANGE(load_kmac, error);
+			return;
 		}
+	}
 
-		// Write TCXO warmup to SMD on every boot — this register is not
-		// persisted in flash by the STM32 and defaults to factory value.
+	// Step 3: Poll READ_SPIMAC_STATE (0x27) for MAC_OK.
+	uint8_t spi_st = 0, mac_st = 0;
+	try { m_cmd.read_spimac_state(&spi_st, &mac_st); } catch (...) {}
+	if (mac_st == MAC_OK) {
+		// Write TCXO warmup — RAM register on STM32, lost on power cycle.
 		try {
 			m_cmd.write_tcxo_warmup(m_tcxo_warmup_time * 1000);
 			DEBUG_TRACE("SmdSat::%s: TCXO warmup written: %u s", __func__, m_tcxo_warmup_time);
@@ -388,9 +394,7 @@ void SmdSat::state_load_kmac() {
 			DEBUG_WARN("SmdSat::%s: failed to write TCXO warmup", __func__);
 		}
 
-		// Write LPM mode if not NONE — RAM-only register on STM32, lost on reset.
-		// The module is fully powered off between sessions (SAT_PWR_EN=LOW).
-		// LPM is used during idle wait (between TX in same session) to save power.
+		// Write LPM mode if not NONE — RAM register on STM32.
 		if (m_lpm_mode != 0x01) {
 			try {
 				m_cmd.write_lpm(&m_lpm_mode);
@@ -401,12 +405,42 @@ void SmdSat::state_load_kmac() {
 		}
 
 		SMD_STATE_CHANGE(load_kmac, idle_pending);
+	} else if (mac_st == MAC_ERROR && !m_rconf_recovery_attempted) {
+		// Recovery: MAC_ERROR after KMAC load means the RCONF in STM32 flash
+		// is corrupted or missing. Force-write the master RCONF from config store,
+		// save to flash, then re-attempt KMAC load. This can happen after a
+		// previous test corrupted the STM32 flash, or on first boot with
+		// adaptive modulation where RCONF was never written.
+		m_rconf_recovery_attempted = true;
+		DEBUG_WARN("SmdSat::%s: MAC_ERROR after KMAC — attempting RCONF recovery", __func__);
+		if (configuration_store) {
+			std::string radioconf = configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF);
+			if (!radioconf.empty() && radioconf.size() >= 2 && (radioconf.size() % 2) == 0) {
+				auto wait_cmd = []() { nrf_delay_ms(150); };
+				std::string rconf_bin = Binascii::unhexlify(radioconf);
+				smd_uint8_array_t rconf_struct = {static_cast<uint16_t>(rconf_bin.size()),
+				                                  reinterpret_cast<uint8_t *>(rconf_bin.data())};
+				try {
+					m_cmd.set_radio_conf(&rconf_struct);
+					wait_cmd();
+					m_cmd.save_radio_conf();
+					wait_cmd();
+					is_kmac_profil_loaded = false;  // Force re-attempt
+					DEBUG_INFO("SmdSat::%s: RCONF recovery written — retrying KMAC", __func__);
+					m_next_delay = SMDSAT_DELAY_CMD_MS;
+					return;  // Re-enter state_load_kmac on next tick
+				} catch (...) {
+					DEBUG_ERROR("SmdSat::%s: RCONF recovery write failed", __func__);
+				}
+			}
+		}
+		SMD_STATE_CHANGE(load_kmac, error);
 	} else {
 		if (--m_state_counter == 0) {
-			DEBUG_ERROR("SmdSat::%s: failed to enter load kmac state",__func__);
+			DEBUG_ERROR("SmdSat::%s: MAC not OK after KMAC load (spi=%u mac=%u)", __func__, spi_st, mac_st);
 			SMD_STATE_CHANGE(load_kmac, error);
 		} else {
-			m_next_delay = SMDSAT_DELAY_TICK_INTERRUPT_MS;
+			m_next_delay = SMDSAT_DELAY_LOAD_KMAC_MS;
 		}
 	}
 }
@@ -662,7 +696,9 @@ void SmdSat::set_tx_power(unsigned int power) {
 bool SmdSat::write_credentials_from_config() {
 	if (!configuration_store) return false;
 
-	auto wait_cmd = []() { nrf_delay_ms(SMDSAT_DELAY_CMD_MS * 2); };
+	// Flash write operations need ~100ms for persistence.
+	// Previous delay (SMDSAT_DELAY_CMD_MS*2 = 60ms) was insufficient.
+	auto wait_cmd = []() { nrf_delay_ms(120); };
 
 	unsigned int dec_id = configuration_store->read_param<unsigned int>(ParamID::ARGOS_DECID);
 	unsigned int address = configuration_store->read_param<unsigned int>(ParamID::ARGOS_HEXID);
@@ -721,16 +757,23 @@ bool SmdSat::write_credentials_from_config() {
 	}
 	wait_cmd();
 
-	// Set Radio Configuration — only if adaptive modulation is OFF.
-	// When adaptive modulation is ON, per-modulation RCONFs (VLDA4/LDK/LDA2)
-	// are managed by ensure_modulation() / switch_modulation() and must NOT
-	// be overwritten by the master RCONF here.
+	// Set Radio Configuration.
+	// When adaptive modulation is ON, per-modulation RCONFs are managed by
+	// ensure_modulation()/switch_modulation(). However, the master RCONF must
+	// still be written on first boot or when credentials are dirty (chiperase,
+	// DTE SMDCD) — otherwise the STM32 flash may contain invalid RCONF data
+	// and KMAC init will fail with MAC_ERROR.
+	// After the first successful write, ensure_modulation() takes over.
 	if (!radioconf.empty()) {
 		bool adaptive = false;
 		if (configuration_store) {
 			adaptive = configuration_store->read_param<bool>(ParamID::ARGOS_ADAPTIVE_MODULATION);
 		}
-		if (!adaptive) {
+		if (!adaptive || configuration_store->is_credentials_dirty()) {
+			if (adaptive) {
+				DEBUG_INFO("SmdSat::%s: adaptive ON but credentials dirty — writing master RCONF as baseline",
+				           __func__);
+			}
 			std::string rconf_bin = Binascii::unhexlify(radioconf);
 			smd_uint8_array_t rconf_struct = {static_cast<uint16_t>(rconf_bin.size()),
 			                                  reinterpret_cast<uint8_t *>(rconf_bin.data())};
@@ -997,10 +1040,20 @@ bool SmdSat::switch_modulation(KineisModulation mode, const std::string& rconf_h
 		DEBUG_INFO("SmdSat::%s: SMD stopped, deferring switch to %d", __func__, (int)target);
 		m_modulation = target;
 		m_pending_rconf = rconf_hex;
+		// Force state_load_kmac on next boot so the deferred RCONF gets applied.
+		// Without this, idle_pending skips to idle and the RCONF is never written.
+		is_kmac_profil_loaded = false;
 		return true;
 	}
 
-	auto wait_cmd = []() { nrf_delay_ms(SMDSAT_DELAY_CMD_MS * 2); };
+	// Timing: set_radio_conf is a 2-phase write (~30ms SPI) but the STM32 needs
+	// time to process it. save_radio_conf triggers a flash persistence (~100ms).
+	// load_kmac_profil needs the MAC to re-initialize with the new RCONF.
+	// Old timing (60ms everywhere) caused TX REQ failures because the MAC was
+	// not ready after KMAC reload. Increase progressively:
+	// - After RCONF write: 80ms (STM32 processes + small margin)
+	// - After RCONF save: 120ms (flash write ~100ms + margin)
+	// - After KMAC load:  200ms (MAC re-init, less than clean-repo's 1000ms)
 
 	// 1. Write RCONF
 	std::string rconf_bin = Binascii::unhexlify(rconf_hex);
@@ -1013,7 +1066,7 @@ bool SmdSat::switch_modulation(KineisModulation mode, const std::string& rconf_h
 		return false;
 	}
 
-	wait_cmd();
+	nrf_delay_ms(80);  // STM32 RCONF processing
 
 	// 2. Save RCONF to flash
 	try {
@@ -1026,7 +1079,7 @@ bool SmdSat::switch_modulation(KineisModulation mode, const std::string& rconf_h
 		return false;
 	}
 
-	wait_cmd();
+	nrf_delay_ms(120);  // Flash persistence (~100ms) + margin
 
 	// 3. Reload KMAC profile 1
 	try {
@@ -1036,7 +1089,7 @@ bool SmdSat::switch_modulation(KineisModulation mode, const std::string& rconf_h
 		return false;
 	}
 
-	wait_cmd();
+	nrf_delay_ms(200);  // MAC re-init after KMAC reload
 
 	// Update cached modulation
 	m_modulation = target;

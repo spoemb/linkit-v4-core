@@ -49,6 +49,11 @@ extern RGBLed *status_led;
 // With 14-bit ADC, a clean dry electrode reads ~50-200 ADC with RC circuit.
 #define AIR_BASELINE_FLOOR 50
 
+// Minimum gap between threshold_current and threshold_air (ADC counts).
+// Prevents false UW triggers from noise when air/water baselines are close
+// (e.g. stale calibration with water=108 and air=50).
+#define THRESHOLD_MIN_ABOVE_AIR 20
+
 // SWS.CAL offsets for Calibration class persistence
 // 0 = manual water hint (SCALW/SWSCAL)
 // 1 = manual air hint (SCALW/SWSCAL)
@@ -730,6 +735,12 @@ void SWSAnalogService::update_dynamic_threshold() {
 
     uint16_t range = m_calib.threshold_water - m_calib.threshold_air;
     m_calib.threshold_current = m_calib.threshold_air + (uint16_t)(range * ratio);
+
+    // Enforce minimum gap between threshold and air baseline to prevent
+    // false UW triggers from noise when baselines are close (stale calibration).
+    uint16_t min_thresh = m_calib.threshold_air + THRESHOLD_MIN_ABOVE_AIR;
+    if (m_calib.threshold_current < min_thresh)
+        m_calib.threshold_current = min_thresh;
 
     m_calib.hysteresis_value = (uint16_t)(m_calib.threshold_current * m_hysteresis_percent / 100.0f);
     if (m_calib.hysteresis_value < 10)
