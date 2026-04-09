@@ -781,7 +781,7 @@ uint16_t SWSAnalogService::add_to_history_and_filter(uint16_t value) {
 }
 
 bool SWSAnalogService::is_value_valid(uint16_t value) const {
-    return (value <= ADC_INVALID_MAX);
+    return (value > 0 && value <= ADC_INVALID_MAX);
 }
 
 void SWSAnalogService::adjust_sample_delay() {
@@ -1109,14 +1109,15 @@ bool SWSAnalogService::detector_state() {
             else if (avg < (uint16_t)(m_calib.threshold_air * 0.70f)) {
                 // Downward adaptation: air was too high (wet electrode calibration)
                 //
-                // Guard against runaway drift toward zero: block if air baseline is
-                // already close to actual surface readings (< 2× avg). This replaces
-                // the old absolute contrast gate which permanently blocked adaptation
-                // once water baseline was established.
+                // Guard against runaway drift toward zero:
+                // 1. Block if avg itself is implausibly low (< 2× floor) — likely
+                //    ADC noise or uncharged RC circuit, not real air readings.
+                // 2. Block if air baseline is already close to actual readings.
+                bool avg_too_low = (avg < AIR_BASELINE_FLOOR * 2);
                 bool air_already_low = (m_calib.threshold_air < avg * 2);
-                if (air_already_low) {
-                    DEBUG_TRACE("SWSAnalog: Adaptive air DOWN blocked (air=%u already close to avg=%u)",
-                                m_calib.threshold_air, avg);
+                if (avg_too_low || air_already_low) {
+                    DEBUG_TRACE("SWSAnalog: Adaptive air DOWN blocked (avg=%u air=%u floor=%u)",
+                                avg, m_calib.threshold_air, AIR_BASELINE_FLOOR);
                 } else {
                     uint16_t old = m_calib.threshold_air;
                     uint16_t new_air = (uint16_t)(m_calib.threshold_air * 0.80f + avg * 0.20f);

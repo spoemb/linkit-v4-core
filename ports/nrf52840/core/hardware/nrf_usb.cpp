@@ -168,6 +168,8 @@ void NrfUSB::init(void)
 
 int NrfUSB::write(char *ptr, int len)
 {
+    if (!m_port_open)
+        return len;
     app_usbd_cdc_acm_write(&m_app_cdc_acm, ptr, len);
     _NRF_USB_QUEUE_PROCESS();
 	return len;

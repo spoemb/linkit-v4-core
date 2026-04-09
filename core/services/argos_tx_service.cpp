@@ -434,6 +434,8 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 				m_doppler_burst_count = 0;
 				m_has_gnss_fix_since_surfacing = false;
 				m_first_gnss_tx_sent = false;
+				m_scheduled_task = [this]() { process_doppler_burst(); };
+				m_scheduled_mode = argos_config.adaptive_modulation ? KineisModulation::VLDA4 : KineisModulation::LDA2;
 				DEBUG_INFO("ArgosTxService::SURFACING_BURST: surface detected - starting Doppler burst sequence");
 			}
 		}
