@@ -135,6 +135,23 @@ void BleInterface::set_device_name(const std::string& name)
     advertising_start();
 }
 
+bool BleInterface::write_best_effort(std::string str)
+{
+    uint8_t * buffer = reinterpret_cast<uint8_t *>(const_cast<char *>(str.c_str()));
+    size_t length = str.length();
+    while (length) {
+        uint16_t transfer_length = std::min(length, static_cast<size_t>(BLE_NUS_MAX_DATA_LEN));
+        uint32_t err = ble_nus_data_send(&m_nus, buffer, &transfer_length, m_conn_handle);
+        if (err == NRF_SUCCESS) {
+            length -= transfer_length;
+            buffer += transfer_length;
+        } else {
+            return false;  // Drop remaining data — no retry, no blocking
+        }
+    }
+    return true;
+}
+
 bool BleInterface::write(std::string str)
 {
     uint32_t err_code;

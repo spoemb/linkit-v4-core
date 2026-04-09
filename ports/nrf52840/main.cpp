@@ -251,7 +251,7 @@ extern "C" int _write(int file, char *ptr, int len)
 	if (g_debug_mode == BaseDebugMode::USB_CDC && m_is_debug_init)
 		NrfUSB::write(ptr, len);
 	else if (ble_service && !__get_IPSR() && g_debug_mode == BaseDebugMode::BLE_NUS) {
-		ble_service->write(std::string(ptr, len));
+		ble_service->write_best_effort(std::string(ptr, len));
 	}
 	return len;
 }

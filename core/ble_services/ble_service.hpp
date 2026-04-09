@@ -36,6 +36,7 @@ public:
 	virtual void start(std::function<int(BLEServiceEvent& event)> on_event) = 0;
 	virtual void stop() = 0;
 	virtual bool write(std::string str) = 0;
+	virtual bool write_best_effort(std::string str) { return write(str); }
 	virtual std::string read_line() = 0;
 	virtual void set_device_name(const std::string&) = 0;
 };
