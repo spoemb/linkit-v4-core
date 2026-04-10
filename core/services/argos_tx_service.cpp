@@ -653,12 +653,36 @@ void ArgosTxService::process_gnss_burst() {
 			size_bits = ArgosPacketBuilder::cloudlocate_packet_bits(format_id);
 			m_scheduled_mode = (format_id == (uint8_t)BaseCloudLocateFormat::MEASC12) ?
 				KineisModulation::LDK : KineisModulation::LDA2;
+			if (argos_config.adaptive_modulation) {
+				if (!ensure_modulation(m_scheduled_mode)) {
+					DEBUG_WARN("ArgosTxService::process_gnss_burst: CloudLocate modulation switch failed");
+					m_scheduled_mode = m_kineis.get_current_modulation();
+				}
+			}
+			DEBUG_INFO("ArgosTxService::process_gnss_burst: CloudLocate fmt=%u mode=%s data=%s",
+			           format_id, argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode),
+			           Binascii::hexlify(packet).c_str());
+			m_last_tx_had_gps = true;
+			m_kineis.send(m_scheduled_mode, packet, size_bits);
+			return;
+		}
+
 		// Check if the latest entry is a fastloc (degraded fix) — always LDA2
-		} else if (v.back()->info.event_type == GPSEventType::FASTLOC) {
+		if (v.back()->info.event_type == GPSEventType::FASTLOC) {
 			packet = ArgosPacketBuilder::build_fastloc_packet(v.back(), argos_config.is_lb);
 			size_bits = ArgosPacketBuilder::FASTLOC_PACKET_BITS;
 			m_scheduled_mode = KineisModulation::LDA2;
 		} else {
+			// Filter out any CloudLocate/fastloc entries that may be mixed in
+			v.erase(std::remove_if(v.begin(), v.end(), [](const GPSLogEntry* e) {
+				return e->info.event_type == GPSEventType::CLOUDLOCATE ||
+				       e->info.event_type == GPSEventType::FASTLOC;
+			}), v.end());
+			if (v.empty()) {
+				DEBUG_WARN("ArgosTxService::process_gnss_burst: all entries filtered (mixed types)");
+				service_complete();
+				return;
+			}
 			packet = ArgosPacketBuilder::build_gnss_packet(v, argos_config.is_out_of_zone, argos_config.is_lb,
 					argos_config.delta_time_loc,
 					size_bits);

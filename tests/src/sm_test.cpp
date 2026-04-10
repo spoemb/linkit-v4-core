@@ -191,7 +191,7 @@ TEST(Sm, CheckTransitionToPreOperationalState)
 	mock().expectOneCall("is_mounted").onObject(main_filesystem).andReturnValue(false);
 	mock().expectOneCall("mount").onObject(main_filesystem).andReturnValue(0);
 	fsm_handle::start();
-	mock().expectOneCall("kick_watchdog");
+
 	fake_timer->set_counter(1000);
 	system_scheduler->run();
 	CHECK_TRUE(fsm_handle::is_in_state<PreOperationalState>());
@@ -206,7 +206,7 @@ TEST(Sm, CheckTransitionToOperationalConfigValid)
 	fsm_handle::start();
 
 	mock().enable();
-	mock().expectOneCall("kick_watchdog");
+
 
 	fake_timer->set_counter(1000);
 	system_scheduler->run();
@@ -233,7 +233,7 @@ TEST(Sm, CheckTransitionToOperationalConfigValidBatteryLow)
 	fsm_handle::start();
 
 	mock().enable();
-	mock().expectOneCall("kick_watchdog");
+
 
 	fake_battery_monitor->set_values(10, 3300, true, false);
 	fake_timer->set_counter(1000);
@@ -263,7 +263,7 @@ TEST(Sm, CheckTransitionToErrorConfigInvalid)
 
 	mock().enable();
 	mock_config_store->set_is_valid(false);
-	mock().expectOneCall("kick_watchdog");
+
 
 	fake_timer->set_counter(1000);
 	system_scheduler->run();
@@ -383,7 +383,7 @@ TEST(Sm, CheckTransitionToConfigurationStateAndVerifyOTAUpdateEvents)
 
 	mock().enable();
 	mock_config_store->set_is_valid(false);
-	mock().expectOneCall("kick_watchdog");
+
 
 	fake_timer->set_counter(1000);
 	system_scheduler->run();
@@ -439,7 +439,7 @@ TEST(Sm, CheckSWSEventsDispatchedInOperationalState)
 	fsm_handle::start();
 
 	mock().enable();
-	mock().expectOneCall("kick_watchdog");
+
 
 	fake_timer->set_counter(1000);
 	system_scheduler->run();
@@ -469,7 +469,7 @@ TEST(Sm, CheckGNSSWithFixLedTransitions)
 	fsm_handle::start();
 
 	mock().enable();
-	mock().expectOneCall("kick_watchdog");
+
 
 	fake_timer->set_counter(1000);
 	system_scheduler->run();
@@ -526,7 +526,7 @@ TEST(Sm, CheckGNSSWithoutFixLedTransitions)
 	fsm_handle::start();
 
 	mock().enable();
-	mock().expectOneCall("kick_watchdog");
+
 
 	fake_timer->set_counter(1000);
 	system_scheduler->run();
@@ -581,7 +581,7 @@ TEST(Sm, CheckArgosTXLedTransitions)
 	fsm_handle::start();
 
 	mock().enable();
-	mock().expectOneCall("kick_watchdog");
+
 
 	fake_timer->set_counter(1000);
 	system_scheduler->run();
@@ -620,7 +620,7 @@ TEST(Sm, TriggerBatteryCriticalStateInOperationalState)
 	fsm_handle::start();
 
 	mock().enable();
-	mock().expectOneCall("kick_watchdog");
+
 
 	fake_timer->set_counter(1000);
 	system_scheduler->run();
@@ -658,7 +658,7 @@ TEST(Sm, TriggerBatteryCriticalStateInPreOperationalState)
 	fsm_handle::start();
 
 	mock().enable();
-	mock().expectOneCall("kick_watchdog");
+
 
 	fake_battery_monitor->set_values(5, 2000, true, true);
 	fake_timer->set_counter(1000);

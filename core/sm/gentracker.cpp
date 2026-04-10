@@ -230,7 +230,7 @@ void BootState::entry() {
 	    DEBUG_INFO("Firmware Version: %s", FW_APP_VERSION_STR_C);
 		LoggerManager::show_info();
 		DEBUG_INFO("configuration_store: is_valid=%u", configuration_store->is_valid());
-		DEBUG_INFO("reset cause: %s", PMU::reset_cause().c_str());
+		DEBUG_INFO("reset cause: %s", PMU::reset_cause_str());
 		PMU::print_stack();
 
 		// Check if we just applied a firmware update (green blink for 3s)

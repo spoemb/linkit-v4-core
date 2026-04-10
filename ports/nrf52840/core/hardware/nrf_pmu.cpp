@@ -199,19 +199,31 @@ void PMU::kick_watchdog()
 	nrfx_wdt_feed();
 }
 
-const std::string PMU::reset_cause()
+ResetCause PMU::reset_cause()
 {
 	if (m_reset_cause & NRF_POWER_RESETREAS_RESETPIN_MASK)
-		return "Hard Reset";
+		return ResetCause::HARD_RESET;
 	else if (m_reset_cause & NRF_POWER_RESETREAS_DOG_MASK)
-		return "WDT Reset";
+		return ResetCause::WDT_RESET;
 	else if (m_reset_cause & NRF_POWER_RESETREAS_SREQ_MASK)
 		if (m_reset_cause & POWER_RESETREAS_PSEUDO_POWER_OFF)
-			return "Pseudo Power On Reset";
+			return ResetCause::PSEUDO_POWER_ON;
 		else
-			return "Soft Reset";
+			return ResetCause::SOFT_RESET;
 	else
-		return "Power On Reset";
+		return ResetCause::POWER_ON;
+}
+
+const char* PMU::reset_cause_str()
+{
+	switch (reset_cause()) {
+	case ResetCause::HARD_RESET:      return "Hard Reset";
+	case ResetCause::WDT_RESET:       return "WDT Reset";
+	case ResetCause::SOFT_RESET:      return "Soft Reset";
+	case ResetCause::PSEUDO_POWER_ON: return "Pseudo Power On Reset";
+	case ResetCause::POWER_ON:        return "Power On Reset";
+	default:                          return "Unknown";
+	}
 }
 
 uint32_t PMU::device_identifier()

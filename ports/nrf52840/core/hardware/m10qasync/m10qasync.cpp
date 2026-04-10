@@ -545,8 +545,10 @@ void M10QAsyncReceiver::react(const UBXCommsEventNavReport& n) {
             m_nav_settings.max_nav_samples = 0;
             // CloudLocate takes priority over degraded PVT
             if (m_nav_settings.cloudlocate_enable && m_has_raw_measurement) {
+                GNSSRawMeasurement raw_copy;
+                { InterruptLock lock; raw_copy = m_raw_measurement; }
                 DEBUG_INFO("M10QAsyncReceiver: timeout with raw measurement (CloudLocate)");
-                notify(GPSEventRawMeasurement(m_raw_measurement));
+                notify(GPSEventRawMeasurement(raw_copy));
             } else if (m_has_degraded_pvt) {
                 // If we have a degraded fix (passed 2D/3D but failed quality filters), emit it
                 DEBUG_INFO("M10QAsyncReceiver: timeout with degraded PVT (hAcc=%u mm, fixType=%u, numSV=%u)",
@@ -560,7 +562,8 @@ void M10QAsyncReceiver::react(const UBXCommsEventNavReport& n) {
 }
 
 void M10QAsyncReceiver::react(const UBXCommsEventRawMeasurement& meas) {
-    // Store raw measurement directly (called from ISR context via UBX comms filter)
+    // Called from ISR context via UBX comms filter — protect shared state
+    InterruptLock lock;
     if (meas.has_measc12) {
         std::memcpy(m_raw_measurement.measc12, meas.measc12, sizeof(m_raw_measurement.measc12));
         m_raw_measurement.has_measc12 = true;
@@ -906,18 +909,38 @@ void M10QAsyncReceiver::state_startreceive() {
 			} else if (m_step == 2) {
 				enable_nav_status_message();
 				break;
-            } else if (m_step == 3 && m_nav_settings.sat_tracking) {
-                enable_nav_sat_message();
-                break;
-			} else if (m_step == 4 && m_nav_settings.cloudlocate_enable) {
-				enable_rxm_measc12_message();
-				break;
-			} else if (m_step == 5 && m_nav_settings.cloudlocate_enable) {
-				enable_rxm_meas20_message();
-				break;
-			} else if (m_step == 6 && m_nav_settings.cloudlocate_enable) {
-				enable_rxm_meas50_message();
-				break;
+            } else if (m_step == 3) {
+				if (m_nav_settings.sat_tracking) {
+					enable_nav_sat_message();
+					break;
+				}
+				m_op_state = OpState::IDLE;
+				m_step++;
+				continue;  // re-enter loop with correct m_step
+			} else if (m_step == 4) {
+				if (m_nav_settings.cloudlocate_enable) {
+					enable_rxm_measc12_message();
+					break;
+				}
+				m_op_state = OpState::IDLE;
+				m_step++;
+				continue;
+			} else if (m_step == 5) {
+				if (m_nav_settings.cloudlocate_enable) {
+					enable_rxm_meas20_message();
+					break;
+				}
+				m_op_state = OpState::IDLE;
+				m_step++;
+				continue;
+			} else if (m_step == 6) {
+				if (m_nav_settings.cloudlocate_enable) {
+					enable_rxm_meas50_message();
+					break;
+				}
+				m_op_state = OpState::IDLE;
+				m_step++;
+				continue;
 			} else {
 				STATE_CHANGE(startreceive, receive);
 				break;

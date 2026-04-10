@@ -12,6 +12,14 @@ enum PMULogType {
 	MALLOC
 };
 
+enum class ResetCause {
+	POWER_ON,
+	HARD_RESET,
+	WDT_RESET,
+	SOFT_RESET,
+	PSEUDO_POWER_ON,
+};
+
 
 class PMU {
 public:
@@ -27,7 +35,8 @@ public:
 	static void delay_us(unsigned us);
 	static void start_watchdog();
 	static void kick_watchdog();
-	static const std::string reset_cause();
+	static ResetCause reset_cause();
+	static const char* reset_cause_str();
 	static const std::string hardware_version();
 	static uint32_t device_identifier();
 	static void save_stack(PMULogType type);

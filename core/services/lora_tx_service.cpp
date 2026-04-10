@@ -787,6 +787,17 @@ void LoRaTxService::process_gps_burst() {
 					argos_config.is_out_of_zone, argos_config.is_lb,
 					size_bits);
 		} else {
+			// Filter out any CloudLocate/fastloc entries that may be mixed in
+			v.erase(std::remove_if(v.begin(), v.end(), [](const GPSLogEntry* e) {
+				return e->info.event_type == GPSEventType::CLOUDLOCATE ||
+				       e->info.event_type == GPSEventType::FASTLOC;
+			}), v.end());
+			if (v.empty()) {
+				DEBUG_WARN("LoRaTxService::process_gps_burst: all entries filtered (mixed types)");
+				m_is_tx_pending = false;
+				service_complete();
+				return;
+			}
 			// Trim to max entries that fit in payload
 			if (v.size() > max_entries)
 				v.resize(max_entries);
@@ -896,15 +907,25 @@ void LoRaTxService::process_status_burst() {
 		}
 
 		if (blob) {
-			KineisPacket packet = LoRaPacketBuilder::build_cloudlocate_packet(
-				blob, blob_size, format_id,
-				service_is_battery_level_low(), service_get_voltage(), size_bits);
-			DEBUG_INFO("LoRaTxService::process_status_burst: CLOUDLOCATE #%u fmt=%u sz=%u data=%s",
-			           m_status_burst_count + 1, format_id, blob_size,
-			           Binascii::hexlify(packet).c_str());
-			m_last_tx_had_gps = true;
-			m_device.send(KineisModulation::LDA2, packet, size_bits);
-			return;
+			unsigned int packet_bytes = (LoRaPacketBuilder::BITS_PKT_TYPE + LoRaPacketBuilder::BITS_CL_FORMAT +
+			                             LoRaPacketBuilder::BITS_FLAGS + LoRaPacketBuilder::BITS_VOLTAGE +
+			                             blob_size * 8 + 7) / 8;
+			unsigned int max_payload = get_max_payload_bytes();
+			if (packet_bytes > max_payload) {
+				DEBUG_WARN("LoRaTxService::process_status_burst: CloudLocate MEAS%u (%u bytes) exceeds DR payload limit (%u bytes), skipping",
+				           blob_size, packet_bytes, max_payload);
+				// Don't send — fall through to normal status burst
+			} else {
+				KineisPacket packet = LoRaPacketBuilder::build_cloudlocate_packet(
+					blob, blob_size, format_id,
+					service_is_battery_level_low(), service_get_voltage(), size_bits);
+				DEBUG_INFO("LoRaTxService::process_status_burst: CLOUDLOCATE #%u fmt=%u sz=%u data=%s",
+				           m_status_burst_count + 1, format_id, blob_size,
+				           Binascii::hexlify(packet).c_str());
+				m_last_tx_had_gps = true;
+				m_device.send(KineisModulation::LDA2, packet, size_bits);
+				return;
+			}
 		}
 	}
 
