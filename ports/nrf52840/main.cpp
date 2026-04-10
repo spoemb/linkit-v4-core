@@ -384,7 +384,10 @@ static InitContext init_peripherals()
 
 	DEBUG_TRACE("IS25 flash...");
 	static Is25Flash is25_flash;
-	is25_flash.init();
+	if (!is25_flash.init()) {
+		DEBUG_ERROR("IS25 flash init failed — cannot continue without filesystem");
+		fault_blink_loop(RGBLedColor::RED, 100);
+	}
 
 	return {nrf_reed_switch, is25_flash};
 }
