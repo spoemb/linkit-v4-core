@@ -121,6 +121,7 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 #define SMDSAT_DELAY_CMD_MS             SMDSAT_TIMING_STANDARD_MS
 #define SMDSAT_DELAY_CMD_TX             (1000)
 #define SMDSAT_DELAY_RST_MS             (100)
+#define SMDSAT_DISCHARGE_DELAY_MS       (500)   // VDD cap discharge after PWR_EN=LOW — ensures true POR on next boot
 
 // SPI retry configuration
 #define SMDSAT_SPI_MAX_RETRIES          (3)

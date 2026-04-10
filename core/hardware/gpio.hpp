@@ -1,53 +1,82 @@
-#ifndef __GPIO_HPP_
-#define __GPIO_HPP_
+#pragma once
 
-#include <stdint.h>
+/**
+ * @file gpio.hpp
+ * @brief GPIO abstraction and VSENSORS reference-counted power management.
+ *
+ * GPIOPins wraps the nRF GPIO HAL with BSP pin mapping.  Pin indices
+ * correspond to BSP::GPIO enum values — never raw nRF pin numbers.
+ *
+ * VSENSORS power rail is reference-counted: multiple sensors can
+ * acquire power independently; the rail stays on until ALL release.
+ */
+
+#include <cstdint>
 
 class GPIOPins {
 public:
+	/// @brief Configure all GPIO pins from the BSP init table.
 	static void initialise();
+
+	/// @brief Re-apply BSP config for a single pin.
 	static void init_pin(uint32_t pin);
+
+	/// @name Basic pin operations (pin = BSP::GPIO enum index)
+	/// @{
 	static void set(uint32_t pin);
 	static void clear(uint32_t pin);
 	static void toggle(uint32_t pin);
 	static uint32_t value(uint32_t pin);
-	static void disable(uint32_t pin);
-	static void enable(uint32_t pin);
+	static void disable(uint32_t pin);   ///< Float pin (nrf_gpio_cfg_default)
+	static void enable(uint32_t pin);    ///< Restore BSP configuration
+	/// @}
 
-	// VSENSORS power management with reference counting
-	// Multiple sensors can acquire power; it stays on until ALL release
-	static void acquire_sensors_pwr();  // Increment counter, power on if was 0
-	static void release_sensors_pwr();  // Decrement counter, power off if reaches 0
+	/// @name VSENSORS power management (reference-counted)
+	/// @{
+	static void acquire_sensors_pwr();   ///< Increment refcount, power on if was 0
+	static void release_sensors_pwr();   ///< Decrement refcount, power off if reaches 0
 	static bool get_sensors_pwr_state();
 	static uint8_t get_sensors_pwr_refcount();
+	/// @}
 
-	// Pulse pin LOW for duration_ms, then release to high-impedance (INPUT)
-	// Useful for SAT_RESET: allows nRF to reset SMD while keeping pin free for probe flashing
+	/**
+	 * @brief Drive pin LOW for duration_ms, then release to high-impedance.
+	 * @note Useful for SAT_RESET: allows nRF to reset SMD while keeping pin
+	 *       free for external probe flashing.
+	 */
 	static void pulse_low_then_release(uint32_t pin, uint32_t duration_ms);
 
-	// Drive pin LOW (configure as output and drive low)
-	// Use release_to_highz() to release control back to high-impedance
+	/// @brief Configure pin as output and drive LOW.
 	static void drive_low(uint32_t pin);
 
-	// Release pin to high-impedance (INPUT/disconnected)
-	// Allows external probe to control the pin
+	/// @brief Release pin to high-impedance (input/disconnected).
 	static void release_to_highz(uint32_t pin);
+
 private:
 	static uint8_t m_sensors_pwr_refcount;
-	// Disconnect/reconnect sensor pins when VSENSORS is powered off/on
-	// Prevents backfeed through ESD diodes and floating interrupt pins
+
+	/// @brief Disconnect sensor I2C/interrupt pins to prevent backfeed when VSENSORS off.
 	static void disconnect_sensor_pins();
+
+	/// @brief Reconnect sensor interrupt pins after VSENSORS powers on.
 	static void reconnect_sensor_pins();
 };
 
-// RAII guard for VSENSORS power - automatically releases on scope exit
+/**
+ * @brief RAII guard for VSENSORS power — automatically releases on scope exit.
+ *
+ * Usage:
+ * @code
+ *   {
+ *       SensorsPowerGuard guard;
+ *       // ... use I2C sensors ...
+ *   }  // VSENSORS released here if refcount reaches 0
+ * @endcode
+ */
 class SensorsPowerGuard {
 public:
 	SensorsPowerGuard() { GPIOPins::acquire_sensors_pwr(); }
 	~SensorsPowerGuard() { GPIOPins::release_sensors_pwr(); }
-	// Non-copyable
 	SensorsPowerGuard(const SensorsPowerGuard&) = delete;
 	SensorsPowerGuard& operator=(const SensorsPowerGuard&) = delete;
 };
-
-#endif // __GPIO_HPP_

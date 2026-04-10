@@ -49,6 +49,16 @@
 #define VSYS_SEL        BSP::GPIO::GPIO_VSYS_SEL
 #define BAT_READ_ENABLE BSP::GPIO::GPIO_BAT_READ_EN
 
+// Battery ADC settling time (ms) after enabling BAT_READ_ENABLE.
+// KIM variant has higher impedance divider resistors — needs longer RC settling.
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+#define BAT_ADC_SETTLE_MS   100
+#elif defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+#define BAT_ADC_SETTLE_MS   100
+#else
+#define BAT_ADC_SETTLE_MS   500   // KIM: high-impedance divider
+#endif
+
 // I2C device mappings
 #define CDT_MS5803_DEVICE EXT_I2C_BUS
 #define CDT_AD5933_DEVICE EXT_I2C_BUS

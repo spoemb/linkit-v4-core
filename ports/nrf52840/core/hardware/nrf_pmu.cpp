@@ -1,3 +1,9 @@
+/**
+ * @file nrf_pmu.cpp
+ * @brief nRF52840 PMU — watchdog, reset cause, power-down, deep idle, crash trace.
+ */
+
+#include <cstring>
 #include "bsp.hpp"
 #include "pmu.hpp"
 #include "gpio.hpp"
@@ -14,7 +20,6 @@
 #include "debug.hpp"
 #include "nrf_rgb_led.hpp"
 #include "crc16.h"
-#include <string>
 
 #include "rtc.hpp"
 #include "config_store.hpp"
@@ -23,9 +28,10 @@ extern RTC *rtc;
 extern ConfigurationStore *configuration_store;
 extern RGBLed *status_led;
 
-static uint32_t m_reset_cause = 0;
+static uint32_t m_reset_cause = 0;  ///< Raw RESETREAS register + pseudo power-off flag
 
 #ifdef SOFTDEVICE_PRESENT
+/// @brief SoftDevice power-failure warning handler — saves RTC and cooldown state before brown-out.
 static void pof_soc_evt_handler(uint32_t evt_id, void * p_context) {
 	(void)p_context;
 	if (evt_id == NRF_EVT_POWER_FAILURE_WARNING) {
@@ -39,16 +45,19 @@ static void pof_soc_evt_handler(uint32_t evt_id, void * p_context) {
 }
 NRF_SDH_SOC_OBSERVER(m_pof_soc_observer, 0, pof_soc_evt_handler, NULL);
 #endif
-static bool m_firmware_was_updated = false;
+static bool m_firmware_was_updated = false;  ///< Set if GPREGRET2 was 0x01 at boot (OTA applied)
 
-static __attribute__((section(".noinit"))) volatile uint32_t m_callstack[8];
-static __attribute__((section(".noinit"))) volatile PMULogType m_type;
-static __attribute__((section(".noinit"))) volatile uint16_t m_crc;
+/// @name Crash trace storage (.noinit RAM — survives soft reset, not power-on)
+/// @{
+static __attribute__((section(".noinit"))) volatile uint32_t m_callstack[8];  ///< Saved PC backtrace
+static __attribute__((section(".noinit"))) volatile PMULogType m_type;        ///< Crash type
+static __attribute__((section(".noinit"))) volatile uint16_t m_crc;           ///< CRC16 guard
+/// @}
 
-// Define a spare bit that we can use to detect pseudo power off
-// via GPREGRET
+/// @brief Spare bit in RESETREAS to distinguish pseudo power-off (via GPREGRET) from real SREQ.
 #define POWER_RESETREAS_PSEUDO_POWER_OFF  0x80000000
 
+/// @brief Read reset cause, configure DCDC, power-on-failure threshold, clear retention registers.
 void PMU::initialise() {
 #ifdef POWER_CONTROL_PIN
 	GPIOPins::set(BSP::GPIO_POWER_CONTROL);
@@ -57,7 +66,7 @@ void PMU::initialise() {
 	m_reset_cause = NRF_POWER->RESETREAS;
 	NRF_POWER->RESETREAS = 0xFFFFFFFF; // Clear down
 
-	// Apply pseudo power off flag is GPREGRET is set
+	// Apply pseudo power off flag if GPREGRET is set
 	if (NRF_POWER->GPREGRET)
 		m_reset_cause |= POWER_RESETREAS_PSEUDO_POWER_OFF;
 	else
@@ -87,10 +96,12 @@ void PMU::initialise() {
 	}
 }
 
-void PMU::reset(bool) {
+/// @brief Trigger an immediate system reset via the SoftDevice NVIC.
+void PMU::reset(bool /*dfu_mode*/) {
 	sd_nvic_SystemReset();
 }
 
+/// @brief Shut down device — save state, cut power rails, then reset or infinite sleep.
 void PMU::powerdown() {
 	// Ensure all power control pins are turned off before shutdown
 // #ifdef CAM_PWR_EN
@@ -165,10 +176,15 @@ void PMU::powerdown() {
 	GPIOPins::clear(MCU_DONE_PIN);
 #endif
 
-	// This is not a real powerdown but rather an infinite sleep
-	for (;;) PMU::run();
+	// Fallback: if no power-off mechanism succeeded, sleep briefly then reset.
+	// On RSPB, TPL5111 should have cut power by now — if not, a reset will
+	// retry the boot sequence (modulo check will powerdown again).
+	DEBUG_WARN("PMU::powerdown: No power-off mechanism took effect — resetting in 2s");
+	PMU::delay_ms(2000);
+	sd_nvic_SystemReset();
 }
 
+/// @brief Enter WFE (Wait For Event) — CPU sleeps until next interrupt.
 void PMU::run() {
 	nrf_pwr_mgmt_run();
 }
@@ -183,6 +199,7 @@ void PMU::delay_us(unsigned us)
 	nrf_delay_us(us);
 }
 
+/// @brief Init WDT, allocate one channel, enable.  Also inits CmBacktrace for crash diagnostics.
 void PMU::start_watchdog()
 {
 	nrfx_wdt_init(&BSP::WDT_Inits[BSP::WDT].config, PMU::watchdog_handler);
@@ -193,12 +210,13 @@ void PMU::start_watchdog()
 	cm_backtrace_init("", "", "");
 }
 
+/// @brief Feed all WDT channels to prevent reset.
 void PMU::kick_watchdog()
 {
-	// Kicks all WDT channels
 	nrfx_wdt_feed();
 }
 
+/// @brief Decode RESETREAS register into a ResetCause enum.
 ResetCause PMU::reset_cause()
 {
 	if (m_reset_cause & NRF_POWER_RESETREAS_RESETPIN_MASK)
@@ -214,6 +232,7 @@ ResetCause PMU::reset_cause()
 		return ResetCause::POWER_ON;
 }
 
+/// @brief Human-readable string for the current reset cause.
 const char* PMU::reset_cause_str()
 {
 	switch (reset_cause()) {
@@ -226,32 +245,41 @@ const char* PMU::reset_cause_str()
 	}
 }
 
+/// @brief Return the first 32 bits of the nRF FICR device ID (unique per chip).
 uint32_t PMU::device_identifier()
 {
 	return NRF_FICR->DEVICEID[0];
 }
 
-const std::string PMU::hardware_version()
+/// @brief Board + variant identifier string (compile-time, e.g. "linkit-v4-smd").
+const char *PMU::hardware_version()
 {
-#ifdef BOARD_RSPB
-	return "RSPB V1";
+#if defined(BOARD_RSPB)
+	return "rspb-v1";
+#elif defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	return "linkit-v4-smd";
+#elif defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+	return "linkit-v4-lora";
 #else
-	return "LinkIt V4";
+	return "linkit-v4-kim";
 #endif
 }
 
+/// @brief WDT ISR callback — captures callstack before reset.
 void PMU::watchdog_handler() {
 	save_stack(PMULogType::WDT);
 }
 
+/// @brief Capture callstack via CmBacktrace into .noinit RAM + CRC16.
 void PMU::save_stack(PMULogType type) {
 	m_type = type;
-	uint32_t lr = (uint32_t)__builtin_return_address(0);
-	uint32_t sp = (uint32_t)__builtin_frame_address(0);
-	cm_backtrace_fault(lr, sp, (uint32_t *)m_callstack, sizeof(m_callstack) / sizeof(m_callstack[0]));
-	m_crc = crc16_compute((const uint8_t *)m_callstack, sizeof(m_callstack), nullptr);
+	uint32_t lr = reinterpret_cast<uint32_t>(__builtin_return_address(0));
+	uint32_t sp = reinterpret_cast<uint32_t>(__builtin_frame_address(0));
+	cm_backtrace_fault(lr, sp, const_cast<uint32_t *>(m_callstack), sizeof(m_callstack) / sizeof(m_callstack[0]));
+	m_crc = crc16_compute(reinterpret_cast<const uint8_t *>(const_cast<const uint32_t *>(m_callstack)), sizeof(m_callstack), nullptr);
 }
 
+/// @brief Convert PMULogType crash enum to a printable string.
 static const char *reset_type_to_string(PMULogType t) {
 	switch (t) {
 	case PMULogType::WDT:
@@ -271,10 +299,12 @@ static const char *reset_type_to_string(PMULogType t) {
 	}
 }
 
+/// @brief Milliseconds since boot via NrfTimer.
 uint64_t PMU::get_timestamp_ms() {
 	return NrfTimer::get_instance().get_counter();
 }
 
+/// @brief Print saved crash trace if CRC is valid, then invalidate to avoid re-printing.
 void PMU::print_stack() {
 	// Check CRC matches
 	if (m_crc == crc16_compute((const uint8_t *)&m_callstack, sizeof(m_callstack), nullptr))
@@ -289,14 +319,16 @@ void PMU::print_stack() {
 	}
 
 	m_crc = 0; // Invalidate CRC
-	memset((void *)&m_callstack, sizeof(m_callstack), 0);
+	memset((void *)m_callstack, 0, sizeof(m_callstack));
 }
 
+/// @brief True if GPREGRET2 indicated a firmware update was applied before this boot.
 bool PMU::was_firmware_updated() {
 	return m_firmware_was_updated;
 }
 
-void PMU::enter_deep_idle() {
+/// @brief Cut peripheral power rails during idle (VSYS → 1.8V, POWER_CONTROL off).
+void PMU::reduce_power_rails() {
 	// FIXME (RSPB only): External I2C pull-ups R21/R24 (4.7K) are connected to
 	// DCDC_3V3 instead of VSENSORS. When VSENSORS is OFF, ~1.3mA backfeeds
 	// through sensor ESD diodes into the unpowered sensor side.
@@ -329,7 +361,8 @@ void PMU::enter_deep_idle() {
 #endif
 }
 
-void PMU::exit_deep_idle() {
+/// @brief Restore peripheral power rails before scheduled tasks (VSYS → 3.3V).
+void PMU::restore_power_rails() {
 	// LinkIt V4: Restore VSYS to 3.3V before any peripheral access.
 	// Must settle before SPI/I2C/UART transactions with 3.3V peripherals.
 #if defined(VSYS_SEL) && !defined(BOARD_RSPB)

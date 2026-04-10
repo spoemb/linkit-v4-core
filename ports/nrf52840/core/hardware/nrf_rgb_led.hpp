@@ -1,15 +1,26 @@
 #pragma once
 
-#include <stdint.h>
+/**
+ * @file nrf_rgb_led.hpp
+ * @brief nRF52840 RGB LED driver (active-low, timer-based flash).
+ *
+ * LEDs are active-low: GPIOPins::clear() turns ON, GPIOPins::set() turns OFF.
+ * Flash is driven by the hardware Timer, not the Scheduler — safe from ISR context.
+ *
+ * Two APIs:
+ *  - Instance methods (set/flash/off): use Timer for flashing, require system_timer.
+ *  - set_color_raw() (static): bare-metal GPIO, no timer dependency — safe for
+ *    fault handlers and ISR context.
+ */
+
+#include <cstdint>
 
 #include "timer.hpp"
 #include "rgb_led.hpp"
-#include "debug.hpp"
 #include "gpio.hpp"
 #include "interrupt_lock.hpp"
 
 extern Timer *system_timer;
-
 
 class NrfRGBLed : public RGBLed {
 private:
@@ -25,14 +36,12 @@ private:
 	const char *m_name;
 	Timer::TimerHandle m_led_timer;
 
-	void toggle_led(void) {
+	void toggle_led() {
 		InterruptLock lock;
 		if (!m_is_flashing)
 			return;
-		if (m_flash_state)
-			set_color(m_flash_color);
-		else
-			set_color(m_flash_color_alt);
+		set_color_raw(m_pin_red, m_pin_green, m_pin_blue,
+			m_flash_state ? m_flash_color : m_flash_color_alt);
 		m_flash_state = !m_flash_state;
 		m_led_timer = system_timer->add_schedule([this]() {
 			if (m_is_flashing)
@@ -40,55 +49,12 @@ private:
 		}, system_timer->get_counter() + m_flash_interval);
 	}
 
-private:
-	void set_color(RGBLedColor color) {
-		switch (color) {
-		case RGBLedColor::BLACK:
-			GPIOPins::set(m_pin_red);
-			GPIOPins::set(m_pin_green);
-			GPIOPins::set(m_pin_blue);
-			break;
-		case RGBLedColor::RED:
-			GPIOPins::clear(m_pin_red);
-			GPIOPins::set(m_pin_green);
-			GPIOPins::set(m_pin_blue);
-			break;
-		case RGBLedColor::GREEN:
-			GPIOPins::set(m_pin_red);
-			GPIOPins::clear(m_pin_green);
-			GPIOPins::set(m_pin_blue);
-			break;
-		case RGBLedColor::BLUE:
-			GPIOPins::set(m_pin_red);
-			GPIOPins::set(m_pin_green);
-			GPIOPins::clear(m_pin_blue);
-			break;
-		case RGBLedColor::CYAN:
-			GPIOPins::set(m_pin_red);
-			GPIOPins::clear(m_pin_green);
-			GPIOPins::clear(m_pin_blue);
-			break;
-		case RGBLedColor::MAGENTA:
-			GPIOPins::clear(m_pin_red);
-			GPIOPins::set(m_pin_green);
-			GPIOPins::clear(m_pin_blue);
-			break;
-		case RGBLedColor::YELLOW:
-			GPIOPins::clear(m_pin_red);
-			GPIOPins::clear(m_pin_green);
-			GPIOPins::set(m_pin_blue);
-			break;
-		case RGBLedColor::WHITE:
-			GPIOPins::clear(m_pin_red);
-			GPIOPins::clear(m_pin_green);
-			GPIOPins::clear(m_pin_blue);
-			break;
-		default:
-			break;
-		}
-	}
 public:
-	// Bare-metal LED control — no timer/interrupt dependency, safe for fault handlers and ISR context
+	/**
+	 * @brief Bare-metal LED color set — no timer/interrupt dependency.
+	 *
+	 * Safe for fault handlers and ISR context.  Active-low: clear = ON, set = OFF.
+	 */
 	static void set_color_raw(int pin_red, int pin_green, int pin_blue, RGBLedColor color) {
 		bool r = false, g = false, b = false;
 		switch (color) {
@@ -102,30 +68,34 @@ public:
 		case RGBLedColor::WHITE:   r = true; g = true; b = true; break;
 		default: break;
 		}
+		// Active-low: clear = LED ON, set = LED OFF
 		r ? GPIOPins::clear(pin_red)   : GPIOPins::set(pin_red);
 		g ? GPIOPins::clear(pin_green) : GPIOPins::set(pin_green);
 		b ? GPIOPins::clear(pin_blue)  : GPIOPins::set(pin_blue);
 	}
 
-	NrfRGBLed(const char *name, int red, int green, int blue, RGBLedColor color = RGBLedColor::BLACK) {
-		m_name = name;
-		m_pin_red = red;
-		m_pin_green = green;
-		m_pin_blue = blue;
-		m_color = color;
+	NrfRGBLed(const char *name, int red, int green, int blue, RGBLedColor color = RGBLedColor::BLACK)
+		: m_pin_red(red), m_pin_green(green), m_pin_blue(blue),
+		  m_color(color), m_flash_color(RGBLedColor::BLACK),
+		  m_flash_color_alt(RGBLedColor::BLACK),
+		  m_is_flashing(false), m_flash_state(false),
+		  m_flash_interval(500), m_name(name), m_led_timer{}
+	{
 		set(color);
 	}
+
 	void set(RGBLedColor color) override {
 		InterruptLock lock;
 		system_timer->cancel_schedule(m_led_timer);
 		m_is_flashing = false;
 		m_color = color;
-		set_color(color);
-		//DEBUG_TRACE("LED[%s]=%s", m_name, color_to_string(color).c_str());
+		set_color_raw(m_pin_red, m_pin_green, m_pin_blue, color);
 	}
+
 	void off() override {
 		set(RGBLedColor::BLACK);
 	}
+
 	void flash(RGBLedColor color, unsigned int interval_ms = 500) override {
 		InterruptLock lock;
 		system_timer->cancel_schedule(m_led_timer);
@@ -135,8 +105,8 @@ public:
 		m_is_flashing = true;
 		m_flash_state = true;
 		toggle_led();
-		//DEBUG_TRACE("LED[%s]=flashing %s", m_name, color_to_string(color).c_str());
 	}
+
 	void flash_alternate(RGBLedColor color1, RGBLedColor color2, unsigned int interval_ms = 250) override {
 		InterruptLock lock;
 		system_timer->cancel_schedule(m_led_timer);
@@ -147,10 +117,8 @@ public:
 		m_flash_state = true;
 		toggle_led();
 	}
-	bool is_flashing() override {
-		return m_is_flashing;
-	}
-	RGBLedColor get_state() override {
-		return m_color;
-	}
+
+	bool is_flashing() override { return m_is_flashing; }
+
+	RGBLedColor get_state() override { return m_color; }
 };

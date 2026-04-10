@@ -41,8 +41,8 @@ const char* PMU::reset_cause_str() {
 	return "UNKNOWN";
 }
 
-const std::string PMU::hardware_version() {
-	return "SIMULATOR";
+const char* PMU::hardware_version() {
+	return "simulator";
 }
 
 uint32_t PMU::device_identifier() {

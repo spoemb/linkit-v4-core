@@ -26,7 +26,7 @@ public:
 	void set(RGBLedColor color) override {
 		m_color = color;
 		m_is_flashing = false;
-		DEBUG_TRACE("LED[%s]=%s", m_name, color_to_string(color).c_str());
+		DEBUG_TRACE("LED[%s]=%s", m_name, color_to_string(color));
 	}
 	void off() override {
 		set(RGBLedColor::BLACK);
@@ -35,13 +35,13 @@ public:
 		m_period = period_ms;
 		m_color = color;
 		m_is_flashing = true;
-		DEBUG_TRACE("LED[%s]=flashing %s", m_name, color_to_string(color).c_str());
+		DEBUG_TRACE("LED[%s]=flashing %s", m_name, color_to_string(color));
 	}
 	void flash_alternate(RGBLedColor color1, RGBLedColor color2, unsigned int period_ms = 250) override {
 		m_period = period_ms;
 		m_color = color1;
 		m_is_flashing = true;
-		DEBUG_TRACE("LED[%s]=flashing alternate %s/%s", m_name, color_to_string(color1).c_str(), color_to_string(color2).c_str());
+		DEBUG_TRACE("LED[%s]=flashing alternate %s/%s", m_name, color_to_string(color1), color_to_string(color2));
 	}
 	bool is_flashing() override {
 		return m_is_flashing;

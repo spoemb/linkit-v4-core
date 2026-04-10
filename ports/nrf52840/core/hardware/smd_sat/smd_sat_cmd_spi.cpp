@@ -20,6 +20,7 @@ SmdSatCmdSpi::SmdSatCmdSpi()
     , m_protocol_mode(SpiProtocolMode::APLUS)
     , m_sequence_number(0)
     , m_protocol_detected(true)
+    , m_seq_reset_attempted(false)
     , m_dfu_mode(false)
 {
     memset(&m_dfu_info, 0, sizeof(m_dfu_info));
@@ -41,6 +42,7 @@ void SmdSatCmdSpi::init() {
     m_protocol_mode = SpiProtocolMode::APLUS;
     m_protocol_detected = true;
     m_sequence_number = 0;
+    m_seq_reset_attempted = false;
 }
 
 void SmdSatCmdSpi::deinit() {
@@ -359,7 +361,20 @@ bool SmdSatCmdSpi::send_command_auto(uint8_t command, const uint8_t *tx_data, ui
             }
 
             if (response.status == SPI_APLUS_STATUS_OK) {
+                m_seq_reset_attempted = false;  // Success — allow future resync attempts
                 return true;
+            }
+
+            // INVALID_CMD (0x07): protocol desync — reset sequence and retry once.
+            // The STM32WL watchdog resets its SPI state after 5s of no valid command,
+            // so resetting our sequence number allows resynchronization.
+            if (response.status == SPI_APLUS_STATUS_INVALID_CMD && !m_seq_reset_attempted) {
+                DEBUG_WARN("SmdSatCmdSpi::%s: INVALID_CMD for cmd 0x%02X — resetting sequence (was %u)",
+                           __func__, command, m_sequence_number);
+                m_seq_reset_attempted = true;
+                m_sequence_number = 0;
+                nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+                continue;
             }
 
             if (!SPI_APLUS_IS_RECOVERABLE(response.status)) {

@@ -78,6 +78,11 @@ void SmdSat::shutdown(void) {
 #ifdef SMD_VPA_PIN
 	GPIOPins::drive_low(SMD_VPA_PIN);
 #endif
+	// Discharge delay: ensure VDD caps drain fully so next power_on
+	// triggers a true POR on the STM32WL. Without this, a fast
+	// shutdown→power_on cycle can leave the STM32 in a corrupted state.
+	PMU::kick_watchdog();
+	nrf_delay_ms(SMDSAT_DISCHARGE_DELAY_MS);
 }
 
 void SmdSat::power_on_blocking() {
@@ -238,14 +243,10 @@ void SmdSat::state_starting()
 }
 
 void SmdSat::state_error_enter() {
-	// Force KMAC reload on next boot — SMD may be in inconsistent state
+	// Force KMAC reload on next boot — SMD may be in inconsistent state.
+	// Do NOT attempt SPI commands here — the bus is likely desynchronized
+	// (INVALID_CMD cascade). Any command would fail and waste time.
 	is_kmac_profil_loaded = false;
-	try {
-		uint8_t status = 0;
-		m_cmd.get_kmac_status(&status);
-	} catch (...) {
-		DEBUG_WARN("SmdSat::%s: read failed in error handler", __func__);
-	}
 	notify(KineisEventDeviceError({}));
 	SMD_STATE_CHANGE(error, stopped);
 }

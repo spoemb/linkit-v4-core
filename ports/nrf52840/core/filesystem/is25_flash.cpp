@@ -1,40 +1,42 @@
-#include <algorithm>
-#include <vector>
-#include <iomanip>
+/**
+ * @file is25_flash.cpp
+ * @brief IS25LP128F QSPI NOR flash driver implementation.
+ */
+
+#include <cstddef>
 #include "IS25LP128F.hpp"
 #include "bsp.hpp"
 #include "debug.hpp"
 #include "is25_flash.hpp"
 #include "nrf_delay.h"
 
-void Is25Flash::init()
-{
-	// Initialise the IS25LP128F flash chip and set it up for QSPI
 
+bool Is25Flash::init()
+{
 	nrf_qspi_cinstr_conf_t config;
 	uint8_t status;
 	uint8_t rx_buffer[3];
 	uint8_t tx_buffer[1];
 
 	// If setting the SO/io1 pin to an input is not done then the nrfx_qspi_init() timesout when the board
-	// is reprogrammed using a JLink. It is unclear why this happens but having this in place causes no harm
-	// This was found through experimentation and it is possible the root cause is merely masked by this
+	// is reprogrammed using a JLink. It is unclear why this happens but having this in place causes no harm.
+	// This was found through experimentation and it is possible the root cause is merely masked by this.
 	nrf_gpio_cfg_input(BSP::QSPI_Inits[BSP::QSPI_0].config.pins.io1_pin, NRF_GPIO_PIN_PULLDOWN);
 
 	nrfx_err_t ret = nrfx_qspi_init(&BSP::QSPI_Inits[BSP::QSPI_0].config, nullptr, nullptr);
 	if (ret != NRFX_SUCCESS)
 	{
 		DEBUG_ERROR("IS25LP128F QSPI initialisation failure - %d", ret);
-        return;
+		return false;
 	}
 
-    config.io2_level = false;
-	// Keep IO3 high during transfers as this is the reset line in SPI mode
-	// We'll make use of this line once the FLASH chip is in QSPI mode
-    config.io3_level = true;
-    config.wipwait   = false;
+	config.io2_level = false;
+	// Keep IO3 high during transfers as this is the reset line in SPI mode.
+	// We'll make use of this line once the FLASH chip is in QSPI mode.
+	config.io3_level = true;
+	config.wipwait   = false;
 
-	// Issue a wake up command in case the device is in a deep sleep
+	// Issue a wake-up command in case the device is in deep sleep
 	config.opcode = IS25LP128F::RDPD;
 	config.length = NRF_QSPI_CINSTR_LEN_1B;
 	config.wren = false;
@@ -50,52 +52,67 @@ void Is25Flash::init()
 
 	nrfx_qspi_cinstr_xfer(&config, nullptr, rx_buffer);
 
-    if (rx_buffer[0] != IS25LP128F::MANUFACTURER_ID ||
-        rx_buffer[1] != IS25LP128F::MEMORY_TYPE_ID ||
-        rx_buffer[2] != IS25LP128F::CAPACITY_ID)
-    {
+	if (rx_buffer[0] != IS25LP128F::MANUFACTURER_ID ||
+		rx_buffer[1] != IS25LP128F::MEMORY_TYPE_ID ||
+		rx_buffer[2] != IS25LP128F::CAPACITY_ID)
+	{
 		nrfx_qspi_uninit();
 		DEBUG_ERROR("IS25LP128F not correctly identified");
-        return;
-    }
+		return false;
+	}
 
 	// Switch to QSPI mode
 	config.opcode = IS25LP128F::WRSR;
-    tx_buffer[0] = IS25LP128F::STATUS_QE;
+	tx_buffer[0] = IS25LP128F::STATUS_QE;
 	config.length = NRF_QSPI_CINSTR_LEN_2B;
 	config.wren = true;
 	nrfx_qspi_cinstr_xfer(&config, tx_buffer, nullptr);
 
-	// Wait for QSPI to be programmed
+	// Wait for QSPI mode to be programmed (bounded — WRSR typically < 15 ms)
 	config.opcode = IS25LP128F::RDSR;
 	config.length = NRF_QSPI_CINSTR_LEN_2B;
 	config.wren = false;
-    do
-    {
+
+	constexpr uint32_t WRSR_TIMEOUT_US = 50000;  // 50 ms — well above WRSR max (15 ms)
+	constexpr uint32_t WRSR_POLL_US    = 10;
+	uint32_t elapsed = 0;
+	do
+	{
 		nrfx_qspi_cinstr_xfer(&config, nullptr, rx_buffer);
 		status = rx_buffer[0];
-    }
-	while (status & IS25LP128F::STATUS_WIP);
+		if (!(status & IS25LP128F::STATUS_WIP))
+			break;
+		nrf_delay_us(WRSR_POLL_US);
+		elapsed += WRSR_POLL_US;
+	} while (elapsed < WRSR_TIMEOUT_US);
+
+	if (status & IS25LP128F::STATUS_WIP)
+	{
+		nrfx_qspi_uninit();
+		DEBUG_ERROR("IS25LP128F WRSR timeout (WIP stuck after %lu us)", elapsed);
+		return false;
+	}
 
 	// init() manages QSPI directly, use hardware-level power down
 	_power_down_hw();
 
 	m_is_init = true;
+	return true;
 }
 
-// The maximum read size is 0x3FFFF, size must be a multiple of 4, buffer must be word aligned
-int Is25Flash::_read(lfs_block_t block, lfs_off_t off, void * buffer, lfs_size_t size)
+/**
+ * @brief Internal read — QSPI must be powered up by caller.
+ * @note Max read size is 0x3FFFF.  Size must be a multiple of 4, buffer must be word-aligned.
+ */
+int Is25Flash::_read(lfs_block_t block, lfs_off_t off, void *buffer, lfs_size_t size)
 {
-	// Check buffer alignment and size multiple
 	if (((intptr_t)buffer & 3) || (size & 3))
 		return LFS_ERR_INVAL;
 
-	// Ensure no writes/erases are currently on going
 	int ret_sync = _sync();
 	if (ret_sync != LFS_ERR_OK)
 		return ret_sync;
 
-	//DEBUG_TRACE("QSPI Flash read(%lu %lu %lu)", block, off, size);
 	nrfx_err_t ret = nrfx_qspi_read(buffer, size, block * m_block_size + off);
 	if (ret != NRFX_SUCCESS)
 	{
@@ -106,18 +123,19 @@ int Is25Flash::_read(lfs_block_t block, lfs_off_t off, void * buffer, lfs_size_t
 	return LFS_ERR_OK;
 }
 
-// The maximum program size is 0x3FFFF, size must be a multiple of 4, buffer must be word aligned
+/**
+ * @brief Internal program with sync and read-back verification.
+ * @note Max program size is 0x3FFFF.  Size must be a multiple of 4, buffer must be word-aligned.
+ * @note Verification is limited to IS25_PAGE_SIZE (256 bytes).  Larger writes are
+ *       rejected with LFS_ERR_NOMEM — LittleFS never exceeds prog_size (256).
+ */
 int Is25Flash::_prog(lfs_block_t block, lfs_off_t off, const void *buffer, lfs_size_t size)
 {
-	//DEBUG_TRACE("QSPI Flash prog(%lu %lu %lu)", block, off, size);
-
 	int ret_sync;
 
-	// Check buffer alignment and size multiple
 	if (((intptr_t)buffer & 3) || (size & 3))
 		return LFS_ERR_INVAL;
 
-	// Ensure no writes/erases are currently on going
 	ret_sync = _sync();
 	if (ret_sync != LFS_ERR_OK)
 		return ret_sync;
@@ -129,12 +147,12 @@ int Is25Flash::_prog(lfs_block_t block, lfs_off_t off, const void *buffer, lfs_s
 		return LFS_ERR_IO;
 	}
 
-	// Wait for the write to be completed before verifying it
+	// Wait for the write to complete before verifying
 	ret_sync = _sync();
 	if (ret_sync != LFS_ERR_OK)
 		return ret_sync;
 
-	// Check that all bytes were written correctly
+	// Read-back verification
 	uint8_t read_buffer[IS25_PAGE_SIZE];
 
 	if (size > sizeof(read_buffer))
@@ -147,7 +165,7 @@ int Is25Flash::_prog(lfs_block_t block, lfs_off_t off, const void *buffer, lfs_s
 	if (ret_read != LFS_ERR_OK)
 		return ret_read;
 
-	if (memcmp( reinterpret_cast<const uint8_t *>(buffer), &read_buffer[0], size ))
+	if (memcmp(reinterpret_cast<const uint8_t *>(buffer), &read_buffer[0], size))
 	{
 		DEBUG_ERROR("QSPI Flash prog reported a bad write");
 #if (DEBUG_LEVEL >= 1)
@@ -160,14 +178,16 @@ int Is25Flash::_prog(lfs_block_t block, lfs_off_t off, const void *buffer, lfs_s
 #endif
 		return LFS_ERR_CORRUPT;
 	}
-	
+
 	return LFS_ERR_OK;
 }
 
-// Fast program without sync or verification - for OTA transfers
+/**
+ * @brief Fast program without sync or read-back verification — for OTA transfers.
+ * @note Caller must manage power and sync externally.
+ */
 int Is25Flash::_prog_fast(lfs_block_t block, lfs_off_t off, const void *buffer, lfs_size_t size)
 {
-	// Check buffer alignment and size multiple
 	if (((intptr_t)buffer & 3) || (size & 3))
 		return LFS_ERR_INVAL;
 
@@ -181,11 +201,9 @@ int Is25Flash::_prog_fast(lfs_block_t block, lfs_off_t off, const void *buffer, 
 	return LFS_ERR_OK;
 }
 
+/** @brief Internal erase — erases one 4 KB sector. */
 int Is25Flash::_erase(lfs_block_t block)
 {
-	//DEBUG_TRACE("QSPI Flash erase(%lu)", block);
-
-	// Ensure no writes/erases are currently on going
 	int ret_sync = _sync();
 	if (ret_sync != LFS_ERR_OK)
 		return ret_sync;
@@ -200,16 +218,19 @@ int Is25Flash::_erase(lfs_block_t block)
 	return LFS_ERR_OK;
 }
 
+/**
+ * @brief Wait for any in-progress write/erase to complete.
+ * @return LFS_ERR_OK on success, LFS_ERR_IO on timeout (300 ms).
+ */
 int Is25Flash::_sync()
 {
-	//DEBUG_TRACE("QSPI Sync()");
 	nrfx_err_t ret;
-	
-	// Expected max wait time is 300ms as this is how long a 4kB erase can take
+
+	// Expected max wait: 300 ms (worst-case 4 KB erase)
 	constexpr uint32_t WAIT_TIME_US = 10;
 	constexpr uint32_t WAIT_ATTEMPTS = 30000;
 
-	uint32_t remaining_attempts = WAIT_ATTEMPTS;                
+	uint32_t remaining_attempts = WAIT_ATTEMPTS;
 	do
 	{
 		ret = nrfx_qspi_mem_busy_check();
@@ -228,8 +249,10 @@ int Is25Flash::_sync()
 	return LFS_ERR_OK;
 }
 
-// Wrappers to ensure easier power up and power down of the QSPI peripheral
-int Is25Flash::read(lfs_block_t block, lfs_off_t off, void * buffer, lfs_size_t size)
+/// @name Public LFS wrappers — guard with init check and power management
+/// @{
+
+int Is25Flash::read(lfs_block_t block, lfs_off_t off, void *buffer, lfs_size_t size)
 {
 	if (!m_is_init)
 		return LFS_ERR_IO;
@@ -273,13 +296,21 @@ int Is25Flash::prog_fast(lfs_block_t block, lfs_off_t off, const void *buffer, l
 {
 	if (!m_is_init)
 		return LFS_ERR_IO;
-	// NO power management here - caller must handle it for performance
+	// NO power management here — caller must handle it for performance
 	return _prog_fast(block, off, buffer, size);
 }
 
+/// @}
+
+/** @brief Wake QSPI peripheral and send RDPD (Release from Deep Power-Down). */
 void Is25Flash::_power_up_hw()
 {
-	nrfx_qspi_init(&BSP::QSPI_Inits[BSP::QSPI_0].config, nullptr, nullptr);
+	nrfx_err_t ret = nrfx_qspi_init(&BSP::QSPI_Inits[BSP::QSPI_0].config, nullptr, nullptr);
+	if (ret != NRFX_SUCCESS)
+	{
+		DEBUG_ERROR("QSPI power_up init failure - %d", ret);
+		return;
+	}
 
 	const nrf_qspi_cinstr_conf_t config =
 	{
@@ -296,6 +327,12 @@ void Is25Flash::_power_up_hw()
 	nrf_delay_us(5);
 }
 
+/**
+ * @brief Sync, send DP (Deep Power-Down), uninit QSPI, and float all QSPI pins.
+ *
+ * After this call the QSPI peripheral draws zero current.  CS is held high
+ * to ensure the flash chip stays deselected.  All other pins are pulled down.
+ */
 void Is25Flash::_power_down_hw()
 {
 	// Wait for any writes/erases to complete before sleeping
@@ -317,7 +354,8 @@ void Is25Flash::_power_down_hw()
 
 	nrfx_qspi_uninit();
 
-	nrf_gpio_cfg_output(BSP::QSPI_Inits[BSP::QSPI_0].config.pins.csn_pin); // Keep CS high to ensure flash is not enabled
+	// Float QSPI pins to minimize leakage current
+	nrf_gpio_cfg_output(BSP::QSPI_Inits[BSP::QSPI_0].config.pins.csn_pin);
 	nrf_gpio_pin_set(BSP::QSPI_Inits[BSP::QSPI_0].config.pins.csn_pin);
 	nrf_gpio_cfg_input(BSP::QSPI_Inits[BSP::QSPI_0].config.pins.sck_pin, NRF_GPIO_PIN_PULLDOWN);
 	nrf_gpio_cfg_input(BSP::QSPI_Inits[BSP::QSPI_0].config.pins.io0_pin, NRF_GPIO_PIN_PULLDOWN);

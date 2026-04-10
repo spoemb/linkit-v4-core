@@ -8,6 +8,9 @@ project(LinkIt
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Generate compile_commands.json for IDE IntelliSense (clangd, VSCode C/C++)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 set(SDK_ROOT      drivers/nRF5_SDK_17.0.2)
 set(PROJ_DIR      .)
 set(CORE_DIR      ../../core)

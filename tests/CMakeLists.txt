@@ -5,6 +5,7 @@ project(TrackerTests
     LANGUAGES CXX C ASM
 )
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(ROOT_DIR "..")
 set(LINUX_DIR "${ROOT_DIR}/ports/linux")
 set(NRF_DIR "${ROOT_DIR}/ports/nrf52840")

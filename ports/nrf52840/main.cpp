@@ -127,6 +127,7 @@
 #endif
 
 // --- Utilities ---
+#include <cstring>
 #include <type_traits>
 #include "heap.h"
 #include "etl/error_handler.h"
@@ -431,7 +432,7 @@ static void init_power_on_check(NrfSwitch& nrf_reed_switch)
 #endif
 		NrfI2C::uninit();
 	}
-	bool is_linkit_v4 = (PMU::hardware_version() == "LinkIt V4");
+	bool is_linkit_v4 = (strncmp(PMU::hardware_version(), "linkit-v4", 9) == 0);
 
 	ResetCause cause = PMU::reset_cause();
 	if ((is_linkit_v4 && cause == ResetCause::PSEUDO_POWER_ON) ||
@@ -1037,9 +1038,9 @@ int main()
 	DEBUG_TRACE("Entering main SM...");
 	GenTracker::start();
 
-	// Deep idle: cut peripheral power rails when no task is due soon.
-	static constexpr uint64_t DEEP_IDLE_THRESHOLD_MS = 5000;
-	static bool in_deep_idle = false;
+	// Power rail management: cut peripheral power rails when no task is due soon.
+	static constexpr uint64_t IDLE_POWER_SAVE_THRESHOLD_MS = 5000;
+	static bool power_rails_reduced = false;
 
 	// The scheduler should run forever.  Any run-time exceptions should be handled and passed to FSM.
 	while (true)
@@ -1050,25 +1051,25 @@ int main()
 #endif
 				NrfUSB::process();
 
-			// Exit deep idle BEFORE running scheduler tasks — peripherals
-			// need power rail restored before any SPI/I2C/UART access.
-			if (in_deep_idle) {
+			// Restore power rails BEFORE running scheduler tasks —
+			// peripherals need 3.3V before any SPI/I2C/UART access.
+			if (power_rails_reduced) {
 				uint64_t remaining = system_scheduler->ms_until_next_task();
-				if (remaining <= DEEP_IDLE_THRESHOLD_MS) {
-					PMU::exit_deep_idle();
-					in_deep_idle = false;
-					DEBUG_TRACE("DEEP_IDLE: exit (%llu ms remaining)", remaining);
+				if (remaining <= IDLE_POWER_SAVE_THRESHOLD_MS) {
+					PMU::restore_power_rails();
+					power_rails_reduced = false;
+					DEBUG_TRACE("IDLE_POWER_SAVE: exit (%llu ms remaining)", remaining);
 				}
 			}
 
 			system_scheduler->run();
 
-			// Enter deep idle when no tasks are due for a while
+			// Reduce power rails when no tasks are due for a while
 			uint64_t idle_ms = system_scheduler->ms_until_next_task();
-			if (idle_ms > DEEP_IDLE_THRESHOLD_MS && !in_deep_idle) {
-				DEBUG_TRACE("DEEP_IDLE: enter (%llu ms idle)", idle_ms);
-				in_deep_idle = true;
-				PMU::enter_deep_idle();
+			if (idle_ms > IDLE_POWER_SAVE_THRESHOLD_MS && !power_rails_reduced) {
+				DEBUG_TRACE("IDLE_POWER_SAVE: enter (%llu ms idle)", idle_ms);
+				power_rails_reduced = true;
+				PMU::reduce_power_rails();
 			}
 
 			// Safety watchdog kick — reduces dependency on scheduled task

@@ -1,5 +1,9 @@
+/**
+ * @file nrf_switch.cpp
+ * @brief nRF52840 debounced switch — GPIOTE edge detect + timer debounce.
+ */
+
 #include <functional>
-#include <map>
 
 #include "nrfx_gpiote.h"
 #include "gpio.hpp"
@@ -10,55 +14,67 @@
 #include "error.hpp"
 #include "debug.hpp"
 
-
 extern Timer *system_timer;
 
-// This class maps the pin number to an NrfSwitch object -- this is largely needed because
-// the Nordic GPIOTE driver callback does not have a user-defined context and only passes
-// back the pin number
+// ═══════════════════════════════════════════════════════
+//  Pin → NrfSwitch lookup (replaces std::map — ISR-safe, no heap)
+// ═══════════════════════════════════════════════════════
 
-class NrfSwitchManager {
-private:
-	static inline std::map<int, NrfSwitch *> m_map;
+static constexpr unsigned int MAX_NRF_PINS = 48;  // P0.00..P0.31 + P1.00..P1.15
+static NrfSwitch *s_pin_map[MAX_NRF_PINS] = {};
 
-public:
-	static void add(int pin, NrfSwitch *ref) {
-		m_map.insert({pin, ref});
-	}
-	static void remove(int pin) {
-		m_map.erase(pin);
-	}
-	static void process_event(int pin, bool state) {
-		NrfSwitch *obj = m_map[pin];
-		obj->process_event(state);
-	}
-	static int get_pin(int pin) {
-		NrfSwitch *obj = m_map[pin];
-		return obj->m_pin;
-	}
-};
+static void pin_map_add(uint32_t pin, NrfSwitch *ref) {
+	if (pin < MAX_NRF_PINS) s_pin_map[pin] = ref;
+}
 
-// Handle events from GPIOTE here and propagate them back to corresponding NrfSwitch object
-static void nrfx_gpiote_in_event_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
-	switch (action)  {
+static void pin_map_remove(uint32_t pin) {
+	if (pin < MAX_NRF_PINS) s_pin_map[pin] = nullptr;
+}
+
+static NrfSwitch *pin_map_get(uint32_t pin) {
+	return (pin < MAX_NRF_PINS) ? s_pin_map[pin] : nullptr;
+}
+
+
+// ═══════════════════════════════════════════════════════
+//  GPIOTE ISR handler
+// ═══════════════════════════════════════════════════════
+
+void nrfx_gpiote_switch_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
+	NrfSwitch *obj = pin_map_get(static_cast<uint32_t>(pin));
+	if (!obj) return;
+
+	switch (action) {
 	case NRF_GPIOTE_POLARITY_LOTOHI:
-		NrfSwitchManager::process_event((int)pin, true);
+		obj->process_event(true);
 		break;
 	case NRF_GPIOTE_POLARITY_HITOLO:
-		NrfSwitchManager::process_event((int)pin, false);
+		obj->process_event(false);
 		break;
 	case NRF_GPIOTE_POLARITY_TOGGLE:
-		NrfSwitchManager::process_event((int)pin, (bool)GPIOPins::value(NrfSwitchManager::get_pin((int)pin)));
+		obj->process_event(obj->get_state());
 		break;
 	default:
 		break;
 	}
 }
 
-NrfSwitch::NrfSwitch(int pin, unsigned int hysteresis_time_ms, bool active_state) : Switch(pin, hysteresis_time_ms, active_state) {
-	// Initialise the library if it is not yet initialised
-	if (!nrfx_gpiote_is_init())
-		nrfx_gpiote_init();
+
+// ═══════════════════════════════════════════════════════
+//  NrfSwitch implementation
+// ═══════════════════════════════════════════════════════
+
+/// @brief Init GPIOTE library if needed.  Does not register the pin yet (call start/resume).
+NrfSwitch::NrfSwitch(int pin, unsigned int hysteresis_time_ms, bool active_state)
+	: Switch(pin, hysteresis_time_ms, active_state)
+{
+	if (!nrfx_gpiote_is_init()) {
+		nrfx_err_t err = nrfx_gpiote_init();
+		if (err != NRFX_SUCCESS) {
+			DEBUG_ERROR("GPIOTE init failed: 0x%08X", err);
+			throw ErrorCode::RESOURCE_NOT_AVAILABLE;
+		}
+	}
 	m_is_paused = true;
 }
 
@@ -66,42 +82,44 @@ NrfSwitch::~NrfSwitch() {
 	stop();
 }
 
+/// @brief Register callback and enable GPIOTE events.
 void NrfSwitch::start(std::function<void(bool)> func) {
 	Switch::start(func);
 	resume();
 }
 
+/// @brief Read current physical pin state (true = active).
 bool NrfSwitch::get_state() {
 	return GPIOPins::value(m_pin) == m_active_state;
 }
 
+/// @brief Clear callback and disable GPIOTE events.
 void NrfSwitch::stop() {
 	Switch::stop();
 	pause();
 }
 
+/// @brief Apply new debounced state and fire callback if changed.
 void NrfSwitch::update_state(bool state) {
-	// Call state change handler if state has changed
-	if (state != m_current_state) {
-		DEBUG_TRACE("NrfSwitch::update_state: %u -> %u", m_current_state, state);
+	if (state != static_cast<bool>(m_current_state)) {
+		DEBUG_TRACE("NrfSwitch: %u -> %u", m_current_state, state);
 		m_current_state = state;
 		if (m_state_change_handler)
 			m_state_change_handler(state);
 	}
 }
 
+/// @brief ISR entry — disable GPIOTE (suppress bounces) and schedule a readback after debounce.
 void NrfSwitch::process_event(bool /* state */) {
-	uint64_t now = system_timer->get_counter();
-
 	// On first edge: disable GPIOTE to suppress all bounce interrupts,
 	// then schedule a single readback after the hysteresis period.
-	// Subsequent edges during debounce are silently ignored.
 	if (m_debouncing)
 		return;
 
 	m_debouncing = true;
 	nrfx_gpiote_in_event_disable(BSP::GPIO_Inits[m_pin].pin_number);
 
+	uint64_t now = system_timer->get_counter();
 	m_timer_handle = system_timer->add_schedule([this]() {
 		// Read the actual settled pin state after debounce
 		bool settled = (GPIOPins::value(m_pin) == m_active_state);
@@ -112,20 +130,26 @@ void NrfSwitch::process_event(bool /* state */) {
 	}, now + m_hysteresis_time_ms);
 }
 
+/// @brief Disable GPIOTE, cancel pending debounce timer, force state to off.
 void NrfSwitch::pause() {
 	if (m_is_paused) return;
 	system_timer->cancel_schedule(m_timer_handle);
 	nrfx_gpiote_in_event_disable(BSP::GPIO_Inits[m_pin].pin_number);
 	nrfx_gpiote_in_uninit(BSP::GPIO_Inits[m_pin].pin_number);
-	NrfSwitchManager::remove(BSP::GPIO_Inits[m_pin].pin_number);
+	pin_map_remove(BSP::GPIO_Inits[m_pin].pin_number);
 	m_is_paused = true;
-	update_state(false);  // Force state to "off" when paused
+	update_state(false);
 }
 
+/// @brief Re-register GPIOTE channel, read initial state, and re-enable events.
 void NrfSwitch::resume() {
 	if (!m_is_paused) return;
-	NrfSwitchManager::add(BSP::GPIO_Inits[m_pin].pin_number, this);
-	if (NRFX_SUCCESS != nrfx_gpiote_in_init(BSP::GPIO_Inits[m_pin].pin_number, &BSP::GPIO_Inits[m_pin].gpiote_in_config, nrfx_gpiote_in_event_handler)) {
+	pin_map_add(BSP::GPIO_Inits[m_pin].pin_number, this);
+	nrfx_err_t err = nrfx_gpiote_in_init(BSP::GPIO_Inits[m_pin].pin_number,
+		&BSP::GPIO_Inits[m_pin].gpiote_in_config, nrfx_gpiote_switch_handler);
+	if (err != NRFX_SUCCESS) {
+		pin_map_remove(BSP::GPIO_Inits[m_pin].pin_number);
+		DEBUG_ERROR("NrfSwitch: GPIOTE init failed pin %u (0x%08X)", m_pin, err);
 		throw ErrorCode::RESOURCE_NOT_AVAILABLE;
 	}
 	// Read actual pin state BEFORE enabling events to suppress spurious initial event

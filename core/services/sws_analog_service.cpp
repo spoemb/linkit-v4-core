@@ -1,3 +1,4 @@
+#include <cstdint>
 #include "sws_analog_service.hpp"
 #include "debug.hpp"
 #include "gpio.hpp"
@@ -29,8 +30,12 @@ extern RGBLed *status_led;
 // ADC constants
 #define ADC_REFERENCE_V 0.6f
 #define ADC_GAIN_1_6 (1.0f/6.0f)
-#define ADC_INVALID_MIN 0
-#define ADC_INVALID_MAX 16383          // 14-bit ADC
+// Valid ADC range: 0..16383 (14-bit SAADC).
+// ADC value 0 is a legitimate reading (e.g. dry air, open pin — no current through water).
+// Errors (SAADC init failure, conversion failure) return ADC_READ_ERROR (UINT16_MAX),
+// which is outside the 14-bit range and rejected by is_value_valid().
+#define ADC_INVALID_MAX 16383
+#define ADC_READ_ERROR  UINT16_MAX
 
 // Default configuration values
 #define DEFAULT_HYSTERESIS_PERCENT 4
@@ -522,7 +527,7 @@ uint16_t SWSAnalogService::read_analog_sws() {
     }
     if (init_err != NRFX_SUCCESS) {
         GPIOPins::clear(SWS_ENABLE_PIN);
-        return 0;
+        return ADC_READ_ERROR;
     }
     nrfx_saadc_channel_init(SWS_ADC, &BSP::ADC_Inits.channel_config[SWS_ADC]);
 
@@ -530,7 +535,9 @@ uint16_t SWSAnalogService::read_analog_sws() {
     nrfx_err_t err = nrfx_saadc_sample_convert(SWS_ADC, &raw);
     if (err != NRFX_SUCCESS) {
         DEBUG_ERROR("SWSAnalog: ADC conversion failed %d", err);
-        raw = 0;
+        nrfx_saadc_uninit();
+        GPIOPins::clear(SWS_ENABLE_PIN);
+        return ADC_READ_ERROR;
     }
 
     nrfx_saadc_uninit();
@@ -780,8 +787,10 @@ uint16_t SWSAnalogService::add_to_history_and_filter(uint16_t value) {
     return (uint16_t)(sum / m_adc_history_count);
 }
 
+// Accepts 0..16383 (full 14-bit range).  Rejects ADC_READ_ERROR (UINT16_MAX)
+// and any value above the 14-bit max (hardware fault or saturation).
 bool SWSAnalogService::is_value_valid(uint16_t value) const {
-    return (value > 0 && value <= ADC_INVALID_MAX);
+    return (value <= ADC_INVALID_MAX);
 }
 
 void SWSAnalogService::adjust_sample_delay() {
