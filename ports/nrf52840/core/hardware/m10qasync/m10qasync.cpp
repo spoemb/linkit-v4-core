@@ -85,6 +85,10 @@ void M10QAsyncReceiver::power_on(const GPSNavSettings& nav_settings) {
     m_has_degraded_pvt = false;
     std::memset(&m_degraded_pvt, 0, sizeof(m_degraded_pvt));
 
+    // Reset CloudLocate raw measurement tracking
+    m_has_raw_measurement = false;
+    m_raw_measurement = GNSSRawMeasurement();
+
     // Reset observation counters of interest
     if (nav_settings.max_nav_samples) {
         m_num_nav_samples = 0;
@@ -539,8 +543,12 @@ void M10QAsyncReceiver::react(const UBXCommsEventNavReport& n) {
         // Check if max number of samples has been reached
         if (STATE_EQUAL(receive) && m_nav_settings.max_nav_samples && m_num_nav_samples >= m_nav_settings.max_nav_samples) {
             m_nav_settings.max_nav_samples = 0;
-            // If we have a degraded fix (passed 2D/3D but failed quality filters), emit it
-            if (m_has_degraded_pvt) {
+            // CloudLocate takes priority over degraded PVT
+            if (m_nav_settings.cloudlocate_enable && m_has_raw_measurement) {
+                DEBUG_INFO("M10QAsyncReceiver: timeout with raw measurement (CloudLocate)");
+                notify(GPSEventRawMeasurement(m_raw_measurement));
+            } else if (m_has_degraded_pvt) {
+                // If we have a degraded fix (passed 2D/3D but failed quality filters), emit it
                 DEBUG_INFO("M10QAsyncReceiver: timeout with degraded PVT (hAcc=%u mm, fixType=%u, numSV=%u)",
                            m_degraded_pvt.hAcc, m_degraded_pvt.fixType, m_degraded_pvt.numSV);
                 notify(GPSEventPVTDegraded(m_degraded_pvt));
@@ -549,6 +557,23 @@ void M10QAsyncReceiver::react(const UBXCommsEventNavReport& n) {
             }
         }
     }, "NavReport");
+}
+
+void M10QAsyncReceiver::react(const UBXCommsEventRawMeasurement& meas) {
+    // Store raw measurement directly (called from ISR context via UBX comms filter)
+    if (meas.has_measc12) {
+        std::memcpy(m_raw_measurement.measc12, meas.measc12, sizeof(m_raw_measurement.measc12));
+        m_raw_measurement.has_measc12 = true;
+    }
+    if (meas.has_meas20) {
+        std::memcpy(m_raw_measurement.meas20, meas.meas20, sizeof(m_raw_measurement.meas20));
+        m_raw_measurement.has_meas20 = true;
+    }
+    if (meas.has_meas50) {
+        std::memcpy(m_raw_measurement.meas50, meas.meas50, sizeof(m_raw_measurement.meas50));
+        m_raw_measurement.has_meas50 = true;
+    }
+    m_has_raw_measurement = m_raw_measurement.has_measc12 || m_raw_measurement.has_meas20 || m_raw_measurement.has_meas50;
 }
 
 void M10QAsyncReceiver::react(const UBXCommsEventMgaAck& ack) {
@@ -884,6 +909,15 @@ void M10QAsyncReceiver::state_startreceive() {
             } else if (m_step == 3 && m_nav_settings.sat_tracking) {
                 enable_nav_sat_message();
                 break;
+			} else if (m_step == 4 && m_nav_settings.cloudlocate_enable) {
+				enable_rxm_measc12_message();
+				break;
+			} else if (m_step == 5 && m_nav_settings.cloudlocate_enable) {
+				enable_rxm_meas20_message();
+				break;
+			} else if (m_step == 6 && m_nav_settings.cloudlocate_enable) {
+				enable_rxm_meas50_message();
+				break;
 			} else {
 				STATE_CHANGE(startreceive, receive);
 				break;
@@ -1829,6 +1863,39 @@ void M10QAsyncReceiver::disable_nav_sat_message() {
     initiate_timeout();
 
     m_ubx_comms.send_packet_with_expect(MessageClass::MSG_CLASS_CFG, CFG::ID_VALSET, nav_sat_valset_msg,
+                                        MessageClass::MSG_CLASS_ACK, ACK::ID_ACK, cfgDataSize);
+}
+
+void M10QAsyncReceiver::enable_rxm_measc12_message() {
+    DEBUG_TRACE("M10QAsyncReceiver::enable_rxm_measc12_message");
+    CFG::MSGOUT::RXM_MEASC12_UART1.set_value(1);
+    std::vector<CFG::UBXParameter> config = {CFG::MSGOUT::RXM_MEASC12_UART1};
+    CFG::VALSET::MSG_VALSET valset_msg(0x00, CFG::VALSET::LAYERS::RAM, config);
+    size_t cfgDataSize = valset_msg.get_cfgData_size(config);
+    initiate_timeout();
+    m_ubx_comms.send_packet_with_expect(MessageClass::MSG_CLASS_CFG, CFG::ID_VALSET, valset_msg,
+                                        MessageClass::MSG_CLASS_ACK, ACK::ID_ACK, cfgDataSize);
+}
+
+void M10QAsyncReceiver::enable_rxm_meas20_message() {
+    DEBUG_TRACE("M10QAsyncReceiver::enable_rxm_meas20_message");
+    CFG::MSGOUT::RXM_MEAS20_UART1.set_value(1);
+    std::vector<CFG::UBXParameter> config = {CFG::MSGOUT::RXM_MEAS20_UART1};
+    CFG::VALSET::MSG_VALSET valset_msg(0x00, CFG::VALSET::LAYERS::RAM, config);
+    size_t cfgDataSize = valset_msg.get_cfgData_size(config);
+    initiate_timeout();
+    m_ubx_comms.send_packet_with_expect(MessageClass::MSG_CLASS_CFG, CFG::ID_VALSET, valset_msg,
+                                        MessageClass::MSG_CLASS_ACK, ACK::ID_ACK, cfgDataSize);
+}
+
+void M10QAsyncReceiver::enable_rxm_meas50_message() {
+    DEBUG_TRACE("M10QAsyncReceiver::enable_rxm_meas50_message");
+    CFG::MSGOUT::RXM_MEAS50_UART1.set_value(1);
+    std::vector<CFG::UBXParameter> config = {CFG::MSGOUT::RXM_MEAS50_UART1};
+    CFG::VALSET::MSG_VALSET valset_msg(0x00, CFG::VALSET::LAYERS::RAM, config);
+    size_t cfgDataSize = valset_msg.get_cfgData_size(config);
+    initiate_timeout();
+    m_ubx_comms.send_packet_with_expect(MessageClass::MSG_CLASS_CFG, CFG::ID_VALSET, valset_msg,
                                         MessageClass::MSG_CLASS_ACK, ACK::ID_ACK, cfgDataSize);
 }
 

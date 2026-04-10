@@ -20,6 +20,20 @@ void GPSService::service_init() {
     m_is_first_fix_found = false;
     m_is_first_schedule = true;
     m_num_gps_fixes = 0;
+
+    // Warn user about fastloc mode impact on sensor messages
+    unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
+    if (fastloc_mode == (unsigned int)BaseFastlocMode::DEGRADED_PVT) {
+        DEBUG_WARN("GPSService: FASTLOC_MODE=DEGRADED_PVT — sensor messages disabled during GPS fallback");
+    } else if (fastloc_mode == (unsigned int)BaseFastlocMode::CLOUDLOCATE) {
+        unsigned int cl_format = configuration_store->read_param<unsigned int>(ParamID::GNSS_CLOUDLOCATE_FORMAT);
+        if (cl_format == (unsigned int)BaseCloudLocateFormat::MEASC12) {
+            DEBUG_INFO("GPSService: FASTLOC_MODE=CLOUDLOCATE format=MEASC12 — sensor messages included in fallback");
+        } else {
+            DEBUG_WARN("GPSService: FASTLOC_MODE=CLOUDLOCATE format=%u — sensor messages disabled during GPS fallback",
+                       cl_format);
+        }
+    }
 }
 
 void GPSService::service_term() {
@@ -98,6 +112,10 @@ void GPSService::service_initiate() {
 	nav_settings.min_cno = gnss_config.min_cno;
 	nav_settings.min_elev = gnss_config.min_elev;
 	nav_settings.ano_stale_threshold_s = gnss_config.ano_stale_days ? gnss_config.ano_stale_days * 24 * 3600 : 0;
+
+	// CloudLocate: enable MEAS message capture when fastloc mode is CLOUDLOCATE
+	unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
+	nav_settings.cloudlocate_enable = (fastloc_mode == (unsigned int)BaseFastlocMode::CLOUDLOCATE);
 
 	m_next_schedule = service_current_time();
 	m_is_first_schedule = false;
@@ -292,6 +310,51 @@ void GPSService::task_process_degraded_gnss_data()
     service_complete(&event_data, &gps_entry);
 }
 
+void GPSService::task_process_cloudlocate_data()
+{
+    DEBUG_INFO("GPSService::task_process_cloudlocate_data");
+
+    GPSLogEntry gps_entry{};
+    gps_entry.header.log_type = LOG_GPS;
+    populate_gps_log_with_time(gps_entry, service_current_time());
+
+    service_update_battery();
+    gps_entry.info.batt_voltage = service_get_voltage();
+    gps_entry.info.onTime       = service_current_timer() - m_wakeup_time;
+    gps_entry.info.schedTime    = m_next_schedule;
+    gps_entry.info.event_type   = GPSEventType::CLOUDLOCATE;
+    gps_entry.info.valid        = false;  // No on-device position
+
+    // Overlay raw measurement blob into unused position fields (lat, lon, height, hMSL)
+    // Layout: byte 0 = format ID, bytes 1-N = blob data
+    // lat(8) + lon(8) + height(4) + hMSL(4) = 24 bytes available
+    static_assert(offsetof(GPSInfo, hAcc) - offsetof(GPSInfo, lon) >= 21,
+                  "GPSInfo overlay space too small for MEAS20 + format byte");
+    uint8_t* overlay = reinterpret_cast<uint8_t*>(&gps_entry.info.lon);
+    std::memset(overlay, 0, 24);
+
+    unsigned int cl_format = configuration_store->read_param<unsigned int>(ParamID::GNSS_CLOUDLOCATE_FORMAT);
+    if (cl_format == (unsigned int)BaseCloudLocateFormat::MEASC12 && m_raw_measurement.has_measc12) {
+        overlay[0] = (uint8_t)BaseCloudLocateFormat::MEASC12;
+        std::memcpy(&overlay[1], m_raw_measurement.measc12, 12);
+        DEBUG_INFO("GPSService::task_process_cloudlocate_data: stored MEASC12 (12 bytes)");
+    } else if (m_raw_measurement.has_meas20) {
+        overlay[0] = (uint8_t)BaseCloudLocateFormat::MEAS20;
+        std::memcpy(&overlay[1], m_raw_measurement.meas20, 20);
+        DEBUG_INFO("GPSService::task_process_cloudlocate_data: stored MEAS20 (20 bytes)");
+    } else if (m_raw_measurement.has_measc12) {
+        // Fallback to MEASC12 if MEAS20 not available
+        overlay[0] = (uint8_t)BaseCloudLocateFormat::MEASC12;
+        std::memcpy(&overlay[1], m_raw_measurement.measc12, 12);
+        DEBUG_INFO("GPSService::task_process_cloudlocate_data: fallback to MEASC12");
+    } else {
+        DEBUG_WARN("GPSService::task_process_cloudlocate_data: no raw measurement available");
+    }
+
+    ServiceEventData event_data = gps_entry;
+    service_complete(&event_data, &gps_entry);
+}
+
 void GPSService::react(const GPSEventMaxNavSamples&) {
 	if (!m_is_active)
 		return;
@@ -339,13 +402,33 @@ void GPSService::react(const GPSEventPVTDegraded& e) {
 	m_is_active = false;
 	m_device.power_off();
 
-	// Only emit fastloc if enabled in config
-	if (configuration_store->read_param<bool>(ParamID::GNSS_FASTLOC_ENABLE)) {
+	// Only emit fastloc if mode is DEGRADED_PVT (1) or higher
+	unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
+	if (fastloc_mode >= (unsigned int)BaseFastlocMode::DEGRADED_PVT) {
 		DEBUG_INFO("GPSService::react(GPSEventPVTDegraded): fastloc hAcc=%u fixType=%u numSV=%u",
 		           e.data.hAcc, e.data.fixType, e.data.numSV);
 		gnss_degraded_callback(e.data);
 	} else {
 		DEBUG_INFO("GPSService::react(GPSEventPVTDegraded): fastloc disabled, treating as no fix");
+		GPSLogEntry log_entry = invalid_log_entry();
+		ServiceEventData event_data = log_entry;
+		service_complete(&event_data, &log_entry);
+	}
+}
+
+void GPSService::react(const GPSEventRawMeasurement& e) {
+	if (!m_is_active)
+		return;
+	m_is_active = false;
+	m_device.power_off();
+
+	unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
+	if (fastloc_mode == (unsigned int)BaseFastlocMode::CLOUDLOCATE) {
+		DEBUG_INFO("GPSService::react(GPSEventRawMeasurement): CloudLocate measc12=%u meas20=%u meas50=%u",
+		           e.data.has_measc12, e.data.has_meas20, e.data.has_meas50);
+		gnss_cloudlocate_callback(e.data);
+	} else {
+		DEBUG_INFO("GPSService::react(GPSEventRawMeasurement): CloudLocate disabled, treating as no fix");
 		GPSLogEntry log_entry = invalid_log_entry();
 		ServiceEventData event_data = log_entry;
 		service_complete(&event_data, &log_entry);
@@ -364,6 +447,12 @@ void GPSService::gnss_degraded_callback(GNSSData data) {
     m_gnss_data.data = data;
     // Don't set m_is_first_fix_found — degraded fix should not change cold start behavior
     task_process_degraded_gnss_data();
+}
+
+void GPSService::gnss_cloudlocate_callback(GNSSRawMeasurement data) {
+    m_raw_measurement = data;
+    // Don't set m_is_first_fix_found — CloudLocate does not provide on-device position
+    task_process_cloudlocate_data();
 }
 
 void GPSService::populate_gps_log_with_time(GPSLogEntry &entry, std::time_t time)

@@ -345,9 +345,10 @@ enum class ParamID {
 	SWS_DELAY_MIN_US                         = 215,  // Adaptive sample delay floor (µs)
 	SWS_DELAY_MAX_US                         = 216,  // Adaptive sample delay ceiling (µs)
 	GNSS_ANO_STALE_DAYS                      = 217,  // uint: ANO staleness threshold in days (0=use all data regardless of age)
-	GNSS_FASTLOC_ENABLE                      = 218,  // bool: enable degraded GPS fix (fastloc) when quality filters fail
+	GNSS_FASTLOC_MODE                        = 218,  // uint8: 0=OFF, 1=DEGRADED_PVT, 2=CLOUDLOCATE
+	GNSS_CLOUDLOCATE_FORMAT                  = 219,  // uint8: 0=MEASC12 (12B), 1=MEAS20 (20B), 2=MEAS50 (50B, LoRa only)
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 219,
+	__PARAM_SIZE                             = 220,
 	__NULL_PARAM                             = 0xFFFF
 };
 
@@ -619,6 +620,18 @@ enum class BaseSensorEnableTxMode {
 	MEDIAN,
 };
 
+
+enum class BaseFastlocMode : uint8_t {
+	OFF           = 0,  // No fallback — discard failed GPS fix
+	DEGRADED_PVT  = 1,  // Send degraded GPS fix (ex-fastloc)
+	CLOUDLOCATE   = 2,  // Send raw GNSS measurement snapshot for cloud positioning
+};
+
+enum class BaseCloudLocateFormat : uint8_t {
+	MEASC12 = 0,  // 12 bytes, needs position hint, compatible with sensor message
+	MEAS20  = 1,  // 20 bytes, autonomous, dedicated packet (LDA2 only on Argos)
+	MEAS50  = 2,  // 50 bytes, LoRa only, dedicated packet
+};
 
 enum class BaseArgosModulation {
 	LDK,

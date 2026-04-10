@@ -2,6 +2,7 @@
 
 #include <map>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include "base_types.hpp"
 #include "events.hpp"
@@ -25,6 +26,7 @@ struct GPSNavSettings {
     unsigned int     min_cno = 10;
     unsigned int     min_elev = 10;
     unsigned int     ano_stale_threshold_s = 25 * 24 * 3600;  // ANO staleness threshold in seconds (default: 25 days)
+    bool             cloudlocate_enable = false;  // Enable MEAS message capture for CloudLocate
 };
 
 struct GNSSData {
@@ -78,6 +80,20 @@ struct GNSSAlmanacStatus {
     bool stale;
 };
 
+struct GNSSRawMeasurement {
+    uint8_t measc12[12];
+    uint8_t meas20[20];
+    uint8_t meas50[50];
+    bool has_measc12;
+    bool has_meas20;
+    bool has_meas50;
+    GNSSRawMeasurement() : has_measc12(false), has_meas20(false), has_meas50(false) {
+        std::memset(measc12, 0, sizeof(measc12));
+        std::memset(meas20, 0, sizeof(meas20));
+        std::memset(meas50, 0, sizeof(meas50));
+    }
+};
+
 struct GPSEventMaxNavSamples {};
 struct GPSEventMaxSatSamples {};
 
@@ -102,6 +118,10 @@ struct GPSEventPVTDegraded {
     GNSSData& data;
     GPSEventPVTDegraded(GNSSData& a) : data(a) {}
 };
+struct GPSEventRawMeasurement {
+    GNSSRawMeasurement& data;
+    GPSEventRawMeasurement(GNSSRawMeasurement& a) : data(a) {}
+};
 
 class GPSEventListener {
 public:
@@ -113,6 +133,7 @@ public:
     virtual void react(const GPSEventSatReport&) {}
     virtual void react(const GPSEventMaxNavSamples&) {}
     virtual void react(const GPSEventPVTDegraded&) {}
+    virtual void react(const GPSEventRawMeasurement&) {}
     virtual void react(const GPSEventMaxSatSamples&) {}
     virtual void react(const GPSEventDeviceInfoReady&) {}
 };
@@ -131,6 +152,10 @@ public:
     // Fastloc: query best degraded PVT accumulated during current acquisition
     virtual bool has_degraded_pvt() const { return false; }
     virtual GNSSData get_degraded_pvt() const { return {}; }
+
+    // CloudLocate: query latest raw GNSS measurement snapshot
+    virtual bool has_raw_measurement() const { return false; }
+    virtual GNSSRawMeasurement get_raw_measurement() const { return {}; }
 
     // Bridge/passthrough mode (default: not supported)
     virtual bool start_bridge(PassthroughCallback) { return false; }

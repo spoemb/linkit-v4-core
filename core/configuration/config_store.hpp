@@ -324,7 +324,8 @@ protected:
 		/* [215] SWS_DELAY_MIN_US */ 200U,    // Adaptive sample delay floor (µs)
 		/* [216] SWS_DELAY_MAX_US */ 10000U,  // Adaptive sample delay ceiling (µs)
 		/* [217] GNSS_ANO_STALE_DAYS */ 5U,   // ANO staleness threshold: 5 days (0=never discard)
-		/* [218] GNSS_FASTLOC_ENABLE */ (bool)false,  // Fastloc: send degraded GPS fix when quality filters fail
+		/* [218] GNSS_FASTLOC_MODE */ 0U,             // 0=OFF, 1=DEGRADED_PVT, 2=CLOUDLOCATE
+		/* [219] GNSS_CLOUDLOCATE_FORMAT */ 0U,        // 0=MEASC12, 1=MEAS20, 2=MEAS50
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,

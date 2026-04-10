@@ -514,6 +514,33 @@ void ArgosTxService::process_sensor_burst() {
 	unsigned int size_bits;
 	GPSLogEntry *gps = m_depth_pile_manager.retrieve_gps_single((unsigned int)argos_config.depth_pile);
 	if (gps != nullptr) {
+		// If GPS entry is a CloudLocate, send CloudLocate packet (extract blob from overlay)
+		if (gps->info.event_type == GPSEventType::CLOUDLOCATE) {
+			const uint8_t* overlay = reinterpret_cast<const uint8_t*>(&gps->info.lon);
+			uint8_t format_id = overlay[0];
+			const uint8_t* blob = &overlay[1];
+			unsigned int blob_size = (format_id == (uint8_t)BaseCloudLocateFormat::MEASC12) ? 12 : 20;
+
+			KineisPacket packet = ArgosPacketBuilder::build_cloudlocate_packet(
+				blob, blob_size, format_id, gps->info.batt_voltage, argos_config.is_lb);
+			size_bits = ArgosPacketBuilder::cloudlocate_packet_bits(format_id);
+
+			m_scheduled_mode = (format_id == (uint8_t)BaseCloudLocateFormat::MEASC12) ?
+				KineisModulation::LDK : KineisModulation::LDA2;
+			if (argos_config.adaptive_modulation) {
+				if (!ensure_modulation(m_scheduled_mode)) {
+					DEBUG_WARN("ArgosTxService::process_sensor_burst: CloudLocate modulation switch failed");
+					m_scheduled_mode = m_kineis.get_current_modulation();
+				}
+			}
+			DEBUG_INFO("ArgosTxService::process_sensor_burst: CloudLocate fmt=%u mode=%s data=%s",
+			           format_id, argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode),
+			           Binascii::hexlify(packet).c_str());
+			m_last_tx_had_gps = true;
+			m_kineis.send(m_scheduled_mode, packet, size_bits);
+			return;
+		}
+
 		// If GPS entry is a fastloc (degraded fix), send fastloc packet instead of sensor packet
 		if (gps->info.event_type == GPSEventType::FASTLOC) {
 			KineisPacket packet = ArgosPacketBuilder::build_fastloc_packet(gps, argos_config.is_lb);
@@ -615,8 +642,19 @@ void ArgosTxService::process_gnss_burst() {
 	if (v.size()) {
 		KineisPacket packet;
 
+		// Check if the latest entry is a CloudLocate
+		if (v.back()->info.event_type == GPSEventType::CLOUDLOCATE) {
+			const uint8_t* overlay = reinterpret_cast<const uint8_t*>(&v.back()->info.lon);
+			uint8_t format_id = overlay[0];
+			const uint8_t* blob = &overlay[1];
+			unsigned int blob_size = (format_id == (uint8_t)BaseCloudLocateFormat::MEASC12) ? 12 : 20;
+			packet = ArgosPacketBuilder::build_cloudlocate_packet(blob, blob_size, format_id,
+			                                                      v.back()->info.batt_voltage, argos_config.is_lb);
+			size_bits = ArgosPacketBuilder::cloudlocate_packet_bits(format_id);
+			m_scheduled_mode = (format_id == (uint8_t)BaseCloudLocateFormat::MEASC12) ?
+				KineisModulation::LDK : KineisModulation::LDA2;
 		// Check if the latest entry is a fastloc (degraded fix) — always LDA2
-		if (v.back()->info.event_type == GPSEventType::FASTLOC) {
+		} else if (v.back()->info.event_type == GPSEventType::FASTLOC) {
 			packet = ArgosPacketBuilder::build_fastloc_packet(v.back(), argos_config.is_lb);
 			size_bits = ArgosPacketBuilder::FASTLOC_PACKET_BITS;
 			m_scheduled_mode = KineisModulation::LDA2;
@@ -656,11 +694,54 @@ void ArgosTxService::process_doppler_burst() {
 	ArgosConfig argos_config;
 	configuration_store->get_argos_configuration(argos_config);
 
+	// Progressive CloudLocate: after the first Doppler ping, if CloudLocate is enabled
+	// and raw measurements are available, send a CloudLocate packet instead of Doppler.
+	unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
+	if (fastloc_mode == (unsigned int)BaseFastlocMode::CLOUDLOCATE &&
+	    m_doppler_burst_count > 0 && gps_device && gps_device->has_raw_measurement()) {
+		GNSSRawMeasurement raw = gps_device->get_raw_measurement();
+		unsigned int cl_format = configuration_store->read_param<unsigned int>(ParamID::GNSS_CLOUDLOCATE_FORMAT);
+
+		// Select best available blob: prefer configured format, fallback to MEAS20 then MEASC12
+		const uint8_t* blob = nullptr;
+		unsigned int blob_size = 0;
+		uint8_t format_id = 0;
+		if (cl_format == (unsigned int)BaseCloudLocateFormat::MEASC12 && raw.has_measc12) {
+			blob = raw.measc12; blob_size = 12; format_id = (uint8_t)BaseCloudLocateFormat::MEASC12;
+		} else if (raw.has_meas20) {
+			blob = raw.meas20; blob_size = 20; format_id = (uint8_t)BaseCloudLocateFormat::MEAS20;
+		} else if (raw.has_measc12) {
+			blob = raw.measc12; blob_size = 12; format_id = (uint8_t)BaseCloudLocateFormat::MEASC12;
+		}
+
+		if (blob) {
+			KineisPacket packet = ArgosPacketBuilder::build_cloudlocate_packet(blob, blob_size, format_id,
+			                                                                   service_get_voltage(), argos_config.is_lb);
+			size_bits = ArgosPacketBuilder::cloudlocate_packet_bits(format_id);
+
+			KineisModulation tx_mode = (format_id == (uint8_t)BaseCloudLocateFormat::MEASC12) ?
+				KineisModulation::LDK : KineisModulation::LDA2;
+			if (argos_config.adaptive_modulation) {
+				if (!ensure_modulation(tx_mode)) {
+					DEBUG_WARN("ArgosTxService::process_doppler_burst: CloudLocate modulation switch failed");
+					tx_mode = m_kineis.get_current_modulation();
+				}
+			}
+
+			DEBUG_INFO("ArgosTxService::process_doppler_burst: CLOUDLOCATE #%u fmt=%u sz=%u mode=%s",
+			           m_doppler_burst_count + 1, format_id, blob_size,
+			           argos_modulation_to_string((BaseArgosModulation)tx_mode));
+			m_last_tx_had_gps = true;
+			m_kineis.send(tx_mode, packet, size_bits);
+			return;
+		}
+	}
+
 	// Progressive fastloc: after the first Doppler ping, if fastloc is enabled
 	// and the GPS has a degraded PVT available, send a fastloc packet instead
 	// of Doppler. The position improves over time as the GPS refines its fix.
-	bool fastloc_en = configuration_store->read_param<bool>(ParamID::GNSS_FASTLOC_ENABLE);
-	if (fastloc_en && m_doppler_burst_count > 0 && gps_device && gps_device->has_degraded_pvt()) {
+	if (fastloc_mode >= (unsigned int)BaseFastlocMode::DEGRADED_PVT &&
+	    m_doppler_burst_count > 0 && gps_device && gps_device->has_degraded_pvt()) {
 		GNSSData degraded = gps_device->get_degraded_pvt();
 
 		// Build a temporary GPSLogEntry from the degraded PVT
@@ -1051,6 +1132,47 @@ KineisPacket ArgosPacketBuilder::build_fastloc_packet(GPSLogEntry* gps_entry,
 
 	DEBUG_INFO("ArgosPacketBuilder::build_fastloc_packet: fixType=%u numSV=%u hAcc=%um pDOP=%.1f batt=%u",
 	           fixType, numSV, hAcc_m, (double)gps_entry->info.pDOP, (unsigned int)gps_entry->info.batt_voltage);
+
+	return packet;
+}
+
+unsigned int ArgosPacketBuilder::cloudlocate_packet_bits(uint8_t format_id) {
+	if (format_id == (uint8_t)BaseCloudLocateFormat::MEASC12)
+		return CLOUDLOCATE_MEASC12_BITS;
+	return CLOUDLOCATE_MEAS20_BITS;
+}
+
+KineisPacket ArgosPacketBuilder::build_cloudlocate_packet(const uint8_t* blob, unsigned int blob_size,
+		uint8_t format_id, unsigned int battery_voltage, bool is_low_battery) {
+
+	DEBUG_TRACE("ArgosPacketBuilder::build_cloudlocate_packet: format=%u blob_size=%u", format_id, blob_size);
+	unsigned int total_bits = cloudlocate_packet_bits(format_id);
+	unsigned int total_bytes = (total_bits + 7) / 8;
+
+	KineisPacket packet;
+	packet.assign(total_bytes, 0);
+	unsigned int base_pos = 0;
+
+	// Header (3 bits) — type 111 = CloudLocate
+	PACK_BITS(CLOUDLOCATE_PACKET_HEADER, packet, base_pos, 3);
+
+	// Format (2 bits): 00=MEASC12, 01=MEAS20
+	PACK_BITS((unsigned int)format_id, packet, base_pos, 2);
+
+	// Raw GNSS measurement blob
+	for (unsigned int i = 0; i < blob_size; i++) {
+		PACK_BITS((unsigned int)blob[i], packet, base_pos, 8);
+	}
+
+	// Battery voltage (7 bits) + low battery (1 bit)
+	unsigned int batt = convert_battery_voltage(battery_voltage);
+	PACK_BITS(batt, packet, base_pos, 7);
+	PACK_BITS(is_low_battery ? 1U : 0U, packet, base_pos, 1);
+
+	// Remaining bits are zero-padded (already zeroed by assign)
+
+	DEBUG_INFO("ArgosPacketBuilder::build_cloudlocate_packet: format=%u blob_size=%u batt=%u data=%s",
+	           format_id, blob_size, battery_voltage, Binascii::hexlify(packet).c_str());
 
 	return packet;
 }

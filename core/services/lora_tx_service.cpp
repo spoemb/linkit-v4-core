@@ -337,6 +337,45 @@ KineisPacket LoRaPacketBuilder::build_status_packet(unsigned int battery_voltage
 	return packet;
 }
 
+KineisPacket LoRaPacketBuilder::build_cloudlocate_packet(const uint8_t* blob, unsigned int blob_size,
+		uint8_t format_id, bool is_low_battery, unsigned int battery_voltage,
+		unsigned int& size_bits) {
+
+	DEBUG_TRACE("LoRaPacketBuilder::build_cloudlocate_packet: format=%u blob_size=%u", format_id, blob_size);
+
+	// type(3) + format(2) + flags(4) + voltage(7) + blob(blob_size*8)
+	size_bits = BITS_PKT_TYPE + BITS_CL_FORMAT + BITS_FLAGS + BITS_VOLTAGE + (blob_size * 8);
+	unsigned int packet_bytes = (size_bits + 7) / 8;
+	KineisPacket packet;
+	packet.assign(packet_bytes, 0);
+
+	unsigned int base_pos = 0;
+
+	// Packet type (3 bits)
+	PACK_BITS((unsigned int)PKT_TYPE_CLOUDLOCATE, packet, base_pos, BITS_PKT_TYPE);
+
+	// Format (2 bits): 00=MEASC12, 01=MEAS20, 10=MEAS50
+	PACK_BITS((unsigned int)format_id, packet, base_pos, BITS_CL_FORMAT);
+
+	// Flags (4 bits): out_of_zone=0, low_battery, valid=0, reserved=0
+	unsigned int flags = (is_low_battery ? 1U : 0U) << 2;
+	PACK_BITS(flags, packet, base_pos, BITS_FLAGS);
+
+	// Battery voltage (7 bits)
+	unsigned int batt = convert_battery_voltage(battery_voltage);
+	PACK_BITS(batt, packet, base_pos, BITS_VOLTAGE);
+
+	// Raw GNSS measurement blob
+	for (unsigned int i = 0; i < blob_size; i++) {
+		PACK_BITS((unsigned int)blob[i], packet, base_pos, 8);
+	}
+
+	DEBUG_INFO("LoRaPacketBuilder::build_cloudlocate_packet: format=%u blob_size=%u data=%s sz=%u bits",
+			format_id, blob_size, Binascii::hexlify(packet).c_str(), size_bits);
+
+	return packet;
+}
+
 // ============================================================================
 // LoRaTxScheduler
 // ============================================================================
@@ -733,8 +772,16 @@ void LoRaTxService::process_gps_burst() {
 		KineisPacket packet;
 		unsigned int size_bits;
 
+		// CloudLocate entries: send as dedicated CloudLocate packet
+		if (v.back()->info.event_type == GPSEventType::CLOUDLOCATE) {
+			const uint8_t* overlay = reinterpret_cast<const uint8_t*>(&v.back()->info.lon);
+			uint8_t format_id = overlay[0];
+			const uint8_t* blob = &overlay[1];
+			unsigned int blob_size = (format_id == (uint8_t)BaseCloudLocateFormat::MEASC12) ? 12 : 20;
+			packet = LoRaPacketBuilder::build_cloudlocate_packet(blob, blob_size, format_id,
+					argos_config.is_lb, v.back()->info.batt_voltage, size_bits);
 		// Fastloc entries: send as unified sensor packet (GPS + fastloc quality metadata)
-		if (v.back()->info.event_type == GPSEventType::FASTLOC) {
+		} else if (v.back()->info.event_type == GPSEventType::FASTLOC) {
 			packet = LoRaPacketBuilder::build_sensor_packet(v.back(),
 					nullptr, nullptr, nullptr, nullptr, nullptr,
 					argos_config.is_out_of_zone, argos_config.is_lb,
@@ -771,6 +818,22 @@ void LoRaTxService::process_sensor_burst() {
 	GPSLogEntry* gps = m_depth_pile_manager.retrieve_gps_single((unsigned int)argos_config.depth_pile);
 
 	if (gps != nullptr) {
+		// CloudLocate entries: send as dedicated CloudLocate packet
+		if (gps->info.event_type == GPSEventType::CLOUDLOCATE) {
+			const uint8_t* overlay = reinterpret_cast<const uint8_t*>(&gps->info.lon);
+			uint8_t format_id = overlay[0];
+			const uint8_t* blob = &overlay[1];
+			unsigned int blob_size = (format_id == (uint8_t)BaseCloudLocateFormat::MEASC12) ? 12 : 20;
+			unsigned int size_bits;
+			KineisPacket packet = LoRaPacketBuilder::build_cloudlocate_packet(blob, blob_size, format_id,
+					service_is_battery_level_low(), gps->info.batt_voltage, size_bits);
+			DEBUG_INFO("LoRaTxService::process_sensor_burst: CloudLocate fmt=%u data=%s",
+					format_id, Binascii::hexlify(packet).c_str());
+			m_last_tx_had_gps = true;
+			m_device.send(KineisModulation::LDA2, packet, size_bits);
+			return;
+		}
+
 		// Fastloc entries are handled transparently by build_sensor_packet
 		// (the fastloc flag bit is set automatically when event_type == FASTLOC)
 		unsigned int size_bits;
@@ -809,11 +872,47 @@ void LoRaTxService::process_status_burst() {
 	service_update_battery();
 	unsigned int size_bits;
 
+	// Progressive CloudLocate: after the first status ping, if CloudLocate is enabled
+	// and raw measurements are available, send a CloudLocate packet.
+	unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
+	if (fastloc_mode == (unsigned int)BaseFastlocMode::CLOUDLOCATE &&
+	    m_status_burst_count > 0 && gps_device && gps_device->has_raw_measurement()) {
+		GNSSRawMeasurement raw = gps_device->get_raw_measurement();
+		unsigned int cl_format = configuration_store->read_param<unsigned int>(ParamID::GNSS_CLOUDLOCATE_FORMAT);
+
+		const uint8_t* blob = nullptr;
+		unsigned int blob_size = 0;
+		uint8_t format_id = 0;
+
+		// Select blob based on configured format (MEAS50 available live for LoRa)
+		if (cl_format == (unsigned int)BaseCloudLocateFormat::MEAS50 && raw.has_meas50) {
+			blob = raw.meas50; blob_size = 50; format_id = (uint8_t)BaseCloudLocateFormat::MEAS50;
+		} else if (cl_format == (unsigned int)BaseCloudLocateFormat::MEAS20 && raw.has_meas20) {
+			blob = raw.meas20; blob_size = 20; format_id = (uint8_t)BaseCloudLocateFormat::MEAS20;
+		} else if (raw.has_measc12) {
+			blob = raw.measc12; blob_size = 12; format_id = (uint8_t)BaseCloudLocateFormat::MEASC12;
+		} else if (raw.has_meas20) {
+			blob = raw.meas20; blob_size = 20; format_id = (uint8_t)BaseCloudLocateFormat::MEAS20;
+		}
+
+		if (blob) {
+			KineisPacket packet = LoRaPacketBuilder::build_cloudlocate_packet(
+				blob, blob_size, format_id,
+				service_is_battery_level_low(), service_get_voltage(), size_bits);
+			DEBUG_INFO("LoRaTxService::process_status_burst: CLOUDLOCATE #%u fmt=%u sz=%u data=%s",
+			           m_status_burst_count + 1, format_id, blob_size,
+			           Binascii::hexlify(packet).c_str());
+			m_last_tx_had_gps = true;
+			m_device.send(KineisModulation::LDA2, packet, size_bits);
+			return;
+		}
+	}
+
 	// Progressive fastloc: after the first status ping, if fastloc is enabled
 	// and the GPS has a degraded PVT available, send a fastloc sensor packet
 	// instead of status-only. Same logic as Argos process_doppler_burst().
-	bool fastloc_en = configuration_store->read_param<bool>(ParamID::GNSS_FASTLOC_ENABLE);
-	if (fastloc_en && m_status_burst_count > 0 && gps_device && gps_device->has_degraded_pvt()) {
+	if (fastloc_mode >= (unsigned int)BaseFastlocMode::DEGRADED_PVT &&
+	    m_status_burst_count > 0 && gps_device && gps_device->has_degraded_pvt()) {
 		GNSSData degraded = gps_device->get_degraded_pvt();
 
 		// Build a temporary GPSLogEntry from the degraded PVT
