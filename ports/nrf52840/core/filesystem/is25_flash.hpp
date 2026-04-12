@@ -25,7 +25,7 @@ public:
 	 * @brief Initialise the IS25LP128F: QSPI peripheral, device ID check, QSPI mode enable.
 	 * @return true on success, false if QSPI init or device ID verification failed.
 	 */
-	bool init();
+	[[nodiscard]] bool init();
 
 	/// @brief Returns true if init() completed successfully.
 	bool is_init() const { return m_is_init; }

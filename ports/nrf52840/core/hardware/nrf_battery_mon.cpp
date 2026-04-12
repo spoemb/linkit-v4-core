@@ -140,7 +140,7 @@ void NrfBatteryMonitor::internal_update()
 	uint8_t  level = convert_level(mv);
 
 	// Check CRC of previously stored filtered values (.noinit RAM)
-	uint16_t crc = crc16_compute((const uint8_t *)m_filtered_values, sizeof(m_filtered_values), nullptr);
+	uint16_t crc = crc16_compute(reinterpret_cast<const uint8_t *>(const_cast<const uint16_t *>(m_filtered_values)), sizeof(m_filtered_values), nullptr);
 	if (crc == m_crc) {
 		// Previous values valid — apply hysteresis
 		m_filtered_values[0] = mv;
@@ -160,7 +160,7 @@ void NrfBatteryMonitor::internal_update()
 	}
 
 	// Update CRC
-	m_crc = crc16_compute((const uint8_t *)m_filtered_values, sizeof(m_filtered_values), nullptr);
+	m_crc = crc16_compute(reinterpret_cast<const uint8_t *>(const_cast<const uint16_t *>(m_filtered_values)), sizeof(m_filtered_values), nullptr);
 
 	// Apply to base class members
 	m_last_voltage_mv = mv;

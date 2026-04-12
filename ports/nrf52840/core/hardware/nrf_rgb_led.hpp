@@ -54,6 +54,11 @@ public:
 	 * @brief Bare-metal LED color set — no timer/interrupt dependency.
 	 *
 	 * Safe for fault handlers and ISR context.  Active-low: clear = ON, set = OFF.
+	 *
+	 * @param pin_red    BSP GPIO index for red LED.
+	 * @param pin_green  BSP GPIO index for green LED.
+	 * @param pin_blue   BSP GPIO index for blue LED.
+	 * @param color      Color to display.
 	 */
 	static void set_color_raw(int pin_red, int pin_green, int pin_blue, RGBLedColor color) {
 		bool r = false, g = false, b = false;

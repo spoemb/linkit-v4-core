@@ -23,7 +23,7 @@ public:
 	/// @brief Opaque handle to a pending schedule.  nullopt = invalid/cancelled.
 	using TimerHandle = std::optional<unsigned int>;
 
-	virtual ~Timer() {}
+	virtual ~Timer() = default;
 
 	/// @brief Milliseconds since start().
 	virtual uint64_t get_counter() = 0;

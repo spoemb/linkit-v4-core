@@ -10,8 +10,16 @@
 #include "bsp.hpp"
 #include "nrf_gpio.h"
 #include "nrfx_spim.h"
+#include "nrf_delay.h"
 #include "error.hpp"
 #include "debug.hpp"
+
+// CS setup/hold time for SPI slave devices.
+// At high clock rates (>= 1 MHz), the slave needs time between CS assertion
+// and the first SCK edge (setup) and between the last SCK edge and CS
+// de-assertion (hold). 2 µs is conservative and covers STM32WL SPI slave.
+static constexpr unsigned int SPI_CS_SETUP_US = 2;
+static constexpr unsigned int SPI_CS_HOLD_US  = 2;
 
 /// @brief Cached CS pin per SPI instance.  Default 0xFF = NRFX_SPIM_PIN_NOT_USED.
 ///        Set by NrfSPIM constructor.  activate_cs/deactivate_cs skip if 0xFF.
@@ -66,6 +74,7 @@ NrfSPIM::NrfSPIM(unsigned int instance) : m_instance(instance)
 		DEBUG_ERROR("NrfSPIM: init failed instance %u (0x%08X)", instance, err);
 		throw ErrorCode::RESOURCE_NOT_AVAILABLE;
 	}
+
 }
 
 NrfSPIM::~NrfSPIM()
@@ -78,7 +87,9 @@ int NrfSPIM::transfer(const uint8_t *tx_data, uint8_t *rx_data, uint16_t size)
 	nrfx_spim_xfer_desc_t xfer_desc = NRFX_SPIM_XFER_TRX(tx_data, size, rx_data, size);
 
 	activate_cs(m_instance);
+	nrf_delay_us(SPI_CS_SETUP_US);   // CS-to-SCK setup time for slave
 	nrfx_err_t ret = nrfx_spim_xfer(&BSP::SPI_Inits[m_instance].spim, &xfer_desc, 0);
+	nrf_delay_us(SPI_CS_HOLD_US);    // SCK-to-CS hold time for slave
 	deactivate_cs(m_instance);
 
 	if (ret != NRFX_SUCCESS) {
@@ -93,6 +104,7 @@ int NrfSPIM::transfer_continuous(const uint8_t *tx_data, uint8_t *rx_data, uint1
 	nrfx_spim_xfer_desc_t xfer_desc = NRFX_SPIM_XFER_TRX(tx_data, size, rx_data, size);
 
 	activate_cs(m_instance);
+	nrf_delay_us(SPI_CS_SETUP_US);
 	nrfx_err_t ret = nrfx_spim_xfer(&BSP::SPI_Inits[m_instance].spim, &xfer_desc, 0);
 
 	if (ret != NRFX_SUCCESS) {

@@ -128,12 +128,20 @@ void NrfSwitch::process_event(bool /* state */) {
 		m_debouncing = false;
 		nrfx_gpiote_in_event_enable(BSP::GPIO_Inits[m_pin].pin_number, true);
 	}, now + m_hysteresis_time_ms);
+
+	// If schedule list was full, the debounce callback won't fire.
+	// Recover immediately to avoid permanent reed switch lockout.
+	if (!m_timer_handle.has_value()) {
+		m_debouncing = false;
+		nrfx_gpiote_in_event_enable(BSP::GPIO_Inits[m_pin].pin_number, true);
+	}
 }
 
 /// @brief Disable GPIOTE, cancel pending debounce timer, force state to off.
 void NrfSwitch::pause() {
 	if (m_is_paused) return;
 	system_timer->cancel_schedule(m_timer_handle);
+	m_debouncing = false;  // Reset debounce state — critical for resume() to work
 	nrfx_gpiote_in_event_disable(BSP::GPIO_Inits[m_pin].pin_number);
 	nrfx_gpiote_in_uninit(BSP::GPIO_Inits[m_pin].pin_number);
 	pin_map_remove(BSP::GPIO_Inits[m_pin].pin_number);
@@ -149,9 +157,10 @@ void NrfSwitch::resume() {
 		&BSP::GPIO_Inits[m_pin].gpiote_in_config, nrfx_gpiote_switch_handler);
 	if (err != NRFX_SUCCESS) {
 		pin_map_remove(BSP::GPIO_Inits[m_pin].pin_number);
-		DEBUG_ERROR("NrfSwitch: GPIOTE init failed pin %u (0x%08X)", m_pin, err);
-		throw ErrorCode::RESOURCE_NOT_AVAILABLE;
+		DEBUG_ERROR("NrfSwitch: GPIOTE resume failed pin %u (0x%08X) — switch inactive", m_pin, err);
+		return;  // Degrade gracefully — switch stays paused, no throw
 	}
+	m_debouncing = false;  // Ensure clean state on resume
 	// Read actual pin state BEFORE enabling events to suppress spurious initial event
 	m_current_state = (GPIOPins::value(m_pin) == m_active_state) ? 1 : 0;
 	nrfx_gpiote_in_event_enable(BSP::GPIO_Inits[m_pin].pin_number, true);

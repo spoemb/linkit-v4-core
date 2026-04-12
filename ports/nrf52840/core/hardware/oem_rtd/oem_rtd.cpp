@@ -1,5 +1,10 @@
+/**
+ * @file oem_rtd.cpp
+ * @brief Atlas Scientific OEM RTD temperature sensor — I2C big-endian register driver.
+ */
+
+#include <cstdint>
 #include <array>
-#include <stdint.h>
 #include "oem_rtd.hpp"
 #include "nrf_i2c.hpp"
 #include "bsp.hpp"
@@ -12,15 +17,18 @@ OEM_RTD_Sensor::OEM_RTD_Sensor() : Sensor("RTD") {
 	readReg<uint8_t>(RegAddr::LED_CTRL);
 }
 
+/// @brief Write a big-endian register value via I2C.
+/// @param address  Register address.
+/// @param value    Value to write (byte-swapped to big-endian before sending).
 template <typename T>
 void OEM_RTD_Sensor::writeReg(RegAddr address, T value)
 {
     std::array<uint8_t, 1 + sizeof(T)> buffer;
-    *buffer.data() = (uint8_t)address;
+    buffer[0] = static_cast<uint8_t>(address);
 
-    // Reverse the endianness
+    // Reverse byte order (little-endian ARM → big-endian I2C)
     for (size_t i = 0; i < sizeof(T); ++i)
-        buffer.data()[i + 1] = ((uint8_t *)(&value))[sizeof(T) - 1 - i];
+        buffer[i + 1] = reinterpret_cast<uint8_t *>(&value)[sizeof(T) - 1 - i];
 
     NrfI2C::write(OEM_RTD_DEVICE, OEM_RTD_DEVICE_ADDR, buffer.data(), buffer.size(), false);
 }
@@ -31,16 +39,20 @@ T OEM_RTD_Sensor::readReg(RegAddr address)
     T big_endian;
     T little_endian;
 
-    NrfI2C::write(OEM_RTD_DEVICE, OEM_RTD_DEVICE_ADDR, (const uint8_t *)&address, sizeof(address), false);
-    NrfI2C::read(OEM_RTD_DEVICE, OEM_RTD_DEVICE_ADDR, (uint8_t *)&big_endian, sizeof(T));
-    
-    // Reverse the endianness
+    NrfI2C::write(OEM_RTD_DEVICE, OEM_RTD_DEVICE_ADDR, reinterpret_cast<const uint8_t *>(&address), sizeof(address), false);
+    NrfI2C::read(OEM_RTD_DEVICE, OEM_RTD_DEVICE_ADDR, reinterpret_cast<uint8_t *>(&big_endian), sizeof(T));
+
+    // Reverse byte order (big-endian I2C → little-endian ARM)
     for (size_t i = 0; i < sizeof(T); ++i)
-        ((uint8_t *)(&little_endian))[i] = ((uint8_t *)(&big_endian))[sizeof(T) - 1 - i];
+        reinterpret_cast<uint8_t *>(&little_endian)[i] = reinterpret_cast<uint8_t *>(&big_endian)[sizeof(T) - 1 - i];
 
     return little_endian;
 }
 
+/// @brief Read temperature: wake device, trigger reading, poll for result, sleep.
+/// @param offset  Unused (only channel 0).
+/// @return Temperature in °C (value / 1000.0).
+/// @throws ErrorCode::I2C_COMMS_ERROR on timeout (5s).
 double OEM_RTD_Sensor::read(unsigned int)
 {
     // Turn off the LED when sampling
@@ -67,9 +79,12 @@ double OEM_RTD_Sensor::read(unsigned int)
 
     int32_t reading_u32 = readReg<int32_t>(RegAddr::RTD_READING);
 
-    return (double)reading_u32 / 1000.0;
+    return static_cast<double>(reading_u32) / 1000.0;
 }
 
+/// @brief Calibration commands: 0=calibrate at known temp, 1=clear calibration.
+/// @param value              Temperature for calibration (offset=0), unused for offset=1.
+/// @param calibration_offset 0=calibrate, 1=clear.
 void OEM_RTD_Sensor::calibration_write(const double, const unsigned int calibration_offset)
 {
 	// We always calibrate to 0C based on ice melting in water temperature
@@ -89,6 +104,5 @@ void OEM_RTD_Sensor::calibration_write(const double, const unsigned int calibrat
 		break;
 	default:
     	throw ErrorCode::RESOURCE_NOT_AVAILABLE;
-		break;
 	}
 }

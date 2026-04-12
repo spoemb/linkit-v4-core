@@ -9,7 +9,7 @@
 
 class SPIM {
 public:
-	virtual ~SPIM() {}
+	virtual ~SPIM() = default;
 
 	/// @brief Full-duplex SPI transfer (CS asserted, then deasserted).
 	virtual int transfer(const uint8_t *tx_data, uint8_t *rx_data, uint16_t size) = 0;

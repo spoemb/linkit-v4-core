@@ -347,8 +347,13 @@ enum class ParamID {
 	GNSS_ANO_STALE_DAYS                      = 217,  // uint: ANO staleness threshold in days (0=use all data regardless of age)
 	GNSS_FASTLOC_MODE                        = 218,  // uint8: 0=OFF, 1=DEGRADED_PVT, 2=CLOUDLOCATE
 	GNSS_CLOUDLOCATE_FORMAT                  = 219,  // uint8: 0=MEASC12 (12B), 1=MEAS20 (20B), 2=MEAS50 (50B, LoRa only)
+	// === AXL FIFO batch mode (slots 220-221, guarded by ENABLE_AXL_SENSOR) ===
+#if ENABLE_AXL_SENSOR
+	AXL_FIFO_ENABLE                          = 220,  // bool: false=single sample (default), true=FIFO batch averaging
+	AXL_FIFO_SAMPLE_COUNT                    = 221,  // uint: samples per batch, 1-170 (default 50)
+#endif
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 220,
+	__PARAM_SIZE                             = 222,
 	__NULL_PARAM                             = 0xFFFF
 };
 

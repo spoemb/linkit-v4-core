@@ -7,7 +7,7 @@
 
 class MemoryAccess {
 public:
-	virtual ~MemoryAccess() {}
+	virtual ~MemoryAccess() = default;
 
 	/**
 	 * @brief Validate address range and return a physical pointer.

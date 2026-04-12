@@ -52,6 +52,12 @@ private:
 	bool m_credentials_written = false;
 	bool m_rconf_recovery_attempted = false;
 
+	/// @brief Consecutive error count — after MAX errors, enter long cooldown to prevent SPI spam.
+	unsigned int m_error_count = 0;
+	static constexpr unsigned int SMD_MAX_CONSECUTIVE_ERRORS = 5;
+	static constexpr unsigned int SMD_ERROR_COOLDOWN_MS = 30 * 60 * 1000;  ///< 30 min cooldown
+	uint64_t m_cooldown_until = 0;  ///< Timestamp (ms) until which SMD operations are blocked
+
 	// TX state
 	KineisPacket m_tx_buffer;
 	KineisPacket m_packet_buffer;

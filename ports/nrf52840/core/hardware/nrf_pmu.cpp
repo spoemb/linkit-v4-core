@@ -307,19 +307,18 @@ uint64_t PMU::get_timestamp_ms() {
 /// @brief Print saved crash trace if CRC is valid, then invalidate to avoid re-printing.
 void PMU::print_stack() {
 	// Check CRC matches
-	if (m_crc == crc16_compute((const uint8_t *)&m_callstack, sizeof(m_callstack), nullptr))
+	if (m_crc == crc16_compute(reinterpret_cast<const uint8_t *>(const_cast<const uint32_t *>(m_callstack)), sizeof(m_callstack), nullptr))
 	{
-		// Dump the information
 		DEBUG_INFO("PMU post-reset trace available");
 		DEBUG_INFO("PMU reset type: %s", reset_type_to_string(m_type));
 		for (unsigned int i = 0; i < (sizeof(m_callstack) / sizeof(m_callstack[0])); i++)
-			DEBUG_INFO("PMU PC[%u] = %08x", i, (unsigned int)m_callstack[i]);
+			DEBUG_INFO("PMU PC[%u] = %08x", i, static_cast<unsigned int>(m_callstack[i]));
 	} else {
-		DEBUG_TRACE("PMU post-reset trace unavailable (crc=%04x)", (unsigned int)m_crc);
+		DEBUG_TRACE("PMU post-reset trace unavailable (crc=%04x)", static_cast<unsigned int>(m_crc));
 	}
 
-	m_crc = 0; // Invalidate CRC
-	memset((void *)m_callstack, 0, sizeof(m_callstack));
+	m_crc = 0;
+	memset(const_cast<uint32_t *>(m_callstack), 0, sizeof(m_callstack));
 }
 
 /// @brief True if GPREGRET2 indicated a firmware update was applied before this boot.

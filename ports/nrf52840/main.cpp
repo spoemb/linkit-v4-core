@@ -127,8 +127,9 @@
 #endif
 
 // --- Utilities ---
+#include <algorithm>
+#include <cstddef>
 #include <cstring>
-#include <type_traits>
 #include "heap.h"
 #include "etl/error_handler.h"
 
@@ -250,7 +251,9 @@ extern "C" void vApplicationMallocFailedHook() {
 #endif
 }
 
-/** @brief ETL library error callback — logs the exception then resets or blinks. */
+/** @brief ETL library error callback — logs the exception then resets or blinks.
+ *  @param e  ETL exception with file/line info.
+ */
 void etl_error_handler(const etl::exception& e)
 {
 	DEBUG_TRACE("ETL error: %s in %s : %u", e.what(), e.file_name(), e.line_number());
@@ -267,6 +270,10 @@ void etl_error_handler(const etl::exception& e)
  * Overrides the weak newlib _write() so that printf / std::cout output is directed
  * to UART, USB CDC, or BLE NUS depending on g_debug_mode.
  *
+ * @param file  File descriptor (unused — all output goes to debug channel).
+ * @param ptr   Data buffer to write.
+ * @param len   Number of bytes to write.
+ * @return Always returns @p len (bytes accepted, even if output is suppressed).
  * @note Safe to call from ISR context only for UART and USB CDC paths.
  *       BLE NUS path checks __get_IPSR() and skips if in interrupt context.
  */
@@ -771,7 +778,9 @@ static void init_sensors(LFSFileSystem& lfs_file_system)
 	PressureSensorDevice *pressure_sensor_devices[BSP::I2C_TOTAL_NUMBER] = {nullptr};
 #ifndef DUMMY_PRESSURE_SENSOR
 	// Static storage for pressure sensors — one per I2C bus, no heap allocation
-	using PressureStorage = std::aligned_union_t<0, LPS28DFW, Bar100, MS58xxLL>;
+	static constexpr size_t PressureStorageSize = std::max({sizeof(LPS28DFW), sizeof(Bar100), sizeof(MS58xxLL)});
+	static constexpr size_t PressureStorageAlign = std::max({alignof(LPS28DFW), alignof(Bar100), alignof(MS58xxLL)});
+	struct alignas(PressureStorageAlign) PressureStorage { std::byte data[PressureStorageSize]; };
 	static PressureStorage pressure_storage[BSP::I2C_TOTAL_NUMBER];
 
 	// Sensor detection order — LPS28DFW is default for RSPB board
@@ -824,7 +833,8 @@ static void init_sensors(LFSFileSystem& lfs_file_system)
 #if ENABLE_CDT_SENSOR
 	DEBUG_TRACE("AD5933...");
 	AD5933 *ad5933_devices[BSP::I2C_TOTAL_NUMBER];
-	static std::aligned_union_t<0, AD5933LL> ad5933_storage[BSP::I2C_TOTAL_NUMBER];
+	struct alignas(AD5933LL) AD5933Storage { std::byte data[sizeof(AD5933LL)]; };
+	static AD5933Storage ad5933_storage[BSP::I2C_TOTAL_NUMBER];
 	for (unsigned int i = 0; i < BSP::I2C_TOTAL_NUMBER; i++) {
 		try {
 			ad5933_devices[i] = new (&ad5933_storage[i]) AD5933LL(i, AD5933_ADDRESS);

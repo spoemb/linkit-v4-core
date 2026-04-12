@@ -177,7 +177,7 @@ namespace BSP
                 .ss_active_high = false,
                 .irq_priority = INTERRUPT_PRIORITY_SPI_2,
                 .orc = 0xFF,
-                .frequency = NRF_SPIM_FREQ_2M,   // 2 MHz - reduces SPI vulnerability window during RF TX
+                .frequency = NRF_SPIM_FREQ_250K,
                 .mode = NRF_SPIM_MODE_0,
                 .bit_order = NRF_SPIM_BIT_ORDER_MSB_FIRST
             }

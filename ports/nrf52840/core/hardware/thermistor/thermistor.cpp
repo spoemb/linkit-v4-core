@@ -1,4 +1,10 @@
-#include <stdint.h>
+/**
+ * @file thermistor.cpp
+ * @brief NTC thermistor sensor — SAADC reading + Beta equation conversion.
+ */
+
+#include <cstdint>
+#include <cmath>
 
 #include "thermistor.hpp"
 #include "nrfx_saadc.h"
@@ -6,12 +12,13 @@
 #include "error.hpp"
 #include "debug.hpp"
 #include "nrf_delay.h"
-#include "gpio.hpp"  // For SensorsPowerGuard (VSENSORS management)
-#include <cmath>
+#include "gpio.hpp"
 
-// ADC constants
-#define ADC_MAX_VALUE (16384)      // 2^14
-#define ADC_REFERENCE (0.6f)       // 0.6v internal reference
+/// @name ADC constants
+/// @{
+static constexpr int   ADC_MAX_VALUE = 16384;  ///< 2^14 (14-bit resolution)
+static constexpr float ADC_REFERENCE = 0.6f;   ///< Internal reference voltage (V)
+/// @}
 
 static void nrfx_saadc_event_handler(nrfx_saadc_evt_t const *p_event)
 {
@@ -23,17 +30,18 @@ Thermistor::Thermistor(uint8_t adc_channel) : Sensor("THERMISTOR"), m_cal(Calibr
 	DEBUG_INFO("THERMISTOR::Init: ADC Channel %u", adc_channel);
 	adc_calibration();
 	try {
-		offset_temp = (double)m_cal.read((unsigned int)CalibrationPoint::TEMP_THRESHOLD);
-		DEBUG_TRACE("THERMISTOR::Init: Reading calibration offset %lf", offset_temp);
+		m_offset_temp = m_cal.read(static_cast<unsigned int>(CalibrationPoint::TEMP_THRESHOLD));
+		DEBUG_TRACE("THERMISTOR::Init: Reading calibration offset %lf", m_offset_temp);
 	} catch (...) {
 		DEBUG_WARN("THERMISTOR::Init: Failed to read calibration offset");
-		offset_temp = 0.0;
-		m_cal.write((unsigned int)CalibrationPoint::TEMP_THRESHOLD, 0.0);
+		m_offset_temp = 0.0;
+		m_cal.write(static_cast<unsigned int>(CalibrationPoint::TEMP_THRESHOLD), 0.0);
 		m_cal.save();
 	}
 	m_adc_channel = adc_channel;
 }
 
+/// @brief Run SAADC offset calibration with 200 ms timeout.
 void Thermistor::adc_calibration()
 {
 	DEBUG_TRACE("THERMISTOR::%s: Calibrating ADC...", __func__);
@@ -55,6 +63,8 @@ void Thermistor::adc_calibration()
 	DEBUG_INFO("THERMISTOR::%s: Calibration done!", __func__);
 }
 
+/// @brief Sample SAADC and return voltage in millivolts.
+/// @return ADC reading in mV.
 float Thermistor::sample_adc()
 {
 	if (!m_is_init) {
@@ -76,6 +86,9 @@ float Thermistor::sample_adc()
 	return adc_voltage * 1000.0f;  // Return millivolts
 }
 
+/// @brief Convert ADC millivolts to temperature using Beta equation with range-dependent B-values.
+/// @param adc  ADC reading in millivolts.
+/// @return Temperature in °C (with calibration offset), or NAN on invalid reading.
 double Thermistor::convert_temp(float adc)
 {
 	// Convert ADC value (mV) to Voltage (V)
@@ -110,10 +123,14 @@ double Thermistor::convert_temp(float adc)
 	double tempK = 1.0 / ((1.0 / T0) + (1.0 / B) * log(r_therm / R0));
 	double tempC = tempK - 273.15;
 
-	tempC = tempC + offset_temp;
+	tempC = tempC + m_offset_temp;
 	return tempC;
 }
 
+/// @brief Read temperature in °C (sample ADC + convert + apply offset).
+/// @param offset  Unused (only channel 0).
+/// @return Temperature in °C.
+/// @throws ErrorCode::I2C_COMMS_ERROR if ADC reading is invalid.
 double Thermistor::read(unsigned int offset)
 {
 	(void)offset;
@@ -127,13 +144,16 @@ double Thermistor::read(unsigned int offset)
 	return temperature;
 }
 
+/// @brief Average 10 samples at a known temperature to compute calibration offset.
+/// @param target_temp_c  Known reference temperature in °C.
+/// @return Calibration offset = target - measured (°C).
 double Thermistor::find_calibration_point(double target_temp_c) {
 	// target_temp_c is in degrees Celsius (e.g., 24.0 = 24.0°C)
 	double target_c = target_temp_c;
 
 	// Temporarily disable offset to measure raw temperature
-	double saved_offset = offset_temp;
-	offset_temp = 0.0;
+	double saved_offset = m_offset_temp;
+	m_offset_temp = 0.0;
 
 	constexpr unsigned int num_samples = 10;
 	double total_temperature = 0.0;
@@ -152,37 +172,44 @@ double Thermistor::find_calibration_point(double target_temp_c) {
 		target_c, average_raw, calibration_offset);
 
 	// Restore offset (will be replaced when calibration is applied)
-	offset_temp = saved_offset;
+	m_offset_temp = saved_offset;
 
 	return calibration_offset;
 }
 
+/// @brief Calibration commands: 0=reset offset, 1=calibrate at known temperature.
+/// @param value   Target temperature for offset=1, unused for offset=0.
+/// @param offset  0=reset, 1=calibrate.
 void Thermistor::calibration_write(const double value, const unsigned int offset) {
 	if (offset == 0) {
 		// Reset calibration
-		offset_temp = 0.0;
-		m_cal.write((unsigned int)CalibrationPoint::TEMP_THRESHOLD, 0.0);
+		m_offset_temp = 0.0;
+		m_cal.write(static_cast<unsigned int>(CalibrationPoint::TEMP_THRESHOLD), 0.0);
 		m_cal.save();
 		DEBUG_INFO("THERMISTOR: Calibration reset");
 	} else if (offset == 1) {
 		// Calibrate: value is known temperature in degrees Celsius (e.g., 24.0 = 24.0°C)
 		double calibration_value = find_calibration_point(value);
-		offset_temp = calibration_value;
-		m_cal.write((unsigned int)CalibrationPoint::TEMP_THRESHOLD, calibration_value);
+		m_offset_temp = calibration_value;
+		m_cal.write(static_cast<unsigned int>(CalibrationPoint::TEMP_THRESHOLD), calibration_value);
 		m_cal.save();
 		DEBUG_INFO("THERMISTOR: Calibration saved offset=%.3f C", calibration_value);
 	}
 }
 
+/// @brief Persist calibration offset to flash.
 void Thermistor::calibration_save(bool force) {
 	m_cal.save(force);
 }
 
+/// @brief Read calibration offset (offset=0) or last temperature (offset=1).
+/// @param[out] value  Read-back value.
+/// @param offset      0=calibration offset, 1=last temperature.
 void Thermistor::calibration_read(double& value, const unsigned int offset)
 {
 	if (0 == offset) {
 		try {
-			value = m_cal.read((unsigned int)CalibrationPoint::TEMP_THRESHOLD);
+			value = m_cal.read(static_cast<unsigned int>(CalibrationPoint::TEMP_THRESHOLD));
 		} catch (...) {
 			value = 0.0;
 		}

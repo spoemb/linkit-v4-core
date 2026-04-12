@@ -32,7 +32,7 @@ add_executable(${PROJECT_NAME})
 # Create symlink to test data directory in build directory
 file(CREATE_LINK "${CMAKE_CURRENT_SOURCE_DIR}/data" "${CMAKE_CURRENT_BINARY_DIR}/data" SYMBOLIC)
 
-set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 17)
+set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
 set_property(TARGET ${PROJECT_NAME} PROPERTY CMAKE_CXX_STANDARD_REQUIRED ON)
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
@@ -230,7 +230,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE CppUTest CppUTestExt ${CMAKE_THREA
 set(TURTLE_SIM_NAME "TurtleSimulation")
 add_executable(${TURTLE_SIM_NAME})
 
-set_property(TARGET ${TURTLE_SIM_NAME} PROPERTY CXX_STANDARD 17)
+set_property(TARGET ${TURTLE_SIM_NAME} PROPERTY CXX_STANDARD 20)
 set_property(TARGET ${TURTLE_SIM_NAME} PROPERTY CMAKE_CXX_STANDARD_REQUIRED ON)
 
 target_compile_definitions(${TURTLE_SIM_NAME} PRIVATE

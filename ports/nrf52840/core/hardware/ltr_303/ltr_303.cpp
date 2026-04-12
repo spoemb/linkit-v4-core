@@ -1,6 +1,9 @@
+/**
+ * @file ltr_303.cpp
+ * @brief LTR-303ALS ambient light sensor — I2C driver with lux calculation.
+ */
+
 #include <cstddef>
-#include <array>
-#include <map>
 #include <cstdint>
 
 #include "ltr_303_defs.h"
@@ -13,12 +16,19 @@
 #include "debug.hpp"
 
 
+/// @brief Read one or more registers via I2C.
+/// @param reg   Register address to read from.
+/// @param[out] data  Output buffer for register data.
+/// @param len   Number of bytes to read.
 void LTR303::readReg(uint8_t reg, uint8_t *data, size_t len)
 {
 	NrfI2C::write(LIGHT_DEVICE, LIGHT_DEVICE_ADDR, &reg, sizeof(reg), true);
 	NrfI2C::read(LIGHT_DEVICE, LIGHT_DEVICE_ADDR, data, len);
 }
 
+/// @brief Write a single register via I2C.
+/// @param address  Register address.
+/// @param value    Value to write.
 void LTR303::writeReg(uint8_t address, uint8_t value)
 {
     std::array<uint8_t, 2> buffer;
@@ -33,21 +43,27 @@ LTR303::LTR303() : Sensor("ALS") {
 	readReg(LTR303_ALS_STATUS_ADDR, &status_reg, sizeof(status_reg));
 }
 
-// Get the right lux algorithm
+/// @brief Read ambient light: set gain, poll DRDY, read CH0/CH1, compute lux.
+/// @param gain  ALS gain multiplier (1, 2, 4, 8, 48, or 96).
+/// @return Lux value (0-65535), clamped.
+/// @throws ErrorCode::BAD_GAIN_SETTING if gain is not a valid value.
+/// @throws ErrorCode::I2C_COMMS_ERROR if DRDY times out (2s).
 double LTR303::read(unsigned int gain)
 {
     constexpr uint32_t integration_time = 1; // 100ms default
-    const std::map<unsigned int, uint8_t> gain_map = {
-   		{1, 0}, {2, 1}, {4, 2}, {8, 3}, {48, 6}, {96, 7}
-    };
 
-    // Set device into active mode with required gain setting
-    uint8_t register_value;
-    try {
-    	register_value = (gain_map.at(gain) << 2) | 1;
-    } catch (...) {
-    	throw ErrorCode::BAD_GAIN_SETTING;
+    // Gain → register value lookup (no heap allocation)
+    uint8_t gain_reg;
+    switch (gain) {
+    case 1:  gain_reg = 0; break;
+    case 2:  gain_reg = 1; break;
+    case 4:  gain_reg = 2; break;
+    case 8:  gain_reg = 3; break;
+    case 48: gain_reg = 6; break;
+    case 96: gain_reg = 7; break;
+    default: throw ErrorCode::BAD_GAIN_SETTING;
     }
+    uint8_t register_value = (gain_reg << 2) | 1;
 
     writeReg(LTR303_ALS_CONTR_ADDR, register_value);
 
@@ -89,7 +105,7 @@ double LTR303::read(unsigned int gain)
     }
 
     // Calculation
-    double ratio = als_data_ch1 / (als_data_ch0 + als_data_ch1);
+    double ratio = static_cast<double>(als_data_ch1) / static_cast<double>(als_data_ch0 + als_data_ch1);
     double calculated;
     if (ratio < 0.45)
         calculated = (1774 * als_data_ch0 + 1106 * als_data_ch1);
@@ -100,7 +116,7 @@ double LTR303::read(unsigned int gain)
     else
         calculated = 0;
 
-    double lux = calculated / (double)gain / (double)integration_time;
+    double lux = calculated / static_cast<double>(gain) / static_cast<double>(integration_time);
     if (lux > 65535) {
         return 65535;
     }

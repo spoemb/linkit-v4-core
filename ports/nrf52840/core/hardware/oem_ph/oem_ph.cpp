@@ -1,5 +1,9 @@
-#include <array>
-#include <stdint.h>
+/**
+ * @file oem_ph.cpp
+ * @brief Atlas Scientific OEM pH sensor — I2C big-endian register driver.
+ */
+
+#include <cstdint>
 #include "oem_ph.hpp"
 #include "nrf_i2c.hpp"
 #include "bsp.hpp"
@@ -7,9 +11,9 @@
 #include "gpio.hpp"
 #include "nrf_delay.h"
 #include "debug.hpp"
-#include "binascii.hpp"
 
-OEM_PH_Sensor::OEM_PH_Sensor() : Sensor("PH"), m_first_supplied_temperature(true) {
+/// @brief Init: LED off, hibernate → wake, confirm device present.
+OEM_PH_Sensor::OEM_PH_Sensor() : Sensor("PH") {
 	readReg<uint8_t>(RegAddr::LED_CTRL);
 }
 
@@ -17,13 +21,12 @@ template <typename T>
 void OEM_PH_Sensor::writeReg(RegAddr address, T value)
 {
     uint8_t buffer[5];
-    buffer[0] = (uint8_t)address;
+    buffer[0] = static_cast<uint8_t>(address);
 
-    // Reverse the endianness
+    // Reverse byte order (little-endian ARM → big-endian I2C)
     for (size_t i = 0; i < sizeof(T); ++i)
-        buffer[i + 1] = ((uint8_t *)(&value))[sizeof(T) - 1 - i];
+        buffer[i + 1] = reinterpret_cast<uint8_t *>(&value)[sizeof(T) - 1 - i];
 
-    //DEBUG_TRACE("OEM_PH_Sensor::writeReg(%02x)=%s", (unsigned int)address, Binascii::hexlify(std::string((char *)buffer, sizeof(T) + 1)).c_str());
     NrfI2C::write(OEM_PH_DEVICE, OEM_PH_DEVICE_ADDR, buffer, sizeof(T) + 1, false);
 }
 
@@ -33,19 +36,20 @@ T OEM_PH_Sensor::readReg(RegAddr address)
 	uint8_t buffer[4];
 	T little_endian = 0;
 
-	NrfI2C::write(OEM_PH_DEVICE, OEM_PH_DEVICE_ADDR, (const uint8_t *)&address, sizeof(address), false);
-	NrfI2C::read(OEM_PH_DEVICE, OEM_PH_DEVICE_ADDR, (uint8_t *)buffer, sizeof(T));
+	NrfI2C::write(OEM_PH_DEVICE, OEM_PH_DEVICE_ADDR, reinterpret_cast<const uint8_t *>(&address), sizeof(address), false);
+	NrfI2C::read(OEM_PH_DEVICE, OEM_PH_DEVICE_ADDR, buffer, sizeof(T));
 
-	// Reverse the endianness
-    for (size_t i = 0; i < sizeof(T); ++i)
-        ((uint8_t *)(&little_endian))[i] = buffer[sizeof(T) - 1 - i];
-
-    //DEBUG_TRACE("OEM_PH_Sensor::readReg(%02x)=%s BE", (unsigned int)address, Binascii::hexlify(std::string((char *)buffer, sizeof(T))).c_str());
-    //DEBUG_TRACE("OEM_PH_Sensor::readReg(%02x)=%s LE", (unsigned int)address, Binascii::hexlify(std::string((char *)&little_endian, sizeof(T))).c_str());
+	// Reverse byte order (big-endian I2C → little-endian ARM)
+	for (size_t i = 0; i < sizeof(T); ++i)
+		reinterpret_cast<uint8_t *>(&little_endian)[i] = buffer[sizeof(T) - 1 - i];
 
     return little_endian;
 }
 
+/// @brief Read pH: wake device, apply temperature compensation, trigger reading, poll DRDY (5s timeout).
+/// @param offset  Unused (only channel 0).
+/// @return pH value (e.g. 7.123).
+/// @throws ErrorCode::I2C_COMMS_ERROR on timeout.
 double OEM_PH_Sensor::read(unsigned int)
 {
     // Turn off the LED when sampling
@@ -71,9 +75,12 @@ double OEM_PH_Sensor::read(unsigned int)
     uint32_t reading_u32 = readReg<uint32_t>(RegAddr::PH_READING);
 
     // Convert reading to uint16_t and return it
-    return (double)reading_u32 / 1000.0;
+    return static_cast<double>(reading_u32) / 1000.0;
 }
 
+/// @brief Calibration commands: 0=mid(pH7), 1=low(pH4), 2=high(pH10), 3=clear, 4=set temp compensation.
+/// @param calibration_data    Temperature value for offset=4 (× 100), unused otherwise.
+/// @param calibration_offset  SCALW offset (0-4).
 void OEM_PH_Sensor::calibration_write(const double calibration_data, const unsigned int calibration_offset)
 {
     // Calibration_offset
@@ -111,15 +118,15 @@ void OEM_PH_Sensor::calibration_write(const double calibration_data, const unsig
 
         case 4:
         	// The OEM device expects 10E2 units, so we convert to 10E2 here
-			m_supplied_temperature = (unsigned int)(calibration_data * 100);
+			m_supplied_temperature = static_cast<uint16_t>(calibration_data * 100);
         	break;
 
         default:
         	throw ErrorCode::RESOURCE_NOT_AVAILABLE;
-        	break;
     }
 }
 
+/// @brief Write user-supplied temperature compensation to the sensor (if previously set via SCALW offset 4).
 void OEM_PH_Sensor::set_temperature_if_set()
 {
 	// Read current calibration status

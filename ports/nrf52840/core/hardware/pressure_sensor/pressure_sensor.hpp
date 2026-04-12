@@ -1,5 +1,13 @@
 #pragma once
 
+/**
+ * @file pressure_sensor.hpp
+ * @brief Abstract pressure sensor device interface + PressureSensor high-level class.
+ *
+ * PressureSensorDevice: abstract I2C device (Bar100, MS58xx, LPS28DFW).
+ * PressureSensor: high-level Sensor class with sea-level calibration and full-scale modes.
+ */
+
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -10,14 +18,15 @@
 
 class PressureSensorDevice {
 public:
-    virtual ~PressureSensorDevice() {}
+    virtual ~PressureSensorDevice() = default;
     virtual void read(double& temperature, double& pressure) = 0;
     virtual void set_full_scale(unsigned int mode) { (void)mode; }
 };
 
-class PressureSensoDummyDevice : public PressureSensorDevice {
+/// @brief Dummy pressure sensor for testing — always returns 0.
+class PressureSensorDummyDevice : public PressureSensorDevice {
 public:
-    void read(double& t, double& p) { t = 0; p = 0; }
+    void read(double& t, double& p) override { t = 0; p = 0; }
 };
 
 /**

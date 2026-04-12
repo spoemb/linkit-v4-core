@@ -47,15 +47,29 @@ private:
 	static bool full_bus_reset(uint8_t bus);
 
 	/// @brief Uninit + reinit TWIM peripheral with async event handler.
+	/// @param bus  I2C bus index.
+	/// @return true if reinit succeeded.
 	static bool reinit_bus(uint8_t bus);
 
-	/// @brief Common retry loop for read_safe/write_safe.
+	/**
+	 * @brief Common retry loop for read_safe/write_safe.
+	 * @param bus       I2C bus index.
+	 * @param address   7-bit I2C slave address.
+	 * @param buffer    TX or RX data buffer.
+	 * @param length    Number of bytes.
+	 * @param is_read   true for RX, false for TX.
+	 * @param no_stop   true to suppress I2C STOP (TX only, for repeated start).
+	 * @param op_name   Operation name for debug logs ("read" or "write").
+	 * @return true on success, false after all retries exhausted.
+	 */
 	static bool transfer_with_retry(uint8_t bus, uint8_t address,
 			uint8_t *buffer, unsigned int length,
 			bool is_read, bool no_stop, const char *op_name);
 
 public:
 	/// @brief ISR callback — called from TWIM event handlers (C-style).
+	/// @param bus    I2C bus index that completed the transfer.
+	/// @param error  true if NACK, overrun, or bus error occurred.
 	static void event_handler(uint8_t bus, bool error);
 
 	static void init(void);
@@ -70,8 +84,8 @@ public:
 
 	/// @name Non-throwing API — return true on success, false on failure
 	/// @{
-	static bool read_safe(uint8_t bus, uint8_t address, uint8_t *buffer, unsigned int length);
-	static bool write_safe(uint8_t bus, uint8_t address, const uint8_t *buffer, unsigned int length, bool no_stop);
+	[[nodiscard]] static bool read_safe(uint8_t bus, uint8_t address, uint8_t *buffer, unsigned int length);
+	[[nodiscard]] static bool write_safe(uint8_t bus, uint8_t address, const uint8_t *buffer, unsigned int length, bool no_stop);
 	/// @}
 
 	static bool recover_bus(uint8_t bus);

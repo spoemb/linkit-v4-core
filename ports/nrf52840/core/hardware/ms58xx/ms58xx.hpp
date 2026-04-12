@@ -1,5 +1,14 @@
 #pragma once
 
+/**
+ * @file ms58xx.hpp
+ * @brief MS5803/MS5837 pressure sensor driver (I2C, Measurement Specialties).
+ *
+ * Supports MS5803-14BA (14 bar), MS5837-30BA (30 bar), and MS5837-02BA (2 bar)
+ * variants.  Variant-specific second-order compensation is selected at construction.
+ * PROM calibration coefficients are CRC-checked.
+ */
+
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -9,7 +18,14 @@
 
 class MS58xxLL : public PressureSensorDevice {
 public:
-	MS58xxLL(unsigned int bus, unsigned char address, std::string variant);
+	/// @param bus      I2C bus index.
+	/// @param address  7-bit I2C address.
+	/// @param variant  Variant string ("MS5803_14BA", "MS5837_30BA", "MS5837_02BA").
+	/// @throws ErrorCode::I2C_COMMS_ERROR if PROM CRC check fails.
+	MS58xxLL(unsigned int bus, unsigned char address, const std::string& variant);
+
+	/// @param[out] temperature  Temperature in °C.
+	/// @param[out] pressure     Pressure in bar.
 	void read(double& temperature, double& pressure) override;
 
 private:
@@ -29,8 +45,8 @@ private:
 		ADC_4096    = (0x08), // ADC resolution=4096
 		ADC_8192    = (0x0A), // ADC resolution=8192
 	};
-	uint16_t C[8];
-	std::function<void(const int32_t, const int32_t, const uint16_t *, double&, double&)>  m_convert;
+	uint16_t C[8] = {};  ///< PROM calibration coefficients (CRC-checked)
+	std::function<void(const int32_t, const int32_t, const uint16_t *, double&, double&)> m_convert;  ///< Variant-specific conversion function
 	MS58xxCommand m_resolution;
 	unsigned int m_prom_size;
 	unsigned int m_crc_offset;

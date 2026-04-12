@@ -1,5 +1,9 @@
+/**
+ * @file stc3117_gasgauge.cpp
+ * @brief STC3117 fuel gauge battery monitor — I2C driver with SOC hysteresis.
+ */
 
-#include <stdint.h>
+#include <cstdint>
 
 #include "stc3117_gasgauge.hpp"
 extern "C" {
@@ -22,17 +26,19 @@ extern "C" {
 #define crc16_compute(x, y, z)  0xFFFF
 #endif
 
-// Thresholds for low/critical battery filtering (SOC hysteresis in %)
-#define CRITICAL_SOC_HYSTERESIS		3
-#define LOW_BATT_THRESHOLD			5
+/// @name SOC hysteresis thresholds (percentage points)
+/// @{
+static constexpr uint8_t CRITICAL_SOC_HYSTERESIS = 3;
+static constexpr uint8_t LOW_BATT_THRESHOLD      = 5;
+/// @}
 
-// Cache TTL: skip I2C read if last measurement was less than this ago
-#define STC3117_CACHE_TTL_MS        30000
-
-// Power optimization: minimal startup wait time
-#define STC3117_STARTUP_WAIT_MS     50
-#define STC3117_COUNTER_CHECK_MS    50
-#define STC3117_MAX_STARTUP_CHECKS  10
+/// @name Power-optimized timing
+/// @{
+static constexpr uint32_t STC3117_CACHE_TTL_MS       = 30000;  ///< Skip I2C read if last measurement < 30s ago
+static constexpr uint32_t STC3117_STARTUP_WAIT_MS    = 50;     ///< Minimal wait after gauge start
+static constexpr uint32_t STC3117_COUNTER_CHECK_MS   = 50;     ///< Poll interval for ready check
+static constexpr unsigned int STC3117_MAX_STARTUP_CHECKS = 10; ///< Max ready-check iterations
+/// @}
 
 extern Timer *system_timer;
 
@@ -49,6 +55,9 @@ static void setup_i2c() {
 }
 
 
+/// @brief Init STC3117: probe I2C, configure gas gauge, start monitoring.
+/// @param critical_level  SOC % below which battery is critical.
+/// @param low_level       SOC % below which battery is low.
 GaugeBatteryMonitor::GaugeBatteryMonitor(uint8_t critical_level,
 		uint8_t low_level
 		) :
@@ -65,6 +74,8 @@ GaugeBatteryMonitor::GaugeBatteryMonitor(uint8_t critical_level,
     m_is_init = false;  // Will init on first update()
 }
 
+/// @brief Configure and start the STC3117 gas gauge driver.
+/// @return 0 on success, negative on error.
 int GaugeBatteryMonitor::init() {
     SensorsPowerGuard power_guard;  // Acquire VSENSORS for I2C bus stability (other sensors on same bus)
     DEBUG_TRACE("STC3117: Starting gauge for measurement");
@@ -113,6 +124,8 @@ int GaugeBatteryMonitor::init() {
 }
 
 
+/// @brief Shut down the STC3117 to minimise current draw.
+/// @return 0 on success, negative on error.
 int GaugeBatteryMonitor::shutdown() {
     SensorsPowerGuard power_guard;  // Acquire VSENSORS for I2C bus stability (other sensors on same bus)
     if (!m_is_init) {
@@ -133,6 +146,12 @@ int GaugeBatteryMonitor::shutdown() {
 }
 
 // Forwarding C++ I2C functions to the C driver
+/// @brief I2C write callback for the ST C driver.
+/// @param I2cSlaveAddr   7-bit I2C address.
+/// @param RegAddress     Register address.
+/// @param TxBuffer       Data to write.
+/// @param NumberOfBytes  Number of bytes.
+/// @return 0 on success, negative on error.
 int GaugeBatteryMonitor::i2c_write(int I2cSlaveAddr, int RegAddress, unsigned char* TxBuffer, int NumberOfBytes)
 {
     uint8_t reg_addr = static_cast<uint8_t>(RegAddress);
@@ -154,6 +173,12 @@ int GaugeBatteryMonitor::i2c_write(int I2cSlaveAddr, int RegAddress, unsigned ch
     return STC3117_OK;
 }
 
+/// @brief I2C read callback for the ST C driver.
+/// @param I2cSlaveAddr   7-bit I2C address.
+/// @param RegAddress     Register address.
+/// @param[out] RxBuffer  Buffer for read data.
+/// @param NumberOfBytes  Number of bytes to read.
+/// @return 0 on success, negative on error.
 int GaugeBatteryMonitor::i2c_read(int I2cSlaveAddr, int RegAddress, unsigned char* RxBuffer, int NumberOfBytes)
 {
     uint8_t reg_addr = static_cast<uint8_t>(RegAddress);
@@ -164,6 +189,8 @@ int GaugeBatteryMonitor::i2c_read(int I2cSlaveAddr, int RegAddress, unsigned cha
     return STC3117_OK;
 }
 
+/// @brief Check STC3117 responds on I2C by reading a known register.
+/// @return 0 on success, -1 if device not found.
 int GaugeBatteryMonitor::check_i2c_device() {
     SensorsPowerGuard power_guard;  // Acquire VSENSORS for I2C bus stability (other sensors on same bus)
     int status = STC31xx_CheckI2cDeviceId();
@@ -189,12 +216,13 @@ static uint8_t estimate_soc_from_voltage(uint16_t mv) {
         if (mv <= ocv[i].mv) {
             uint32_t range_mv = ocv[i].mv - ocv[i-1].mv;
             uint32_t range_soc = ocv[i].soc - ocv[i-1].soc;
-            return ocv[i-1].soc + (uint8_t)((mv - ocv[i-1].mv) * range_soc / range_mv);
+            return ocv[i-1].soc + static_cast<uint8_t>((mv - ocv[i-1].mv) * range_soc / range_mv);
         }
     }
     return 100;
 }
 
+/// @brief Periodic update: read STC3117 via gas gauge task, apply SOC hysteresis, persist to .noinit RAM.
 void GaugeBatteryMonitor::internal_update() {
     // Cache: skip I2C read if last measurement is still fresh
     static uint64_t last_read_time = 0;
@@ -224,8 +252,8 @@ void GaugeBatteryMonitor::internal_update() {
 
     if (status > 0) {
         // New data available
-        mv = (uint16_t)STC3117_GG_struct.Voltage;
-        level = (uint8_t)(STC3117_GG_struct.SOC / 10);
+        mv = static_cast<uint16_t>(STC3117_GG_struct.Voltage);
+        level = static_cast<uint8_t>(STC3117_GG_struct.SOC / 10);
 
         // Sanity check: if STC3117 reports implausible SOC, override with
         // voltage-based estimate using the OCV curve (4V20_MAX LiPo profile)
@@ -240,8 +268,8 @@ void GaugeBatteryMonitor::internal_update() {
             mv, level, STC3117_GG_struct.Current);
     }
     else if (status == 0) {
-        mv = (uint16_t)STC3117_GG_struct.Voltage;
-        level = (uint8_t)(STC3117_GG_struct.SOC / 10);
+        mv = static_cast<uint16_t>(STC3117_GG_struct.Voltage);
+        level = static_cast<uint8_t>(STC3117_GG_struct.SOC / 10);
     }
     else {
         DEBUG_ERROR("STC3117: Read error (status=%d)", status);
@@ -256,7 +284,7 @@ void GaugeBatteryMonitor::internal_update() {
     last_read_time = system_timer->get_counter();
 
     // 4. Apply filtering to prevent value bouncing
-    uint16_t crc = crc16_compute((const uint8_t *)m_filtered_values, sizeof(m_filtered_values), nullptr);
+    uint16_t crc = crc16_compute(reinterpret_cast<const uint8_t *>(const_cast<const uint16_t *>(m_filtered_values)), sizeof(m_filtered_values), nullptr);
     if (crc == m_crc) {
         // Previously filtered values are valid - voltage (no hysteresis needed, just store)
         m_filtered_values[0] = mv;
@@ -277,7 +305,7 @@ void GaugeBatteryMonitor::internal_update() {
     }
 
     // Update CRC in noinit RAM
-    m_crc = crc16_compute((const uint8_t *)m_filtered_values, sizeof(m_filtered_values), nullptr);
+    m_crc = crc16_compute(reinterpret_cast<const uint8_t *>(const_cast<const uint16_t *>(m_filtered_values)), sizeof(m_filtered_values), nullptr);
 
     // Apply new values
     m_last_voltage_mv = mv;
@@ -299,10 +327,10 @@ static void GasGauge_DefaultInit(GasGauge_DataTypeDef * GG_struct)
     Rint = BATT_RINT;
     if (Rint == 0) Rint = 200;  // Force default
 
-    GG_struct->VM_cnf = (int)((Rint * BATT_CAPACITY) / 977.78);
+    GG_struct->VM_cnf = static_cast<int>((Rint * BATT_CAPACITY) / 977.78);
 
     if (MONITORING_MODE == MIXED_MODE) {
-        GG_struct->CC_cnf = (int)((RSENSE * BATT_CAPACITY) / 49.556);
+        GG_struct->CC_cnf = static_cast<int>((RSENSE * BATT_CAPACITY) / 49.556);
     }
 
     // SOC curve adjustment

@@ -33,11 +33,15 @@ static constexpr uint32_t TICKS_PER_OVERFLOW  = 16777216;   ///< 2^24 (24-bit co
 /// @}
 
 /// @brief Convert 64-bit RTC ticks to milliseconds (integer arithmetic, no float).
+/// @param ticks  64-bit tick count from the RTC counter.
+/// @return Equivalent time in milliseconds.
 static constexpr uint64_t ticks_to_ms(uint64_t ticks) {
 	return (ticks * FREQ_DENOMINATOR) / FREQ_NUMERATOR;
 }
 
 /// @brief Convert milliseconds to 64-bit RTC ticks (integer arithmetic, no float).
+/// @param ms  Time in milliseconds.
+/// @return Equivalent tick count.
 static constexpr uint64_t ms_to_ticks(uint64_t ms) {
 	return (ms * FREQ_NUMERATOR) / FREQ_DENOMINATOR;
 }
@@ -50,6 +54,7 @@ static volatile uint32_t g_overflow_count;  ///< Number of 24-bit counter overfl
 static volatile uint64_t g_stamp64;         ///< Midpoint stamp for overflow detection
 
 /// @brief 64-bit tick count.  Must be called under InterruptLock or from ISR.
+/// @return Current tick count (24-bit counter + overflow tracking).
 static uint64_t current_ticks()
 {
 	InterruptLock lock;
@@ -116,7 +121,7 @@ static void setup_compare_interrupt()
 static void rtc_event_handler(drv_rtc_t const * const p_instance)
 {
 	if (drv_rtc_overflow_pending(p_instance)) {
-		g_overflow_count++;
+		g_overflow_count = g_overflow_count + 1;
 	} else if (drv_rtc_compare_pending(p_instance, 0)) {
 		// Fire all due schedules
 		auto it = g_schedules.begin();
@@ -195,11 +200,9 @@ Timer::TimerHandle NrfTimer::add_schedule(
 		while (iter != g_schedules.end() && iter->m_target_ticks <= schedule.m_target_ticks)
 			++iter;
 
-		if (g_schedules.full()) {
-			DEBUG_ERROR("NrfTimer: schedule list full (%u/%u)", g_schedules.size(), MAX_NUM_TIMERS);
-			return handle;  // nullopt
-		}
-
+		// ETL assert fires if list is full → etl_error_handler → reset in release,
+		// blink in debug.  This is intentional: a full schedule list means the
+		// system is in a broken state and a reset is safer than silent failure.
 		g_schedules.insert(iter, schedule);
 		handle = g_unique_id;
 

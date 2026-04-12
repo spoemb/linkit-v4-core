@@ -315,6 +315,10 @@ const BaseMap param_map[] = {
 	{ "GNSS_FASTLOC_MODE", "GNP45", BaseEncoding::UINT, 0U, 2U, {}, true, true },
 	// [219] CloudLocate format: 0=MEASC12 (12B, sensor compatible), 1=MEAS20 (20B), 2=MEAS50 (50B, LoRa only)
 	{ "GNSS_CLOUDLOCATE_FORMAT", "GNP46", BaseEncoding::UINT, 0U, 2U, {}, true, true },
+	// [220] AXL FIFO batch mode enable
+	{ "AXL_FIFO_ENABLE", "AXP10", BaseEncoding::BOOLEAN, {}, {}, {}, ENABLE_AXL_SENSOR, true },
+	// [221] AXL FIFO sample count per batch (1-170)
+	{ "AXL_FIFO_SAMPLE_COUNT", "AXP11", BaseEncoding::UINT, 1U, 170U, {}, ENABLE_AXL_SENSOR, true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

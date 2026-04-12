@@ -32,6 +32,7 @@ private:
 
 public:
 	static void initialise();
+	/// @param dfu_mode  Reserved (not currently used — always does a normal reset).
 	static void reset(bool dfu_mode);
 
 	/// @brief Shut down the device — saves RTC, cuts power rails, enters System OFF or infinite sleep.
@@ -51,6 +52,7 @@ public:
 	static uint32_t device_identifier();
 
 	/// @brief Capture callstack into .noinit RAM (called from fault handlers).
+	/// @param type  Crash type identifier (WDT, HARDFAULT, ETL, etc.).
 	static void save_stack(PMULogType type);
 
 	/// @brief Print saved callstack if CRC is valid, then invalidate.

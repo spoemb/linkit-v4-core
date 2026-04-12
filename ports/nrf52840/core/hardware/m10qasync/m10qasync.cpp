@@ -971,9 +971,10 @@ void M10QAsyncReceiver::state_startreceive_exit() {
 }
 
 void M10QAsyncReceiver::state_receive_enter() {
-    // Allow maximum 30 seconds for receiver to start outputting navigation samples
-    // (cold start can take 25+ seconds in poor signal conditions)
-    initiate_timeout(30000);
+    // Adaptive initial timeout: use max_nav_samples as upper bound (1 sample ≈ 1 second),
+    // plus 5s margin for UART/processing overhead. Minimum 10s for cold start scenarios.
+    unsigned int timeout_ms = std::max(10000U, (m_nav_settings.max_nav_samples + 5) * 1000U);
+    initiate_timeout(timeout_ms);
     m_op_state = OpState::IDLE;
     m_retries = 3;
 }
@@ -1338,8 +1339,14 @@ void M10QAsyncReceiver::state_sendofflinedatabase() {
 				m_ubx_comms.send(&m_navigation_database[m_step], sz, true, true);
 				m_step += sz;
 				break;
+			} else if (m_step == m_ano_database_len) {
+				// All data sent — schedule async wait for MGA-ACK confirmations
+				m_step++;  // Advance past m_ano_database_len to enter ACK-check state
+				m_op_state = OpState::IDLE;
+				run_state_machine(100);  // Wait 100ms non-blocking for ACKs to arrive
+				break;
 			} else {
-				PMU::delay_ms(100);  // Allow any MGA-ACK confirmation messages to arrive
+				// ACK check after 100ms wait
 				unsigned int actual_count = 0;
 				if (!m_ubx_comms.is_expected_msg_count(m_navigation_database, m_mga_ack_count,
 						m_expected_dbd_messages, actual_count, MessageClass::MSG_CLASS_MGA,

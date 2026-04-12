@@ -32,8 +32,8 @@ public:
 		}
 	}
 
-	RGBLed() {}
-	virtual ~RGBLed() {}
+	RGBLed() = default;
+	virtual ~RGBLed() = default;
 	virtual void off() = 0;                    ///< Turn LED off (set to BLACK)
 	virtual RGBLedColor get_state() = 0;       ///< Current color (BLACK if off)
 	virtual void set(RGBLedColor color) = 0;   ///< Set solid color, stop flashing

@@ -326,6 +326,8 @@ protected:
 		/* [217] GNSS_ANO_STALE_DAYS */ 5U,   // ANO staleness threshold: 5 days (0=never discard)
 		/* [218] GNSS_FASTLOC_MODE */ 0U,             // 0=OFF, 1=DEGRADED_PVT, 2=CLOUDLOCATE
 		/* [219] GNSS_CLOUDLOCATE_FORMAT */ 0U,        // 0=MEASC12, 1=MEAS20, 2=MEAS50
+		/* [220] AXL_FIFO_ENABLE */ (bool)false,       // false=single sample, true=FIFO batch averaging
+		/* [221] AXL_FIFO_SAMPLE_COUNT */ 50U,         // 1-170 samples per batch
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,

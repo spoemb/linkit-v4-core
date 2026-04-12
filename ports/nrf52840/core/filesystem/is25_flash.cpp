@@ -102,7 +102,11 @@ bool Is25Flash::init()
 
 /**
  * @brief Internal read — QSPI must be powered up by caller.
- * @note Max read size is 0x3FFFF.  Size must be a multiple of 4, buffer must be word-aligned.
+ * @param block   LFS block number.
+ * @param off     Byte offset within the block.
+ * @param buffer  Destination buffer (must be word-aligned).
+ * @param size    Number of bytes to read (must be multiple of 4, max 0x3FFFF).
+ * @return LFS_ERR_OK on success, LFS_ERR_IO or LFS_ERR_INVAL on failure.
  */
 int Is25Flash::_read(lfs_block_t block, lfs_off_t off, void *buffer, lfs_size_t size)
 {
@@ -125,9 +129,12 @@ int Is25Flash::_read(lfs_block_t block, lfs_off_t off, void *buffer, lfs_size_t 
 
 /**
  * @brief Internal program with sync and read-back verification.
- * @note Max program size is 0x3FFFF.  Size must be a multiple of 4, buffer must be word-aligned.
- * @note Verification is limited to IS25_PAGE_SIZE (256 bytes).  Larger writes are
- *       rejected with LFS_ERR_NOMEM — LittleFS never exceeds prog_size (256).
+ * @param block   LFS block number.
+ * @param off     Byte offset within the block.
+ * @param buffer  Source data buffer (must be word-aligned).
+ * @param size    Number of bytes to write (must be multiple of 4, max IS25_PAGE_SIZE).
+ * @return LFS_ERR_OK, LFS_ERR_IO, LFS_ERR_NOMEM, or LFS_ERR_CORRUPT.
+ * @note Verification is limited to IS25_PAGE_SIZE (256 bytes).
  */
 int Is25Flash::_prog(lfs_block_t block, lfs_off_t off, const void *buffer, lfs_size_t size)
 {
@@ -170,7 +177,7 @@ int Is25Flash::_prog(lfs_block_t block, lfs_off_t off, const void *buffer, lfs_s
 		DEBUG_ERROR("QSPI Flash prog reported a bad write");
 #if (DEBUG_LEVEL >= 1)
 		for (unsigned int i = 0; i < size; i++)
-			printf("%02X", ((uint8_t *)buffer)[i]);
+			printf("%02X", static_cast<const uint8_t *>(buffer)[i]);
 		printf("\r\n");
 		for (unsigned int i = 0; i < size; i++)
 			printf("%02X", read_buffer[i]);

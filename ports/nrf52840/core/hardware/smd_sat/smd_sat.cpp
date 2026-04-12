@@ -247,6 +247,17 @@ void SmdSat::state_error_enter() {
 	// Do NOT attempt SPI commands here — the bus is likely desynchronized
 	// (INVALID_CMD cascade). Any command would fail and waste time.
 	is_kmac_profil_loaded = false;
+	m_error_count++;
+
+	if (m_error_count >= SMD_MAX_CONSECUTIVE_ERRORS) {
+		// Too many consecutive errors — enter 30 min cooldown to stop SPI spam
+		// and save battery.  SMD will be retried after cooldown expires.
+		m_cooldown_until = PMU::get_timestamp_ms() + SMD_ERROR_COOLDOWN_MS;
+		DEBUG_ERROR("SmdSat: %u consecutive errors — cooldown for %u min",
+			m_error_count, SMD_ERROR_COOLDOWN_MS / 60000);
+		m_error_count = 0;  // Reset for next attempt after cooldown
+	}
+
 	notify(KineisEventDeviceError({}));
 	SMD_STATE_CHANGE(error, stopped);
 }
@@ -572,6 +583,7 @@ void SmdSat::state_transmitting() {
 	if (m_cmd.is_tx_finished()) {
 		if (m_tx_buffer.size()) {
 			m_tx_buffer.clear();
+			m_error_count = 0;  // TX success — reset consecutive error counter
 			DEBUG_INFO("SmdSat::%s: notify KineisEventTxComplete", __func__);
 			notify(KineisEventTxComplete({}));
 		}
@@ -615,6 +627,15 @@ void SmdSat::set_frequency(double freq_mhz) {
 
 void SmdSat::send(const KineisModulation mode, const KineisPacket& user_payload, const unsigned int payload_length)
 {
+	// Reject operations during error cooldown — prevents SPI spam when SMD is unresponsive
+	if (m_cooldown_until > 0 && PMU::get_timestamp_ms() < m_cooldown_until) {
+		DEBUG_WARN("SmdSat::%s: in cooldown (%u min remaining) — TX rejected",
+			__func__, (unsigned int)((m_cooldown_until - PMU::get_timestamp_ms()) / 60000));
+		notify(KineisEventDeviceError({}));
+		return;
+	}
+	m_cooldown_until = 0;  // Cooldown expired — allow operation
+
 	DEBUG_TRACE("SmdSat::%s: length %u mode=%d current=%d", __func__, payload_length, (int)mode, (int)m_modulation);
 	SmdArgosModulation requested = kineis_to_smd_mod(mode);
 	if (requested != m_modulation) {

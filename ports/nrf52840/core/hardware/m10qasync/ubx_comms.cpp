@@ -12,7 +12,9 @@ using namespace UBX;
 
 void UBXComms::wait_tx_idle() {
 	if (!m_is_send_busy) return;
-	DEBUG_TRACE("UBXComms: send is busy...");
+	// At 460800 baud, a 512-byte chunk takes ~11ms.
+	// Poll with short sleeps — CPU enters System ON idle between checks,
+	// wakes on any interrupt (UART TX Done sets m_is_send_busy = false).
 	for (unsigned int i = 0; i < SEND_BUSY_TIMEOUT_MS && m_is_send_busy; ++i) {
 		PMU::delay_ms(1);
 	}
