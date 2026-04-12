@@ -7,6 +7,7 @@
 #include <cmath>
 
 #include "thermistor.hpp"
+#include "nrf_peripheral_power.hpp"
 #include "nrfx_saadc.h"
 #include "bsp.hpp"
 #include "error.hpp"
@@ -59,6 +60,7 @@ void Thermistor::adc_calibration()
 	}
 
 	nrfx_saadc_uninit();
+	nrf_peripheral_power_reset(NRF_SAADC_BASE_ADDR);  // Errata 241: prevent 400 µA idle leak
 	m_is_init = true;
 	DEBUG_INFO("THERMISTOR::%s: Calibration done!", __func__);
 }
@@ -79,6 +81,7 @@ float Thermistor::sample_adc()
 	nrfx_saadc_channel_init(m_adc_channel, &BSP::ADC_Inits.channel_config[m_adc_channel]);
 	nrfx_saadc_sample_convert(m_adc_channel, &raw);
 	nrfx_saadc_uninit();
+	nrf_peripheral_power_reset(NRF_SAADC_BASE_ADDR);  // Errata 241: prevent 400 µA idle leak
 
 	float adc_voltage = (static_cast<float>(raw) / static_cast<float>(ADC_MAX_VALUE)) *
 		static_cast<float>(ADC_REFERENCE) * (1.0f / static_cast<float>(ADC_GAIN));

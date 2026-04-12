@@ -1,18 +1,20 @@
+/**
+ * @file smd_sat_cmd.hpp
+ * @brief Abstract command interface for SMD satellite module.
+ *
+ * Two implementations:
+ *   - SmdSatCmdSpi (smd_sat_cmd_spi.cpp) — SPI Protocol A+
+ *   - SmdSatCmdAt  (smd_sat_cmd_at.cpp)  — AT/UART commands
+ * CMake selects which .cpp to compile.
+ */
+
 #pragma once
 
-#include <stdint.h>
+#include <cstdint>
 #include <string>
 
 #include "smd_sat_registers.hpp"
 #include "kineis_device.hpp"
-
-// ============================================================================
-// SmdSatCmd — Abstract command interface for SMD satellite module
-// ============================================================================
-// Two implementations exist:
-//   - SmdSatCmdSpi (smd_sat_cmd_spi.cpp) — SPI Protocol A+
-//   - SmdSatCmdAt  (smd_sat_cmd_at.cpp)  — AT/UART commands (future)
-// CMake selects which .cpp to compile.
 
 class SmdSatCmd {
 public:

@@ -387,6 +387,7 @@ target_sources(${TARGET_NAME} PRIVATE
     ${PROJ_DIR}/core/hardware/nrf_timer.cpp
     ${PROJ_DIR}/core/hardware/nrf_rtc.cpp
     ${PROJ_DIR}/core/hardware/nrf_spim.cpp
+    ${PROJ_DIR}/core/hardware/nrf_uart_async.cpp
     ${PROJ_DIR}/core/hardware/nrf_gpio.cpp
     ${PROJ_DIR}/core/hardware/nrf_pmu.cpp
     ${PROJ_DIR}/core/hardware/nrf_switch.cpp

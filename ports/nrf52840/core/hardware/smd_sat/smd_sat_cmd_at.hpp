@@ -1,18 +1,21 @@
+/**
+ * @file smd_sat_cmd_at.hpp
+ * @brief AT/UART implementation of SmdSatCmd.
+ *
+ * Uses NrfUartAsync for UART communication with SMD module.
+ * AT command format: AT+CMD=<params>\r\n
+ * Response format:   +<RESP>=<data>\r\n then +OK\r\n or +ERROR=<code>\r\n
+ */
+
 #pragma once
 
 #include "smd_sat_cmd.hpp"
-#include <stdint.h>
+#include "nrf_uart_async.hpp"
+#include <cstdint>
 #include <string>
 #include <optional>
 
-// ============================================================================
-// SmdSatCmdAt — AT/UART implementation of SmdSatCmd
-// ============================================================================
-// Uses nrf_libuarte_async for UART communication with SMD module.
-// AT command format: AT+CMD=<params>\r\n
-// Response format:   +<RESP>=<data>\r\n then +OK\r\n or +ERROR=<code>\r\n
-
-class SmdSatCmdAt : public SmdSatCmd {
+class SmdSatCmdAt : public SmdSatCmd, public NrfUartAsync {
 public:
 	SmdSatCmdAt(unsigned int uart_instance = 1);
 	~SmdSatCmdAt() override;
@@ -93,20 +96,15 @@ public:
 	// Debug / test
 	std::string run_command_test() override;
 
-	// UART callbacks (called from ISR context)
-	void handle_tx_done();
-	void handle_rx_buffer(uint8_t *buffer, uint8_t length);
-	void handle_error(unsigned int error_type);
+protected:
+	/// @brief Parse a complete RX line and update response state (SMD AT protocol).
+	void on_rx_line(std::string& line) override;
+
+	/// @brief Handle UART error.
+	void on_rx_error(unsigned int error_type) override;
 
 private:
-	unsigned int m_uart_instance;
-	bool m_is_init;
-	bool m_is_send_busy;
-	bool m_is_rx_started;
-	std::string m_tx_buffer;
-	std::string m_rx_buffer;
-
-	// Response state (set by ISR, read by blocking send)
+	// Response state (set by on_rx_line, read by blocking send)
 	volatile bool m_resp_ok;
 	volatile bool m_resp_error;
 	volatile bool m_resp_data_ready;
@@ -121,8 +119,7 @@ private:
 	bool m_dfu_mode;
 	std::string m_dfu_resp_data;
 
-	// Low-level UART operations
-	bool send_raw(const std::string& data);
+	// Low-level AT operations (use NrfUartAsync for UART)
 	bool send_at(const std::string& cmd, uint16_t timeout_ms = 2000);
 	bool send_at_with_data(const std::string& cmd, std::string& response_data, uint16_t timeout_ms = 2000);
 	bool send_dfu(uint8_t cmd_id, const std::string& hex_data = "", uint16_t timeout_ms = 5000);

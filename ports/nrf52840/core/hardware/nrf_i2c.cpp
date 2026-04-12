@@ -4,6 +4,7 @@
  */
 
 #include "nrf_i2c.hpp"
+#include "nrf_peripheral_power.hpp"
 #include "nrfx_twim.h"
 #include "nrfx_twi_twim.h"
 #include "nrf_twim.h"
@@ -249,6 +250,8 @@ void NrfI2C::uninit(void) {
 		if (m_is_enabled[i]) {
 			nrfx_twim_disable(&BSP::I2C_Inits[i].twim);
 			nrfx_twim_uninit(&BSP::I2C_Inits[i].twim);
+			// Errata 89: toggle POWER register to prevent 400 µA idle current leak
+			nrf_peripheral_power_reset(reinterpret_cast<uint32_t>(BSP::I2C_Inits[i].twim.p_twim));
 			m_is_enabled[i] = false;
 		}
 	}
@@ -258,6 +261,8 @@ void NrfI2C::disable(uint8_t bus) {
 	if (bus < BSP::I2C_TOTAL_NUMBER && m_is_enabled[bus]) {
 		nrfx_twim_disable(&BSP::I2C_Inits[bus].twim);
 		nrfx_twim_uninit(&BSP::I2C_Inits[bus].twim);
+		// Errata 89: toggle POWER register to prevent 400 µA idle current leak
+		nrf_peripheral_power_reset(reinterpret_cast<uint32_t>(BSP::I2C_Inits[bus].twim.p_twim));
 		m_is_enabled[bus] = false;
 	}
 }

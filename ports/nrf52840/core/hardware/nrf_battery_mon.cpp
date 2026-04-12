@@ -7,6 +7,7 @@
 
 #include "nrf_battery_mon.hpp"
 #include "nrfx_saadc.h"
+#include "nrf_peripheral_power.hpp"
 #include "nrf_delay.h"
 #include "bsp.hpp"
 #include "error.hpp"
@@ -89,6 +90,7 @@ NrfBatteryMonitor::NrfBatteryMonitor(uint8_t adc_channel,
 	}
 
 	nrfx_saadc_uninit();
+	nrf_peripheral_power_reset(NRF_SAADC_BASE_ADDR);  // Errata 241: prevent 400 µA idle leak
 
 	m_adc_channel = adc_channel;
 	m_is_init = false;
@@ -120,6 +122,7 @@ float NrfBatteryMonitor::sample_adc()
 	nrfx_saadc_sample_convert(m_adc_channel, &raw);
 
 	nrfx_saadc_uninit();
+	nrf_peripheral_power_reset(NRF_SAADC_BASE_ADDR);  // Errata 241: prevent 400 µA idle leak
 #ifdef BAT_READ_ENABLE
 	GPIOPins::clear(BAT_READ_ENABLE);
 #endif

@@ -1,47 +1,28 @@
+/**
+ * @file smd_sat_cmd_at.cpp
+ * @brief AT/UART command layer for SMD satellite module.
+ *
+ * UART lifecycle and deferred RX are handled by NrfUartAsync base class.
+ * This file implements: SMD AT response parsing and command interface.
+ */
+
 #include "smd_sat_cmd_at.hpp"
-#include "nrf_libuarte_async.h"
-#include "bsp.hpp"
-#include "error.hpp"
 #include "debug.hpp"
 #include "pmu.hpp"
 #include "binascii.hpp"
 
 #include "nrf_delay.h"
-#include "nrf_gpio.h"
 
 #include <cstring>
 #include <cstdio>
 #include <algorithm>
 
 // ============================================================================
-// UART async event handler (ISR context)
-// ============================================================================
-
-static void smd_at_uart_evt_handler(void *context, nrf_libuarte_async_evt_t *p_evt)
-{
-	SmdSatCmdAt *obj = (SmdSatCmdAt *)context;
-	if (p_evt->type == NRF_LIBUARTE_ASYNC_EVT_TX_DONE) {
-		obj->handle_tx_done();
-	} else if (p_evt->type == NRF_LIBUARTE_ASYNC_EVT_RX_DATA) {
-		obj->handle_rx_buffer(p_evt->data.rxtx.p_data, (uint8_t)p_evt->data.rxtx.length);
-	} else if (p_evt->type == NRF_LIBUARTE_ASYNC_EVT_ERROR) {
-		obj->handle_error((unsigned int)p_evt->data.errorsrc);
-	} else if (p_evt->type == NRF_LIBUARTE_ASYNC_EVT_ALLOC_ERROR) {
-		obj->handle_error(0x100);
-	} else if (p_evt->type == NRF_LIBUARTE_ASYNC_EVT_OVERRUN_ERROR) {
-		obj->handle_error(0x200);
-	}
-}
-
-// ============================================================================
-// Constructor / Destructor
+// Constructor / Destructor — delegate to NrfUartAsync
 // ============================================================================
 
 SmdSatCmdAt::SmdSatCmdAt(unsigned int uart_instance)
-	: m_uart_instance(uart_instance)
-	, m_is_init(false)
-	, m_is_send_busy(false)
-	, m_is_rx_started(false)
+	: NrfUartAsync(uart_instance)
 	, m_resp_ok(false)
 	, m_resp_error(false)
 	, m_resp_data_ready(false)
@@ -53,90 +34,36 @@ SmdSatCmdAt::SmdSatCmdAt(unsigned int uart_instance)
 
 SmdSatCmdAt::~SmdSatCmdAt()
 {
-	deinit();
+	NrfUartAsync::deinit();
 }
 
 // ============================================================================
-// Transport lifecycle
+// Transport lifecycle — delegate to NrfUartAsync
 // ============================================================================
 
 void SmdSatCmdAt::init()
 {
-	if (m_is_init) return;
-
-	if (nrf_libuarte_async_init(
-			BSP::UARTAsync_Inits[m_uart_instance].uart,
-			&BSP::UARTAsync_Inits[m_uart_instance].config,
-			smd_at_uart_evt_handler,
-			(void *)this) != NRF_SUCCESS) {
-		DEBUG_ERROR("SmdSatCmdAt::init: UART init failed");
-		throw ErrorCode::RESOURCE_NOT_AVAILABLE;
-	}
-	nrf_libuarte_async_start_rx(BSP::UARTAsync_Inits[m_uart_instance].uart);
-	m_is_init = true;
-	m_is_rx_started = true;
+	NrfUartAsync::init();  // Uses BSP default baudrate
 	m_dfu_mode = false;
 }
 
 void SmdSatCmdAt::deinit()
 {
-	if (m_is_init) {
-		nrf_libuarte_async_uninit(BSP::UARTAsync_Inits[m_uart_instance].uart);
-		m_is_init = false;
-
-		if (m_uart_instance == 1) {
-			// Nordic SDK bug fix for UARTE1: HF clk and DMA bus not closed
-			*(volatile uint32_t *)0x40028FFC = 0;
-			*(volatile uint32_t *)0x40028FFC;
-			*(volatile uint32_t *)0x40028FFC = 1;
-		}
-	}
+	NrfUartAsync::deinit();
 }
 
 // ============================================================================
-// UART callbacks (ISR context)
+// NrfUartAsync callbacks — protocol parsing
 // ============================================================================
 
-void SmdSatCmdAt::handle_tx_done()
+void SmdSatCmdAt::on_rx_line(std::string& line)
 {
-	m_is_send_busy = false;
+	parse_response(line);
 }
 
-void SmdSatCmdAt::handle_rx_buffer(uint8_t *buffer, uint8_t length)
+void SmdSatCmdAt::on_rx_error(unsigned int error_type)
 {
-	// Guard against unbounded growth from corrupted data without line terminators
-	if (m_rx_buffer.size() + length > 512) {
-		DEBUG_ERROR("SmdSatCmdAt: RX buffer overflow — flushing");
-		m_rx_buffer.clear();
-	}
-
-	// Append to RX buffer
-	m_rx_buffer.append(reinterpret_cast<const char *>(buffer), length);
-
-	// Process complete lines (terminated by \n)
-	size_t pos;
-	while ((pos = m_rx_buffer.find('\n')) != std::string::npos) {
-		std::string line = m_rx_buffer.substr(0, pos);
-		m_rx_buffer.erase(0, pos + 1);
-
-		// Strip trailing \r
-		if (!line.empty() && line.back() == '\r') {
-			line.pop_back();
-		}
-
-		if (!line.empty()) {
-			parse_response(line);
-		}
-	}
-
-	nrf_libuarte_async_rx_free(BSP::UARTAsync_Inits[m_uart_instance].uart, buffer, length);
-}
-
-void SmdSatCmdAt::handle_error(unsigned int error_type)
-{
-	DEBUG_WARN("SmdSatCmdAt::handle_error: type=%02x", error_type);
-	nrf_libuarte_async_stop_rx(BSP::UARTAsync_Inits[m_uart_instance].uart);
-	m_is_rx_started = false;
+	DEBUG_WARN("SmdSatCmdAt: UART error type=%02x", error_type);
 }
 
 // ============================================================================
@@ -213,37 +140,8 @@ void SmdSatCmdAt::parse_response(const std::string& line)
 }
 
 // ============================================================================
-// Low-level UART operations
+// Low-level AT operations — use NrfUartAsync for UART
 // ============================================================================
-
-bool SmdSatCmdAt::send_raw(const std::string& data)
-{
-	if (m_is_send_busy) {
-		DEBUG_ERROR("SmdSatCmdAt::send_raw: UART busy");
-		return false;
-	}
-
-	if (!m_is_rx_started) {
-		nrf_libuarte_async_start_rx(BSP::UARTAsync_Inits[m_uart_instance].uart);
-		m_is_rx_started = true;
-	}
-
-	m_is_send_busy = true;
-	m_tx_buffer = data;
-
-	ret_code_t ret = nrf_libuarte_async_tx(
-		BSP::UARTAsync_Inits[m_uart_instance].uart,
-		reinterpret_cast<uint8_t *>(m_tx_buffer.data()),
-		m_tx_buffer.length());
-
-	if (ret != NRF_SUCCESS) {
-		m_is_send_busy = false;
-		DEBUG_ERROR("SmdSatCmdAt::send_raw: TX failed ret=%08x", (unsigned int)ret);
-		return false;
-	}
-
-	return true;
-}
 
 bool SmdSatCmdAt::send_at(const std::string& cmd, uint16_t timeout_ms)
 {
@@ -251,11 +149,12 @@ bool SmdSatCmdAt::send_at(const std::string& cmd, uint16_t timeout_ms)
 	m_resp_error = false;
 	m_resp_data_ready = false;
 
-	if (!send_raw(cmd + "\r\n")) return false;
+	if (!send_string(cmd + "\r\n")) return false;
 
-	// Wait for +OK or +ERROR
+	// Wait for +OK or +ERROR, draining ISR buffer each tick
 	while (!m_resp_ok && timeout_ms > 0) {
 		PMU::delay_ms(1);
+		NrfUartAsync::process_rx();
 		timeout_ms--;
 	}
 
@@ -274,17 +173,16 @@ bool SmdSatCmdAt::send_at_with_data(const std::string& cmd, std::string& respons
 	m_resp_data_ready = false;
 	m_resp_data.clear();
 
-	if (!send_raw(cmd + "\r\n")) return false;
+	if (!send_string(cmd + "\r\n")) return false;
 
-	// Wait for +OK or +ERROR
 	while (!m_resp_ok && timeout_ms > 0) {
 		PMU::delay_ms(1);
+		NrfUartAsync::process_rx();
 		timeout_ms--;
 	}
 
-	if (timeout_ms == 0 || m_resp_error) {
+	if (timeout_ms == 0 || m_resp_error)
 		return false;
-	}
 
 	response_data = m_resp_data;
 	return true;
@@ -301,11 +199,12 @@ bool SmdSatCmdAt::send_dfu(uint8_t cmd_id, const std::string& hex_data, uint16_t
 	m_resp_error = false;
 	m_dfu_resp_data.clear();
 
-	if (!send_raw(cmd + "\r\n")) return false;
+	if (!send_string(cmd + "\r\n")) return false;
 
 	while (!m_resp_ok && timeout_ms > 0) {
 		if (timeout_ms % 500 == 0) PMU::kick_watchdog();
 		PMU::delay_ms(1);
+		NrfUartAsync::process_rx();
 		timeout_ms--;
 	}
 
@@ -344,7 +243,7 @@ uint16_t SmdSatCmdAt::hex_to_bytes(const std::string& hex, uint8_t *data, uint16
 		unsigned int val;
 		if (sscanf(hex.c_str() + i * 2, "%2x", &val) != 1)
 			return i;  // Return number of bytes successfully converted
-		data[i] = (uint8_t)val;
+		data[i] = static_cast<uint8_t>(val);
 	}
 	return len;
 }
@@ -429,7 +328,7 @@ void SmdSatCmdAt::read_serial(smd_uint8_array_t *serial)
 {
 	std::string data;
 	if (send_at_with_data("AT+SN=?", data) && !data.empty()) {
-		uint16_t len = std::min((uint16_t)data.size(), serial->size);
+		uint16_t len = std::min(static_cast<uint16_t>(data.size()), serial->size);
 		memcpy(serial->p_data, data.c_str(), len);
 		serial->size = len;
 	} else {
@@ -530,7 +429,7 @@ void SmdSatCmdAt::read_lpm(uint8_t *lpm_mode)
 	std::string data;
 	if (send_at_with_data("AT+LPM=?", data) && !data.empty()) {
 		try {
-			*lpm_mode = (uint8_t)std::stoul(data, nullptr, 16);
+			*lpm_mode = static_cast<uint8_t>(std::stoul(data, nullptr, 16));
 		} catch (...) {
 			*lpm_mode = 0;
 		}
@@ -642,7 +541,7 @@ void SmdSatCmdAt::read_version(uint8_t *version)
 {
 	std::string data;
 	if (send_at_with_data("AT+VERSION=?", data) && !data.empty()) {
-		uint16_t len = std::min((uint16_t)data.size(), (uint16_t)63);
+		uint16_t len = std::min(static_cast<uint16_t>(data.size()), static_cast<uint16_t>(63));
 		memcpy(version, data.c_str(), len);
 		version[len] = 0;
 	}
@@ -660,7 +559,7 @@ void SmdSatCmdAt::read_firmware_info(uint8_t *info, uint16_t *len)
 {
 	std::string data;
 	if (send_at_with_data("AT+FW=?", data) && !data.empty()) {
-		uint16_t copy_len = std::min((uint16_t)data.size(), *len);
+		uint16_t copy_len = std::min(static_cast<uint16_t>(data.size()), *len);
 		memcpy(info, data.c_str(), copy_len);
 		*len = copy_len;
 	} else {
@@ -826,10 +725,10 @@ SmdDfuResponse SmdSatCmdAt::dfu_write_chunk(uint32_t addr, const uint8_t *data, 
 	// WRITE = cmd_id 4, payload: <addr_4B_LE><data>
 	// Build hex: 4 bytes addr (LE) + data
 	uint8_t header[4] = {
-		(uint8_t)(addr & 0xFF),
-		(uint8_t)((addr >> 8) & 0xFF),
-		(uint8_t)((addr >> 16) & 0xFF),
-		(uint8_t)((addr >> 24) & 0xFF)
+		static_cast<uint8_t>(addr & 0xFF),
+		static_cast<uint8_t>((addr >> 8) & 0xFF),
+		static_cast<uint8_t>((addr >> 16) & 0xFF),
+		static_cast<uint8_t>((addr >> 24) & 0xFF)
 	};
 
 	std::string hex = bytes_to_hex(header, 4) + bytes_to_hex(data, len);
@@ -846,9 +745,9 @@ SmdDfuResponse SmdSatCmdAt::dfu_read_chunk(uint32_t addr, uint8_t *data, uint16_
 
 	// READ = cmd_id 5, payload: <addr_4B_LE><len_2B_LE>
 	uint8_t req[6] = {
-		(uint8_t)(addr & 0xFF), (uint8_t)((addr >> 8) & 0xFF),
-		(uint8_t)((addr >> 16) & 0xFF), (uint8_t)((addr >> 24) & 0xFF),
-		(uint8_t)(len & 0xFF), (uint8_t)((len >> 8) & 0xFF)
+		static_cast<uint8_t>(addr & 0xFF), static_cast<uint8_t>((addr >> 8) & 0xFF),
+		static_cast<uint8_t>((addr >> 16) & 0xFF), static_cast<uint8_t>((addr >> 24) & 0xFF),
+		static_cast<uint8_t>(len & 0xFF), static_cast<uint8_t>((len >> 8) & 0xFF)
 	};
 
 	std::string resp;
@@ -863,8 +762,8 @@ SmdDfuResponse SmdSatCmdAt::dfu_verify(uint32_t crc32)
 {
 	// VERIFY = cmd_id 6, payload: <crc32_4B_LE>
 	uint8_t crc_data[4] = {
-		(uint8_t)(crc32 & 0xFF), (uint8_t)((crc32 >> 8) & 0xFF),
-		(uint8_t)((crc32 >> 16) & 0xFF), (uint8_t)((crc32 >> 24) & 0xFF)
+		static_cast<uint8_t>(crc32 & 0xFF), static_cast<uint8_t>((crc32 >> 8) & 0xFF),
+		static_cast<uint8_t>((crc32 >> 16) & 0xFF), static_cast<uint8_t>((crc32 >> 24) & 0xFF)
 	};
 
 	if (send_dfu(6, bytes_to_hex(crc_data, 4), 5000)) {

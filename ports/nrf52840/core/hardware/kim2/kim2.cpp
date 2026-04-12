@@ -1,3 +1,8 @@
+/**
+ * @file kim2.cpp
+ * @brief KIM2 satellite module — state machine, AT command flow, TX management.
+ */
+
 #include "kim2.hpp"
 #include "kim2_comm.hpp"
 #include "bsp.hpp"
@@ -8,21 +13,25 @@
 #include "bitpack.hpp"
 #include "binascii.hpp"
 #include "config_store.hpp"
-#include <stdint.h>
+#include <cstdint>
 #include <string>
 
 using namespace KIM2;
 
-#define LDK_MAX_LENGTH_BITS      (16*8)
-#define LDA2_MAX_LENGTH_BITS     (24*8)
-#define VLDA4_MAX_LENGTH_BITS    (3*8)
-#define KIM2_COMM_OK             (0)
+/// @name Payload size limits per modulation (bits)
+/// @{
+static constexpr uint16_t LDK_MAX_LENGTH_BITS  = 16 * 8;
+static constexpr uint16_t LDA2_MAX_LENGTH_BITS  = 24 * 8;
+static constexpr uint16_t VLDA4_MAX_LENGTH_BITS  = 3 * 8;
+/// @}
 
-// Timing constants (ms)
-#define KIM2_DELAY_POWER_ON_MS   500
-#define KIM2_DELAY_POLL_MS       100
-#define KIM2_TX_TIMEOUT_MS       60000
-#define KIM2_IDLE_TICK_MS        100
+/// @name Timing constants (ms)
+/// @{
+static constexpr uint16_t KIM2_DELAY_POWER_ON_MS = 500;   ///< Wait after power-on before ping
+static constexpr uint16_t KIM2_DELAY_POLL_MS     = 100;   ///< TX poll interval
+static constexpr uint32_t KIM2_TX_TIMEOUT_MS     = 60000; ///< Max time for TX complete
+static constexpr uint16_t KIM2_IDLE_TICK_MS      = 100;   ///< Idle state poll interval
+/// @}
 
 #define KIM2_STATE_CHANGE(x, y)                     \
 	do {                                             \
@@ -73,6 +82,10 @@ KIM2Device::~KIM2Device()
 // KineisDevice interface
 // ============================================================================
 
+/// @brief Pack payload with modulation-specific stuffing bits, queue for TX.
+/// @param mode            Modulation (LDK, LDA2, VLDA4).
+/// @param user_payload    Raw payload bytes.
+/// @param payload_length  Payload length in bits.
 void KIM2Device::send(const KineisModulation mode, const KineisPacket& user_payload, const unsigned int payload_length)
 {
     KineisPacket packet;
@@ -175,16 +188,20 @@ void KIM2Device::set_tcxo_warmup_time(unsigned int ms)
 // Runtime modulation switching
 // ============================================================================
 
+/// @brief Runtime modulation switch: write RCONF + save + reload KMAC.
+/// @param mode       Target modulation.
+/// @param rconf_hex  32-char hex RCONF string for the target modulation.
+/// @return true on success, false on AT command failure.
 bool KIM2Device::switch_modulation(KineisModulation mode, const std::string& rconf_hex) {
     if (mode == m_current_rconf_mode) {
-        DEBUG_TRACE("KIM2Device::%s: already in target modulation %d", __func__, (int)mode);
+        DEBUG_TRACE("KIM2Device::%s: already in target modulation %d", __func__, static_cast<int>(mode));
         return true;
     }
 
-    DEBUG_INFO("KIM2Device::%s: switching %d -> %d", __func__, (int)m_current_rconf_mode, (int)mode);
+    DEBUG_INFO("KIM2Device::%s: switching %d -> %d", __func__, static_cast<int>(m_current_rconf_mode), static_cast<int>(mode));
 
     if (rconf_hex.size() != 32) {
-        DEBUG_ERROR("KIM2Device::%s: invalid RCONF hex length %u", __func__, (unsigned)rconf_hex.size());
+        DEBUG_ERROR("KIM2Device::%s: invalid RCONF hex length %u", __func__, static_cast<unsigned>(rconf_hex.size()));
         return false;
     }
 
@@ -247,6 +264,11 @@ void KIM2Device::react(const KIM2CommEventUartError& err) {
 // AT command helper
 // ============================================================================
 
+/// @brief Send AT command and busy-wait for +OK or +ERROR response.
+/// @param cmd         AT command type.
+/// @param params      Optional parameter string.
+/// @param timeout_ms  Max wait time in ms (default 1000).
+/// @return true if +OK received before timeout.
 bool KIM2Device::send_AT(ATCmd cmd, const std::optional<std::string>& params, uint16_t timeout_ms)
 {
     m_cmd_is_ok = false;
@@ -254,19 +276,17 @@ bool KIM2Device::send_AT(ATCmd cmd, const std::optional<std::string>& params, ui
 
     m_kim2_comm.send(cmd, params);
 
-    uint16_t wdt_kick_counter = 0;
-    while(!m_cmd_is_ok && !m_is_error && timeout_ms != 0)
-    {
+    // Busy-wait for UART response — blocking but bounded.
+    // AT protocol is synchronous; async would require full state machine rewrite.
+    // 1s max per command × 6 commands in init = ~6s total during power-on sequence.
+    while (!m_cmd_is_ok && !m_is_error && timeout_ms != 0) {
         PMU::delay_ms(1);
+        m_kim2_comm.process_rx();  // Drain ISR buffer → parse → notify
         timeout_ms--;
-        if (++wdt_kick_counter >= 10000) {
-            PMU::kick_watchdog();
-            wdt_kick_counter = 0;
-        }
     }
 
     if(timeout_ms == 0) {
-        DEBUG_WARN("KIM2Device::send_AT: timeout (cmd=%d)", (int)cmd);
+        DEBUG_WARN("KIM2Device::send_AT: timeout (cmd=%d)", static_cast<int>(cmd));
     }
 
     return m_cmd_is_ok && !m_is_error;
@@ -296,11 +316,12 @@ void KIM2Device::cancel_timeout() {
 // Power management
 // ============================================================================
 
+/// @brief Power on module and start state machine (no-op if already running).
 void KIM2Device::start_device()
 {
     if (m_state != KIM2ManagerState::power_off) {
         m_stopping = false;
-        DEBUG_TRACE("KIM2Device::start: already running in state=%u", (unsigned int)m_state);
+        DEBUG_TRACE("KIM2Device::start: already running in state=%u", static_cast<unsigned int>(m_state));
         run_state_machine(0);
         return;
     }
@@ -309,6 +330,7 @@ void KIM2Device::start_device()
     KIM2_STATE_CHANGE(power_off, power_on);
 }
 
+/// @brief Immediate power off — cancel tasks, uninit UART, cut GPIO power.
 void KIM2Device::power_off_immediate(void)
 {
     DEBUG_TRACE("KIM2Device::power_off_immediate");
@@ -324,6 +346,7 @@ void KIM2Device::power_off_immediate(void)
 // State machine
 // ============================================================================
 
+/// @brief Dispatch to the current state handler.
 void KIM2Device::state_machine(void)
 {
 	switch (m_state) {
@@ -350,6 +373,8 @@ void KIM2Device::state_machine(void)
 	}
 }
 
+/// @brief Schedule the next state machine tick after delay_ms.
+/// @param delay_ms  Delay before next tick (default 100 ms).
 void KIM2Device::run_state_machine(uint16_t delay_ms)
 {
     system_scheduler->cancel_task(m_task);
@@ -362,6 +387,7 @@ void KIM2Device::run_state_machine(uint16_t delay_ms)
 // State: power_off
 // ============================================================================
 
+/// @brief Power off: uninit UART, cut GPIO power, clear buffers.
 void KIM2Device::state_power_off_enter()
 {
     DEBUG_INFO("KIM2Device::state_power_off_enter");
@@ -388,6 +414,7 @@ void KIM2Device::state_power_off_exit()
 // State: power_on
 // ============================================================================
 
+/// @brief Power on: enable SAT_PWR_EN + EXTWAKEUP, init UART, wait 500 ms.
 void KIM2Device::state_power_on_enter()
 {
     GPIOPins::set(SAT_PWR_EN);
@@ -424,6 +451,7 @@ void KIM2Device::state_init_enter()
     ;
 }
 
+/// @brief Init: read ID/ADDR, write RCONF + KMAC, set LPM → transition to idle.
 void KIM2Device::state_init()
 {
     // Read credentials from module if not already known
@@ -467,7 +495,7 @@ void KIM2Device::state_init()
                 rconf = configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF_LDA2);
                 break;
         }
-        DEBUG_INFO("KIM2Device::state_init: adaptive ON, using RCONF for mode %d", (int)m_current_rconf_mode);
+        DEBUG_INFO("KIM2Device::state_init: adaptive ON, using RCONF for mode %d", static_cast<int>(m_current_rconf_mode));
     } else {
         rconf = configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF);
     }
@@ -536,6 +564,7 @@ void KIM2Device::state_idle_enter()
     }
 }
 
+/// @brief Idle: check for pending TX, or power off after timeout.
 void KIM2Device::state_idle()
 {
     // Check for pending TX
@@ -570,13 +599,14 @@ void KIM2Device::state_idle_exit()
 // State: transmit
 // ============================================================================
 
+/// @brief Start TX: send AT+TX, set timeout, start polling for +TX= response.
 void KIM2Device::state_transmit_enter()
 {
-    DEBUG_INFO("KIM2Device::state_transmit_enter: mode=%u", (unsigned int)m_tx_mode);
+    DEBUG_INFO("KIM2Device::state_transmit_enter: mode=%u", static_cast<unsigned int>(m_tx_mode));
 
     if (m_tx_mode != m_current_rconf_mode) {
         DEBUG_WARN("KIM2Device::state_transmit_enter: TX mode %u != RCONF mode %u",
-            (unsigned int)m_tx_mode, (unsigned int)m_current_rconf_mode);
+            static_cast<unsigned int>(m_tx_mode), static_cast<unsigned int>(m_current_rconf_mode));
     }
 
     m_tx_done = false;
@@ -589,8 +619,11 @@ void KIM2Device::state_transmit_enter()
     m_tx_poll_counter = KIM2_TX_TIMEOUT_MS / KIM2_DELAY_POLL_MS;
 }
 
+/// @brief Poll TX: check for +TX= done, error, or poll timeout.
 void KIM2Device::state_transmit()
 {
+    m_kim2_comm.process_rx();  // Drain ISR buffer for async TX events
+
     if(m_tx_done)
     {
         m_tx_done = false;
@@ -638,6 +671,7 @@ void KIM2Device::state_error_enter()
     ;
 }
 
+/// @brief Error: notify listener and transition to power_off.
 void KIM2Device::state_error()
 {
     DEBUG_ERROR("KIM2Device::state_error");

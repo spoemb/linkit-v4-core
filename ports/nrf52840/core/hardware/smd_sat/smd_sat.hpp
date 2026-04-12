@@ -1,6 +1,11 @@
+/**
+ * @file smd_sat.hpp
+ * @brief SMD satellite device driver — KineisDevice interface + state machine.
+ */
+
 #pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 #include "smd_sat_cmd.hpp"
 #include "kineis_device.hpp"

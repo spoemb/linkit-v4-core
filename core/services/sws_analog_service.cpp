@@ -4,6 +4,7 @@
 #include "gpio.hpp"
 #include "pmu.hpp"
 #include "nrfx_saadc.h"
+#include "nrf_peripheral_power.hpp"
 #ifndef CPPUTEST
 #include "nrf_gpio.h"
 #endif
@@ -403,6 +404,7 @@ void SWSAnalogService::service_init() {
     nrfx_saadc_calibrate_offset();
     while (nrfx_saadc_is_busy()) {}
     nrfx_saadc_uninit();
+    nrf_peripheral_power_reset(NRF_SAADC_BASE_ADDR);  // Errata 241: prevent 400 µA idle leak
 
     // Load configuration
     m_hysteresis_percent = service_read_param<unsigned int>(ParamID::SWS_ANALOG_HYSTERESIS);
@@ -523,6 +525,7 @@ uint16_t SWSAnalogService::read_analog_sws() {
     nrfx_err_t init_err = nrfx_saadc_init(&BSP::ADC_Inits.config, nrfx_saadc_event_handler_sws);
     if (init_err == NRFX_ERROR_INVALID_STATE) {
         nrfx_saadc_uninit();
+    nrf_peripheral_power_reset(NRF_SAADC_BASE_ADDR);  // Errata 241: prevent 400 µA idle leak
         init_err = nrfx_saadc_init(&BSP::ADC_Inits.config, nrfx_saadc_event_handler_sws);
     }
     if (init_err != NRFX_SUCCESS) {
@@ -536,11 +539,13 @@ uint16_t SWSAnalogService::read_analog_sws() {
     if (err != NRFX_SUCCESS) {
         DEBUG_ERROR("SWSAnalog: ADC conversion failed %d", err);
         nrfx_saadc_uninit();
+    nrf_peripheral_power_reset(NRF_SAADC_BASE_ADDR);  // Errata 241: prevent 400 µA idle leak
         GPIOPins::clear(SWS_ENABLE_PIN);
         return ADC_READ_ERROR;
     }
 
     nrfx_saadc_uninit();
+    nrf_peripheral_power_reset(NRF_SAADC_BASE_ADDR);  // Errata 241: prevent 400 µA idle leak
     GPIOPins::clear(SWS_ENABLE_PIN);
 
     return (uint16_t)(raw < 0 ? 0 : raw);

@@ -1,11 +1,12 @@
+/**
+ * @file smd_sat_cmd_spi.hpp
+ * @brief SPI Protocol A+ implementation of SmdSatCmd.
+ */
+
 #pragma once
 
 #include "smd_sat_cmd.hpp"
 #include "nrf_spim.hpp"
-
-// ============================================================================
-// Protocol A+ Response Structure
-// ============================================================================
 struct SpiAplusResponse {
     uint8_t seq;
     SpiAplusStatus status;

@@ -1,12 +1,17 @@
+/**
+ * @file lora_rak3172_comm.hpp
+ * @brief RAK3172 UART AT command layer — types, events, comm class.
+ */
+
 #pragma once
 
+#include "nrf_uart_async.hpp"
 #include "events.hpp"
-#include <stdint.h>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <optional>
 #include <functional>
-#include "nrf_libuarte_async.h"
 
 namespace LoRa {
 
@@ -104,12 +109,6 @@ namespace LoRa {
 
     static constexpr uint8_t END_CHAR_CR = '\r';
     static constexpr uint8_t END_CHAR_LF = '\n';
-
-    // ISR buffer size for deferred RX processing
-    static constexpr size_t ISR_BUF_SIZE = 256;
-
-    // Max accumulated RX buffer size before flush (guards against garbage without newlines)
-    static constexpr size_t MAX_RX_BUFFER_SIZE = 512;
 }
 
 // Events emitted by LoRaComm
@@ -145,53 +144,50 @@ public:
     virtual void react(const LoRaCommEventUartError&) {}
 };
 
-class LoRaComm : public EventEmitter<LoRaCommEventListener> {
+/**
+ * @brief LoRa RAK3172 UART AT command layer.
+ *
+ * Inherits NrfUartAsync for UART lifecycle + deferred RX.
+ * Adds: AT command table, RUI3 response parsing, bridge/passthrough mode.
+ */
+class LoRaComm : public NrfUartAsync, public EventEmitter<LoRaCommEventListener> {
 public:
     std::string m_last_value;       // Last value response from a read command
     int m_last_rx_port = 0;         // Last RX event port number
-    bool m_is_rx_started = false;
 
     LoRaComm(unsigned int libuarte_async_instance = 1);
 
+    /// @brief Init UART at 115200 baud (RAK3172 default).
     void init();
+
+    /// @brief Deinit UART.
     void deinit();
+
+    /// @brief Send AT command.
     bool send(LoRa::ATCmd cmd, const std::optional<std::string>& params = std::nullopt);
 
-    // Send raw bytes to UART (for bridge/passthrough mode)
-    bool send_raw(const uint8_t* data, size_t len);
+    /// @brief Send raw bytes (bridge mode or direct).
+    bool send_raw_data(const uint8_t* data, size_t len);
+
+    /// @brief Process ISR-buffered RX data. Call periodically from main context.
+    void process_rx();
 
     // Bridge/passthrough mode: forward raw UART RX to callback instead of parsing
     using PassthroughCallback = std::function<void(const uint8_t*, size_t)>;
     void set_passthrough(bool active, PassthroughCallback callback = nullptr);
     bool is_passthrough() const { return m_passthrough_active; }
 
-    // Call from main context to process ISR-buffered RX data
-    void process_rx();
+protected:
+    /// @brief Parse a complete RX line and emit events (RUI3 protocol).
+    void on_rx_line(std::string& line) override;
 
-    // ISR callbacks (called from UART interrupt handler)
-    void handle_tx_done(void);
-    void handle_rx_buffer(uint8_t * buffer, uint16_t length);
-    void handle_error(unsigned int error_type);
+    /// @brief Handle UART error — emit event.
+    void on_rx_error(unsigned int error_type) override;
 
 private:
     bool m_passthrough_active = false;
     PassthroughCallback m_passthrough_callback;
-    unsigned int m_uart_instance;
-    bool m_is_init;
-    bool m_is_send_busy;
-    std::string m_tx_buffer;
-    std::string m_rx_buffer;        // Line accumulator (main context only)
-    std::string m_line_buffer;      // Reusable buffer for line extraction (avoids alloc)
-    nrf_libuarte_async_config_t m_uart_config;
-
-    // ISR-safe buffer: written by ISR, read by process_rx() under InterruptLock
-    uint8_t m_isr_buf[LoRa::ISR_BUF_SIZE];
-    volatile uint16_t m_isr_buf_len;
-    volatile bool m_isr_error;
-    volatile unsigned int m_isr_error_type;
-    volatile bool m_isr_overflow;  // Set when ISR buffer was full and data was dropped
 
     bool send_at_cmd(LoRa::ATCmd cmd, const std::optional<std::string>& params = std::nullopt);
-    LoRa::RespType parse_rx_line(std::string& line);
-    void process_rx_lines();
+    LoRa::RespType parse_rx_line_protocol(std::string& line);
 };

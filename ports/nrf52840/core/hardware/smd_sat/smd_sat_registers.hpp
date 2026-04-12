@@ -1,5 +1,9 @@
-#ifndef SMD_SAT_REGISTER_HPP
-#define SMD_SAT_REGISTER_HPP
+/**
+ * @file smd_sat_registers.hpp
+ * @brief SMD satellite SPI protocol registers, commands, and configuration constants.
+ */
+
+#pragma once
 
 #ifndef DEFAULT_TCXO_WARMUP_TIME_SECONDS
 #define DEFAULT_TCXO_WARMUP_TIME_SECONDS 2
@@ -83,7 +87,7 @@ static inline uint8_t spi_crc8_ccitt(const uint8_t *data, uint16_t len) {
 static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
     uint32_t crc = 0xFFFFFFFF;
     for (size_t i = 0; i < len; i++) {
-        crc ^= (uint32_t)data[i] << 24;
+        crc ^= static_cast<uint32_t>(data[i]) << 24;
         for (int bit = 0; bit < 8; bit++) {
             if (crc & 0x80000000) {
                 crc = (crc << 1) ^ 0x04C11DB7;
@@ -326,5 +330,3 @@ struct smd_uint8_array_t {
 	uint16_t size;
 	uint8_t *p_data;
 };
-
-#endif

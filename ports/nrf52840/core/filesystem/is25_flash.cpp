@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include "IS25LP128F.hpp"
+#include "nrf_peripheral_power.hpp"
 #include "bsp.hpp"
 #include "debug.hpp"
 #include "is25_flash.hpp"
@@ -57,6 +58,7 @@ bool Is25Flash::init()
 		rx_buffer[2] != IS25LP128F::CAPACITY_ID)
 	{
 		nrfx_qspi_uninit();
+		nrf_peripheral_power_reset(NRF_QSPI_BASE_ADDR);
 		DEBUG_ERROR("IS25LP128F not correctly identified");
 		return false;
 	}
@@ -89,6 +91,7 @@ bool Is25Flash::init()
 	if (status & IS25LP128F::STATUS_WIP)
 	{
 		nrfx_qspi_uninit();
+		nrf_peripheral_power_reset(NRF_QSPI_BASE_ADDR);
 		DEBUG_ERROR("IS25LP128F WRSR timeout (WIP stuck after %lu us)", elapsed);
 		return false;
 	}
@@ -359,7 +362,13 @@ void Is25Flash::_power_down_hw()
 
 	nrf_delay_us(3);
 
+	// Errata 122: QSPI draws excess current after TASKS_ACTIVATE unless these
+	// registers are written before uninit.  Must be done while QSPI is still active.
+	*reinterpret_cast<volatile uint32_t *>(NRF_QSPI_BASE_ADDR + 0x010) = 1;
+	*reinterpret_cast<volatile uint32_t *>(NRF_QSPI_BASE_ADDR + 0x054) = 1;
+
 	nrfx_qspi_uninit();
+	nrf_peripheral_power_reset(NRF_QSPI_BASE_ADDR);  // Full peripheral reset
 
 	// Float QSPI pins to minimize leakage current
 	nrf_gpio_cfg_output(BSP::QSPI_Inits[BSP::QSPI_0].config.pins.csn_pin);

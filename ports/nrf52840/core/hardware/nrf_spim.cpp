@@ -7,6 +7,7 @@
 #include <cstring>
 
 #include "nrf_spim.hpp"
+#include "nrf_peripheral_power.hpp"
 #include "bsp.hpp"
 #include "nrf_gpio.h"
 #include "nrfx_spim.h"
@@ -80,6 +81,8 @@ NrfSPIM::NrfSPIM(unsigned int instance) : m_instance(instance)
 NrfSPIM::~NrfSPIM()
 {
 	nrfx_spim_uninit(&BSP::SPI_Inits[m_instance].spim);
+	// Errata 89: toggle POWER register to prevent 400 µA idle current leak
+	nrf_peripheral_power_reset(reinterpret_cast<uint32_t>(BSP::SPI_Inits[m_instance].spim.p_reg));
 }
 
 int NrfSPIM::transfer(const uint8_t *tx_data, uint8_t *rx_data, uint16_t size)

@@ -1,3 +1,8 @@
+/**
+ * @file lora_rak3172.hpp
+ * @brief LoRa RAK3172-SiP device driver — KineisDevice interface + state machine.
+ */
+
 #pragma once
 
 #include "lora_rak3172_comm.hpp"

@@ -1,4 +1,9 @@
-#include <stdint.h>
+/**
+ * @file smd_sat.cpp
+ * @brief SMD satellite device driver — state machine, TX, credentials, DFU.
+ */
+
+#include <cstdint>
 #include <cstring>
 #include <cmath>
 
@@ -55,9 +60,14 @@ SmdSat::SmdSat(SmdSatCmd& cmd, unsigned int idle_shutdown_ms)
 	m_packet_buffer.clear();
 	m_modulation = ARGOS_MOD_LDA2;
 	m_state = SmdSatState::stopped;
+	m_stopping = false;
+	m_state_counter = 0;
+	m_next_delay = 0;
 	m_tcxo_warmup_time = DEFAULT_TCXO_WARMUP_TIME_SECONDS;
 	m_lpm_mode = 0x01;  // NONE by default
 	m_tx_power = 0;
+	m_tx_freq = 0.0;
+	m_is_first_tx = true;
 	this->shutdown();
 	is_kmac_profil_loaded = false;
 }
@@ -332,7 +342,10 @@ void SmdSat::state_powering_on() {
 	SMD_STATE_CHANGE(powering_on, idle_pending);
 }
 
-void SmdSat::state_load_kmac_enter() {}
+void SmdSat::state_load_kmac_enter() {
+	m_state_counter = 20;  // MAC poll iterations before timeout
+	m_next_delay = SMDSAT_DELAY_LOAD_KMAC_MS;
+}
 void SmdSat::state_load_kmac_exit() {}
 
 void SmdSat::state_load_kmac() {
@@ -345,7 +358,7 @@ void SmdSat::state_load_kmac() {
 
 	// Step 1a: Apply deferred RCONF from switch_modulation() while stopped.
 	if (!m_pending_rconf.empty()) {
-		DEBUG_INFO("SmdSat::%s: applying deferred RCONF for modulation %d", __func__, (int)m_modulation);
+		DEBUG_INFO("SmdSat::%s: applying deferred RCONF for modulation %d", __func__, static_cast<int>(m_modulation));
 		auto wait_cmd = []() { nrf_delay_ms(150); };
 		std::string rconf_bin = Binascii::unhexlify(m_pending_rconf);
 		smd_uint8_array_t rconf_struct = {static_cast<uint16_t>(rconf_bin.size()),
@@ -438,6 +451,7 @@ void SmdSat::state_load_kmac() {
 					m_cmd.save_radio_conf();
 					wait_cmd();
 					is_kmac_profil_loaded = false;  // Force re-attempt
+					m_state_counter = 10;  // Reset poll counter for MAC_OK after recovery
 					DEBUG_INFO("SmdSat::%s: RCONF recovery written — retrying KMAC", __func__);
 					m_next_delay = SMDSAT_DELAY_CMD_MS;
 					return;  // Re-enter state_load_kmac on next tick
@@ -630,17 +644,17 @@ void SmdSat::send(const KineisModulation mode, const KineisPacket& user_payload,
 	// Reject operations during error cooldown — prevents SPI spam when SMD is unresponsive
 	if (m_cooldown_until > 0 && PMU::get_timestamp_ms() < m_cooldown_until) {
 		DEBUG_WARN("SmdSat::%s: in cooldown (%u min remaining) — TX rejected",
-			__func__, (unsigned int)((m_cooldown_until - PMU::get_timestamp_ms()) / 60000));
+			__func__, static_cast<unsigned>((m_cooldown_until - PMU::get_timestamp_ms()) / 60000));
 		notify(KineisEventDeviceError({}));
 		return;
 	}
 	m_cooldown_until = 0;  // Cooldown expired — allow operation
 
-	DEBUG_TRACE("SmdSat::%s: length %u mode=%d current=%d", __func__, payload_length, (int)mode, (int)m_modulation);
+	DEBUG_TRACE("SmdSat::%s: length %u mode=%d current=%d", __func__, payload_length, static_cast<int>(mode), static_cast<int>(m_modulation));
 	SmdArgosModulation requested = kineis_to_smd_mod(mode);
 	if (requested != m_modulation) {
 		DEBUG_WARN("SmdSat::%s: TX mode %d != current modulation %d — call switch_modulation() first",
-		           __func__, (int)requested, (int)m_modulation);
+		           __func__, static_cast<int>(requested), static_cast<int>(m_modulation));
 	}
 
 	unsigned int max_payload_size = 0;
@@ -730,17 +744,17 @@ bool SmdSat::write_credentials_from_config() {
 	// Skip if credentials are not configured yet
 	if (seckey.empty() || radioconf.empty()) {
 		DEBUG_WARN("SmdSat::%s: credentials not configured (seckey=%u rconf=%u) | skipping",
-		           __func__, (unsigned)seckey.size(), (unsigned)radioconf.size());
+		           __func__, static_cast<unsigned>(seckey.size()), static_cast<unsigned>(radioconf.size()));
 		return true;  // Not an error, just nothing to write
 	}
 
 	// Validate credential sizes before writing (seckey = 16 bytes = 32 hex chars)
 	if (seckey.size() != 32) {
-		DEBUG_ERROR("SmdSat::%s: invalid seckey length %u (expected 32 hex chars)", __func__, (unsigned)seckey.size());
+		DEBUG_ERROR("SmdSat::%s: invalid seckey length %u (expected 32 hex chars)", __func__, static_cast<unsigned>(seckey.size()));
 		return false;
 	}
 	if (radioconf.size() < 2 || (radioconf.size() % 2) != 0) {
-		DEBUG_ERROR("SmdSat::%s: invalid radioconf length %u (must be even hex string)", __func__, (unsigned)radioconf.size());
+		DEBUG_ERROR("SmdSat::%s: invalid radioconf length %u (must be even hex string)", __func__, static_cast<unsigned>(radioconf.size()));
 		return false;
 	}
 
@@ -1016,9 +1030,9 @@ void SmdSat::read_credentials(unsigned int *dec_id, unsigned int *address, std::
 			smd_uint8_array_t address_value = {SMDSAT_CMD_READ_ADDR_LEN, address_data};
 			m_cmd.read_address(&address_value);
 			nrf_delay_ms(SMDSAT_DELAY_CMD_MS);
-			*address  = ((uint32_t)address_value.p_data[0] << 24) |
-			            ((uint32_t)address_value.p_data[1] << 16) |
-			            ((uint32_t)address_value.p_data[2] << 8)  |
+			*address  = (static_cast<uint32_t>(address_value.p_data[0]) << 24) |
+			            (static_cast<uint32_t>(address_value.p_data[1]) << 16) |
+			            (static_cast<uint32_t>(address_value.p_data[2]) << 8)  |
 			            (address_value.p_data[3]);
 		}
 
@@ -1065,20 +1079,20 @@ void SmdSat::read_credentials(unsigned int *dec_id, unsigned int *address, std::
 bool SmdSat::switch_modulation(KineisModulation mode, const std::string& rconf_hex) {
 	SmdArgosModulation target = kineis_to_smd_mod(mode);
 	if (target == m_modulation) {
-		DEBUG_TRACE("SmdSat::%s: already in target modulation %d", __func__, (int)target);
+		DEBUG_TRACE("SmdSat::%s: already in target modulation %d", __func__, static_cast<int>(target));
 		return true;
 	}
 
-	DEBUG_INFO("SmdSat::%s: switching %d -> %d", __func__, (int)m_modulation, (int)target);
+	DEBUG_INFO("SmdSat::%s: switching %d -> %d", __func__, static_cast<int>(m_modulation), static_cast<int>(target));
 
 	if (rconf_hex.size() != 32) {
-		DEBUG_ERROR("SmdSat::%s: invalid RCONF hex length %u (expected 32)", __func__, (unsigned)rconf_hex.size());
+		DEBUG_ERROR("SmdSat::%s: invalid RCONF hex length %u (expected 32)", __func__, static_cast<unsigned>(rconf_hex.size()));
 		return false;
 	}
 
 	// If SMD is stopped, defer the switch — RCONF will be written on next power-on
 	if (m_state == SmdSatState::stopped) {
-		DEBUG_INFO("SmdSat::%s: SMD stopped, deferring switch to %d", __func__, (int)target);
+		DEBUG_INFO("SmdSat::%s: SMD stopped, deferring switch to %d", __func__, static_cast<int>(target));
 		m_modulation = target;
 		m_pending_rconf = rconf_hex;
 		// Force state_load_kmac on next boot so the deferred RCONF gets applied.
@@ -1136,7 +1150,7 @@ bool SmdSat::switch_modulation(KineisModulation mode, const std::string& rconf_h
 	m_modulation = target;
 	is_kmac_profil_loaded = true;
 
-	DEBUG_INFO("SmdSat::%s: modulation switched to %d OK", __func__, (int)target);
+	DEBUG_INFO("SmdSat::%s: modulation switched to %d OK", __func__, static_cast<int>(target));
 	return true;
 }
 
@@ -1196,7 +1210,7 @@ bool SmdSat::dfu_get_bootloader_info(SmdDfuInfo *info) {
 
 SmdDfuResponse SmdSat::firmware_update(const uint8_t *firmware, size_t size,
                                        void (*progress_callback)(uint8_t percent)) {
-	DEBUG_INFO("SmdSat::%s: Starting firmware update | size=%u bytes", __func__, (unsigned int)size);
+	DEBUG_INFO("SmdSat::%s: Starting firmware update | size=%u bytes", __func__, static_cast<unsigned>(size));
 
 	if (firmware == nullptr || size == 0) {
 		DEBUG_ERROR("SmdSat::%s: Invalid firmware data", __func__);
@@ -1233,7 +1247,7 @@ SmdDfuResponse SmdSat::firmware_update(const uint8_t *firmware, size_t size,
 
 	if (size > dfu_info.app_max_size) {
 		DEBUG_ERROR("SmdSat::%s: Firmware too large (%u > %u)", __func__,
-		            (unsigned int)size, dfu_info.app_max_size);
+		            static_cast<unsigned>(size), dfu_info.app_max_size);
 		return dfu_fail(DFU_RSP_SIZE_ERROR);
 	}
 
@@ -1256,13 +1270,13 @@ SmdDfuResponse SmdSat::firmware_update(const uint8_t *firmware, size_t size,
 
 	while (remaining > 0) {
 		uint16_t chunk_size = (remaining > SMDSAT_DFU_CHUNK_SIZE) ?
-		                      SMDSAT_DFU_CHUNK_SIZE : (uint16_t)remaining;
+		                      SMDSAT_DFU_CHUNK_SIZE : static_cast<uint16_t>(remaining);
 
 		PMU::kick_watchdog();
 
 		result = m_cmd.dfu_write_chunk(addr, &firmware[offset], chunk_size);
 		if (result != DFU_RSP_OK) {
-			DEBUG_ERROR("SmdSat::%s: Write failed at offset %u", __func__, (unsigned int)offset);
+			DEBUG_ERROR("SmdSat::%s: Write failed at offset %u", __func__, static_cast<unsigned>(offset));
 			return dfu_fail(result);
 		}
 
@@ -1271,7 +1285,7 @@ SmdDfuResponse SmdSat::firmware_update(const uint8_t *firmware, size_t size,
 		remaining -= chunk_size;
 
 		if (progress_callback) {
-			uint8_t progress = 25 + (uint8_t)((offset * 60) / size);
+			uint8_t progress = 25 + static_cast<uint8_t>((offset * 60) / size);
 			if (progress > last_progress) {
 				progress_callback(progress);
 				last_progress = progress;
@@ -1323,7 +1337,7 @@ SmdDfuResponse SmdSat::firmware_update(const uint8_t *firmware, size_t size,
 SmdDfuResponse SmdSat::firmware_update(File *file, size_t size, uint32_t stm32_crc32,
                                        void (*progress_callback)(uint8_t percent)) {
 	DEBUG_INFO("SmdSat::%s: Starting streamed firmware update | size=%u bytes | CRC32=0x%08X",
-	           __func__, (unsigned int)size, stm32_crc32);
+	           __func__, static_cast<unsigned>(size), stm32_crc32);
 
 	if (file == nullptr || size == 0) {
 		return DFU_RSP_ERROR;
@@ -1371,12 +1385,12 @@ SmdDfuResponse SmdSat::firmware_update(File *file, size_t size, uint32_t stm32_c
 
 	while (remaining > 0) {
 		uint16_t chunk_size = (remaining > SMDSAT_DFU_CHUNK_SIZE) ?
-		                      SMDSAT_DFU_CHUNK_SIZE : (uint16_t)remaining;
+		                      SMDSAT_DFU_CHUNK_SIZE : static_cast<uint16_t>(remaining);
 
 		PMU::kick_watchdog();
 
 		lfs_ssize_t bytes_read = file->read(chunk_buf, chunk_size);
-		if (bytes_read != (lfs_ssize_t)chunk_size) {
+		if (bytes_read != static_cast<lfs_ssize_t>(chunk_size)) {
 			return dfu_fail(DFU_RSP_ERROR);
 		}
 
@@ -1388,7 +1402,7 @@ SmdDfuResponse SmdSat::firmware_update(File *file, size_t size, uint32_t stm32_c
 		remaining -= chunk_size;
 
 		if (progress_callback) {
-			uint8_t progress = 25 + (uint8_t)((offset * 60) / size);
+			uint8_t progress = 25 + static_cast<uint8_t>((offset * 60) / size);
 			if (progress > last_progress) {
 				progress_callback(progress);
 				last_progress = progress;

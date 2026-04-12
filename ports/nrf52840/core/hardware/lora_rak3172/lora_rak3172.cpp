@@ -1,3 +1,8 @@
+/**
+ * @file lora_rak3172.cpp
+ * @brief LoRa RAK3172-SiP device driver — state machine, TX, join, config.
+ */
+
 #include "lora_rak3172.hpp"
 #include "lora_rak3172_comm.hpp"
 #include "bsp.hpp"
@@ -7,12 +12,10 @@
 #include "error.hpp"
 #include "binascii.hpp"
 #include "config_store.hpp"
-#include <stdint.h>
+#include <cstdint>
 #include <string>
 
 using namespace LoRa;
-
-#define LORA_COMM_OK  (0)
 
 #define LORA_STATE_CHANGE(x, y)                                 \
     do {                                                        \
@@ -94,7 +97,7 @@ bool LoRaDevice::bridge_send(const uint8_t* data, size_t len)
 {
     if (!m_bridge_active)
         return false;
-    return m_lora_comm.send_raw(data, len);
+    return m_lora_comm.send_raw_data(data, len);
 }
 
 void LoRaDevice::bridge_process_rx()
@@ -144,7 +147,7 @@ void LoRaDevice::react(const LoRaCommEventRespOk&) {
 }
 
 void LoRaDevice::react(const LoRaCommEventRespError& err) {
-    DEBUG_INFO("LoRaDevice: error response type=%d", (int)err.error_type);
+    DEBUG_INFO("LoRaDevice: error response type=%d", static_cast<int>(err.error_type));
     m_is_error = true;
 }
 
@@ -205,7 +208,7 @@ void LoRaDevice::start_device()
         // Retry up to 3 times before power cycling (module may be slow to wake)
         bool wake_ok = false;
         for (int attempt = 0; attempt < 3 && !wake_ok; attempt++) {
-            if (send_AT(AT_TEST) == LORA_COMM_OK)
+            if (send_AT(AT_TEST))
                 wake_ok = true;
         }
         if (wake_ok) {
@@ -223,7 +226,7 @@ void LoRaDevice::start_device()
     }
 
     if (m_state != State::power_off) {
-        DEBUG_TRACE("LoRa::start: already running state=%u", (unsigned int)m_state);
+        DEBUG_TRACE("LoRa::start: already running state=%u", static_cast<unsigned>(m_state));
         run_state_machine(0);
         return;
     }
@@ -241,10 +244,11 @@ void LoRaDevice::power_off_immediate(void)
     }
 }
 
-/**
- * Blocking send of an AT command with polling for OK response.
- * Returns false on success (OK received), true on error/timeout.
- */
+/// @brief Blocking send of an AT command with polling for OK response.
+/// @param cmd        AT command type.
+/// @param params     Optional parameter string.
+/// @param timeout_ms Maximum wait time in ms.
+/// @return true on success (OK received), false on error/timeout.
 bool LoRaDevice::send_AT(ATCmd cmd, const std::optional<std::string>& params, uint16_t timeout_ms)
 {
     m_cmd_is_ok = false;
@@ -252,18 +256,16 @@ bool LoRaDevice::send_AT(ATCmd cmd, const std::optional<std::string>& params, ui
 
     m_lora_comm.send(cmd, params);
 
-    while(!m_cmd_is_ok && !m_is_error && timeout_ms != 0)
-    {
+    while (!m_cmd_is_ok && !m_is_error && timeout_ms != 0) {
         PMU::delay_ms(1);
-        m_lora_comm.process_rx();  // Process ISR-buffered data in main context
+        m_lora_comm.process_rx();
         timeout_ms--;
     }
 
-    if(timeout_ms == 0) {
-        DEBUG_TRACE("LoRaDevice::send_AT: timeout (no OK received)");
-    }
+    if (timeout_ms == 0)
+        DEBUG_WARN("LoRaDevice::send_AT: timeout (cmd=%d)", static_cast<int>(cmd));
 
-    return !m_cmd_is_ok;  // false=OK, true=error
+    return m_cmd_is_ok && !m_is_error;
 }
 
 void LoRaDevice::state_machine(void)
@@ -342,7 +344,7 @@ void LoRaDevice::state_power_on()
     DEBUG_INFO("LoRaDevice::state_power_on retry=%u", m_power_on_retry);
 
     // Try AT ping
-    if (send_AT(AT_TEST) == LORA_COMM_OK)
+    if (send_AT(AT_TEST))
     {
         DEBUG_TRACE("LoRaDevice: AT ping OK (attempt %u)", m_power_on_retry);
         LORA_STATE_CHANGE(power_on, configure);
@@ -397,13 +399,13 @@ void LoRaDevice::state_configure()
             // Ensure LoRaWAN network mode (AT+NWM=1)
             if (m_nwm_reboot_pending) {
                 m_nwm_reboot_pending = false;
-                at_error = send_AT(AT_TEST);
+                at_error = !send_AT(AT_TEST);
                 if (at_error) {
                     DEBUG_ERROR("LoRaDevice: module not responding after NWM reboot");
                 }
                 break;
             }
-            at_error = send_AT(AT_GET_NWM);
+            at_error = !send_AT(AT_GET_NWM);
             if (!at_error && m_lora_comm.m_last_value == "1") {
                 DEBUG_TRACE("LoRaDevice: already in LoRaWAN mode");
                 break;
@@ -417,18 +419,18 @@ void LoRaDevice::state_configure()
 
         case 1:
             // Set join mode (OTAA or ABP)
-            at_error = send_AT(AT_SET_NJM, std::to_string(m_config.njm));
+            at_error = !send_AT(AT_SET_NJM, std::to_string(m_config.njm));
             break;
 
         case 2:
             // Set frequency band
-            at_error = send_AT(AT_SET_BAND, std::to_string(m_config.band));
+            at_error = !send_AT(AT_SET_BAND, std::to_string(m_config.band));
             break;
 
         case 3:
             // Set Device EUI — try: 1) config store, 2) module, 3) nRF52840 FICR
             if (m_config.deveui.empty()) {
-                at_error = send_AT(AT_GET_DEVEUI);
+                at_error = !send_AT(AT_GET_DEVEUI);
                 if (!at_error && !m_lora_comm.m_last_value.empty() &&
                     m_lora_comm.m_last_value != "0000000000000000") {
                     m_config.deveui = m_lora_comm.m_last_value;
@@ -446,12 +448,12 @@ void LoRaDevice::state_configure()
 #endif
                     m_config.deveui = std::string(buf);
                     DEBUG_INFO("LoRaDevice: generated DEVEUI=%s", m_config.deveui.c_str());
-                    at_error = send_AT(AT_SET_DEVEUI, m_config.deveui);
+                    at_error = !send_AT(AT_SET_DEVEUI, m_config.deveui);
                 }
                 // Persist to config store so user can read via PARMR (LRP01)
                 configuration_store->write_param(ParamID::LORA_DEVEUI, m_config.deveui);
             } else {
-                at_error = send_AT(AT_SET_DEVEUI, m_config.deveui);
+                at_error = !send_AT(AT_SET_DEVEUI, m_config.deveui);
             }
             break;
 
@@ -459,11 +461,11 @@ void LoRaDevice::state_configure()
             // Set Application EUI (OTAA only)
             if (m_config.njm == 1 && !m_config.appeui.empty()) {
                 if (m_config.appeui.size() != 16) {
-                    DEBUG_ERROR("LoRaDevice: invalid APPEUI length %u (expected 16 hex chars)", (unsigned)m_config.appeui.size());
+                    DEBUG_ERROR("LoRaDevice: invalid APPEUI length %u (expected 16 hex chars)", static_cast<unsigned>(m_config.appeui.size()));
                     at_error = true;
                     break;
                 }
-                at_error = send_AT(AT_SET_APPEUI, m_config.appeui);
+                at_error = !send_AT(AT_SET_APPEUI, m_config.appeui);
             }
             break;
 
@@ -471,74 +473,74 @@ void LoRaDevice::state_configure()
             // Set Application Key (OTAA) or session keys (ABP)
             if (m_config.njm == 1 && !m_config.appkey.empty()) {
                 if (m_config.appkey.size() != 32) {
-                    DEBUG_ERROR("LoRaDevice: invalid APPKEY length %u (expected 32 hex chars)", (unsigned)m_config.appkey.size());
+                    DEBUG_ERROR("LoRaDevice: invalid APPKEY length %u (expected 32 hex chars)", static_cast<unsigned>(m_config.appkey.size()));
                     at_error = true;
                     break;
                 }
-                at_error = send_AT(AT_SET_APPKEY, m_config.appkey);
+                at_error = !send_AT(AT_SET_APPKEY, m_config.appkey);
             } else if (m_config.njm == 0) {
                 if (!m_config.devaddr.empty()) {
                     if (m_config.devaddr.size() != 8) {
-                        DEBUG_ERROR("LoRaDevice: invalid DEVADDR length %u (expected 8 hex chars)", (unsigned)m_config.devaddr.size());
+                        DEBUG_ERROR("LoRaDevice: invalid DEVADDR length %u (expected 8 hex chars)", static_cast<unsigned>(m_config.devaddr.size()));
                         at_error = true;
                         break;
                     }
-                    at_error = send_AT(AT_SET_DEVADDR, m_config.devaddr);
+                    at_error = !send_AT(AT_SET_DEVADDR, m_config.devaddr);
                 }
                 if (!at_error && !m_config.nwkskey.empty()) {
                     if (m_config.nwkskey.size() != 32) {
-                        DEBUG_ERROR("LoRaDevice: invalid NWKSKEY length %u (expected 32 hex chars)", (unsigned)m_config.nwkskey.size());
+                        DEBUG_ERROR("LoRaDevice: invalid NWKSKEY length %u (expected 32 hex chars)", static_cast<unsigned>(m_config.nwkskey.size()));
                         at_error = true;
                         break;
                     }
-                    at_error = send_AT(AT_SET_NWKSKEY, m_config.nwkskey);
+                    at_error = !send_AT(AT_SET_NWKSKEY, m_config.nwkskey);
                 }
                 if (!at_error && !m_config.appskey.empty()) {
                     if (m_config.appskey.size() != 32) {
-                        DEBUG_ERROR("LoRaDevice: invalid APPSKEY length %u (expected 32 hex chars)", (unsigned)m_config.appskey.size());
+                        DEBUG_ERROR("LoRaDevice: invalid APPSKEY length %u (expected 32 hex chars)", static_cast<unsigned>(m_config.appskey.size()));
                         at_error = true;
                         break;
                     }
-                    at_error = send_AT(AT_SET_APPSKEY, m_config.appskey);
+                    at_error = !send_AT(AT_SET_APPSKEY, m_config.appskey);
                 }
             }
             break;
 
         case 6:
             // Set device class (AT+CLASS=A/B/C)
-            at_error = send_AT(AT_SET_CLASS, std::string(1, (char)m_config.device_class));
+            at_error = !send_AT(AT_SET_CLASS, std::string(1, static_cast<char>(m_config.device_class)));
             break;
 
         case 7:
             // Set data rate
-            at_error = send_AT(AT_SET_DR, std::to_string(m_config.dr));
+            at_error = !send_AT(AT_SET_DR, std::to_string(m_config.dr));
             break;
 
         case 8:
             // Set ADR
-            at_error = send_AT(AT_SET_ADR, std::to_string(m_config.adr));
+            at_error = !send_AT(AT_SET_ADR, std::to_string(m_config.adr));
             break;
 
         case 9:
             // Set TX power
-            at_error = send_AT(AT_SET_TXP, std::to_string(m_config.txp));
+            at_error = !send_AT(AT_SET_TXP, std::to_string(m_config.txp));
             break;
 
         case 10:
             // Set confirmed/unconfirmed mode
-            at_error = send_AT(AT_SET_CFM, std::to_string(m_config.cfm));
+            at_error = !send_AT(AT_SET_CFM, std::to_string(m_config.cfm));
             break;
 
         case 11:
             // Set retry count (only relevant if CFM=1)
             if (m_config.cfm) {
-                at_error = send_AT(AT_SET_RETY, std::to_string(LoRa::DEFAULT_RETY));
+                at_error = !send_AT(AT_SET_RETY, std::to_string(LoRa::DEFAULT_RETY));
             }
             break;
 
         case 12:
             // Enable low power mode
-            at_error = send_AT(AT_SET_LPM, std::to_string(LoRa::DEFAULT_LPM));
+            at_error = !send_AT(AT_SET_LPM, std::to_string(LoRa::DEFAULT_LPM));
             break;
 
         case 13:
@@ -551,7 +553,7 @@ void LoRaDevice::state_configure()
 
         case 100:
             // Read Device EUI from module and save to config store
-            at_error = send_AT(AT_GET_DEVEUI);
+            at_error = !send_AT(AT_GET_DEVEUI);
             if (!at_error) {
                 m_config.deveui = m_lora_comm.m_last_value;
                 DEBUG_INFO("LoRaDevice: DEVEUI=%s", m_config.deveui.c_str());
@@ -567,7 +569,7 @@ void LoRaDevice::state_configure()
                 LORA_STATE_CHANGE(configure, idle);
                 return;
             }
-            at_error = send_AT(AT_GET_NJS);
+            at_error = !send_AT(AT_GET_NJS);
             if (!at_error && m_lora_comm.m_last_value == "1") {
                 DEBUG_INFO("LoRaDevice: already joined from previous session");
                 m_joined = true;
@@ -623,7 +625,7 @@ void LoRaDevice::state_joining_enter()
     // start=1, auto_join=0, interval=10s, attempts=8
     // - auto_join=0: no persistent rejoin on failure (saves battery)
     // - attempts=8: ~80s max join window, suitable for surfacing duration
-    if (send_AT(AT_JOIN, "1:0:10:8")) {
+    if (!send_AT(AT_JOIN, "1:0:10:8")) {
         DEBUG_ERROR("LoRaDevice: AT+JOIN command failed");
         m_is_error = true;
         return;
@@ -721,7 +723,7 @@ void LoRaDevice::state_transmit_enter()
 
     // Format: AT+SEND=<port>:<hex_payload>
     std::string send_params = std::to_string(m_config.fport) + ":" + m_packet_buffer;
-    if (send_AT(AT_SEND, send_params)) {
+    if (!send_AT(AT_SEND, send_params)) {
         DEBUG_ERROR("LoRaDevice: AT+SEND command failed");
         m_is_error = true;
         return;
@@ -807,6 +809,7 @@ void LoRaDevice::state_error_exit() {
 // Config store integration
 // ========================================================================
 
+/// @brief Load LoRaWAN configuration from ConfigStore.
 void LoRaDevice::load_config_from_store()
 {
     m_config.deveui  = configuration_store->read_param<std::string>(ParamID::LORA_DEVEUI);
@@ -815,22 +818,22 @@ void LoRaDevice::load_config_from_store()
     m_config.devaddr = configuration_store->read_param<std::string>(ParamID::LORA_DEVADDR);
     m_config.appskey = configuration_store->read_param<std::string>(ParamID::LORA_APPSKEY);
     m_config.nwkskey = configuration_store->read_param<std::string>(ParamID::LORA_NWKSKEY);
-    m_config.njm     = (uint8_t)configuration_store->read_param<unsigned int>(ParamID::LORA_NJM);
-    m_config.band    = (uint8_t)configuration_store->read_param<unsigned int>(ParamID::LORA_BAND);
-    m_config.dr      = (uint8_t)configuration_store->read_param<unsigned int>(ParamID::LORA_DR);
+    m_config.njm     = static_cast<uint8_t>(configuration_store->read_param<unsigned int>(ParamID::LORA_NJM));
+    m_config.band    = static_cast<uint8_t>(configuration_store->read_param<unsigned int>(ParamID::LORA_BAND));
+    m_config.dr      = static_cast<uint8_t>(configuration_store->read_param<unsigned int>(ParamID::LORA_DR));
     m_config.adr     = configuration_store->read_param<bool>(ParamID::LORA_ADR) ? 1 : 0;
-    m_config.txp     = (uint8_t)configuration_store->read_param<unsigned int>(ParamID::LORA_TXP);
+    m_config.txp     = static_cast<uint8_t>(configuration_store->read_param<unsigned int>(ParamID::LORA_TXP));
     m_config.cfm     = configuration_store->read_param<bool>(ParamID::LORA_CFM) ? 1 : 0;
-    m_config.fport   = (uint8_t)configuration_store->read_param<unsigned int>(ParamID::LORA_FPORT);
-
-    m_config.lp_mode = (uint8_t)configuration_store->read_param<unsigned int>(ParamID::LORA_LP_MODE);
+    m_config.fport   = static_cast<uint8_t>(configuration_store->read_param<unsigned int>(ParamID::LORA_FPORT));
+    m_config.lp_mode = static_cast<uint8_t>(configuration_store->read_param<unsigned int>(ParamID::LORA_LP_MODE));
 
     // Class: stored as 0/1/2 → convert to 'A'/'B'/'C'
     unsigned int lora_class = configuration_store->read_param<unsigned int>(ParamID::LORA_CLASS);
-    m_config.device_class = 'A' + (uint8_t)lora_class;
+    m_config.device_class = 'A' + static_cast<uint8_t>(lora_class);
 
-    DEBUG_INFO("LoRaDevice: config loaded NJM=%u BAND=%u DR=%u ADR=%u TXP=%u CFM=%u FPORT=%u CLASS=%c LP=%u",
-               m_config.njm, m_config.band, m_config.dr, m_config.adr, m_config.txp, m_config.cfm, m_config.fport, m_config.device_class, m_config.lp_mode);
+    DEBUG_INFO("LoRaDevice: config NJM=%u BAND=%u DR=%u ADR=%u TXP=%u CFM=%u FPORT=%u CLASS=%c LP=%u",
+               m_config.njm, m_config.band, m_config.dr, m_config.adr,
+               m_config.txp, m_config.cfm, m_config.fport, m_config.device_class, m_config.lp_mode);
     if (!m_config.deveui.empty())
         DEBUG_INFO("LoRaDevice: DEVEUI=%s", m_config.deveui.c_str());
     if (!m_config.appeui.empty())

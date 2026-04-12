@@ -1,4 +1,9 @@
-#include <stdint.h>
+/**
+ * @file smd_sat_cmd_spi.cpp
+ * @brief SPI Protocol A+ command layer for SMD satellite module.
+ */
+
+#include <cstdint>
 #include <cstring>
 #include <cmath>
 
@@ -618,8 +623,8 @@ void SmdSatCmdSpi::read_radio_conf(SmdArgosModulation *modulation) {
 		throw ErrorCode::SPI_COMMS_ERROR;
 	}
 
-	uint32_t min_frequency = ((uint32_t)rx[3] << 24) | ((uint32_t)rx[2] << 16) | ((uint32_t)rx[1] << 8) | rx[0];
-	uint32_t max_frequency = ((uint32_t)rx[7] << 24) | ((uint32_t)rx[6] << 16) | ((uint32_t)rx[5] << 8) | rx[4];
+	uint32_t min_frequency = (static_cast<uint32_t>(rx[3]) << 24) | (static_cast<uint32_t>(rx[2]) << 16) | (static_cast<uint32_t>(rx[1]) << 8) | rx[0];
+	uint32_t max_frequency = (static_cast<uint32_t>(rx[7]) << 24) | (static_cast<uint32_t>(rx[6]) << 16) | (static_cast<uint32_t>(rx[5]) << 8) | rx[4];
 	int8_t rf_level = rx[8];
 	*modulation = static_cast<SmdArgosModulation>(rx[9]);
 
@@ -767,9 +772,9 @@ void SmdSatCmdSpi::read_tcxo_warmup(uint32_t *time_ms) {
 	}
 	*time_ms = 0;
 	for (int i = 0; i < SMDSAT_CMD_READ_ID_LEN; i++) {
-		*time_ms |= (uint32_t)rx[i] << (8 * i);
+		*time_ms |= static_cast<uint32_t>(rx[i]) << (8 * i);
 	}
-	DEBUG_INFO("SmdSatCmdSpi::%s: SMD TCXO warmup time: %u", __func__, (unsigned int)*time_ms);
+	DEBUG_INFO("SmdSatCmdSpi::%s: SMD TCXO warmup time: %u", __func__, static_cast<unsigned>(*time_ms));
 }
 
 void SmdSatCmdSpi::write_tcxo_warmup(uint32_t time_ms) {
