@@ -336,13 +336,12 @@ void SmdSat::state_powering_on() {
 	GPIOPins::set(SAT_EXTWAKEUP);
 #endif
 
-	// Step 3: Power ON + release VPA (v4.0.9 behavior)
-	// VPA must be HIGH during boot — STM32WL SPI init depends on PA regulator rail.
+	// Step 3: Power ON — VPA stays LOW (PA regulator not needed until TX)
 	GPIOPins::set(SAT_PWR_EN);
 #ifdef SMD_VPA_PIN
-	GPIOPins::release_to_highz(SMD_VPA_PIN);
+	GPIOPins::drive_low(SMD_VPA_PIN);
 #endif
-	DEBUG_TRACE("SmdSat::%s: SAT_PWR_EN=HIGH, RESET=LOW, VPA=HIGH", __func__);
+	DEBUG_TRACE("SmdSat::%s: SAT_PWR_EN=HIGH, RESET=LOW, VPA=LOW", __func__);
 
 	// Step 4: Wait for VDD stabilization (150ms >> 5ms required)
 	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
@@ -373,8 +372,7 @@ void SmdSat::state_load_kmac() {
 	// Step 1a: Apply deferred RCONF from switch_modulation() while stopped.
 	if (!m_pending_rconf.empty()) {
 		DEBUG_INFO("SmdSat::%s: applying deferred RCONF for modulation %d", __func__, static_cast<int>(m_modulation));
-		// SMD v2: BUSY pattern handles flash timing — 30ms inter-command sufficient
-		auto wait_cmd = []() { nrf_delay_ms(SMDSAT_TIMING_STANDARD_MS); };
+		auto wait_cmd = []() { nrf_delay_ms(SMDSAT_DELAY_CMD_MS * 2); };  // 60ms (v4.0.9 timing)
 		std::string rconf_bin = Binascii::unhexlify(m_pending_rconf);
 		smd_uint8_array_t rconf_struct = {static_cast<uint16_t>(rconf_bin.size()),
 		                                  reinterpret_cast<uint8_t *>(rconf_bin.data())};

@@ -120,7 +120,7 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 #define SMDSAT_DELAY_LOAD_KMAC_MS       (500)
 #define SMDSAT_DELAY_TICK_INTERRUPT_MS  (10)
 #define SMDSAT_DELAY_CMD_MS             SMDSAT_TIMING_STANDARD_MS
-#define SMDSAT_DELAY_CMD_TX             (200)   // SMD v2: first poll after PA boot (~160ms)
+#define SMDSAT_DELAY_CMD_TX             (1000)  // First poll delay after initiate_tx
 #define SMDSAT_DELAY_RST_MS             (100)
 
 // SPI retry configuration
