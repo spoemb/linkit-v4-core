@@ -1,3 +1,8 @@
+/**
+ * @file TSYS01.cpp
+ * @brief TSYS01 driver.
+ */
+
 #include <cmath>
 
 #include "TSYS01.hpp"

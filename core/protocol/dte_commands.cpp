@@ -1,3 +1,8 @@
+/**
+ * @file dte_commands.cpp
+ * @brief DTE command map — command name → prototype → handler dispatch table.
+ */
+
 #include "dte_commands.hpp"
 
 const DTECommandMap command_map[] = {

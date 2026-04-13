@@ -1,3 +1,8 @@
+/**
+ * @file m10qasync.hpp
+ * @brief m10qasync driver.
+ */
+
 #pragma once
 
 #include <cstdint>
@@ -78,8 +83,8 @@ private:
 		ERROR
 	};
 
-	State m_state;
-	OpState m_op_state;
+	State m_state = State::idle;
+	OpState m_op_state = OpState::IDLE;
 
 	// State machine
 	void state_idle_enter();

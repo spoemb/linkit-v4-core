@@ -1,3 +1,8 @@
+/**
+ * @file service.cpp
+ * @brief Service framework — Service lifecycle + ServiceManager orchestration + cooldown.
+ */
+
 #include "service.hpp"
 #include "scheduler.hpp"
 #include "rtc.hpp"
@@ -13,18 +18,24 @@ extern Scheduler *system_scheduler;
 extern RTC *rtc;
 extern BatteryMonitor *battery_monitor;
 
+/// @brief Register a service and assign a unique ID.
+/// @param s  Service to register.
+/// @return Unique ID for this service instance.
 unsigned int ServiceManager::add(Service& s) {
 	m_map.insert({m_unique_identifier, s});
 	DEBUG_TRACE("ServiceManager::add: service=%s added id=%u", s.get_name(), m_unique_identifier);
 	return m_unique_identifier++;
 }
 
+/// @brief Unregister a service.
 void ServiceManager::remove(Service& s) {
 	DEBUG_TRACE("ServiceManager::remove: service=%s added", s.get_name());
 	m_map.erase(s.get_unique_id());
 }
 
 
+/// @brief Start all registered services (called on FSM transition to Operational).
+/// @param data_notification_callback  Global event callback for FSM.
 void ServiceManager::startall(std::function<void(ServiceEvent&)> data_notification_callback) {
 	m_data_notification_callback = data_notification_callback;
 	restore_cooldown_state();
@@ -34,11 +45,14 @@ void ServiceManager::startall(std::function<void(ServiceEvent&)> data_notificati
 	}
 }
 
+/// @brief Stop all registered services (called on FSM transition out of Operational).
 void ServiceManager::stopall() {
 	for (auto const& p : m_map)
 		p.second.stop();
 }
 
+/// @brief Broadcast a peer event to all services except the originator.
+/// @param event  Service event to broadcast.
 void ServiceManager::notify_peer_event(ServiceEvent& event) {
 	for (auto const& p : m_map) {
 		if (p.first != event.event_originator_unique_id)
@@ -64,6 +78,8 @@ Logger *ServiceManager::get_logger(ServiceIdentifier service_id) {
 	return nullptr;
 }
 
+/// @brief Inject an event directly to the FSM callback (bypasses peer broadcast).
+/// @param event  Event to inject.
 void ServiceManager::inject_event(ServiceEvent& event) {
 	if (m_data_notification_callback)
 		m_data_notification_callback(event);
@@ -89,6 +105,7 @@ static uint16_t cooldown_noinit_crc() {
 	return crc;
 }
 
+/// @brief Persist cooldown state to .noinit RAM (survives System OFF / pseudo power-off).
 void ServiceManager::save_cooldown_state() {
 	InterruptLock lock;
 	s_cooldown_noinit.last_cycle_time = m_last_successful_cycle_time;
@@ -96,6 +113,7 @@ void ServiceManager::save_cooldown_state() {
 	s_cooldown_noinit.crc = cooldown_noinit_crc();
 }
 
+/// @brief Restore cooldown state from .noinit RAM on boot (CRC-validated).
 void ServiceManager::restore_cooldown_state() {
 	if (s_cooldown_noinit.crc == cooldown_noinit_crc() && s_cooldown_noinit.last_cycle_time > 0) {
 		m_last_successful_cycle_time = s_cooldown_noinit.last_cycle_time;
@@ -109,12 +127,17 @@ void ServiceManager::restore_cooldown_state() {
 	}
 }
 
+/// @brief Mark a successful surface cycle — starts cooldown timer.
+/// @param t  RTC time of cycle completion.
 void ServiceManager::set_cycle_complete(std::time_t t) {
 	m_last_successful_cycle_time = t;
 	save_cooldown_state();
 	DEBUG_INFO("ServiceManager: cycle complete at %u, cooldown started", (unsigned int)t);
 }
 
+/// @brief Check if surface cycle cooldown is active.
+/// @param now  Current RTC time.
+/// @return true if less than MIN_SURFACE_CYCLE_INTERVAL_S has elapsed since last cycle.
 bool ServiceManager::is_in_cooldown(std::time_t now) {
 	unsigned int interval = configuration_store->read_param<unsigned int>(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S);
 	if (interval == 0)
@@ -136,6 +159,7 @@ unsigned int ServiceManager::get_passive_surfacing_count() {
 	return m_passive_surfacing_count;
 }
 
+/// @brief Enter cooldown sleep — stop SWS, program wake timer for remaining cooldown.
 void ServiceManager::enter_cooldown_sleep() {
 	unsigned int remaining_s = 0;
 	if (rtc && rtc->is_set() && m_last_successful_cycle_time > 0) {
@@ -179,6 +203,7 @@ void ServiceManager::enter_cooldown_sleep() {
 	}
 }
 
+/// @brief Exit cooldown sleep — restart SWS to resume underwater detection.
 void ServiceManager::exit_cooldown_sleep() {
 	DEBUG_INFO("ServiceManager: exiting cooldown sleep (RTC=%u) — restarting SWS",
 	           (rtc && rtc->is_set()) ? (unsigned int)rtc->gettime() : 0);
@@ -191,17 +216,23 @@ void ServiceManager::exit_cooldown_sleep() {
 	}
 }
 
+/// @brief Pause service for cooldown — deschedule without stopping.
 void Service::pause_for_cooldown() {
 	DEBUG_INFO("Service::pause_for_cooldown: %s", m_name);
 	deschedule();
 }
 
+/// @brief Resume service after cooldown — reschedule if still started.
 void Service::resume_from_cooldown() {
 	DEBUG_INFO("Service::resume_from_cooldown: %s", m_name);
 	if (m_is_started)
 		reschedule();
 }
 
+/// @brief Constructor — register with ServiceManager, init state.
+/// @param service_id  Unique service identifier.
+/// @param name        Debug name (string literal).
+/// @param logger      Optional persistent logger.
 Service::Service(ServiceIdentifier service_id, const char *name, Logger *logger) {
 	m_is_started = false;
 	m_name = name;
@@ -222,6 +253,8 @@ ServiceIdentifier Service::get_service_id() { return m_service_id; }
 Logger *Service::get_logger() { return m_logger; }
 void Service::set_logger(Logger *logger) { m_logger = logger; }
 
+/// @brief Start the service — init, register callback, schedule first execution.
+/// @param data_notification_callback  Global event callback.
 void Service::start(std::function<void(ServiceEvent&)> data_notification_callback) {
 	DEBUG_TRACE("Service::start: service %s started", m_name);
 	m_is_started = true;
@@ -232,6 +265,7 @@ void Service::start(std::function<void(ServiceEvent&)> data_notification_callbac
 	reschedule();
 }
 
+/// @brief Stop the service — cancel active task, notify inactive, terminate.
 void Service::stop() {
 	DEBUG_TRACE("Service::stop: service %s stopped (is_started=%u)", m_name, (unsigned int)m_is_started);
 	if (m_is_started) {
@@ -253,6 +287,8 @@ bool Service::is_underwater_deferred() {
 	return m_is_underwater;
 }
 
+/// @brief Handle underwater state change — deschedule when submerged, reschedule on surfacing.
+/// @param state  true = submerged, false = surfaced.
 void Service::notify_underwater_state(bool state) {
 	if (service_is_usable_underwater())
 		return; // Don't care since the sensor can be used underwater
@@ -281,7 +317,8 @@ void Service::notify_underwater_state(bool state) {
 	}
 }
 
-// May also be overridden in child class to receive peer service events
+/// @brief Handle peer events — routes UW state changes and triggered events.
+/// @param event  Peer service event. May be overridden by subclass for custom handling.
 void Service::notify_peer_event(ServiceEvent& event) {
 	//DEBUG_TRACE("Service::notify_peer_event: src=%u type=%u", (unsigned int)event.event_source, (unsigned int)event.event_type);
 	bool immediate = true;
@@ -315,6 +352,10 @@ void Service::service_log(ServiceEventData *event_data, void *entry) {
 		notify_log_updated(*event_data);
 }
 
+/// @brief Mark service as complete — log, notify inactive, optionally reschedule.
+/// @param event_data       Optional event payload for peer notification.
+/// @param entry            Optional raw log entry for persistent logger.
+/// @param shall_reschedule true to reschedule after completion.
 void Service::service_complete(ServiceEventData *event_data, void *entry, bool shall_reschedule) {
 	DEBUG_TRACE("Service::service_complete: service %s", m_name);
 	if (!m_is_initiated) {
@@ -384,6 +425,8 @@ bool Service::service_is_battery_level_low() {
 	return battery_monitor->is_battery_low();
 }
 
+/// @brief Internal: compute next schedule, post task to scheduler, arm timeout.
+/// @param immediate  true to schedule with 0 delay.
 void Service::reschedule(bool immediate) {
 	DEBUG_TRACE("Service::reschedule: service %s", m_name);
 	deschedule();
@@ -434,12 +477,15 @@ void Service::reschedule(bool immediate) {
 	}
 }
 
+/// @brief Cancel all pending tasks (period + timeout).
 void Service::deschedule() {
 	system_scheduler->cancel_task(m_task_timeout);
 	system_scheduler->cancel_task(m_task_period);
 	m_last_schedule = Service::SCHEDULE_DISABLED;
 }
 
+/// @brief Broadcast SERVICE_LOG_UPDATED event to all peers via callback.
+/// @param data  Event payload (GPS fix, sensor data, etc.).
 void Service::notify_log_updated(ServiceEventData& data) {
 	if (m_data_notification_callback) {
 		ServiceEvent e;
@@ -451,6 +497,7 @@ void Service::notify_log_updated(ServiceEventData& data) {
 	}
 }
 
+/// @brief Broadcast SERVICE_ACTIVE event to all peers.
 void Service::notify_service_active() {
 	if (m_data_notification_callback) {
 		ServiceEvent e;
@@ -461,6 +508,7 @@ void Service::notify_service_active() {
 	}
 }
 
+/// @brief Broadcast SERVICE_INACTIVE event to all peers.
 void Service::notify_service_inactive() {
 	if (m_data_notification_callback) {
 		ServiceEvent e;

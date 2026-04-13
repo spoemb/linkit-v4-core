@@ -109,6 +109,7 @@ public:
 	uint8_t get_range() const { return m_g_range; }               ///< Current range register
 	double get_wakeup_threshold() const { return m_wakeup_threshold; }
 	double get_wakeup_duration() const { return m_wakeup_duration; }
+	uint8_t range_to_g(uint8_t range_reg) const;  ///< Register value → g-force (2/4/8/16)
 	/// @}
 
 	/// @name Wakeup / interrupt
@@ -212,7 +213,6 @@ private:
 	double lsb_to_ms2(int16_t accel_data, uint8_t g_range, uint8_t bit_width);  ///< Raw LSB → m/s²
 	void check_result(const char *api_name, int8_t rslt);  ///< Log + throw on Bosch API error
 	uint8_t calculate_threshold_reg(double threshold_g, uint8_t acc_range);  ///< g → register value
-	uint8_t range_to_g(uint8_t range_reg);  ///< Register value → g-force (2/4/8/16)
 	/// @}
 };
 

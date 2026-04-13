@@ -1,3 +1,8 @@
+/**
+ * @file logger.cpp
+ * @brief Logger + LoggerManager implementation — formatted log output with RTC timestamps.
+ */
+
 #include "debug.hpp"
 #include "logger.hpp"
 #include "rtc.hpp"
@@ -109,7 +114,7 @@ void Logger::info(const char *msg, ...) {
 }
 
 void Logger::trace(const char *msg, ...) {
-	if (m_log_level >= LOG_LEVEL_INFO) {
+	if (m_log_level >= LOG_LEVEL_DEBUG) {
 		LogEntry buffer;
 		va_list args;
 		va_start(args, msg);

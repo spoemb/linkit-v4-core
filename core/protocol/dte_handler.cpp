@@ -1,3 +1,8 @@
+/**
+ * @file dte_handler.cpp
+ * @brief DTE command handler — dispatches PARMR/PARMW/DUMPD/STAT/etc to system components.
+ */
+
 #include "dte_handler.hpp"
 #include "argos_tx_service.hpp"
 #if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
@@ -54,12 +59,13 @@ std::string DTEHandler::read_params_by_filter(int error_code, std::vector<ParamI
 
 	std::vector<ParamValue> param_values;
 	for (unsigned int i = 0; i < params.size(); i++) {
-		BaseType x = configuration_store->read_param<BaseType>(params[i]);
-		ParamValue p = {
-			params[i],
-			x
-		};
-		param_values.push_back(p);
+		try {
+			BaseType x = configuration_store->read_param<BaseType>(params[i]);
+			param_values.push_back({params[i], x});
+		} catch (...) {
+			DEBUG_WARN("DTEHandler::read_params_by_filter: failed to read param %u (key=%s)",
+			           static_cast<unsigned>(params[i]), param_map[static_cast<unsigned>(params[i])].key.c_str());
+		}
 	}
 
 	return DTEEncoder::encode(resp_cmd, param_values);

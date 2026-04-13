@@ -1,3 +1,8 @@
+/**
+ * @file argos_rx_service.cpp
+ * @brief Argos RX service + scheduler — downlink AOP reception and pass predict update.
+ */
+
 #include "argos_rx_service.hpp"
 #include "config_store.hpp"
 #include "binascii.hpp"
@@ -5,11 +10,12 @@
 
 extern ConfigurationStore *configuration_store;
 
-#define SECONDS_PER_HOUR   3600
-
+/// @brief Construct Argos RX service with a KineisDevice backend.
+/// @param device  KineisDevice for RX operations (SMD/KIM2).
 ArgosRxService::ArgosRxService(KineisDevice& device) : Service(ServiceIdentifier::ARGOS_RX, "ARGOSRX"), m_kineis(device) {
 }
 
+/// @brief Init: set TCXO warmup, subscribe to KineisDevice events.
 void ArgosRxService::service_init() {
 	ArgosConfig argos_config;
 	configuration_store->get_argos_configuration(argos_config);
@@ -17,16 +23,21 @@ void ArgosRxService::service_init() {
 	m_kineis.subscribe(*this);
 }
 
+/// @brief Terminate: unsubscribe from KineisDevice events.
 void ArgosRxService::service_term() {
 	m_kineis.unsubscribe(*this);
 }
 
+/// @brief Enabled only in PASS_PREDICTION mode with ARGOS_RX_EN and no cert TX.
+/// @return true if RX reception should be scheduled.
 bool ArgosRxService::service_is_enabled() {
 	ArgosConfig argos_config;
 	configuration_store->get_argos_configuration(argos_config);
 	return (argos_config.argos_rx_en && argos_config.mode == BaseArgosMode::PASS_PREDICTION && !argos_config.cert_tx_enable);
 }
 
+/// @brief Compute next RX window using PREVIPASS.
+/// @return Delay in ms until RX start, or SCHEDULE_DISABLED.
 unsigned int ArgosRxService::service_next_schedule_in_ms() {
 	ArgosConfig argos_config;
 	configuration_store->get_argos_configuration(argos_config);
@@ -35,20 +46,27 @@ unsigned int ArgosRxService::service_next_schedule_in_ms() {
 	return m_sched.schedule(argos_config, pass_predict, now, m_timeout, m_mode);
 }
 
+/// @brief Start RX — power on receiver in scheduled mode.
 void ArgosRxService::service_initiate() {
 	DEBUG_INFO("ArgosRxService::service_initiate: starting RX");
 	m_kineis.start_receive(m_mode);
 	m_cumulative_rx_time = 0;
 }
 
+/// @brief Cancel active RX — stop receiver.
+/// @return true if RX was stopped.
 bool ArgosRxService::service_cancel() {
 	return m_kineis.stop_receive();
 }
 
+/// @brief RX timeout — duration of the scheduled RX window.
+/// @return Timeout in ms (set by scheduler during scheduling).
 unsigned int ArgosRxService::service_next_timeout() {
 	return m_timeout;
 }
 
+/// @brief Handle peer events — GPS fix updates location, UW surfacing sets earliest schedule.
+/// @param e  Peer service event.
 void ArgosRxService::notify_peer_event(ServiceEvent& e) {
 
 	if (e.event_source == ServiceIdentifier::GNSS_SENSOR &&
@@ -74,11 +92,16 @@ void ArgosRxService::notify_peer_event(ServiceEvent& e) {
 	Service::notify_peer_event(e);
 }
 
+/// @brief Reschedule on surfacing (non-immediate — wait for earliest schedule).
+/// @param[out] immediate  Always false for RX (no immediate trigger).
+/// @return true (always reschedule on surface).
 bool ArgosRxService::service_is_triggered_on_surfaced(bool& immediate) {
 	immediate = false;
 	return true;
 }
 
+/// @brief Downlink packet received — decode AOP and merge into pass predict.
+/// @param e  RX packet event with hex-encoded payload.
 void ArgosRxService::react(KineisEventRxPacket const& e) {
 	DEBUG_INFO("ArgosRxService::react(KineisEventRxPacket): packet=%s length=%u", Binascii::hexlify(e.packet).c_str(), e.size_bits);
 
@@ -93,12 +116,14 @@ void ArgosRxService::react(KineisEventRxPacket const& e) {
 	update_pass_predict(pass_predict);
 }
 
+/// @brief Device error — cancel RX and complete service.
 void ArgosRxService::react(KineisEventDeviceError const&) {
 	DEBUG_TRACE("ArgosRxService::react: KineisEventDeviceError");
 	if (service_cancel())
 		service_complete();
 }
 
+/// @brief Power off — flush cumulative RX time to config store (seconds).
 void ArgosRxService::react(KineisEventPowerOff const&) {
 	if (m_cumulative_rx_time) {
 		DEBUG_INFO("ArgosRxService::react: KineisEventPowerOff: cumulative_rx=%u ms", m_cumulative_rx_time);
@@ -108,10 +133,14 @@ void ArgosRxService::react(KineisEventPowerOff const&) {
 	}
 }
 
+/// @brief RX stopped — accumulate RX-on time for statistics.
+/// @param e  Event with rx_time in ms.
 void ArgosRxService::react(KineisEventRxStopped const& e) {
 	m_cumulative_rx_time += e.rx_time;
 }
 
+/// @brief Merge new AOP records into existing pass predict database and persist to flash.
+/// @param new_pass_predict  Decoded AOP records from downlink packet(s).
 void ArgosRxService::update_pass_predict(BasePassPredict& new_pass_predict) {
 
 	BasePassPredict existing_pass_predict;
@@ -180,10 +209,18 @@ void ArgosRxService::update_pass_predict(BasePassPredict& new_pass_predict) {
 	}
 }
 
+/// @brief Constructor — reset location, zero earliest schedule.
 ArgosRxScheduler::ArgosRxScheduler() : m_earliest_schedule(0) {
 	m_location.reset();
 }
 
+/// @brief Find next downlink RX window using PREVIPASS (SAT_DNLK_ON_WITH_A3 filter).
+/// @param argos_config    Argos configuration (prepass params, AOP update period).
+/// @param pass_predict    AOP satellite database.
+/// @param now             Current RTC time.
+/// @param[out] timeout    RX window duration in ms.
+/// @param[out] mode       Modulation for the RX window.
+/// @return Delay in ms until RX start, or SCHEDULE_DISABLED.
 unsigned int ArgosRxScheduler::schedule(ArgosConfig& argos_config, BasePassPredict& pass_predict, std::time_t now, unsigned int &timeout, KineisModulation& mode) {
 	if (!m_location.has_value()) {
 		DEBUG_TRACE("ArgosRxService::schedule: can't schedule as last location/time is not known");
@@ -256,6 +293,8 @@ unsigned int ArgosRxScheduler::schedule(ArgosConfig& argos_config, BasePassPredi
 	return Service::SCHEDULE_DISABLED;
 }
 
+/// @brief Advance earliest RX time (only moves forward, never backward).
+/// @param t  Candidate earliest epoch time (seconds).
 void ArgosRxScheduler::set_earliest_schedule(std::time_t t) {
 	if (t > m_earliest_schedule) {
 		DEBUG_TRACE("ArgosRxScheduler::set_earliest_schedule: new earliest: %llu", t);
@@ -263,6 +302,9 @@ void ArgosRxScheduler::set_earliest_schedule(std::time_t t) {
 	}
 }
 
+/// @brief Update last known GPS position for PREVIPASS computation.
+/// @param lon  Longitude in degrees.
+/// @param lat  Latitude in degrees.
 void ArgosRxScheduler::set_location(double lon, double lat) {
 	m_location = Location(lon, lat);
 }

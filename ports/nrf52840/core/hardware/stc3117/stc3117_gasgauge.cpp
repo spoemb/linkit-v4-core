@@ -106,7 +106,7 @@ int GaugeBatteryMonitor::init() {
     nrf_delay_ms(STC3117_STARTUP_WAIT_MS);
 
     // Quick ready check
-    for (int i = 0; i < STC3117_MAX_STARTUP_CHECKS; i++) {
+    for (unsigned int i = 0; i < STC3117_MAX_STARTUP_CHECKS; i++) {
         int counter = STC31xx_GetRunningCounter();
         if (counter >= 3) {
             break;  // Ready

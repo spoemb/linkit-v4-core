@@ -1,3 +1,8 @@
+/**
+ * @file gps_service.hpp
+ * @brief GNSS acquisition service — periodic fix, cold start, fastloc, CloudLocate.
+ */
+
 #pragma once
 
 #include <atomic>
@@ -9,6 +14,7 @@
 #include "scheduler.hpp"
 
 
+/// @brief CSV log formatter for GPS entries (used by DUMPD command).
 class GPSLogFormatter : public LogFormatter {
 public:
 	const std::string header() override {
@@ -16,7 +22,7 @@ public:
 	}
 	const std::string log_entry(const LogEntry& e) override {
 		char entry[512], d1[128], d2[128];
-		const GPSLogEntry *gps = (const GPSLogEntry *)&e;
+		const auto *gps = reinterpret_cast<const GPSLogEntry *>(&e);
 
 		snprintf(d1, sizeof(d1), "%02hhu/%02hhu/%04hu %02hhu:%02hhu:%02hhu",
 		        gps->header.day, gps->header.month, gps->header.year,
@@ -60,6 +66,7 @@ public:
 	}
 };
 
+/// @brief GNSS acquisition service — periodic fixes, cold start, fastloc/CloudLocate fallback.
 class GPSService : public Service, public GPSEventListener  {
 public:
 	GPSService(GPSDevice& device, Logger *logger) : Service(ServiceIdentifier::GNSS_SENSOR, "GNSS", logger), m_device(device) {
@@ -83,15 +90,15 @@ protected:
 
 private:
 	GPSDevice&   m_device;
-	bool       	 m_is_first_fix_found;
-	bool       	 m_is_first_schedule;
-	uint64_t     m_wakeup_time;
-	std::time_t  m_next_schedule;
+	bool         m_is_first_fix_found = false;
+	bool         m_is_first_schedule = true;
+	uint64_t     m_wakeup_time = 0;
+	std::time_t  m_next_schedule = 0;
 	struct {
 		GNSSData data;
-	} m_gnss_data;
-	unsigned int m_num_gps_fixes;
-	bool m_is_active;
+	} m_gnss_data = {};
+	unsigned int m_num_gps_fixes = 0;
+	bool m_is_active = false;
 
     void react(const GPSEventMaxNavSamples&) override;
     void react(const GPSEventMaxSatSamples&) override;

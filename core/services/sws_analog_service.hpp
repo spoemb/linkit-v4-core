@@ -39,7 +39,7 @@ public:
     }
     const std::string log_entry(const LogEntry& e) override {
         char entry[512], d1[128];
-        const SWSLogEntry *log = (const SWSLogEntry *)&e;
+        const auto *log = reinterpret_cast<const SWSLogEntry *>(&e);
         std::time_t t;
         std::tm *tm;
 

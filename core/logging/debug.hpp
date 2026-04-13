@@ -1,8 +1,13 @@
-#ifndef __DEBUG_HPP_
-#define __DEBUG_HPP_
+/**
+ * @file debug.hpp
+ * @brief Debug logging macros — level-filtered console + optional system log output.
+ */
+
+#pragma once
 
 #include "logger.hpp"
 
+/// @brief Global debug logger singletons (set in main.cpp).
 class DebugLogger {
 public:
 	static inline Logger *console_log = nullptr;
@@ -83,4 +88,3 @@ do { \
 
 #endif
 
-#endif // __DEBUG_HPP_

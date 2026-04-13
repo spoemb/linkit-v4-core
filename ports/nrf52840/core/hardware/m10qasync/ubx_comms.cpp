@@ -1,3 +1,8 @@
+/**
+ * @file ubx_comms.cpp
+ * @brief ubx comms driver.
+ */
+
 #include <cstring>
 #include "ubx_comms.hpp"
 #include "nrf_libuarte_async.h"

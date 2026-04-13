@@ -357,9 +357,14 @@ target_sources(${TARGET_NAME} PRIVATE
     ${CORE_DIR}/services/service.cpp
     ${CORE_DIR}/services/gps_service.cpp
     ${CORE_DIR}/services/argos_tx_service.cpp
+    ${CORE_DIR}/services/argos_packet_builder.cpp
+    ${CORE_DIR}/services/depth_pile.cpp
     ${CORE_DIR}/services/argos_rx_service.cpp
+    ${CORE_DIR}/scheduling/argos_tx_scheduler.cpp
     ${CORE_DIR}/services/uwdetector_service.cpp
     $<$<BOOL:${ENABLE_SWS_ANALOG}>:${CORE_DIR}/services/sws_analog_service.cpp>
+    $<$<BOOL:${ENABLE_SWS_ANALOG}>:${CORE_DIR}/services/sws_analog_calibration.cpp>
+    $<$<BOOL:${ENABLE_SWS_ANALOG}>:${CORE_DIR}/services/sws_analog_detection.cpp>
     ${CORE_DIR}/logging/logger.cpp
     ${CORE_DIR}/util/haversine.cpp
     ${CORE_DIR}/filesystem/ota_flash_file_updater.cpp
@@ -488,6 +493,8 @@ if(LORA_RAK3172)
         ${PROJ_DIR}/core/hardware/lora_rak3172/lora_rak3172.cpp
         ${PROJ_DIR}/core/hardware/lora_rak3172/lora_rak3172_comm.cpp
         ${CORE_DIR}/services/lora_tx_service.cpp
+        ${CORE_DIR}/services/lora_packet_builder.cpp
+        ${CORE_DIR}/scheduling/lora_tx_scheduler.cpp
     )
     target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
         ${PROJ_DIR}/core/hardware/lora_rak3172

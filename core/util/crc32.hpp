@@ -1,7 +1,13 @@
+/**
+ * @file crc32.hpp
+ * @brief CRC32 (IEEE 802.3) — single-shot and streaming checksum calculation.
+ */
+
 #pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
+/// @brief CRC32 calculator — table-driven, supports single-shot and streaming modes.
 class CRC32 {
 private:
 	static inline constexpr uint32_t m_table[256] = {

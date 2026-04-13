@@ -1,3 +1,8 @@
+/**
+ * @file gentracker.cpp
+ * @brief GenTracker FSM — state entry/exit, reed switch gesture handling, service orchestration.
+ */
+
 #include "bsp.hpp"
 #include "pmu.hpp"
 #include "ota_file_updater.hpp"
@@ -58,8 +63,10 @@ using led_handle = LEDState;
 using buzz_handle = BuzzState;
 
 
+/// @brief Default event handler — ignore unhandled events.
 void GenTracker::react(tinyfsm::Event const &) { }
 
+/// @brief Cancel pending reed switch confirmation gesture and clear timeout.
 void GenTracker::cancel_confirmation()
 {
 	system_scheduler->cancel_task(m_confirmation_timeout_task);
@@ -67,6 +74,8 @@ void GenTracker::cancel_confirmation()
 	m_awaiting_re_engage = false;
 }
 
+/// @brief Reed switch gesture handler — confirmation pattern: hold 3s/6s, release, re-engage within 2s.
+/// @param event  Gesture type (ENGAGE, SHORT_HOLD, LONG_HOLD, RELEASE).
 void GenTracker::react(ReedSwitchEvent const &event)
 {
 	DEBUG_INFO("react: ReedSwitchEvent: %u", (int)event.state);
@@ -141,6 +150,8 @@ void GenTracker::react(ReedSwitchEvent const &event)
 	}
 }
 
+/// @brief Error event — transition to ErrorState.
+/// @param event  Error code that caused the failure.
 void GenTracker::react(ErrorEvent const &event) {
 	DEBUG_ERROR("GenTracker::react: ErrorEvent: error_code=%u", event.error_code);
 	cancel_confirmation();
@@ -150,12 +161,14 @@ void GenTracker::react(ErrorEvent const &event) {
 void GenTracker::entry(void) { };
 void GenTracker::exit(void)  { };
 
+/// @brief Dispatch ErrorEvent with BAD_FILESYSTEM to trigger ErrorState.
 void GenTracker::notify_bad_filesystem_error() {
 	ErrorEvent event;
 	event.error_code = BAD_FILESYSTEM;
 	dispatch(event);
 }
 
+/// @brief Kick hardware watchdog — called periodically from main scheduler loop.
 void GenTracker::kick_watchdog() {
 	DEBUG_TRACE("GenTracker::kick_watchdog: calling PMU::kick_watchdog");
 	PMU::kick_watchdog();
@@ -167,6 +180,7 @@ void GenTracker::kick_watchdog() {
 // Periodic flush of config store to flash (counters live in RAM between flushes)
 static constexpr unsigned int CONFIG_FLUSH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
+/// @brief Periodic config flush — save params + RTC to flash (called from scheduler).
 void GenTracker::periodic_config_flush() {
 	if (!m_config_flush_active)
 		return;
@@ -185,6 +199,7 @@ void GenTracker::periodic_config_flush() {
 	}
 }
 
+/// @brief Boot entry — init PMU, check reset cause, mount filesystem, load config.
 void BootState::entry() {
 
 	DEBUG_INFO("entry: BootState");
@@ -263,6 +278,7 @@ void BootState::exit() {
 	led_handle::dispatch<SetLEDOff>({});
 }
 
+/// @brief Off entry — start reed switch, periodic LED blink, enter low power.
 void OffState::entry() {
 	DEBUG_INFO("entry: OffState");
 	led_handle::dispatch<SetLEDPowerDown>({});
@@ -283,6 +299,7 @@ void OffState::exit() {
 	led_handle::dispatch<SetLEDOff>({});
 }
 
+/// @brief PreOp entry — verify config valid, mount QSPI, start watchdog, transition to Operational.
 void PreOperationalState::entry() {
 	DEBUG_INFO("entry: PreOperationalState");
 	if (configuration_store->is_valid()) {
@@ -327,6 +344,7 @@ void PreOperationalState::exit() {
 	led_handle::dispatch<SetLEDOff>({});
 }
 
+/// @brief Operational entry — start all services, subscribe to battery events, begin config flush.
 void OperationalState::entry() {
 	DEBUG_INFO("entry: OperationalState");
 
@@ -350,6 +368,7 @@ void OperationalState::entry() {
 	}
 }
 
+/// @brief Battery critical event — stop services, transition to BatteryCriticalState.
 void OperationalState::react(BatteryMonitorEventVoltageCritical const &) {
 	DEBUG_INFO("OperationalState::react: BatteryMonitorEventVoltageCritical");
 	system_scheduler->post_task_prio([this]() {
@@ -357,6 +376,8 @@ void OperationalState::react(BatteryMonitorEventVoltageCritical const &) {
 	}, "BatteryCriticalHandler", Scheduler::DEFAULT_PRIORITY, 1000);
 }
 
+/// @brief Service event callback — dispatch to ServiceManager for peer notification.
+/// @param e  Service event from any active service.
 void OperationalState::service_event_handler(ServiceEvent& e) {
 
 	// Notify event to all peer services
@@ -414,6 +435,7 @@ void OperationalState::exit() {
 	battery_monitor->unsubscribe(*this);
 }
 
+/// @brief Config entry — start BLE advertising, USB polling, DTE handler.
 void ConfigurationState::entry() {
 	DEBUG_INFO("entry: ConfigurationState");
 
@@ -443,6 +465,7 @@ void ConfigurationState::exit() {
 	led_handle::dispatch<SetLEDOff>({});
 }
 
+/// @brief Set BLE device name from DEVICE_MODEL + ARGOS_DECID config params.
 void GenTracker::set_ble_device_name() {
 	std::string device_model = configuration_store->read_param<std::string>(ParamID::DEVICE_MODEL);
 	unsigned int identifier = configuration_store->read_param<unsigned int>(ParamID::ARGOS_DECID);
@@ -451,6 +474,9 @@ void GenTracker::set_ble_device_name() {
 	ble_service->set_device_name(device_name);
 }
 
+/// @brief BLE event callback — handle connect/disconnect, DTE data, OTA transfers.
+/// @param event  BLE service event (CONNECTED, DISCONNECTED, DTE_DATA, OTA_*).
+/// @return 0 on success.
 int ConfigurationState::on_ble_event(BLEServiceEvent& event) {
 	int rc = 0;
 
@@ -510,11 +536,13 @@ int ConfigurationState::on_ble_event(BLEServiceEvent& event) {
 }
 
 
+/// @brief BLE inactivity timeout — return to Operational after 20 min idle.
 void ConfigurationState::on_ble_inactivity_timeout() {
 	DEBUG_INFO("BLE Inactivity Timeout");
 	transit<OffState>();
 }
 
+/// @brief Reset the BLE inactivity timeout (called on every BLE activity).
 void ConfigurationState::restart_inactivity_timeout() {
 	//DEBUG_TRACE("Restart BLE inactivity timeout: %lu", system_timer->get_counter());
 	system_scheduler->cancel_task(m_ble_inactivity_timeout_task);
@@ -523,6 +551,7 @@ void ConfigurationState::restart_inactivity_timeout() {
 			Scheduler::DEFAULT_PRIORITY, BLE_INACTIVITY_TIMEOUT_MS);
 }
 
+/// @brief Process BLE DTE command — parse, dispatch to DTEHandler, send response.
 void ConfigurationState::process_received_data() {
 	auto req = ble_service->read_line();
 

@@ -1,12 +1,14 @@
-#ifndef __CONSOLE_LOG_HPP_
-#define __CONSOLE_LOG_HPP_
+/**
+ * @file console_log.hpp
+ * @brief Console (printf) logger — formats and prints log entries to UART/USB debug output.
+ */
+
+#pragma once
 
 #include "logger.hpp"
 #include "messages.hpp"
 
-using namespace std;
-
-
+/// @brief Printf-based console logger — dispatches to type-specific formatters.
 class ConsoleLog : public Logger {
 
 public:
@@ -61,46 +63,43 @@ public:
 	unsigned int num_entries() override {return 0;}
 	void read(void *, int) override { }
 	void write(void *entry) override {
-		LogEntry *p = (LogEntry *)entry;
+		auto *p = static_cast<LogEntry *>(entry);
 		switch (p->header.log_type) {
 		case LOG_ERROR:
 		case LOG_WARN:
 		case LOG_INFO:
 		case LOG_TRACE:
-			debug_formatter(log_type_name[p->header.log_type], &p->header, (const char * )p->data);
+			debug_formatter(log_type_name[p->header.log_type], &p->header, reinterpret_cast<const char *>(p->data));
 			break;
 		case LOG_GPS:
-			gps_formatter((const GPSLogEntry *)entry);
+			gps_formatter(static_cast<const GPSLogEntry *>(entry));
 			break;
 		case LOG_STATE:
-			state_formatter((const StateChangeLogEntry *)entry);
+			state_formatter(static_cast<const StateChangeLogEntry *>(entry));
 			break;
 		case LOG_BATTERY:
-			battery_formatter((const BatteryLogEntry *)entry);
+			battery_formatter(static_cast<const BatteryLogEntry *>(entry));
 			break;
 		case LOG_STARTUP:
-			startup_formatter((const SystemStartupLogEntry *)entry);
+			startup_formatter(static_cast<const SystemStartupLogEntry *>(entry));
 			break;
 		case LOG_ZONE:
-			zone_formatter((const ZoneLogEntry *)entry);
+			zone_formatter(static_cast<const ZoneLogEntry *>(entry));
 			break;
 		case LOG_UNDERWATER:
-			underwater_formatter((const UnderwaterLogEntry *)entry);
+			underwater_formatter(static_cast<const UnderwaterLogEntry *>(entry));
 			break;
 		case LOG_BLE:
-			ble_formatter((const BLEActionLogEntry *)entry);
+			ble_formatter(static_cast<const BLEActionLogEntry *>(entry));
 			break;
 		case LOG_OTA_UPDATE:
-			ota_update_formatter((const OTAFWUpdateLogEntry *)entry);
+			ota_update_formatter(static_cast<const OTAFWUpdateLogEntry *>(entry));
 			break;
 		case LOG_CAM:
 		case LOG_AXL:
 		case LOG_MORTALITY:
 		default:
-			// Not yet supported
 			break;
 		}
 	}
 };
-
-#endif // __LOGGER_HPP_

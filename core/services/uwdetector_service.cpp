@@ -1,8 +1,12 @@
-#include "uwdetector_service.hpp"
+/**
+ * @file uwdetector_service.cpp
+ * @brief Underwater detector — multi-sample state detection with dry/wet hysteresis.
+ */
 
+#include "uwdetector_service.hpp"
 #include "debug.hpp"
 
-
+/// @brief Sample the detector, accumulate dry/wet counts, emit state change on terminal iteration.
 void UWDetectorService::service_initiate() {
 
 	bool new_state;
@@ -50,6 +54,7 @@ void UWDetectorService::service_initiate() {
 	}
 }
 
+/// @brief Init: load UW detection params from config (thresholds, sample counts, gaps).
 void UWDetectorService::service_init() {
 	m_is_first_time = true;
 	m_period_underwater_ms = 1000 * service_read_param<unsigned int>(ParamID::SAMPLING_UNDER_FREQ);
@@ -64,9 +69,12 @@ void UWDetectorService::service_init() {
 	m_pending_state = false;
 }
 
+/// @brief Terminate: no-op.
 void UWDetectorService::service_term() {
 };
 
+/// @brief Next schedule: sample_gap between iterations, or surface/underwater period.
+/// @return Delay in ms until next sample, or 0 for first-time immediate.
 unsigned int UWDetectorService::service_next_schedule_in_ms() {
 	if (m_sample_iteration)
 		return m_sample_gap;
@@ -74,6 +82,8 @@ unsigned int UWDetectorService::service_next_schedule_in_ms() {
 		return m_is_first_time ? 0 : (m_current_state ? m_period_underwater_ms : m_period_surface_ms);
 }
 
+/// @brief UW detector must run underwater (it IS the underwater detector).
+/// @return Always true.
 bool UWDetectorService::service_is_usable_underwater() {
 	return true;
 }

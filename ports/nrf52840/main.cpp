@@ -1,3 +1,11 @@
+/**
+ * @file main.cpp
+ * @brief Application entry point — 8-phase init, FSM start, infinite scheduler loop.
+ *
+ * Init phases: peripherals → power-on check → storage → battery → core services
+ * → communication (SWS + satellite/LoRa + GPS) → sensors → runtime services.
+ */
+
 // --- Nordic SDK ---
 #include "nrf_delay.h"
 #include "nrf_gpio.h"

@@ -1,3 +1,8 @@
+/**
+ * @file config_store_fs.hpp
+ * @brief LittleFS-backed configuration store — serialization/deserialization of all parameters.
+ */
+
 #pragma once
 
 #include <cstring>
@@ -26,6 +31,7 @@ protected:
 	// param_map table otherwise the configuration item is
 	// rejected.  <KEY> has fixed length of 5 e.g., "IDT01".
 
+	/// @brief Serialize a single config entry (key + zero-padded binary data) to file.
 	bool serialize_config_entry(LFSFile &f, unsigned int index) {
 		if (index >= MAX_CONFIG_ITEMS)
 			return false;
@@ -117,6 +123,7 @@ protected:
 				f.write(s.entry_buffer, sizeof(s.entry_buffer)) == sizeof(s.entry_buffer);
 	}
 
+	/// @brief Deserialize a single config entry from file and validate key match.
 	bool deserialize_config_entry(LFSFile &f, unsigned int index) {
 		if (index >= MAX_CONFIG_ITEMS)
 			return false;
@@ -261,6 +268,7 @@ protected:
 		return true;
 	}
 
+	/// @brief Read full configuration from config.dat, recover protected fields on version mismatch.
 	void deserialize_config() {
 		DEBUG_TRACE("ConfigurationStoreLFS::deserialize_config");
 		LFSFile f(&m_filesystem, "config.dat", LFS_O_RDONLY);
@@ -317,6 +325,7 @@ protected:
 		m_is_config_valid = true;
 	}
 
+	/// @brief Write full configuration to config.dat (versioned, all implemented params).
 	void serialize_config() override {
 		DEBUG_TRACE("ConfigurationStoreLFS::serialize_config");
 		m_filesystem.power_up();
@@ -357,6 +366,7 @@ protected:
 		DEBUG_TRACE("ConfigurationStoreLFS::serialize_config: saved new file config.data");
 	}
 
+	/// @brief Read Argos pass prediction data from pass_predict.dat.
 	void deserialize_prepass() {
 		DEBUG_TRACE("ConfigurationStoreLFS::deserialize_prepass");
 		LFSFile f(&m_filesystem, "pass_predict.dat", LFS_O_RDWR);
@@ -372,6 +382,7 @@ protected:
 		}
 	}
 
+	/// @brief Write pass prediction data to pass_predict.dat.
 	void serialize_pass_predict() {
 		DEBUG_TRACE("ConfigurationStoreLFS::serialize_pass_predict");
 		LFSFile f(&m_filesystem, "pass_predict.dat", LFS_O_CREAT | LFS_O_WRONLY | LFS_O_TRUNC);
@@ -384,11 +395,13 @@ protected:
 		}
 	}
 
+	/// @brief Reset pass prediction to factory default AOP data.
 	void create_default_prepass() {
 		DEBUG_TRACE("ConfigurationStoreLFS::create_default_prepass");
 		write_pass_predict((BasePassPredict&)default_prepass);
 	}
 
+	/// @brief Refresh cached battery level/voltage from BatteryMonitor.
 	void update_battery_level() override {
 		battery_monitor->update();
 		m_battery_level = battery_monitor->get_level();
@@ -400,6 +413,7 @@ private:
 	FileSystem &m_filesystem;
 	bool        m_requires_serialization;
 
+	/// @brief Serialize only protected params (DECID, HEXID) — used during factory_reset recovery.
 	void serialize_protected_config() {
 		LFSFile f(&m_filesystem, "config.dat", LFS_O_WRONLY | LFS_O_CREAT | LFS_O_TRUNC);
 
@@ -427,6 +441,7 @@ private:
 		DEBUG_TRACE("ConfigurationStoreLFS::serialize_protected_config: saved protected params to config.data");
 	}
 
+	/// @brief Persist all sensor calibration data to flash.
 	void save_calibration_data() {
 		CalibratableManager::save_all(true);
 	}
@@ -434,6 +449,8 @@ private:
 public:
 	LFSConfigurationStore(FileSystem &filesystem) : m_is_pass_predict_valid(false), m_is_config_valid(false), m_filesystem(filesystem) {}
 
+	/// @brief Init: deserialize config + prepass from flash, create defaults if missing.
+	/// @throws CONFIG_STORE_CORRUPTED on unrecoverable flash error.
 	void init() override {
 		m_requires_serialization = false;
 		m_is_pass_predict_valid = false;
@@ -476,6 +493,7 @@ public:
 		return m_is_config_valid;
 	}
 
+	/// @brief Factory reset: format flash, preserve DECID/HEXID + calibration data.
 	void factory_reset() override {
 		m_filesystem.power_up();
 		m_filesystem.umount();

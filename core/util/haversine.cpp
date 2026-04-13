@@ -1,5 +1,10 @@
+/**
+ * @file haversine.cpp
+ * @brief Haversine formula implementation — great-circle distance on Earth (R=6371 km).
+ */
+
 #include "haversine.hpp"
-#include <math.h>
+#include <cmath>
 
 static constexpr double EARTHRADIUS = 6371; // In km
 

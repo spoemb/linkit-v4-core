@@ -1,3 +1,8 @@
+/**
+ * @file service_scheduler.hpp
+ * @brief Service event types, identifiers, and inter-service communication structures.
+ */
+
 #pragma once
 
 #include <functional>
@@ -5,23 +10,25 @@
 
 #include "messages.hpp"
 
+/// @brief Event types emitted by services and consumed by peers / ServiceManager.
 enum class ServiceEventType {
-	SERVICE_ACTIVE,
-	SERVICE_INACTIVE,
-	SERVICE_LOG_UPDATED,
-	// Legacy events
-	GNSS_ON,
-	ARGOS_TX_START,
-	ARGOS_TX_END,
-	SENSOR_LOG_UPDATED
+	SERVICE_ACTIVE,       ///< Service has started (e.g., GPS power on)
+	SERVICE_INACTIVE,     ///< Service has completed (e.g., GPS power off)
+	SERVICE_LOG_UPDATED,  ///< Service has written a new log entry
+	GNSS_ON,              ///< GPS acquisition started (legacy)
+	ARGOS_TX_START,       ///< Argos TX started (legacy)
+	ARGOS_TX_END,         ///< Argos TX completed (legacy)
+	SENSOR_LOG_UPDATED    ///< Sensor data logged (legacy)
 };
 
+/// @brief Sensor data payload for SERVICE_LOG_UPDATED events.
 struct ServiceSensorData {
-	double port[6];
+	double port[6] = {};  ///< Up to 6 sensor ports (0-initialized to avoid garbage reads)
 };
 
-using ServiceEventData = std::variant<bool,GPSLogEntry,ServiceSensorData,CAMLogEntry>;
+using ServiceEventData = std::variant<bool, GPSLogEntry, ServiceSensorData, CAMLogEntry>;
 
+/// @brief Unique identifier for each service instance.
 enum class ServiceIdentifier : unsigned int {
 	UNKNOWN,
 	ARGOS_TX,
@@ -43,16 +50,15 @@ enum class ServiceIdentifier : unsigned int {
 	MORTALITY
 };
 
+/// @brief Inter-service event — carries type, data, source, and originator ID.
 struct ServiceEvent {
-	ServiceEvent() { event_source = ServiceIdentifier::UNKNOWN; }
-	ServiceEventType  event_type;
+	ServiceEventType  event_type = ServiceEventType::SERVICE_INACTIVE;
 	ServiceEventData  event_data;
-	ServiceIdentifier event_source;
-	unsigned int	  event_originator_unique_id;
+	ServiceIdentifier event_source = ServiceIdentifier::UNKNOWN;
+	unsigned int      event_originator_unique_id = 0;
 };
 
-// Legacy code for old interface
-
+/// @deprecated Legacy scheduler interface — kept for test compatibility. Use Service subclass instead.
 class ServiceScheduler {
 public:
 	virtual ~ServiceScheduler() {}

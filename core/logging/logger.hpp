@@ -1,13 +1,17 @@
+/**
+ * @file logger.hpp
+ * @brief Abstract logger interface + LoggerManager registry.
+ */
+
 #pragma once
 
 #include <map>
 #include <cstring>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdarg.h>
+#include <cstdint>
+#include <cstdio>
+#include <cstdarg>
 
 #include "messages.hpp"
-
 
 enum LogLevel {
 	LOG_LEVEL_OFF,
@@ -20,6 +24,7 @@ enum LogLevel {
 
 class LoggerManager;
 
+/// @brief Formats log entries for output (CSV, text, etc.).
 class LogFormatter {
 public:
 	static const char *log_level_str(LogType t);
@@ -28,6 +33,7 @@ public:
 	virtual const std::string log_entry(const LogEntry& e) = 0;
 };
 
+/// @brief Abstract logger — write log entries, query by level (error/warn/info/trace).
 class Logger {
 
 private:
@@ -62,6 +68,7 @@ public:
 };
 
 
+/// @brief Global logger registry — manages all Logger instances.
 class LoggerManager
 {
 private:

@@ -1,3 +1,8 @@
+/**
+ * @file runcam.hpp
+ * @brief runcam driver.
+ */
+
 #pragma once
 
 #include <cstdint>

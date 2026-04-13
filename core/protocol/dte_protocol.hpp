@@ -1,5 +1,11 @@
+/**
+ * @file dte_protocol.hpp
+ * @brief DTE protocol encoder/decoder — PARMR, PARMW, DUMPD, PASPW, etc.
+ */
+
+#pragma once
+
 #include <ctime>
-#include <time.h>
 #include <cstdarg>
 #include <algorithm>
 #include <map>
@@ -581,6 +587,9 @@ protected:
 		}
 	}
 
+	/// @brief Validate a boolean parameter (no range check needed).
+	static void validate(const BaseMap &, const bool&) {
+	}
 	static void validate(const BaseMap &, const std::time_t&) {
 	}
 	static void validate(const BaseMap &, const BaseRawData&) {
@@ -1586,7 +1595,7 @@ public:
 
 			size_t payload_pos = 0;
 
-			// KEY_LIST is permitted to be zero length
+			// KEY_LIST is permitted to be zero length (= return all params)
 			if (cmd_ref->prototype.size() && !payload_len &&
 				cmd_ref->prototype[0].encoding != BaseEncoding::KEY_LIST) {
 				DEBUG_ERROR("DTE_PROTOCOL_MISSING_ARG");
@@ -1598,8 +1607,14 @@ public:
 				throw DTE_PROTOCOL_UNEXPECTED_ARG;
 			}
 
+			// Skip decode loop when payload is empty and KEY_LIST (= all params)
+			if (!payload_len && cmd_ref->prototype.size() &&
+				cmd_ref->prototype[0].encoding == BaseEncoding::KEY_LIST) {
+				// keys/key_values stay empty → handler returns all params
+			}
+
 			// Iterate over expected parameters based on the command map entries
-			for (unsigned int arg_index = 0; arg_index < cmd_ref->prototype.size(); arg_index++) {
+			else for (unsigned int arg_index = 0; arg_index < cmd_ref->prototype.size(); arg_index++) {
 				if (arg_index > 0) {
 					// Skip over parameter separator and check it is a "," character
 					if (payload_pos >= payload.size()) {

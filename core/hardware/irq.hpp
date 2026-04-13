@@ -1,8 +1,13 @@
+/**
+ * @file irq.hpp
+ * @brief Abstract GPIO interrupt interface — enable/disable with callback.
+ */
+
 #pragma once
 
 #include <functional>
 
-
+/// @brief Abstract GPIO interrupt — wraps GPIOTE for edge-triggered callbacks.
 class IRQ {
 protected:
 	std::function<void()> m_func;

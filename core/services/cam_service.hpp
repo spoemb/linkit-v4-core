@@ -1,3 +1,8 @@
+/**
+ * @file cam_service.hpp
+ * @brief Camera service — periodic on/off cycling, capture count logging.
+ */
+
 #pragma once
 
 #include <atomic>
@@ -8,7 +13,7 @@
 #include "timeutils.hpp"
 #include "scheduler.hpp"
 
-
+/// @brief CSV log formatter for camera entries (used by DUMPD command).
 class CAMLogFormatter : public LogFormatter {
 public:
 	const std::string header() override {
@@ -16,7 +21,7 @@ public:
 	}
 	const std::string log_entry(const LogEntry& e) override {
 		char entry[512], d1[128];
-		const CAMLogEntry *cam = (const CAMLogEntry *)&e;
+		const auto *cam = reinterpret_cast<const CAMLogEntry *>(&e);
 		std::time_t t;
 		std::tm *tm;
 
@@ -34,6 +39,7 @@ public:
 	};
 };
 
+/// @brief Camera service — periodic power on/off cycling with capture logging.
 class CAMService : public Service, public CAMEventListener  {
 public:
 	CAMService(CAMDevice& device, Logger *logger) : Service(ServiceIdentifier::CAM_SENSOR, "CAM", logger), m_device(device) {
@@ -56,12 +62,12 @@ protected:
 
 private:
 	CAMDevice&   m_device;
-	bool         m_is_underwater;
-	uint64_t     m_wakeup_time;
-	std::time_t  m_next_schedule;
-	bool m_is_active;
-	bool m_is_pwr_on;
-	unsigned int m_num_captures;
+	bool         m_is_underwater = false;
+	uint64_t     m_wakeup_time = 0;
+	std::time_t  m_next_schedule = 0;
+	bool         m_is_active = false;
+	bool         m_is_pwr_on = false;
+	unsigned int m_num_captures = 0;
 
     void react(const CAMEventError&) override;
     void react(const CAMEventPowerOn&) override;

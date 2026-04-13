@@ -1,3 +1,8 @@
+/**
+ * @file pressure_sensor_service.hpp
+ * @brief Pressure sensor service — periodic sampling, barometric altitude, UW threshold logging.
+ */
+
 #pragma once
 
 #include "logger.hpp"
@@ -7,7 +12,7 @@
 #include "error.hpp"
 #include <cmath>
 
-
+/// @brief Log entry for pressure sensor (pressure, temperature, altitude).
 struct __attribute__((packed)) PressureLogEntry {
 	LogHeader header;
 	union {
@@ -27,7 +32,7 @@ public:
 	}
 	const std::string log_entry(const LogEntry& e) override {
 		char entry[512], d1[128];
-		const PressureLogEntry *log = (const PressureLogEntry *)&e;
+		const auto *log = reinterpret_cast<const PressureLogEntry *>(&e);
 		std::time_t t;
 		std::tm *tm;
 
@@ -63,9 +68,9 @@ private:
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Warray-bounds"
 	void sensor_populate_log_entry(LogEntry *e, ServiceSensorData& data) override {
-		PressureLogEntry *log = (PressureLogEntry *)e;
-		log->pressure = data.port[(unsigned int)PressureSensorPort::PRESSURE];
-		log->temperature = data.port[(unsigned int)PressureSensorPort::TEMPERATURE];
+		auto *log = reinterpret_cast<PressureLogEntry *>(e);
+		log->pressure = data.port[static_cast<unsigned int>(PressureSensorPort::PRESSURE)];
+		log->temperature = data.port[static_cast<unsigned int>(PressureSensorPort::TEMPERATURE)];
 
 		// Compute barometric altitude: altitude = 44330 * (1 - (P/P0)^(1/5.255))
 		// Sensor pressure is in bars, 1 bar = 1000 hPa
@@ -123,7 +128,7 @@ private:
 	bool sensor_is_usable_underwater() override { return true; }
 
 	void sensor_init() override {
-		unsigned int fs = (unsigned int)service_read_param<BasePressureSensorFullScale>(ParamID::PRESSURE_SENSOR_FULL_SCALE);
+		unsigned int fs = static_cast<unsigned int>(service_read_param<BasePressureSensorFullScale>(ParamID::PRESSURE_SENSOR_FULL_SCALE));
 		m_sensor.set_full_scale(fs);
 	}
 

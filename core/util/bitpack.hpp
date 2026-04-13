@@ -1,5 +1,9 @@
-#ifndef __BIT_PACK_HPP_
-#define __BIT_PACK_HPP_
+/**
+ * @file bitpack.hpp
+ * @brief Bit-level packing/extraction — MSB-first big-endian bitstream operations.
+ */
+
+#pragma once
 
 #include <cstdint>
 #include <string>
@@ -63,5 +67,3 @@ static void pack_bits(std::string& output, uint32_t value, int start, int total_
 		n_bits = std::min({8 - out_bit_offset, num_bits});
 	}
 }
-
-#endif  // __BIT_PACK_HPP_

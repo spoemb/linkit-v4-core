@@ -1,3 +1,8 @@
+/**
+ * @file cam_service.cpp
+ * @brief Camera service — periodic on/off cycling, event handling, capture logging.
+ */
+
 #include "cam_service.hpp"
 #include "config_store.hpp"
 #include "scheduler.hpp"
@@ -8,22 +13,27 @@
 
 extern ConfigurationStore *configuration_store;
 
-#define MS_PER_SEC         (1000)
+static constexpr unsigned int MS_PER_SEC = 1000;
 
+/// @brief Init: reset state (members already initialized in-class).
 void CAMService::service_init() {
-        m_is_active = false;
-        m_num_captures = 0;
-    m_is_pwr_on = false;
-    
+	m_is_active = false;
+	m_num_captures = 0;
+	m_is_pwr_on = false;
 }
 
+/// @brief Terminate: no-op (device powered off by service_cancel).
 void CAMService::service_term() {
 }
 
+/// @brief Enabled if CAM_ENABLE param is set.
+/// @return true if camera is enabled.
 bool CAMService::service_is_enabled() {
 	return service_read_param<bool>(ParamID::CAM_ENABLE);
 }
 
+/// @brief Compute next schedule — alternates between period_on and period_off.
+/// @return Delay in ms until next power toggle, or SCHEDULE_DISABLED if period_on is 0.
 unsigned int CAMService::service_next_schedule_in_ms() {
     std::time_t now = service_current_time();
     std::time_t period_on = service_read_param<unsigned int>(ParamID::CAM_PERIOD_ON);
@@ -48,6 +58,7 @@ unsigned int CAMService::service_next_schedule_in_ms() {
     return (next_schedule * MS_PER_SEC) + PWR_BUTT_DELAY + PWR_DELAY;
 }
 
+/// @brief Toggle camera power — if on, turn off; if off, turn on.
 void CAMService::service_initiate() {
 	m_is_active = true;
 	m_next_schedule = service_current_timer();
@@ -62,6 +73,8 @@ void CAMService::service_initiate() {
     
 }
 
+/// @brief Cancel active camera — power off and log.
+/// @return true if camera was active and cancelled.
 bool CAMService::service_cancel() {
 	// Cleanly terminate
 	DEBUG_TRACE("CAMService::service_cancel");
@@ -78,20 +91,28 @@ bool CAMService::service_cancel() {
 	return false;
 }
 
+/// @brief No timeout managed for camera — returns 0 (ServiceManager handles).
+/// @return Always 0.
 unsigned int CAMService::service_next_timeout() {
-	// No timeoute managed
-    return(0);
+	return 0;
 }
 
+/// @brief Trigger camera on surfacing if CAM_TRIGGER_ON_SURFACED is set.
+/// @param[out] immediate  true if camera should fire immediately on surfacing.
+/// @return Always true (reschedule on surface).
 bool CAMService::service_is_triggered_on_surfaced(bool& immediate) {
     immediate = service_read_param<bool>(ParamID::CAM_TRIGGER_ON_SURFACED);
     return true;
 }
 
+/// @brief Camera is usable underwater (waterproof housing).
+/// @return Always true.
 bool CAMService::service_is_usable_underwater() {
 	return true;
 }
 
+/// @brief Build a camera log entry with OFF status (error or cancel).
+/// @return CAMLogEntry with event_type=OFF and current battery/time.
 CAMLogEntry CAMService::invalid_log_entry()
 {
     DEBUG_INFO("CAMService::invalid_log_entry");
@@ -111,6 +132,8 @@ CAMLogEntry CAMService::invalid_log_entry()
     return cam_entry;
 }
 
+/// @brief Log camera state change (ON/OFF) with battery and capture count.
+/// @param state  true = ON, false = OFF.
 void CAMService::task_process_cam_data(bool state)
 {
     DEBUG_TRACE("CAMService::task_process_cam_data");
@@ -144,6 +167,7 @@ void CAMService::task_process_cam_data(bool state)
     service_complete(&event_data, &cam_entry, true);
 }
 
+/// @brief Camera error — power off and complete service.
 void CAMService::react(const CAMEventError&) {
 	if (!m_is_active)
 		return;
@@ -154,30 +178,37 @@ void CAMService::react(const CAMEventError&) {
     service_complete(&event_data, &log_entry);
 }
 
+/// @brief Camera power on confirmed — update state, log.
+/// @note m_device.power_on() is safe to re-call (RunCam has POWERED_ON guard).
 void CAMService::react(const CAMEventPowerOn&) {
-	// if (!m_is_active)
-	// 	return;
-    DEBUG_TRACE("CAMService::react(CAMEventOn)");
-    m_is_pwr_on = true;
-    m_device.power_on();
-    task_process_cam_data(m_is_pwr_on);
+	DEBUG_TRACE("CAMService::react(CAMEventOn)");
+	m_is_pwr_on = true;
+	m_device.power_on();
+	task_process_cam_data(m_is_pwr_on);
 }
 
+/// @brief Camera power off confirmed — update state, log, increment capture count.
+/// @note m_device.power_off() is safe to re-call (RunCam has POWERED_OFF guard).
 void CAMService::react(const CAMEventPowerOff&) {
-	// if (!m_is_active)
-	// 	return;
-    DEBUG_TRACE("CAMService::react(CAMEventOff)");
-    m_is_pwr_on = false;
-    m_device.power_off();
-    task_process_cam_data(m_is_pwr_on);
-    m_num_captures++;
+	DEBUG_TRACE("CAMService::react(CAMEventOff)");
+	m_is_pwr_on = false;
+	m_device.power_off();
+	task_process_cam_data(m_is_pwr_on);
+	m_num_captures++;
 }
 
+/// @brief Fill log entry header with date/time fields.
+/// @param[out] entry  Log entry to populate.
+/// @param time        Epoch time (seconds).
 void CAMService::populate_cam_log_with_time(CAMLogEntry &entry, std::time_t time)
 {
 	service_set_log_header_time(entry.header, time);
 }
 
+/// @brief Check if AXL wakeup event should trigger camera.
+/// @param event       Incoming peer event.
+/// @param[out] immediate  Set to true if camera should fire immediately.
+/// @return true if this event triggers camera rescheduling.
 bool CAMService::service_is_triggered_on_event(ServiceEvent& event, bool& immediate) {
 #if ENABLE_AXL_SENSOR
 	if (event.event_source == ServiceIdentifier::AXL_SENSOR &&
@@ -197,8 +228,3 @@ bool CAMService::service_is_triggered_on_event(ServiceEvent& event, bool& immedi
 
 	return false;
 }
-
-// void CAMService::notify_peer_event(ServiceEvent& event) {
-//     DEBUG_TRACE("CAMService::notify_peer_event: (%u|%u)", event.event_source, event.event_type);
-// 	Service::notify_peer_event(event);
-// }

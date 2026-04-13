@@ -1,13 +1,17 @@
+/**
+ * @file gpio_led.hpp
+ * @brief GPIO-backed LED — on/off/flash via BSP pin + hardware timer.
+ */
+
 #pragma once
 
 #include "gpio.hpp"
 #include "led.hpp"
 #include "timer.hpp"
 
-
 extern Timer *system_timer;
 
-
+/// @brief LED driven by a GPIO pin with timer-based flash support.
 class GPIOLed : public Led {
 public:
 	GPIOLed(int pin) : Led(pin) {
@@ -47,9 +51,9 @@ public:
 
 private:
 	int m_pin;
-	bool m_is_flashing;
-	bool m_flash_state;
-	unsigned int m_flash_interval;
+	bool m_is_flashing = false;
+	bool m_flash_state = false;
+	unsigned int m_flash_interval = 0;
 	Timer::TimerHandle m_timer_task;
 
 	void toggle_led(void) {

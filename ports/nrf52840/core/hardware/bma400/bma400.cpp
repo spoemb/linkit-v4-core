@@ -28,7 +28,6 @@ extern ConfigurationStore *configuration_store;
 
 /// @brief Static device table for Bosch C callback lookup (replaces std::map, ISR-safe).
 static BMA400LL *s_devices[BMA400_MAX_DEVICES] = {};
-static uint8_t s_next_id = 0;
 
 /// @brief Register a BMA400LL instance and return its lookup ID.
 /// @param dev  Pointer to the device to register.
@@ -179,7 +178,7 @@ double BMA400LL::lsb_to_g(int16_t raw) const
 }
 
 /// @brief Convert range register value to g-force (2, 4, 8, or 16).
-uint8_t BMA400LL::range_to_g(uint8_t range_reg)
+uint8_t BMA400LL::range_to_g(uint8_t range_reg) const
 {
 	static constexpr uint8_t g_table[] = { 2, 4, 8, 16 };
 	return (range_reg < 4) ? g_table[range_reg] : 4;
@@ -594,7 +593,9 @@ void BMA400LL::disable_fifo()
 	struct bma400_device_conf dev_conf = {};
 	dev_conf.type = BMA400_FIFO_CONF;
 	dev_conf.param.fifo_conf.conf_status = BMA400_DISABLE;
-	bma400_set_device_conf(&dev_conf, 1, &m_bma400_dev);
+	int8_t rslt = bma400_set_device_conf(&dev_conf, 1, &m_bma400_dev);
+	if (rslt != BMA400_OK)
+		DEBUG_WARN("BMA400: disable_fifo set_device_conf failed: %d", rslt);
 
 	setup_sleep_mode();
 	m_fifo_enabled = false;

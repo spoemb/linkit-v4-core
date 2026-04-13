@@ -1,3 +1,8 @@
+/**
+ * @file sea_temp_sensor_service.hpp
+ * @brief Sea temperature sensor service — periodic sampling via RTD or TSYS01.
+ */
+
 #pragma once
 
 #include "sensor_service.hpp"
@@ -5,7 +10,7 @@
 #include "messages.hpp"
 #include "timeutils.hpp"
 
-
+/// @brief Log entry for sea temperature sensor.
 struct __attribute__((packed)) SeaTempLogEntry {
 	LogHeader header;
 	union {
@@ -21,7 +26,7 @@ public:
 	}
 	const std::string log_entry(const LogEntry& e) override {
 		char entry[512], d1[128];
-		const SeaTempLogEntry *log = (const SeaTempLogEntry *)&e;
+		const auto *log = reinterpret_cast<const SeaTempLogEntry *>(&e);
 		std::time_t t;
 		std::tm *tm;
 
@@ -47,7 +52,7 @@ private:
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Warray-bounds"
 	void sensor_populate_log_entry(LogEntry *e, ServiceSensorData& data) override {
-		SeaTempLogEntry *log = (SeaTempLogEntry *)e;
+		auto *log = reinterpret_cast<SeaTempLogEntry *>(e);
 		log->sea_temp = data.port[0];
 		service_set_log_header_time(log->header, service_current_time());
 	}

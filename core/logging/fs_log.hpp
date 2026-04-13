@@ -1,3 +1,8 @@
+/**
+ * @file fs_log.hpp
+ * @brief LittleFS-backed chunked circular log — persists log entries across power cycles.
+ */
+
 #pragma once
 
 #include <string>
@@ -6,10 +11,10 @@
 #include "debug.hpp"
 #include "error.hpp"
 
-// Size of individual log chunks -- a separate file is used per chunk of the overall log
-#define LOG_CHUNK_SIZE				(4*1024)
+/// @brief Size of individual log chunks — a separate file per chunk.
+static constexpr unsigned int LOG_CHUNK_SIZE = 4 * 1024;
 
-
+/// @brief Persistent circular log stored as chunked LittleFS files.
 class FsLog : public Logger {
 
 private:
@@ -37,37 +42,31 @@ public:
 		m_has_wrapped = 0;
 		m_file_read = nullptr;
 		m_file_write = nullptr;
-		m_last_read_index = (unsigned int)-1;
+		m_last_read_index = static_cast<unsigned int>(-1);
 		m_is_ready = false;
 	}
 
 	~FsLog() {
-		if (m_file_read)
-			delete m_file_read;
+		delete m_file_read;
+		delete m_file_write;
 	}
 
 	bool is_ready() override { return m_is_ready; }
 
 	void truncate() {
 
+		// Close any open file handles BEFORE nulling pointers
+		delete m_file_read;
+		m_file_read = nullptr;
+
+		delete m_file_write;
+		m_file_write = nullptr;
+
 		// Reset parameters
 		m_write_offset = 0;
 		m_has_wrapped = 0;
-		m_file_read = nullptr;
-		m_file_write = nullptr;
-		m_last_read_index = (unsigned int)-1;
+		m_last_read_index = static_cast<unsigned int>(-1);
 		m_is_ready = false;
-
-		// Close any open file handles
-		if (m_file_read) {
-			delete m_file_read;
-			m_file_read = nullptr;
-		}
-
-		if (m_file_write) {
-			delete m_file_write;
-			m_file_write = nullptr;
-		}
 
 		// Remove first file in chain
 		m_filesystem->remove(m_filename);
@@ -156,13 +155,13 @@ public:
 		LFSFile f(m_filesystem, filename.c_str(), flags);
 
 		// Check to ensure the file size and write offset are equal
-		if ((unsigned int)f.size() != (m_write_offset % LOG_CHUNK_SIZE)) {
+		if (static_cast<unsigned int>(f.size()) != (m_write_offset % LOG_CHUNK_SIZE)) {
 			DEBUG_TRACE("File size (%u) does not match expected write offset (%u)", f.size(), (m_write_offset % LOG_CHUNK_SIZE));
 			// We need to reset this chunk back to its start -- this log entry will be lost
 			m_write_offset &= ~(LOG_CHUNK_SIZE-1);
 		} else {
-			set_payload_size((LogEntry *)entry);
-			f.write(entry, (lfs_size_t)sizeof(LogEntry));
+			set_payload_size(static_cast<LogEntry *>(entry));
+			f.write(entry, static_cast<lfs_size_t>(sizeof(LogEntry)));
 			// Update write index, wrapped status and write the file attribute
 			m_write_offset += sizeof(LogEntry);
 			if (m_write_offset >= m_max_size) {
@@ -179,7 +178,7 @@ public:
 		if (file_index == m_last_read_index) {
 			delete m_file_read;
 			m_file_read = nullptr;
-			m_last_read_index = (unsigned int)-1;
+			m_last_read_index = static_cast<unsigned int>(-1);
 		}
 	}
 

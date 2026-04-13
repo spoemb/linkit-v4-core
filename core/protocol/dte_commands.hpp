@@ -1,3 +1,8 @@
+/**
+ * @file dte_commands.hpp
+ * @brief DTE command definitions — command enum, command map, sensor/DFU types.
+ */
+
 #pragma once
 
 #include "base_types.hpp"

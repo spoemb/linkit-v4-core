@@ -1,3 +1,8 @@
+/**
+ * @file dte_handler.hpp
+ * @brief DTE command handler — dispatches parsed commands to config store, sensors, GPS, satellite.
+ */
+
 #pragma once
 
 #include <algorithm>
@@ -114,17 +119,17 @@ private:
 		{7, "THERMISTOR"},
 		{8, "SWS"},
 	};
-	unsigned int m_dumpd_NNN;
-	unsigned int m_dumpd_mmm;
-	unsigned int m_dumpd_d_type;  // Track current dump type to detect mid-stream changes
-	bool m_sat_device_active;
-	bool m_lora_tx_active;         // Current async TX is LoRa (vs Argos/SMD)
-	bool m_doppler_cal_active;     // Periodic Doppler TX mode active (until reset)
-	bool m_doppler_cal_first_tx;   // Waiting for first TX result
-	bool m_sattx_needs_restore;    // SATTX temporarily switched modulation
-	KineisModulation m_sattx_restore_modulation;  // Modulation to restore after SATTX
-	bool m_gnssi_pending;          // Waiting for GNSS device info (autonomous GNSSI)
-	bool m_gps_subscribed;         // Subscribed to GPS events
+	unsigned int m_dumpd_NNN = 0;
+	unsigned int m_dumpd_mmm = 0;
+	unsigned int m_dumpd_d_type = 0;  ///< Track current dump type to detect mid-stream changes
+	bool m_sat_device_active = false;
+	bool m_lora_tx_active = false;         ///< Current async TX is LoRa (vs Argos/SMD)
+	bool m_doppler_cal_active = false;     ///< Periodic Doppler TX mode active (until reset)
+	bool m_doppler_cal_first_tx = false;   ///< Waiting for first TX result
+	bool m_sattx_needs_restore = false;    ///< SATTX temporarily switched modulation
+	KineisModulation m_sattx_restore_modulation = KineisModulation::LDA2;
+	bool m_gnssi_pending = false;          ///< Waiting for GNSS device info (autonomous GNSSI)
+	bool m_gps_subscribed = false;         ///< Subscribed to GPS events
 	std::function<void(const std::string&)> m_async_write;
 
 	void schedule_doppler_cal_tx();

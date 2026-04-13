@@ -1,6 +1,14 @@
+/**
+ * @file memory_monitor_service.hpp
+ * @brief Memory monitor service — periodic heap/stack usage logging (every 12h).
+ */
+
+#pragma once
+
 #include "service.hpp"
 #include "memmang.hpp"
 
+/// @brief Periodic memory monitor — logs heap stats and max stack usage.
 class MemoryMonitorService : public Service {
 public:
 	MemoryMonitorService() : Service(ServiceIdentifier::MEMORY_MONITOR, "MEMORY") {

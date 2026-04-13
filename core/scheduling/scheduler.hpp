@@ -1,3 +1,11 @@
+/**
+ * @file scheduler.hpp
+ * @brief Cooperative task scheduler — priority-ordered immediate + timer-deferred tasks.
+ *
+ * All task queues use ETL static containers (no heap allocation).
+ * Thread-safe via InterruptLock on all queue operations.
+ */
+
 #pragma once
 
 #include <optional>
@@ -10,17 +18,18 @@
 #include "etl/list.h"
 #include "etl/vector.h"
 
-#define MAX_NUM_TASKS 64
+static constexpr unsigned int MAX_NUM_TASKS = 64;  ///< Max concurrent pending tasks
 
 #ifndef INPLACE_FUNCTION_SIZE_SCHEDULER
 #define INPLACE_FUNCTION_SIZE_SCHEDULER 12
 #endif
 
+/// @brief Cooperative task scheduler with priority ordering and timer-deferred execution.
 class Scheduler {
 
 public:
-	static const unsigned int HIGHEST_PRIORITY = 0;
-	static const unsigned int DEFAULT_PRIORITY = 7;
+	static constexpr unsigned int HIGHEST_PRIORITY = 0;
+	static constexpr unsigned int DEFAULT_PRIORITY = 7;
 
 	Scheduler(Timer *timer) : m_timer(timer), m_unique_id(0) {}
 	Scheduler(const Scheduler &) = delete;
@@ -40,20 +49,26 @@ public:
     };
 #pragma GCC diagnostic pop
 
+	/// @brief Opaque handle to a posted task — used for cancellation and status queries.
 	class TaskHandle
 	{
 		friend class Scheduler;
-	
+
 	public:
-		TaskHandle() : m_parent(nullptr) {}
+		TaskHandle() = default;
 
 	private:
-		const char *m_name;
-		Scheduler *m_parent;
+		const char *m_name = nullptr;
+		Scheduler *m_parent = nullptr;
 		std::optional<unsigned int> m_id;
 	};
 
-	// Used for queuing a static or free function as a task
+	/// @brief Post a task for execution — immediate or after a delay.
+	/// @param task_func  Callback to execute (stored inline, no heap).
+	/// @param task_name  Debug name (must be a string literal — not copied).
+	/// @param priority   Lower = higher priority (0 = highest, 7 = default).
+	/// @param delay_ms   0 = immediate, >0 = deferred via hardware timer.
+	/// @return Handle for cancellation / status check.
 	TaskHandle post_task_prio(stdext::inplace_function<void(), INPLACE_FUNCTION_SIZE_SCHEDULER> const &task_func, const char *task_name, unsigned int priority = DEFAULT_PRIORITY, unsigned int delay_ms = 0) {
 
 		Task task;
@@ -83,6 +98,8 @@ public:
 		return handle;
 	}
 
+	/// @brief Cancel a pending task (immediate or deferred). Invalidates the handle.
+	/// @param task  Handle returned by post_task_prio (safe to call with default handle).
 	void cancel_task(TaskHandle &task) {
 
 		if (task.m_parent != this) {
@@ -133,6 +150,8 @@ public:
 		task.m_parent = nullptr;
 	}
 
+	/// @brief Execute all pending immediate tasks in priority order.
+	/// @return true if at least one task was executed.
 	bool run() {
 
 		// Run through our queue of tasks in order and run them
@@ -164,6 +183,9 @@ public:
 		}
 	}
 
+	/// @brief Check if a task is still pending (immediate or deferred).
+	/// @param task  Handle to check.
+	/// @return true if the task is in either queue.
 	bool is_scheduled(TaskHandle task) {
 		if (task.m_parent != this)
 			return false; // This handle belongs to another scheduler
@@ -193,6 +215,7 @@ public:
 		return false;
 	}
 
+	/// @brief Cancel all pending tasks (immediate + deferred). Used during shutdown.
 	void clear_all()
 	{
 		InterruptLock lock;
@@ -207,12 +230,16 @@ public:
 		}
 	}
 	
+	/// @brief Check if any task is pending (used by PMU to decide idle depth).
+	/// @return true if at least one task exists in either queue.
 	bool is_any_task_scheduled()
 	{
 		InterruptLock lock;
 		return m_tasks.size() + m_timer_schedules.size();
 	}
 
+	/// @brief Time in ms until the earliest deferred task fires (UINT64_MAX if none).
+	/// @return Milliseconds until next task, or 0 if immediate tasks pending.
 	uint64_t ms_until_next_task()
 	{
 		InterruptLock lock;

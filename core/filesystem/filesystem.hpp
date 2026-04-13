@@ -1,13 +1,18 @@
-#ifndef __FILESYSTEM_HPP_
-#define __FILESYSTEM_HPP_
+/**
+ * @file filesystem.hpp
+ * @brief LittleFS filesystem abstraction — FileSystem, FlashInterface, File, LFSCircularFile.
+ */
+
+#pragma once
 
 #include <cstring>
-#include <stdio.h>
-#include <stdint.h>
+#include <cstdio>
+#include <cstdint>
 #include "lfs.h"
 
 class File;
 
+/// @brief Abstract filesystem interface (mount, format, file ops).
 class FileSystem {
 public:
 	virtual ~FileSystem() {}
@@ -24,6 +29,7 @@ public:
 	virtual void power_down() {}
 };
 
+/// @brief Abstract flash hardware interface (read/prog/erase/sync).
 class FlashInterface {
 public:
 	unsigned int m_blocks;
@@ -46,6 +52,7 @@ public:
 };
 
 
+/// @brief LittleFS filesystem backed by a FlashInterface.
 class LFSFileSystem : public FileSystem {
 	friend class LFSFile;
 
@@ -61,6 +68,9 @@ private:
 	static int lfs_sync(const struct lfs_config *c) { return reinterpret_cast<LFSFileSystem*>(c->context)->m_flash_if->sync(); }
 
 public:
+	/// @brief Construct LittleFS filesystem backed by a FlashInterface.
+	/// @param flash_if  Flash hardware (QSPI, RAM, etc.).
+	/// @param blocks    Number of blocks to use (0 = use all from flash_if).
 	LFSFileSystem(FlashInterface *flash_if, unsigned int blocks = 0) {
 		m_cfg.context = static_cast<void*>(this);
 
@@ -101,9 +111,9 @@ public:
 	}
 
 	virtual ~LFSFileSystem() {
-		delete[] (uint8_t*)m_cfg.read_buffer;
-		delete[] (uint8_t*)m_cfg.prog_buffer;
-		delete[] (uint8_t*)m_cfg.lookahead_buffer;
+		delete[] static_cast<uint8_t*>(m_cfg.read_buffer);
+		delete[] static_cast<uint8_t*>(m_cfg.prog_buffer);
+		delete[] static_cast<uint8_t*>(m_cfg.lookahead_buffer);
 	}
 
 	int mount() override {
@@ -156,6 +166,7 @@ public:
 };
 
 
+/// @brief RAM-backed flash emulation (for tests and Linux port).
 class RamFlash : public FlashInterface {
 private:
 	uint8_t *m_block_ram;
@@ -195,8 +206,10 @@ public:
 	bool m_debug_trace;
 };
 
+/// @brief Abstract file interface (read/write/seek/tell/flush/size).
 class File {
 public:
+	virtual ~File() = default;
 	virtual lfs_ssize_t read(void *buffer, lfs_size_t size) = 0;
 	virtual lfs_ssize_t write(void *buffer, lfs_size_t size) = 0;
 	virtual lfs_soff_t seek(lfs_soff_t off, int whence=LFS_SEEK_SET) = 0;
@@ -205,7 +218,7 @@ public:
 	virtual lfs_soff_t size() = 0;
 };
 
-// File class wraps the commonly used per-file operations
+/// @brief LittleFS file wrapper — opens on construction, closes on destruction.
 class LFSFile : public File {
 protected:
 	lfs_t      *m_lfs;
@@ -213,8 +226,9 @@ protected:
 	const char *m_path;
 
 public:
+	/// @brief Open a LittleFS file. Throws negative LFS error code on failure.
 	LFSFile(FileSystem *fs, const char *path, int flags) {
-		m_lfs = (lfs_t *)fs->get_private_data();
+		m_lfs = static_cast<lfs_t *>(fs->get_private_data());
 		m_path = path;
 		int ret = lfs_file_open(m_lfs, &m_file, path, flags);
 		if (ret < 0)
@@ -244,8 +258,7 @@ public:
 };
 
 
-// LFSCircularFile is a subclass of LFSFile and will wrap its read/write operations at m_max_size.  It uses a persistent file
-// attribute to keep track of the last write offset into the file i.e., m_offset.
+/// @brief Circular file — wraps read/write at max_size, persists write offset via LFS attr.
 class LFSCircularFile : public LFSFile {
 private:
 	lfs_size_t  m_max_size;
@@ -253,7 +266,9 @@ private:
 	int			m_flags;
 
 public:
-	using LFSFile::seek;  // Expose base class seek method
+	using LFSFile::seek;
+	/// @brief Open a circular file with max_size wrap limit.
+	/// @param max_size  Maximum file size before wrapping back to offset 0.
 	LFSCircularFile(FileSystem *fs, const char *path, int flags, lfs_size_t max_size) : LFSFile(fs, path, flags) {
 		int ret;
 		unsigned int attr = 0;
@@ -325,8 +340,6 @@ public:
 	}
 
 	lfs_soff_t tell() {
-		return (lfs_soff_t)m_offset;
+		return static_cast<lfs_soff_t>(m_offset);
 	}
 };
-
-#endif // __FILESYSTEM_HPP_

@@ -1,9 +1,14 @@
+/**
+ * @file dive_mode_service.hpp
+ * @brief Dive mode service — pauses reed switch after sustained submersion to prevent accidental triggers.
+ */
+
 #pragma once
 
 #include "service.hpp"
 #include "switch.hpp"
 
-
+/// @brief Dive mode — disables reed switch when submerged for configurable duration.
 class DiveModeService : public Service {
 public:
 	enum class DiveState {

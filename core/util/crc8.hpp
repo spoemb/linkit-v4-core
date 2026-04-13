@@ -1,10 +1,15 @@
-#ifndef __CRC8_HPP_
-#define __CRC8_HPP_
+/**
+ * @file crc8.hpp
+ * @brief CRC8 (CCITT) — bitwise checksum for Argos packet payloads.
+ */
+
+#pragma once
 
 #include <algorithm>
 #include <string>
 #include "bitpack.hpp"
 
+/// @brief CRC8 calculator for Argos short/long packet payloads.
 class CRC8 {
 public:
 	// Zero pad the start of the data buffer so the number of total bits becomes a multiple of 8
@@ -50,5 +55,3 @@ public:
 	  return (unsigned char)(crc >> 8);
 	}
 };
-
-#endif // __CRC8_HPP_

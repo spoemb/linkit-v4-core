@@ -1,3 +1,8 @@
+/**
+ * @file mortality_service.hpp
+ * @brief Bird mortality detection service — confidence scoring from activity, temperature, GPS.
+ */
+
 #pragma once
 
 #include "service.hpp"
@@ -7,6 +12,7 @@
 #include "timeutils.hpp"
 #include "debug.hpp"
 
+/// @brief CSV log formatter for mortality entries.
 class MortalityLogFormatter : public LogFormatter {
 public:
 	const std::string header() override {
@@ -14,7 +20,7 @@ public:
 	}
 	const std::string log_entry(const LogEntry& e) override {
 		char entry[256], d1[25];
-		const MortalityLogEntry *log = (const MortalityLogEntry *)&e;
+		const auto *log = reinterpret_cast<const MortalityLogEntry *>(&e);
 		std::time_t t;
 		std::tm *tm;
 
@@ -39,6 +45,7 @@ public:
 	}
 };
 
+/// @brief Bird mortality detection — computes confidence (0-100%) from activity, temperature, GPS.
 class MortalityService : public Service {
 public:
 	MortalityService(Logger *logger = nullptr);
@@ -63,14 +70,14 @@ private:
 	MortalityInfo m_state;
 
 	// Session-local sensor data (collected from peer events)
-	bool m_has_activity;
-	bool m_has_temperature;
-	bool m_has_gps;
-	uint8_t  m_session_activity;
-	double   m_session_body_temp;
-	double   m_session_lat;
-	double   m_session_lon;
-	int32_t  m_session_gps_speed;  // mm/s
+	bool m_has_activity = false;
+	bool m_has_temperature = false;
+	bool m_has_gps = false;
+	uint8_t  m_session_activity = 0;
+	double   m_session_body_temp = 0.0;
+	double   m_session_lat = 0.0;
+	double   m_session_lon = 0.0;
+	int32_t  m_session_gps_speed = 0;  ///< mm/s
 
 	void reset_session_data();
 	void evaluate_mortality();

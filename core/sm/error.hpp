@@ -1,6 +1,11 @@
-#ifndef __ERROR_HPP_
-#define __ERROR_HPP_
+/**
+ * @file error.hpp
+ * @brief Error codes — thrown as exceptions by firmware subsystems.
+ */
 
+#pragma once
+
+/// @brief Firmware error codes (thrown via `throw ErrorCode::*`).
 enum ErrorCode : int {
 	BAD_FILESYSTEM,
 	DTE_PROTOCOL_VALUE_OUT_OF_RANGE,
@@ -42,5 +47,3 @@ enum ErrorCode : int {
 	KEY_DOES_NOT_EXIST,
 	INVALID_PARAM
 };
-
-#endif // __ERROR_HPP_

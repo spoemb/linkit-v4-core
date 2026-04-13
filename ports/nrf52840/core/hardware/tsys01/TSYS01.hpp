@@ -1,3 +1,8 @@
+/**
+ * @file TSYS01.hpp
+ * @brief TSYS01 driver.
+ */
+
 /* Blue Robotics Arduino TSYS01 Temperature Sensor Library
 ------------------------------------------------------------
  

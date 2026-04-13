@@ -1,7 +1,11 @@
-#ifndef __MESSAGES_HPP_
-#define __MESSAGES_HPP_
+/**
+ * @file messages.hpp
+ * @brief Log message types — packed structs for GPS, battery, state, OTA, BLE, mortality events.
+ */
 
-#include <stdint.h>
+#pragma once
+
+#include <cstdint>
 #include "base_types.hpp"
 
 static constexpr size_t MAX_LOG_SIZE = 128;
@@ -244,5 +248,4 @@ struct __attribute__((packed)) MortalityLogEntry {
 };
 static_assert(sizeof(MortalityInfo) <= MAX_LOG_PAYLOAD, "MortalityInfo wrong size");
 
-#endif // __MESSAGES_HPP_
 

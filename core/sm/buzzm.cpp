@@ -1,3 +1,8 @@
+/**
+ * @file buzzm.cpp
+ * @brief Buzzer state machine — entry handlers for each tracker state → beep patterns.
+ */
+
 #include "buzzm.hpp"
 #include "debug.hpp"
 

@@ -1,3 +1,8 @@
+/**
+ * @file thermistor_sensor_service.hpp
+ * @brief Thermistor temperature sensor service — periodic sampling, wakeup threshold detection.
+ */
+
 #pragma once
 
 #include "sensor_service.hpp"
@@ -5,7 +10,7 @@
 #include "messages.hpp"
 #include "timeutils.hpp"
 
-
+/// @brief Log entry for thermistor sensor (body temperature).
 struct __attribute__((packed)) ThermistorLogEntry {
 	LogHeader header;
 	union {
@@ -20,8 +25,8 @@ public:
 		return "log_datetime,temp\r\n";
 	}
 	const std::string log_entry(const LogEntry& e) override {
-		char entry[50], d1[25];
-		const ThermistorLogEntry *log = (const ThermistorLogEntry *)&e;
+		char entry[128], d1[25];
+		const auto *log = reinterpret_cast<const ThermistorLogEntry *>(&e);
 		std::time_t t;
 		std::tm *tm;
 
@@ -64,7 +69,7 @@ private:
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Warray-bounds"
 	void sensor_populate_log_entry(LogEntry *e, ServiceSensorData& data) override {
-		ThermistorLogEntry *log = (ThermistorLogEntry *)e;
+		auto *log = reinterpret_cast<ThermistorLogEntry *>(e);
 		log->temp = data.port[0];
 		service_set_log_header_time(log->header, service_current_time());
 		if (sensor_trigger_event(log->temp)) {

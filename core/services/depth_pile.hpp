@@ -1,3 +1,8 @@
+/**
+ * @file depth_pile.hpp
+ * @brief Depth pile — bounded FIFO with burst counter for satellite TX depth management.
+ */
+
 #pragma once
 
 #include <deque>
@@ -159,6 +164,7 @@ public:
 			} else if (service == ServiceIdentifier::SEA_TEMP_SENSOR) {
 				return m_sea_temp_depth_pile.retrieve(depth_pile, 1).at(0);
 			} else if (service == ServiceIdentifier::THERMISTOR_SENSOR) {
+				// Thermistor shares sea_temp depth pile slot (mutually exclusive sensors)
 				return m_sea_temp_depth_pile.retrieve(depth_pile, 1).at(0);
 #if ENABLE_AXL_SENSOR
 			} else if (service == ServiceIdentifier::AXL_SENSOR) {
@@ -172,8 +178,8 @@ public:
 	}
 
 private:
-	unsigned int m_sensor_tx_enable;
-	unsigned int m_sensor_tx_current;
+	unsigned int m_sensor_tx_enable = 0;
+	unsigned int m_sensor_tx_current = 0;
 	Scheduler::TaskHandle m_timeout_task;
 	DepthPile<GPSLogEntry> m_gps_depth_pile;
 	GPSLogEntry m_gps_cache;

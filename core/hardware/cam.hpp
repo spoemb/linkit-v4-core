@@ -1,3 +1,8 @@
+/**
+ * @file cam.hpp
+ * @brief Abstract camera device interface — power on/off, capture count.
+ */
+
 #pragma once
 
 #include <map>
@@ -28,6 +33,7 @@ public:
     virtual void react(const CAMEventError&) {}
 };
 
+/// @brief Abstract camera device — implemented by board-specific driver.
 class CAMDevice : public EventEmitter<CAMEventListener> {
 public:
     virtual ~CAMDevice() {}

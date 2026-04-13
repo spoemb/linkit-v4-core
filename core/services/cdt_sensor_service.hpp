@@ -1,3 +1,8 @@
+/**
+ * @file cdt_sensor_service.hpp
+ * @brief Conductivity-Depth-Temperature sensor service — periodic 3-channel sampling and logging.
+ */
+
 #pragma once
 
 #include "sensor_service.hpp"
@@ -5,7 +10,7 @@
 #include "messages.hpp"
 #include "timeutils.hpp"
 
-
+/// @brief Log entry for CDT sensor (conductivity, depth, temperature).
 struct __attribute__((packed)) CDTLogEntry {
 	LogHeader header;
 	union {
@@ -24,6 +29,7 @@ enum class CDTSensorPort : unsigned int {
 	TEMPERATURE
 };
 
+/// @brief CSV log formatter for CDT entries (used by DUMPD command).
 class CDTLogFormatter : public LogFormatter {
 public:
 	const std::string header() override {
@@ -31,7 +37,7 @@ public:
 	}
 	const std::string log_entry(const LogEntry& e) override {
 		char entry[512], d1[128];
-		const CDTLogEntry *log = (const CDTLogEntry *)&e;
+		const auto *log = reinterpret_cast<const CDTLogEntry *>(&e);
 		std::time_t t;
 		std::tm *tm;
 
@@ -50,6 +56,7 @@ public:
 };
 
 
+/// @brief CDT sensor service — reads conductivity/depth/temperature, logs periodically.
 class CDTSensorService : public SensorService {
 public:
 	CDTSensorService(Sensor& sensor, Logger *logger) : SensorService(sensor, ServiceIdentifier::CDT_SENSOR, "CDT", logger) {}
@@ -58,10 +65,10 @@ private:
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Warray-bounds"
 	void sensor_populate_log_entry(LogEntry *e, ServiceSensorData& data) override {
-		CDTLogEntry *log = (CDTLogEntry *)e;
-		log->conductivity = data.port[(unsigned int)CDTSensorPort::CONDUCTIVITY];
-		log->depth = data.port[(unsigned int)CDTSensorPort::DEPTH];
-		log->temperature = data.port[(unsigned int)CDTSensorPort::TEMPERATURE];
+		auto *log = reinterpret_cast<CDTLogEntry *>(e);
+		log->conductivity = data.port[static_cast<unsigned int>(CDTSensorPort::CONDUCTIVITY)];
+		log->depth = data.port[static_cast<unsigned int>(CDTSensorPort::DEPTH)];
+		log->temperature = data.port[static_cast<unsigned int>(CDTSensorPort::TEMPERATURE)];
 		service_set_log_header_time(log->header, service_current_time());
 	}
 #pragma GCC diagnostic pop

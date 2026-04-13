@@ -1,3 +1,8 @@
+/**
+ * @file ota_flash_file_updater.cpp
+ * @brief Flash-backed OTA file updater — MCU firmware, ARTIC, GPS config, SMD DFU.
+ */
+
 #include "ota_flash_file_updater.hpp"
 #include "error.hpp"
 #include "crc32.hpp"
@@ -27,6 +32,11 @@ static constexpr const uint32_t FLASH_HEADER_SIZE = sizeof(lfs_size_t) + sizeof(
 static constexpr const uint32_t SMD_FW_HEADER_SIZE = 8;
 
 
+/// @brief Construct OTA updater with flash target region.
+/// @param filesystem             LittleFS instance for file-based updates (ARTIC, GPS, SMD).
+/// @param flash_if               Raw flash interface for MCU firmware (QSPI reserved region).
+/// @param reserved_block_offset  Start block for MCU firmware in external flash.
+/// @param reserved_blocks        Number of blocks reserved for MCU firmware.
 OTAFlashFileUpdater::OTAFlashFileUpdater(LFSFileSystem *filesystem, FlashInterface *flash_if, lfs_off_t reserved_block_offset, lfs_size_t reserved_blocks)
 {
 	m_filesystem = filesystem;
@@ -38,12 +48,19 @@ OTAFlashFileUpdater::OTAFlashFileUpdater(LFSFileSystem *filesystem, FlashInterfa
 	m_file_size = 0;
 }
 
+/// @brief Destructor — close any open file (except MCU firmware which uses raw flash).
 OTAFlashFileUpdater::~OTAFlashFileUpdater()
 {
-	if (m_file_size && m_file_id != OTAFileIdentifier::MCU_FIRMWARE)
+	if (m_file_id != OTAFileIdentifier::MCU_FIRMWARE)
 		delete m_file;
+	m_file = nullptr;
 }
 
+/// @brief Start a new OTA transfer — erase target, write header, validate size.
+/// @param file_id  Target file type (MCU, ARTIC, GPS, SMD).
+/// @param length   Total firmware size in bytes (must be 4-byte aligned).
+/// @param crc32    Expected CRC32 for verification after transfer.
+/// @throws OTA_TRANSFER_ALREADY_IN_PROGRESS, OTA_TRANSFER_BAD_FILE_SIZE, OTA_TRANSFER_FLASH_ERROR.
 void OTAFlashFileUpdater::start_file_transfer(OTAFileIdentifier file_id, lfs_size_t length, uint32_t crc32) {
 
 	if (m_file_size) {
@@ -130,7 +147,7 @@ void OTAFlashFileUpdater::start_file_transfer(OTAFileIdentifier file_id, lfs_siz
 		break;
 	}
 	DEBUG_INFO("OTAFlashFileUpdater::start_file_transfer: m_file_id=%u | m_file_size=%u crc32=%08x",
-			   (unsigned int)file_id, length, crc32);
+			   static_cast<unsigned>(file_id), length, crc32);
 	m_file_id = file_id;
 	m_file_size = length;
 	m_crc32 = crc32;
@@ -138,6 +155,8 @@ void OTAFlashFileUpdater::start_file_transfer(OTAFileIdentifier file_id, lfs_siz
 	m_file_bytes_received = 0;
 }
 
+/// @brief Write a chunk of OTA data — appends to flash/file and updates streaming CRC.
+/// @throws OTA_TRANSFER_NOT_STARTED, OTA_TRANSFER_OVERFLOW, OTA_TRANSFER_FLASH_ERROR.
 void OTAFlashFileUpdater::write_file_data(void * const data, lfs_size_t length)
 {
 	if (m_file_size == 0)
@@ -148,8 +167,10 @@ void OTAFlashFileUpdater::write_file_data(void * const data, lfs_size_t length)
 		throw ErrorCode::OTA_TRANSFER_OVERFLOW;
 	}
 
-	if (m_file_id != OTAFileIdentifier::MCU_FIRMWARE)
+	if (m_file_id != OTAFileIdentifier::MCU_FIRMWARE) {
+		if (!m_file) throw ErrorCode::OTA_TRANSFER_NOT_STARTED;
 		m_file->write(data, length);
+	}
 	else
 	{
 		std::vector<uint8_t> aligned_buffer;
@@ -168,11 +189,13 @@ void OTAFlashFileUpdater::write_file_data(void * const data, lfs_size_t length)
 	CRC32::checksum_update((unsigned char *)data, length, m_crc32_calc);
 }
 
+/// @brief Abort transfer — delete partial file or erase flash header.
 void OTAFlashFileUpdater::abort_file_transfer()
 {
 	if (m_file_size != 0) {
 		if (m_file_id != OTAFileIdentifier::MCU_FIRMWARE) {
 			delete m_file;
+			m_file = nullptr;
 		}
 		else
 		{
@@ -184,6 +207,9 @@ void OTAFlashFileUpdater::abort_file_transfer()
 	m_file_size = 0;
 }
 
+/// @brief Complete transfer — verify all bytes received, finalize and check CRC32.
+/// @note SMD firmware skips OTA CRC (STM32 bootloader verifies with its own CRC).
+/// @throws OTA_TRANSFER_NOT_STARTED, OTA_TRANSFER_INCOMPLETE, OTA_TRANSFER_CRC_ERROR.
 void OTAFlashFileUpdater::complete_file_transfer()
 {
 	if (m_file_size == 0)
@@ -220,6 +246,7 @@ void OTAFlashFileUpdater::complete_file_transfer()
 	}
 }
 
+/// @brief Apply the firmware update — MCU: reboot into bootloader; SMD: stream DFU via SPI/UART.
 void OTAFlashFileUpdater::apply_file_update() {
 	DEBUG_TRACE("OTAFlashFileUpdater::apply_file_update");
 	if (m_file_id == OTAFileIdentifier::MCU_FIRMWARE) {
@@ -242,12 +269,13 @@ void OTAFlashFileUpdater::apply_file_update() {
 		           m_file_id == OTAFileIdentifier::SMD_FIRMWARE_SPI ? "SPI" : "UART");
 
 		delete m_file;  // Close the file first
+		m_file = nullptr;
 
 		// Open for reading
 		LFSFile fw_file(m_filesystem, "smd_firmware.dat", LFS_O_RDONLY);
 		lfs_soff_t fw_file_size = fw_file.size();
 
-		if (fw_file_size < (lfs_soff_t)SMD_FW_HEADER_SIZE) {
+		if (fw_file_size < static_cast<lfs_soff_t>(SMD_FW_HEADER_SIZE)) {
 			DEBUG_ERROR("OTAFlashFileUpdater::apply_file_update: SMD firmware file too small");
 			m_file_size = 0;
 			return;
@@ -258,21 +286,21 @@ void OTAFlashFileUpdater::apply_file_update() {
 		fw_file.read(header, SMD_FW_HEADER_SIZE);
 
 		// Parse big-endian values (matches BLE OTA protocol)
-		uint32_t fw_size = ((uint32_t)header[0] << 24) |
-		                   ((uint32_t)header[1] << 16) |
-		                   ((uint32_t)header[2] << 8) |
-		                   ((uint32_t)header[3]);
-		uint32_t stm32_crc32 = ((uint32_t)header[4] << 24) |
-		                       ((uint32_t)header[5] << 16) |
-		                       ((uint32_t)header[6] << 8) |
-		                       ((uint32_t)header[7]);
+		uint32_t fw_size = (static_cast<uint32_t>(header[0]) << 24) |
+		                   (static_cast<uint32_t>(header[1]) << 16) |
+		                   (static_cast<uint32_t>(header[2]) << 8) |
+		                   (static_cast<uint32_t>(header[3]));
+		uint32_t stm32_crc32 = (static_cast<uint32_t>(header[4]) << 24) |
+		                       (static_cast<uint32_t>(header[5]) << 16) |
+		                       (static_cast<uint32_t>(header[6]) << 8) |
+		                       (static_cast<uint32_t>(header[7]));
 
 		DEBUG_INFO("OTAFlashFileUpdater: SMD firmware size=%u | STM32 CRC32=0x%08X", fw_size, stm32_crc32);
 
 		// Verify size matches
-		if (fw_size != (uint32_t)(fw_file_size - SMD_FW_HEADER_SIZE)) {
+		if (fw_size != static_cast<uint32_t>(fw_file_size - SMD_FW_HEADER_SIZE)) {
 			DEBUG_ERROR("OTAFlashFileUpdater: SMD firmware size mismatch: header=%u | actual=%u",
-			            fw_size, (uint32_t)(fw_file_size - SMD_FW_HEADER_SIZE));
+			            fw_size, static_cast<uint32_t>(fw_file_size - SMD_FW_HEADER_SIZE));
 			m_file_size = 0;
 			return;
 		}
@@ -327,7 +355,7 @@ void OTAFlashFileUpdater::apply_file_update() {
 				(unsigned int)1,       // status: failure
 				(bool)false,           // dfu_mode
 				(unsigned int)0,       // progress
-				std::string("DFU failed: error " + std::to_string((int)result)));
+				std::string("DFU failed: error " + std::to_string(static_cast<int>(result))));
 			if (ble_service) ble_service->write(resp);
 		}
 
@@ -338,6 +366,7 @@ void OTAFlashFileUpdater::apply_file_update() {
 #endif
 	else {
 		delete m_file;
+		m_file = nullptr;
 	}
 	m_file_size = 0;
 }

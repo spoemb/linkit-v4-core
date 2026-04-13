@@ -1,3 +1,8 @@
+/**
+ * @file ubx.hpp
+ * @brief ubx driver.
+ */
+
 #pragma once
  
 #include <vector>

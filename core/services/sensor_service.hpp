@@ -1,3 +1,12 @@
+/**
+ * @file sensor_service.hpp
+ * @brief Abstract sensor service — periodic sampling, TX aggregation (mean/median/oneshot).
+ *
+ * Base class for all sensor services (ALS, PH, CDT, pressure, sea_temp, thermistor, AXL).
+ * Handles background sampling triggered by GNSS active/complete events, progressive
+ * aggregation, and log persistence.
+ */
+
 #pragma once
 
 #include <algorithm>
@@ -9,13 +18,22 @@
 #include "service.hpp"
 #include "logger.hpp"
 
+/// @brief Base class for sensor services — periodic sampling with TX aggregation modes.
 class SensorService : public Service {
 public:
+	/// @param sensor   Hardware sensor instance.
+	/// @param service  Service identifier for this sensor type.
+	/// @param name     Service name (for debug logging).
+	/// @param logger   Optional persistent logger.
 	SensorService(Sensor& sensor, ServiceIdentifier service, const char *name, Logger *logger) : Service(service, name, logger), m_sensor(sensor) {}
 	virtual ~SensorService() {}
 
 protected:
 	Sensor &m_sensor;
+
+	/// @brief Read sensor, aggregate samples, log entry. Called by service_initiate and wakeup events.
+	/// @param reschedule      true to reschedule after completion.
+	/// @param gnss_shutdown   true if GNSS just completed — force terminal state.
 	void sensor_handler(bool reschedule = true, bool gnss_shutdown = false) {
 		try {
 			if (m_sensor_background_active) {
@@ -186,17 +204,35 @@ private:
 	bool service_is_usable_underwater() override { return sensor_is_usable_underwater(); }
 	unsigned int service_next_timeout() override { return 0U; }
 
-	// Sensor service should implements these functions
+	// === Virtual interface — subclasses must/may override ===
+
+	/// @brief Init sensor hardware (called once at service start).
 	virtual void sensor_init() {}
+	/// @brief Terminate sensor hardware (called once at service stop).
 	virtual void sensor_term() {}
+	/// @brief Check if this sensor is enabled in config.
+	/// @return true if the sensor param (e.g. ALS_SENSOR_ENABLE) is set.
 	virtual bool sensor_is_enabled() { return false; }
+	/// @brief TX aggregation mode (OFF/ONESHOT/MEAN/MEDIAN).
+	/// @return Mode from config param.
 	virtual BaseSensorEnableTxMode sensor_enable_tx_mode() {
 		return BaseSensorEnableTxMode::OFF;
 	}
+	/// @brief Populate a log entry from sensor data (pure virtual — subclass must implement).
+	/// @param e     Log entry buffer (reinterpret_cast to sensor-specific LogEntry).
+	/// @param data  Sensor reading (port[0..N] = channel values).
 	virtual void sensor_populate_log_entry(LogEntry *e, ServiceSensorData& data) = 0;
+	/// @brief Sampling period in ms (from config param, 0 = disabled).
+	/// @return Period in ms, or SCHEDULE_DISABLED.
 	virtual unsigned int sensor_periodic() { return 1000U; }
+	/// @brief TX aggregation sampling period in ms.
+	/// @return Period in ms between TX samples.
 	virtual unsigned int sensor_tx_periodic() { return 1000U; }
+	/// @brief Max number of TX aggregation samples per burst.
+	/// @return Max samples (0 = unlimited).
 	virtual unsigned int sensor_max_samples() { return 1U; }
+	/// @brief Number of data channels (e.g. 1 for ALS, 3 for CDT, 6 for AXL).
+	/// @return Channel count.
 	virtual unsigned int sensor_num_channels() { return 1U; }
 
 	// Bounded channel count to prevent out-of-bounds access on m_samples[]

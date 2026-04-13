@@ -1,3 +1,8 @@
+/**
+ * @file dte_params.cpp
+ * @brief DTE parameter map — 220+ parameters with keys, encoding, constraints, permissions.
+ */
+
 #include "dte_params.hpp"
 
 // Helper for EXTERNAL_WAKEUP which is defined as a flag (no value)

@@ -49,6 +49,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     ENABLE_THERMISTOR_SENSOR=1
     ENABLE_MORTALITY_SENSOR=1
     ENABLE_SWS_LOG=1
+    ENABLE_SWS_ANALOG=1
     LORA_RAK3172=1
 )
 
@@ -149,15 +150,20 @@ target_sources(${PROJECT_NAME} PRIVATE
     "${ROOT_DIR}/libraries/prepass/prepass_package_code-PREPAS_V3.4/previpass.c"
     "${ROOT_DIR}/libraries/prepass/prepass_package_code-PREPAS_V3.4/previpass_util.c"
     "${ROOT_DIR}/core/util/haversine.cpp"
-    "${ROOT_DIR}/core/scheduling/argos_scheduler.cpp"
+
     "${ROOT_DIR}/core/services/argos_rx_service.cpp"
     "${ROOT_DIR}/core/services/argos_tx_service.cpp"
+    "${ROOT_DIR}/core/services/argos_packet_builder.cpp"
+    "${ROOT_DIR}/core/services/depth_pile.cpp"
+    "${ROOT_DIR}/core/scheduling/argos_tx_scheduler.cpp"
     "${ROOT_DIR}/core/services/gps_service.cpp"
     "${ROOT_DIR}/core/services/service.cpp"
     "${ROOT_DIR}/core/services/mortality_service.cpp"
     "${ROOT_DIR}/core/filesystem/ota_flash_file_updater.cpp"
     "${ROOT_DIR}/core/services/uwdetector_service.cpp"
     "${ROOT_DIR}/core/services/sws_analog_service.cpp"
+    "${ROOT_DIR}/core/services/sws_analog_calibration.cpp"
+    "${ROOT_DIR}/core/services/sws_analog_detection.cpp"
     "${ROOT_DIR}/core/hardware/reed.cpp"
     "${ROOT_DIR}/core/hardware/sensor.cpp"
     "${ROOT_DIR}/core/protocol/dte_commands.cpp"
@@ -170,9 +176,10 @@ target_sources(${PROJECT_NAME} PRIVATE
     "${ROOT_DIR}/core/logging/logger.cpp"
     "${LINUX_DIR}/interrupt_lock.cpp"
     "${NRF_DIR}/core/hardware/nrf_switch.cpp"
-    "${NRF_DIR}/core/hardware/nrf_battery_mon.cpp"
+    # nrf_battery_mon.cpp excluded: depends on nrf_delay.h (Nordic SDK, not available in test builds)
     "${NRF_DIR}/core/hardware/m10qasync/m10qasync.cpp"
     "${NRF_DIR}/core/hardware/m10qasync/ubx_comms.cpp"
+    "${NRF_DIR}/core/hardware/nrf_uart_async.cpp"
     "${NRF_DIR}/core/hardware/lora_rak3172/lora_rak3172.cpp"
     "${NRF_DIR}/core/hardware/lora_rak3172/lora_rak3172_comm.cpp"
     "${NRF_DIR}/core/hardware/cdt/cdt.cpp"
@@ -193,7 +200,7 @@ target_sources(${PROJECT_NAME} PRIVATE
     "src/sws_analog_test.cpp"
     "src/logger_test.cpp"
     "src/nrf_switch_test.cpp"
-    "src/nrf_battery_test.cpp"
+    # "src/nrf_battery_test.cpp"  # Excluded: depends on NrfBatteryMonitor (needs Nordic SDK nrf_delay.h)
     "src/ph_sensor_test.cpp"
     "src/als_sensor_test.cpp"
     "src/sea_temp_sensor_test.cpp"
@@ -308,14 +315,19 @@ target_sources(${TURTLE_SIM_NAME} PRIVATE
     "${ROOT_DIR}/libraries/prepass/prepass_package_code-PREPAS_V3.4/previpass.c"
     "${ROOT_DIR}/libraries/prepass/prepass_package_code-PREPAS_V3.4/previpass_util.c"
     "${ROOT_DIR}/core/util/haversine.cpp"
-    "${ROOT_DIR}/core/scheduling/argos_scheduler.cpp"
+
     "${ROOT_DIR}/core/services/argos_rx_service.cpp"
     "${ROOT_DIR}/core/services/argos_tx_service.cpp"
+    "${ROOT_DIR}/core/services/argos_packet_builder.cpp"
+    "${ROOT_DIR}/core/services/depth_pile.cpp"
+    "${ROOT_DIR}/core/scheduling/argos_tx_scheduler.cpp"
     "${ROOT_DIR}/core/services/gps_service.cpp"
     "${ROOT_DIR}/core/services/service.cpp"
     "${ROOT_DIR}/core/filesystem/ota_flash_file_updater.cpp"
     "${ROOT_DIR}/core/services/uwdetector_service.cpp"
     "${ROOT_DIR}/core/services/sws_analog_service.cpp"
+    "${ROOT_DIR}/core/services/sws_analog_calibration.cpp"
+    "${ROOT_DIR}/core/services/sws_analog_detection.cpp"
     "${ROOT_DIR}/core/hardware/reed.cpp"
     "${ROOT_DIR}/core/hardware/sensor.cpp"
     "${ROOT_DIR}/core/protocol/dte_commands.cpp"
@@ -328,7 +340,7 @@ target_sources(${TURTLE_SIM_NAME} PRIVATE
     "${ROOT_DIR}/core/logging/logger.cpp"
     "${LINUX_DIR}/interrupt_lock.cpp"
     "${NRF_DIR}/core/hardware/nrf_switch.cpp"
-    "${NRF_DIR}/core/hardware/nrf_battery_mon.cpp"
+    # nrf_battery_mon.cpp excluded: depends on nrf_delay.h (Nordic SDK, not available in test builds)
     "${NRF_DIR}/core/hardware/m10qasync/m10qasync.cpp"
     "${NRF_DIR}/core/hardware/m10qasync/ubx_comms.cpp"
     "${NRF_DIR}/core/hardware/cdt/cdt.cpp"

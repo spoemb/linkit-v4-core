@@ -1,0 +1,185 @@
+/**
+ * @file depth_pile.cpp
+ * @brief Depth pile manager — GPS entry cache with burst counter management.
+ */
+
+#include "depth_pile.hpp"
+#include "debug.hpp"
+#include "config_store.hpp"
+#include "scheduler.hpp"
+
+extern ConfigurationStore *configuration_store;
+extern Scheduler *system_scheduler;
+
+/// @brief Constructor — load sensor TX enable bitmask from config.
+DepthPileManager::DepthPileManager() {
+	ArgosConfig argos_config;
+	configuration_store->get_argos_configuration(argos_config);
+	m_sensor_tx_enable = argos_config.sensor_tx_enable | (1 << (int)ServiceIdentifier::GNSS_SENSOR);
+	m_sensor_tx_current = 0;
+}
+
+/// @brief Handle peer events — cache GPS/sensor data, trigger depth pile update when all sensors ready.
+/// @param e  Peer service event (GPS fix, ALS, PH, pressure, sea_temp, thermistor, AXL).
+void DepthPileManager::notify_peer_event(ServiceEvent& e) {
+
+	if (e.event_source == ServiceIdentifier::GNSS_SENSOR &&
+		e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+		GPSLogEntry& entry = std::get<GPSLogEntry>(e.event_data);
+		if (!entry.info.valid) {
+			DEBUG_WARN("DepthPileManager::notify_peer_event: GNSS cache set (no fix, position invalid)");
+		} else {
+			DEBUG_TRACE("DepthPileManager::notify_peer_event: GNSS cache set");
+		}
+		m_gps_cache = entry;
+		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::GNSS_SENSOR);
+	} else if (e.event_source == ServiceIdentifier::ALS_SENSOR &&
+			e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+		DEBUG_TRACE("DepthPileManager::notify_peer_event: ALS cache set");
+		ServiceSensorData& entry = std::get<ServiceSensorData>(e.event_data);
+		m_als_cache.port[0] = entry.port[0];
+		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::ALS_SENSOR);
+	} else if (e.event_source == ServiceIdentifier::PH_SENSOR &&
+			e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+		DEBUG_TRACE("DepthPileManager::notify_peer_event: PH cache set");
+		ServiceSensorData& entry = std::get<ServiceSensorData>(e.event_data);
+		m_ph_cache.port[0] = (unsigned int)(entry.port[0] * 1000U);
+		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::PH_SENSOR);
+	} else if (e.event_source == ServiceIdentifier::PRESSURE_SENSOR &&
+			e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+		DEBUG_TRACE("DepthPileManager::notify_peer_event: PRESSURE cache set");
+		ServiceSensorData& entry = std::get<ServiceSensorData>(e.event_data);
+		m_pressure_cache.port[0] = (unsigned int)(entry.port[0] * 1000U);
+		m_pressure_cache.port[1] = (unsigned int)((entry.port[1] + 40.0) * 100U);
+		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::PRESSURE_SENSOR);
+	} else if (e.event_source == ServiceIdentifier::SEA_TEMP_SENSOR &&
+			e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+		DEBUG_TRACE("DepthPileManager::notify_peer_event: SEA_TEMP cache set");
+		ServiceSensorData& entry = std::get<ServiceSensorData>(e.event_data);
+		m_sea_temp_cache.port[0] = (unsigned int)((entry.port[0] + 126.0) * 1000U);
+		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::SEA_TEMP_SENSOR);
+#if ENABLE_THERMISTOR_SENSOR
+	} else if (e.event_source == ServiceIdentifier::THERMISTOR_SENSOR &&
+			e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+		DEBUG_TRACE("DepthPileManager::notify_peer_event: THERMISTOR cache set");
+		ServiceSensorData& entry = std::get<ServiceSensorData>(e.event_data);
+		m_sea_temp_cache.port[0] = (unsigned int)((entry.port[0] + 40.0) * 100U);
+		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::THERMISTOR_SENSOR);
+#endif
+#if ENABLE_AXL_SENSOR
+	} else if (e.event_source == ServiceIdentifier::AXL_SENSOR &&
+			e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+		DEBUG_TRACE("DepthPileManager::notify_peer_event: AXL cache set");
+		ServiceSensorData& entry = std::get<ServiceSensorData>(e.event_data);
+		// Read configured g-range (register value 0-3) and convert to actual g value
+		unsigned int range_reg = configuration_store->read_param<unsigned int>(ParamID::AXL_SENSOR_MEASUREMENT_RANGE);
+		static const double g_range_table[] = { 2.0, 4.0, 8.0, 16.0 };
+		double g_range = (range_reg < 4) ? g_range_table[range_reg] : 16.0;
+		m_axl_cache.port[0] = (unsigned int)((entry.port[0] + 40.0) * 100U);                  // Temperature (-40 to 85°C)
+		m_axl_cache.port[1] = (unsigned int)((entry.port[1] + g_range) * 1000U);               // X axis
+		m_axl_cache.port[2] = (unsigned int)((entry.port[2] + g_range) * 1000U);               // Y axis
+		m_axl_cache.port[3] = (unsigned int)((entry.port[3] + g_range) * 1000U);               // Z axis
+		m_axl_cache.port[4] = (unsigned int)(entry.port[4]);                                   // Activity (0-255)
+		m_sensor_tx_current |= (1 << (int)ServiceIdentifier::AXL_SENSOR);
+#endif
+	} else if (e.event_source == ServiceIdentifier::GNSS_SENSOR &&
+			e.event_type == ServiceEventType::SERVICE_INACTIVE) {
+
+		// If we didn't yet gather all the expected inputs then we start
+		// a timeout to force dummy values into the depth pile
+		if ((m_sensor_tx_current & m_sensor_tx_enable) != m_sensor_tx_enable) {
+			m_timeout_task = system_scheduler->post_task_prio([this]() {
+				DEBUG_TRACE("DepthPileManager: sensor timeout: curr=%08x enable=%08x", m_sensor_tx_current, m_sensor_tx_enable);
+				if (((1 << (int)ServiceIdentifier::ALS_SENSOR) & m_sensor_tx_enable) &&
+					((1 << (int)ServiceIdentifier::ALS_SENSOR) & m_sensor_tx_current) == 0) {
+					m_als_cache.port[0] = 0xFFFFFFFF;
+					m_sensor_tx_current |= (1 << (int)ServiceIdentifier::ALS_SENSOR);
+				} else if (((1 << (int)ServiceIdentifier::PH_SENSOR) & m_sensor_tx_enable) &&
+						((1 << (int)ServiceIdentifier::PH_SENSOR) & m_sensor_tx_current) == 0) {
+					m_ph_cache.port[0] = 0xFFFFFFFF;
+					m_sensor_tx_current |= (1 << (int)ServiceIdentifier::PH_SENSOR);
+				} else if (((1 << (int)ServiceIdentifier::PRESSURE_SENSOR) & m_sensor_tx_enable) &&
+						((1 << (int)ServiceIdentifier::PRESSURE_SENSOR) & m_sensor_tx_current) == 0) {
+					m_pressure_cache.port[0] = 0xFFFFFFFF;
+					m_pressure_cache.port[1] = 0xFFFFFFFF;
+					m_sensor_tx_current |= (1 << (int)ServiceIdentifier::PRESSURE_SENSOR);
+				} else if (((1 << (int)ServiceIdentifier::SEA_TEMP_SENSOR) & m_sensor_tx_enable) &&
+						((1 << (int)ServiceIdentifier::SEA_TEMP_SENSOR) & m_sensor_tx_current) == 0) {
+					m_sea_temp_cache.port[0] = 0xFFFFFFFF;
+					m_sensor_tx_current |= (1 << (int)ServiceIdentifier::SEA_TEMP_SENSOR);
+#if ENABLE_THERMISTOR_SENSOR
+				} else if (((1 << (int)ServiceIdentifier::THERMISTOR_SENSOR) & m_sensor_tx_enable) &&
+						((1 << (int)ServiceIdentifier::THERMISTOR_SENSOR) & m_sensor_tx_current) == 0) {
+					m_sea_temp_cache.port[0] = 0xFFFFFFFF;
+					m_sensor_tx_current |= (1 << (int)ServiceIdentifier::THERMISTOR_SENSOR);
+#endif
+#if ENABLE_AXL_SENSOR
+				} else if (((1 << (int)ServiceIdentifier::AXL_SENSOR) & m_sensor_tx_enable) &&
+						((1 << (int)ServiceIdentifier::AXL_SENSOR) & m_sensor_tx_current) == 0) {
+					m_axl_cache.port[0] = 0xFFFFFFFF;
+					m_axl_cache.port[1] = 0xFFFFFFFF;
+					m_axl_cache.port[2] = 0xFFFFFFFF;
+					m_axl_cache.port[3] = 0xFFFFFFFF;
+					m_axl_cache.port[4] = 0xFF;
+					m_sensor_tx_current |= (1 << (int)ServiceIdentifier::AXL_SENSOR);
+#endif
+				}
+				update_depth_pile();
+			}, "DepthPileTimeout", Scheduler::DEFAULT_PRIORITY, 2000U);
+		}
+	}
+
+	update_depth_pile();
+}
+
+/// @brief Store cached GPS/sensor data into depth piles with burst counter from config.
+void DepthPileManager::update_depth_pile() {
+
+	if ((m_sensor_tx_current & m_sensor_tx_enable) == m_sensor_tx_enable) {
+
+		// Cancel inactivity timeout
+		system_scheduler->cancel_task(m_timeout_task);
+
+		// Get the required burst counter
+		ArgosConfig argos_config;
+		configuration_store->get_argos_configuration(argos_config);
+		unsigned int burst_counter = (argos_config.ntry_per_message == 0 ||
+				argos_config.mode == BaseArgosMode::DUTY_CYCLE ||
+				argos_config.mode == BaseArgosMode::LEGACY) ? UINT_MAX : argos_config.ntry_per_message;
+
+		// Synchronously update the depth piles
+		if (m_sensor_tx_current & (1 << (int)ServiceIdentifier::GNSS_SENSOR)) {
+			// Store the entry into the depth pile
+			m_gps_depth_pile.store(m_gps_cache, burst_counter);
+		}
+		if (m_sensor_tx_current & (1 << (int)ServiceIdentifier::ALS_SENSOR)) {
+			// Store the entry into the depth pile
+			m_als_depth_pile.store(m_als_cache, burst_counter);
+		}
+		if (m_sensor_tx_current & (1 << (int)ServiceIdentifier::PH_SENSOR)) {
+			// Store the entry into the depth pile
+			m_ph_depth_pile.store(m_ph_cache, burst_counter);
+		}
+		if (m_sensor_tx_current & (1 << (int)ServiceIdentifier::PRESSURE_SENSOR)) {
+			// Store the entry into the depth pile
+			m_pressure_depth_pile.store(m_pressure_cache, burst_counter);
+		}
+		if (m_sensor_tx_current & (1 << (int)ServiceIdentifier::SEA_TEMP_SENSOR)) {
+			// Store the entry into the depth pile
+			m_sea_temp_depth_pile.store(m_sea_temp_cache, burst_counter);
+		}
+#if ENABLE_THERMISTOR_SENSOR
+		if (m_sensor_tx_current & (1 << (int)ServiceIdentifier::THERMISTOR_SENSOR)) {
+			// Thermistor uses the sea_temp depth pile slot
+			m_sea_temp_depth_pile.store(m_sea_temp_cache, burst_counter);
+		}
+#endif
+#if ENABLE_AXL_SENSOR
+		if (m_sensor_tx_current & (1 << (int)ServiceIdentifier::AXL_SENSOR)) {
+			// Store the AXL entry into the depth pile
+			m_axl_depth_pile.store(m_axl_cache, burst_counter);
+		}
+#endif
+		m_sensor_tx_current = 0;
+	}
+}

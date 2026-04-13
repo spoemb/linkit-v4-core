@@ -1,3 +1,8 @@
+/**
+ * @file config_store.hpp
+ * @brief Abstract configuration store — 220+ DTE parameters, zone/LB logic, GNSS/Argos config.
+ */
+
 #pragma once
 
 #include <array>
@@ -399,12 +404,25 @@ public:
 	}
 
 	virtual ~ConfigurationStore() {}
+
+	/// @brief Initialize config store — deserialize from flash or create defaults.
 	virtual void init() = 0;
+
+	/// @brief Check if configuration is valid (successfully loaded from flash).
 	virtual bool is_valid() = 0;
+
+	/// @brief Factory reset — reformat flash, preserve protected params (DECID, HEXID).
 	virtual void factory_reset() = 0;
+
+	/// @brief Read Argos pass prediction data from flash.
 	virtual BasePassPredict& read_pass_predict() = 0;
+
+	/// @brief Write Argos pass prediction data to flash.
 	virtual void write_pass_predict(BasePassPredict& value) = 0;
 
+	/// @brief Read a configuration parameter by ID.
+	/// @tparam T  Expected parameter type (e.g., unsigned int, bool, std::string).
+	/// @throws CONFIG_STORE_CORRUPTED if store is invalid or type mismatch.
 	template <typename T>
 	T& read_param(ParamID param_id) {
 		try {
@@ -536,6 +554,9 @@ public:
 		}
 	}
 
+	/// @brief Write a configuration parameter by ID.
+	/// @tparam T  Parameter value type.
+	/// @note Marks credentials dirty if DECID/HEXID/SECKEY/RADIOCONF changes.
 	template<typename T>
 	void write_param(ParamID param_id, const T& value) {
 		try {
@@ -557,9 +578,13 @@ public:
 		}
 	}
 
+	/// @brief Check if credential params have been modified since last SMD write.
 	bool is_credentials_dirty() const { return m_credentials_dirty; }
+
+	/// @brief Clear credentials dirty flag (called after SMD credential write).
 	void clear_credentials_dirty() { m_credentials_dirty = false; }
 
+	/// @brief Persist all parameters to flash.
 	void save_params() {
 		try {
 			serialize_config();
@@ -568,14 +593,17 @@ public:
 		}
 	}
 
+	/// @brief Update cached last GPS fix (used for zone exclusion calculation).
 	void notify_gps_location(GPSLogEntry& gps_location) {
 		m_last_gps_log_entry = gps_location;
 	}
 
+	/// @brief Get the last known GPS fix.
 	const GPSLogEntry& get_last_gps_entry() const {
 		return m_last_gps_log_entry;
 	}
 
+	/// @brief Check if device is outside the configured zone (haversine distance).
 	bool is_zone_exclusion() {
 
 		if (read_param<bool>(ParamID::ZONE_ENABLE_OUT_OF_ZONE_DETECTION_MODE) &&
@@ -609,6 +637,7 @@ public:
 		return false;
 	}
 
+	/// @brief Populate GNSSConfig struct from current params (handles NORMAL/LB/ZONE modes).
 	void get_gnss_configuration(GNSSConfig& gnss_config) {
 		auto cert_tx_enable = read_param<bool>(ParamID::CERT_TX_ENABLE);
 		auto lb_en = read_param<bool>(ParamID::LB_EN);
@@ -713,6 +742,7 @@ public:
 		}
 	}
 
+	/// @brief Populate ArgosConfig struct from current params (handles NORMAL/LB/ZONE modes).
 	void get_argos_configuration(ArgosConfig& argos_config) {
 		auto lb_en = read_param<bool>(ParamID::LB_EN);
 		update_battery_level();

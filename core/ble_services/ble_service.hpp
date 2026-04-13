@@ -1,5 +1,9 @@
-#ifndef __BLE_SERVICE_HPP_
-#define __BLE_SERVICE_HPP_
+/**
+ * @file ble_service.hpp
+ * @brief Abstract BLE service interface — DTE data, OTA events, connection lifecycle.
+ */
+
+#pragma once
 
 #include <functional>
 #include <string>
@@ -40,5 +44,3 @@ public:
 	virtual std::string read_line() = 0;
 	virtual void set_device_name(const std::string&) = 0;
 };
-
-#endif // __BLE_SERVICE_HPP_

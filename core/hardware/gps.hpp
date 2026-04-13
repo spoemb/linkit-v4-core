@@ -1,3 +1,8 @@
+/**
+ * @file gps.hpp
+ * @brief Abstract GNSS device interface — PVT, sat tracking, almanac, bridge mode.
+ */
+
 #pragma once
 
 #include <map>
@@ -138,6 +143,7 @@ public:
     virtual void react(const GPSEventDeviceInfoReady&) {}
 };
 
+/// @brief Abstract GNSS device — implemented by M10QAsync (u-blox M10).
 class GPSDevice : public EventEmitter<GPSEventListener> {
 public:
     using PassthroughCallback = std::function<void(const uint8_t*, size_t)>;

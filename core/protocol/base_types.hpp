@@ -1,3 +1,8 @@
+/**
+ * @file base_types.hpp
+ * @brief Base types for DTE protocol — ParamID, enums, BaseType variant, BaseMap.
+ */
+
 #pragma once
 
 #include <string>

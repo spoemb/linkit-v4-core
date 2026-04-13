@@ -1,3 +1,8 @@
+/**
+ * @file ledsm.cpp
+ * @brief LED state machine — entry handlers for each tracker state → RGB color/flash pattern.
+ */
+
 #include "ledsm.hpp"
 #include "debug.hpp"
 #include "config_store.hpp"

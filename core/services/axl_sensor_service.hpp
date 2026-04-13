@@ -1,10 +1,15 @@
+/**
+ * @file axl_sensor_service.hpp
+ * @brief Accelerometer (BMA400) sensor service — periodic sampling, wakeup detection, logging.
+ */
+
 #pragma once
 
 #include "logger.hpp"
 #include "messages.hpp"
 #include "sensor_service.hpp"
 #include "timeutils.hpp"
-#include <cmath>      // for std::sqrt
+#include <cmath>
 
 template <typename E>
 constexpr typename std::underlying_type<E>::type to_underlying(E e) noexcept
@@ -12,6 +17,7 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) noexcept
     return static_cast<typename std::underlying_type<E>::type>(e);
 };
 
+/// @brief Log entry for AXL sensor (x/y/z acceleration, activity, temperature, wakeup).
 struct __attribute__((packed)) AXLLogEntry {
 	LogHeader header;
 	union {
@@ -27,6 +33,7 @@ struct __attribute__((packed)) AXLLogEntry {
 	};
 };
 
+/// @brief CSV log formatter for AXL entries (used by DUMPD command).
 class AXLLogFormatter : public LogFormatter {
 public:
 	const std::string header() override {
@@ -34,7 +41,7 @@ public:
 	}
 	const std::string log_entry(const LogEntry& e) override {
 		char entry[512], d1[128];
-		const AXLLogEntry *log = (const AXLLogEntry *)&e;
+		const auto *log = reinterpret_cast<const AXLLogEntry *>(&e);
 		std::time_t t;
 		std::tm *tm;
 
@@ -109,6 +116,7 @@ enum AXLEvent : unsigned int {
 	WAKEUP
 };
 
+/// @brief Accelerometer sensor service — periodic XYZ sampling, wakeup interrupt, activity detection.
 class AXLSensorService : public SensorService {
 public:
 	AXLSensorService(Sensor& sensor, Logger *logger = nullptr) : SensorService(sensor, ServiceIdentifier::AXL_SENSOR, "AXL", logger) {
@@ -119,14 +127,14 @@ private:
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Warray-bounds"
 	void sensor_populate_log_entry(LogEntry *e, ServiceSensorData& data) override {
-		AXLLogEntry *log = (AXLLogEntry *)e;
+		auto *log = reinterpret_cast<AXLLogEntry *>(e);
 		log->header.log_type = LOG_AXL;
-		log->x = data.port[(unsigned int)AXLSensorPort::X];
-		log->y = data.port[(unsigned int)AXLSensorPort::Y];
-		log->z = data.port[(unsigned int)AXLSensorPort::Z];
-		log->activity = data.port[(unsigned int)AXLSensorPort::ACTIVITY];
-		log->wakeup_triggered = data.port[(unsigned int)AXLSensorPort::WAKEUP_TRIGGERED];
-		log->temperature = data.port[(unsigned int)AXLSensorPort::TEMPERATURE];
+		log->x = data.port[static_cast<unsigned int>(AXLSensorPort::X)];
+		log->y = data.port[static_cast<unsigned int>(AXLSensorPort::Y)];
+		log->z = data.port[static_cast<unsigned int>(AXLSensorPort::Z)];
+		log->activity = data.port[static_cast<unsigned int>(AXLSensorPort::ACTIVITY)];
+		log->wakeup_triggered = data.port[static_cast<unsigned int>(AXLSensorPort::WAKEUP_TRIGGERED)];
+		log->temperature = data.port[static_cast<unsigned int>(AXLSensorPort::TEMPERATURE)];
 		service_set_log_header_time(log->header, service_current_time());
 	}
 #pragma GCC diagnostic pop

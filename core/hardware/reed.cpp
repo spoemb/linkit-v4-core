@@ -1,3 +1,8 @@
+/**
+ * @file reed.cpp
+ * @brief Reed switch gesture detection — scheduler-based hold timers.
+ */
+
 #include "reed.hpp"
 #include "timer.hpp"
 #include "debug.hpp"

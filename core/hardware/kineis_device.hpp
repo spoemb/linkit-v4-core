@@ -1,3 +1,8 @@
+/**
+ * @file kineis_device.hpp
+ * @brief Abstract satellite/LoRa device interface — TX, RX, credentials, modulation switching.
+ */
+
 #pragma once
 
 #include <cstdint>
@@ -39,6 +44,7 @@ public:
 };
 
 
+/// @brief Abstract satellite/LoRa device — implemented by SmdSat, KIM2Device, LoRaDevice.
 class KineisDevice {
 private:
 	std::list<KineisEventListener*> m_listeners;

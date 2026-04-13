@@ -1,3 +1,8 @@
+/**
+ * @file sensor.hpp
+ * @brief Abstract sensor interface + global SensorManager registry.
+ */
+
 #pragma once
 
 #include <functional>
@@ -9,7 +14,7 @@
 
 class Sensor;
 
-
+/// @brief Abstract sensor — read values, install event handlers, supports calibration.
 class Sensor : public Calibratable {
 public:
 	Sensor(const char *name = "Sensor");
@@ -21,6 +26,7 @@ public:
 };
 
 
+/// @brief Global sensor registry — find sensors by name for config store reads.
 class SensorManager {
 private:
 	static inline std::map<std::string, Sensor&> m_map;

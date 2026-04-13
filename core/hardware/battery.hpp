@@ -1,3 +1,8 @@
+/**
+ * @file battery.hpp
+ * @brief Abstract battery monitor — voltage, level, low/critical detection with hysteresis.
+ */
+
 #pragma once
 
 #include <cstdint>
@@ -11,6 +16,7 @@ public:
 	virtual void react(BatteryMonitorEventVoltageCritical const &) {};
 };
 
+/// @brief Abstract battery monitor with voltage/level tracking and critical-voltage events.
 class BatteryMonitor : public EventEmitter<BatteryMonitorEventListener> {
 protected:
 	uint16_t m_last_voltage_mv;
@@ -45,10 +51,15 @@ public:
 		m_is_critical_voltage(false),
 		m_is_critical_voltage_last(false) {}
 	virtual ~BatteryMonitor() {}
+	/// @brief Last measured voltage in mV.
 	uint16_t get_voltage() { return m_last_voltage_mv; }
+	/// @brief Last computed battery level (0-100%).
 	uint8_t get_level() { return m_last_level; }
+	/// @brief True if level is below low_level threshold.
 	bool is_battery_low() { return m_is_low_level; }
+	/// @brief True if voltage is below critical threshold (with hysteresis).
 	bool is_battery_critical() { return m_is_critical_voltage; }
+	/// @brief Sample ADC/gauge and fire events if thresholds crossed.
 	void update() {
 		internal_update();
 		actuate_events();

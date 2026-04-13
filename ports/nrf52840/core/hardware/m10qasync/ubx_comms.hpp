@@ -1,3 +1,8 @@
+/**
+ * @file ubx_comms.hpp
+ * @brief ubx comms driver.
+ */
+
 #pragma once
 
 #include <cstdint>

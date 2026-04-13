@@ -1,11 +1,16 @@
-#ifndef __BCH_HPP_
-#define __BCH_HPP_
+/**
+ * @file bch.hpp
+ * @brief BCH encoder — B(127,106,3) and B(255,223,4) for Argos short/long packets.
+ */
+
+#pragma once
 
 #include <vector>
 #include <string_view>
 
 using BCHCodeWord = unsigned int;
 
+/// @brief BCH error-correcting code encoder for Argos satellite protocol.
 class BCHEncoder {
 
 public:
@@ -72,5 +77,3 @@ public:
 		return code_word;
 	}
 };
-
-#endif // __BCH_HPP_

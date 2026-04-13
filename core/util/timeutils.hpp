@@ -1,8 +1,13 @@
-#ifndef __TIMEUTILS_HPP_H
-#define __TIMEUTILS_HPP_H
+/**
+ * @file timeutils.hpp
+ * @brief Time conversion utilities — epoch ↔ datetime, day-of-year, portable timegm.
+ */
+
+#pragma once
 
 #include <ctime>
-#include <stdint.h>
+#include <cstdint>
+#include <cstring>
 
 // Portable timegm implementation for embedded systems (newlib doesn't provide timegm)
 // Converts struct tm (interpreted as UTC) to time_t
@@ -82,4 +87,3 @@ static void convert_datetime_to_epoch(std::time_t time, uint16_t &year, uint8_t 
     sec = date_time->tm_sec;
 }
 
-#endif // __TIMEUTILS_HPP_H

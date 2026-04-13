@@ -1,10 +1,15 @@
+/**
+ * @file ota_flash_file_updater.hpp
+ * @brief Flash-backed OTA file updater — writes firmware to QSPI flash or LittleFS.
+ */
+
 #pragma once
 
-#include <stdint.h>
+#include <cstdint>
 #include "ota_file_updater.hpp"
 #include "filesystem.hpp"
 
-
+/// @brief OTA updater that writes to external QSPI flash (MCU FW) or LittleFS (other files).
 class OTAFlashFileUpdater : public OTAFileUpdater {
 private:
 	LFSFileSystem 	   *m_filesystem;
@@ -12,11 +17,11 @@ private:
 	lfs_off_t      		m_reserved_block_offset;
 	lfs_size_t     		m_reserved_blocks;
 	OTAFileIdentifier   m_file_id;
-	LFSFile            *m_file;
-	lfs_size_t		    m_file_size;
-	lfs_off_t		    m_file_bytes_received;
-	uint32_t			m_crc32;
-	uint32_t			m_crc32_calc;
+	LFSFile            *m_file = nullptr;
+	lfs_size_t		    m_file_size = 0;
+	lfs_off_t		    m_file_bytes_received = 0;
+	uint32_t			m_crc32 = 0;
+	uint32_t			m_crc32_calc = 0xFFFFFFFF;
 
 public:
 	OTAFlashFileUpdater(LFSFileSystem *filesystem, FlashInterface *flash_if, lfs_off_t reserved_block_offset, lfs_size_t reserved_blocks);

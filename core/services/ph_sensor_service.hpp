@@ -1,3 +1,8 @@
+/**
+ * @file ph_sensor_service.hpp
+ * @brief pH sensor service — periodic pH sampling, logging, TX aggregation.
+ */
+
 #pragma once
 
 #include "sensor_service.hpp"
@@ -5,6 +10,7 @@
 #include "messages.hpp"
 #include "timeutils.hpp"
 
+/// @brief Log entry for pH sensor.
 struct __attribute__((packed)) PHLogEntry {
 	LogHeader header;
 	union {
@@ -21,7 +27,7 @@ public:
 	}
 	const std::string log_entry(const LogEntry& e) override {
 		char entry[512], d1[128];
-		const PHLogEntry *ph = (const PHLogEntry *)&e;
+		const auto *ph = reinterpret_cast<const PHLogEntry *>(&e);
 		std::time_t t;
 		std::tm *tm;
 
@@ -47,7 +53,7 @@ private:
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Warray-bounds"
 	void sensor_populate_log_entry(LogEntry *e, ServiceSensorData& data) override {
-		PHLogEntry *ph = (PHLogEntry *)e;
+		auto *ph = reinterpret_cast<PHLogEntry *>(e);
 		ph->ph = data.port[0];
 		service_set_log_header_time(ph->header, service_current_time());
 	}

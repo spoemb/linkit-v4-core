@@ -1,3 +1,8 @@
+/**
+ * @file service.hpp
+ * @brief Service framework — base class for all periodic services + ServiceManager orchestrator.
+ */
+
 #pragma once
 
 #include <functional>
@@ -12,9 +17,10 @@
 
 extern ConfigurationStore *configuration_store;
 
+/// @brief Base class for all periodic services (GPS, Argos TX/RX, sensors, SWS, camera, etc.).
 class Service {
 public:
-	static inline const unsigned int SCHEDULE_DISABLED = 0xFFFFFFFF;
+	static constexpr unsigned int SCHEDULE_DISABLED = 0xFFFFFFFF;  ///< Returned by service_next_schedule_in_ms to disable scheduling.
 
 	Service(ServiceIdentifier service_id, const char *name, Logger *logger = nullptr);
 	virtual ~Service();
@@ -32,17 +38,17 @@ public:
 	bool is_initiated();
 
 private:
-	bool m_is_started;
-	const char *m_name;
-	bool m_is_underwater;
-	bool m_is_initiated;
+	bool m_is_started = false;
+	const char *m_name = nullptr;
+	bool m_is_underwater = false;
+	bool m_is_initiated = false;
 	Scheduler::TaskHandle m_task_period;
 	Scheduler::TaskHandle m_task_timeout;
 	std::function<void(ServiceEvent&)> m_data_notification_callback;
-	ServiceIdentifier m_service_id;
-	unsigned int m_unique_id;
-	Logger *m_logger;
-	unsigned int m_last_schedule;
+	ServiceIdentifier m_service_id = ServiceIdentifier::UNKNOWN;
+	unsigned int m_unique_id = 0;
+	Logger *m_logger = nullptr;
+	unsigned int m_last_schedule = SCHEDULE_DISABLED;
 
 	void reschedule(bool immediate = false);
 	void deschedule();
@@ -52,33 +58,80 @@ private:
 	void notify_underwater_state(bool state);
 
 protected:
-	// This interface must be implemented by the underlying sensor logic
+	// === Virtual interface — subclasses must/may override ===
+
+	/// @brief Initialize service hardware/state (called once at start).
 	virtual void service_init() = 0;
+	/// @brief Terminate service (called once at stop).
 	virtual void service_term() = 0;
+	/// @brief Check if this service is enabled in config.
+	/// @return true if service should be scheduled.
 	virtual bool service_is_enabled() = 0;
+	/// @brief Compute delay until next execution.
+	/// @return Delay in ms, or SCHEDULE_DISABLED.
 	virtual unsigned int service_next_schedule_in_ms() = 0;
+	/// @brief Execute the service task (called when scheduled time arrives).
 	virtual void service_initiate() = 0;
+	/// @brief Cancel an active service task (e.g., GPS acquisition timeout).
+	/// @return true if the task was active and cancelled.
 	virtual bool service_cancel() { return false; }
+	/// @brief Safety timeout after which service_cancel is called automatically.
+	/// @return Timeout in ms, or 0 for no timeout.
 	virtual unsigned int service_next_timeout() { return 0; }
+	/// @brief Check if this service should reschedule on surfacing.
+	/// @param[out] immediate  true if service should fire immediately.
+	/// @return true if surfacing triggers this service.
 	virtual bool service_is_triggered_on_surfaced(bool&) { return false; }
+	/// @brief Check if this service can operate underwater (default: no).
+	/// @return true if service should keep running when submerged.
 	virtual bool service_is_usable_underwater() { return false; }
+	/// @brief Check if a peer event should trigger this service.
+	/// @param[in] event      Peer event.
+	/// @param[out] immediate true if service should fire immediately.
+	/// @return true if this event triggers rescheduling.
 	virtual bool service_is_triggered_on_event(ServiceEvent&, bool&) { return false; }
+	/// @brief Check if service is active after initiate (for async services).
+	/// @return true if initiate starts an async operation (default: true).
 	virtual bool service_is_active_on_initiate() { return true; }
 
-	// This can be called by underlying service
+	// === Protected helpers for subclasses ===
+
+	/// @brief Check if this service has a pending schedule.
 	bool service_is_scheduled();
+	/// @brief Force reschedule (e.g., after config change or peer event).
+	/// @param immediate  true to schedule with 0 delay.
 	void service_reschedule(bool immediate = false);
+	/// @brief Write log entry and notify peers of updated data.
+	/// @param event_data  Optional event payload for peer notification.
+	/// @param entry       Optional raw log entry for persistent logger.
 	void service_log(ServiceEventData *event_data = nullptr, void *entry = nullptr);
+	/// @brief Mark service as complete — log, notify inactive, optionally reschedule.
+	/// @param event_data  Optional event payload.
+	/// @param entry       Optional raw log entry.
+	/// @param reschedule  true to reschedule after completion (default: true).
 	void service_complete(ServiceEventData *event_data = nullptr, void *entry = nullptr, bool reschedule = true);
+	/// @brief Notify peers that this service is now active.
 	void service_active();
+	/// @brief Fill log header date/time fields from epoch time.
+	/// @param[out] header  Log header to fill.
+	/// @param time         Epoch time (seconds).
 	void service_set_log_header_time(LogHeader& header, std::time_t time);
+	/// @brief Get current RTC time.
+	/// @return Epoch time in seconds.
 	std::time_t service_current_time();
+	/// @brief Check if RTC has been set (e.g., by GNSS fix).
 	bool service_is_time_known();
+	/// @brief Set RTC time (e.g., from GNSS fix).
 	void service_set_time(std::time_t);
+	/// @brief Sample battery ADC/gauge.
 	void service_update_battery();
+	/// @brief Get last battery voltage (mV).
 	uint16_t service_get_voltage();
+	/// @brief Get last battery level (0-100%).
 	uint8_t service_get_level();
+	/// @brief Check if battery is below low threshold.
 	bool service_is_battery_level_low();
+	/// @brief Get current hardware timer counter (ms).
 	uint64_t service_current_timer();
 	template <typename T> T& service_read_param(ParamID param_id) {
 		return configuration_store->read_param<T>(param_id);
@@ -93,6 +146,7 @@ public:
 	void resume_from_cooldown();
 };
 
+/// @brief Global service orchestrator — manages all Service instances, peer events, cooldown.
 class ServiceManager
 {
 private:

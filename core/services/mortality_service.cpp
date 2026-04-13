@@ -1,3 +1,8 @@
+/**
+ * @file mortality_service.cpp
+ * @brief Bird mortality detection — daily confidence evaluation from activity, temperature, GPS.
+ */
+
 #include "mortality_service.hpp"
 #include "sensor.hpp"
 
@@ -7,6 +12,8 @@ extern Scheduler *system_scheduler;
 static constexpr unsigned int AXL_PORT_ACTIVITY = 4;
 static constexpr unsigned int AXL_PORT_WAKEUP   = 5;
 
+/// @brief Constructor — init state as ALIVE, reset session data.
+/// @param logger  Optional persistent logger for mortality state.
 MortalityService::MortalityService(Logger *logger)
 	: Service(ServiceIdentifier::MORTALITY, "MORTALITY", logger)
 {
@@ -15,6 +22,7 @@ MortalityService::MortalityService(Logger *logger)
 	reset_session_data();
 }
 
+/// @brief Clear session-local sensor data (between daily evaluations).
 void MortalityService::reset_session_data()
 {
 	m_has_activity = false;
@@ -27,6 +35,7 @@ void MortalityService::reset_session_data()
 	m_session_gps_speed = 0;
 }
 
+/// @brief Init: restore persisted state from FsLog, reset session.
 void MortalityService::service_init()
 {
 	reset_session_data();
@@ -45,11 +54,14 @@ void MortalityService::service_init()
 	}
 }
 
+/// @brief Terminate: persist state to flash before shutdown.
 void MortalityService::service_term()
 {
 	reset_session_data();
 }
 
+/// @brief Enabled if MORTALITY_ENABLE param is set and board supports it.
+/// @return true if mortality detection is active.
 bool MortalityService::service_is_enabled()
 {
 #if ENABLE_MORTALITY_SENSOR
@@ -59,23 +71,30 @@ bool MortalityService::service_is_enabled()
 #endif
 }
 
+/// @brief Schedule daily evaluation (24h period).
+/// @return 24 hours in ms.
 unsigned int MortalityService::service_next_schedule_in_ms()
 {
 	// Event-driven only — no periodic scheduling
 	return SCHEDULE_DISABLED;
 }
 
+/// @brief Run daily mortality evaluation — compute confidence, log, persist.
 void MortalityService::service_initiate()
 {
 	// Should not be called (schedule disabled), but handle gracefully
 	service_complete();
 }
 
+/// @brief Cancel — no-op (evaluation is instant).
+/// @return Always false.
 bool MortalityService::service_cancel()
 {
 	return false;
 }
 
+/// @brief Collect sensor data from peer events (AXL activity, thermistor temp, GPS fix).
+/// @param event  Peer service event.
 void MortalityService::notify_peer_event(ServiceEvent& event)
 {
 #if ENABLE_MORTALITY_SENSOR
@@ -127,6 +146,8 @@ void MortalityService::notify_peer_event(ServiceEvent& event)
 #endif
 }
 
+/// @brief Check if all 3 sensor inputs (activity, temperature, GPS) have been received.
+/// @return true if all inputs are available for evaluation.
 bool MortalityService::all_inputs_collected() const
 {
 	return m_has_activity && m_has_temperature && m_has_gps;
@@ -139,6 +160,7 @@ unsigned int MortalityService::day_of_year(std::time_t epoch) const
 	return t ? t->tm_yday : 0;
 }
 
+/// @brief Compute mortality confidence (0-100%) from activity, body temp, GPS stationarity.
 void MortalityService::evaluate_mortality()
 {
 #if ENABLE_MORTALITY_SENSOR
@@ -260,6 +282,7 @@ void MortalityService::evaluate_mortality()
 #endif
 }
 
+/// @brief Write current mortality state to FsLog for persistence across power cycles.
 void MortalityService::persist_state()
 {
 	MortalityLogEntry entry;

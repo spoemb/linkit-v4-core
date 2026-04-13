@@ -1,9 +1,15 @@
+/**
+ * @file ledsm.hpp
+ * @brief LED state machine — maps tracker states to RGB LED patterns (solid, flash, alternate).
+ */
+
 #pragma once
 
 #include "tinyfsm.hpp"
 #include "timer.hpp"
 
-
+/// @name LED state events (dispatched by GenTracker FSM)
+/// @{
 struct SetLEDOff : tinyfsm::Event { };
 struct SetLEDMagnetEngaged : tinyfsm::Event { };
 struct SetLEDMagnetDisengaged : tinyfsm::Event { };
@@ -61,6 +67,9 @@ class LEDSurfaceDetected;
 class LEDDiveDetected;
 
 
+/// @}
+
+/// @brief LED FSM base — dispatches events to LED state subclasses.
 class LEDState : public tinyfsm::Fsm<LEDState> {
 protected:
 	static inline bool m_is_battery_critical = false;

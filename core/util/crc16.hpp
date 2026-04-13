@@ -1,9 +1,15 @@
+/**
+ * @file crc16.hpp
+ * @brief CRC16 (CCITT) — bitwise checksum for Argos protocol data.
+ */
+
 #pragma once
 
 #include <algorithm>
 #include <string>
 #include "bitpack.hpp"
 
+/// @brief CRC16-CCITT calculator (polynomial 0x1021).
 class CRC16 {
 public:
 	// Zero pad the start of the data buffer so the number of total bits becomes a multiple of 8

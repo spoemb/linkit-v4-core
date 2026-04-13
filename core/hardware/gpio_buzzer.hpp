@@ -1,3 +1,8 @@
+/**
+ * @file gpio_buzzer.hpp
+ * @brief GPIO-backed buzzer — on/off/beep sequences via hardware timer.
+ */
+
 #pragma once
 
 #include "gpio.hpp"
@@ -11,6 +16,7 @@ extern Timer *system_timer;
 #define BUZZER_BEEP_INFINITE(instance,t_on,t_off) {if (instance) instance->beep_infinite(t_on,t_off);}
 #define BUZZER_BEEP_COUNT(instance,t_on,t_off,count) {if (instance) instance->beep_count(t_on,t_off,count);}
 
+/// @brief Buzzer driven by a GPIO pin with timer-based beep sequences.
 class Buzzer : public GPIOPins {
 public :
     Buzzer(int pin) {

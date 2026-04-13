@@ -1,3 +1,8 @@
+/**
+ * @file reed.hpp
+ * @brief Reed switch gesture detector — engage, short hold, long hold, release.
+ */
+
 #pragma once
 
 #include <functional>
@@ -13,13 +18,14 @@ enum class ReedSwitchGesture {
 };
 
 
+/// @brief Reed switch with timed gesture detection (short hold 3s, long hold 6s).
 class ReedSwitch {
 private:
 	Switch  &m_switch;
-	uint64_t m_last_trigger_time;
+	uint64_t m_last_trigger_time = 0;
 	unsigned int m_short_hold_period_ms;
 	unsigned int m_long_hold_period_ms;
-	Scheduler::TaskHandle m_task;
+	Scheduler::TaskHandle m_task = {};
 
 	void switch_state_handler(bool);
 

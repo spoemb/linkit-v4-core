@@ -1,5 +1,11 @@
+/**
+ * @file led.hpp
+ * @brief Abstract single-color LED interface — on/off/flash.
+ */
+
 #pragma once
 
+/// @brief Abstract LED — implemented by GPIOLed.
 class Led {
 public:
 	Led(int pin) { (void)pin; };

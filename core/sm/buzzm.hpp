@@ -1,9 +1,16 @@
+/**
+ * @file buzzm.hpp
+ * @brief Buzzer state machine — maps tracker states to buzzer patterns (beep sequences).
+ */
+
 #pragma once
 
 #include "tinyfsm.hpp"
 #include "timer.hpp"
 #include "gpio_buzzer.hpp"
 
+/// @name Buzzer state events (dispatched by GenTracker FSM)
+/// @{
 struct SetBuzzOff : tinyfsm::Event { };
 struct SetBuzzMagnetEngaged : tinyfsm::Event { };
 struct SetBuzzMagnetDisengaged : tinyfsm::Event { };
@@ -19,6 +26,9 @@ class BuzzConfigPending;
 class BuzzConfiguration;
 
 
+/// @}
+
+/// @brief Buzzer FSM base — dispatches events to buzzer state subclasses.
 class BuzzState : public tinyfsm::Fsm<BuzzState> {
 protected:
 	static inline bool m_is_magnet_engaged = false;

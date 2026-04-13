@@ -1,9 +1,15 @@
+/**
+ * @file sys_log.hpp
+ * @brief System log CSV formatter — datetime, level, message.
+ */
+
 #pragma once
 
 #include <string>
 #include "logger.hpp"
 #include "timeutils.hpp"
 
+/// @brief CSV formatter: "log_datetime,log_level,message\r\n".
 class SysLogFormatter : public LogFormatter {
 public:
 	const std::string header() override {
