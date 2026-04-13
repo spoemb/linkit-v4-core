@@ -841,6 +841,10 @@ bool SmdSatCmdSpi::ping()
 	DEBUG_TRACE("SmdSatCmdSpi::%s", __func__);
 
 	for (uint8_t retry = 0; retry < SMDSAT_SPI_MAX_RETRIES; retry++) {
+		// Allow one sequence resync attempt per ping retry — if the STM32
+		// watchdog reset its counter (5s timeout), the next retry should be
+		// able to resynchronize instead of being permanently blocked.
+		m_seq_reset_attempted = false;
 		try {
 			if (send_command_auto(SMDSAT_CMD_PING)) {
 				DEBUG_INFO("SmdSatCmdSpi::%s: ACK from SMD received", __func__);

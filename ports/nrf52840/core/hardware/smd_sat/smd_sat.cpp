@@ -344,7 +344,9 @@ void SmdSat::state_powering_on() {
 
 void SmdSat::state_load_kmac_enter() {
 	m_state_counter = 20;  // MAC poll iterations before timeout
-	m_next_delay = SMDSAT_DELAY_LOAD_KMAC_MS;
+	// Do NOT set m_next_delay here — the first call writes RCONF/credentials
+	// (steps 1-2) and must execute promptly after ping OK.  The 500ms delay
+	// is only appropriate for MAC polling retries (step 3) and is set there.
 }
 void SmdSat::state_load_kmac_exit() {}
 
