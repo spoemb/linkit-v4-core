@@ -326,9 +326,10 @@ bool SmdSatCmdSpi::send_command_aplus(uint8_t command, const uint8_t *tx_data, u
 
         // For flash ops: check for BUSY/IDLE pattern and retry
         if (is_flash_op && is_slave_not_ready(response_frame, 8) && retry < max_retries) {
-            DEBUG_TRACE("SmdSatCmdSpi::%s: Slave not ready (0x%02X) | retry %u/%u",
-                        __func__, response_frame[0], retry + 1, max_retries);
-            nrf_delay_ms(SMDSAT_SPI_BUSY_RETRY_DELAY_MS);
+            bool is_busy = (response_frame[0] == SPI_PROTOCOL_APLUS_BUSY_PATTERN);
+            DEBUG_TRACE("SmdSatCmdSpi::%s: Slave %s (0x%02X) | retry %u/%u",
+                        __func__, is_busy ? "BUSY" : "not ready", response_frame[0], retry + 1, max_retries);
+            nrf_delay_ms(is_busy ? SMDSAT_SPI_BUSY_WAIT_MS : SMDSAT_SPI_RETRY_DELAY_MS);
             m_sequence_number++;
             continue;
         }

@@ -409,8 +409,8 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 			// 1. Cache TCXO=0 for next surfacing (RAM only, sent via SPI at next boot)
 			m_tcxo_skip_on_next_tx = true;
 			m_kineis.set_tcxo_warmup_time(0);
-			// 2. Kill SMD to avoid leaving it in a bad state during rapid transitions.
-			//    (service_cancel/stop_send is already called by Service::notify_underwater_state)
+			// 2. Kill SMD and restore default idle timeout
+			m_kineis.set_idle_timeout(1000);
 			m_kineis.power_off_immediate();
 
 			// Activate cooldown on dive if armed during this surfacing session
@@ -462,6 +462,10 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 				m_doppler_burst_count = 0;
 				m_has_gnss_fix_since_surfacing = false;
 				m_first_gnss_tx_sent = false;
+				// Keep SMD alive between burst pings — default 1s idle timeout
+				// is too short for 5-30s Doppler intervals, causing shutdown+reboot
+				// failures on the 3rd TX
+				m_kineis.set_idle_timeout((argos_config.surfacing_burst_max_s + 10) * 1000);
 				m_scheduled_task = [this]() { process_doppler_burst(); };
 				m_scheduled_mode = argos_config.adaptive_modulation ? KineisModulation::VLDA4 : KineisModulation::LDA2;
 				DEBUG_INFO("ArgosTxService::SURFACING_BURST: surface detected - starting Doppler burst sequence");
@@ -932,13 +936,14 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 		return;
 	}
 
-	// Adaptive modulation: after each TX, always pre-switch to VLDA4 while SMD
-	// is still powered on. This ensures the next surfacing Doppler starts without
-	// any RCONF write at boot (VLDA4 already in flash).
-	// The LDK switch for GNSS TX is done live in process_gnss_burst() via
-	// ensure_modulation() — the SMD is already on at that point.
+	// Adaptive modulation: pre-switch to VLDA4 while SMD is still powered on,
+	// so the next surfacing Doppler starts without RCONF write at boot.
+	// Skip the pre-switch if GPS is still acquiring with a degraded PVT
+	// (next tick will likely be fastloc/LDA2 — avoid unnecessary RCONF churn).
 	if (argos_config.adaptive_modulation && argos_config.mode == BaseArgosMode::SURFACING_BURST) {
-		if (m_kineis.get_current_modulation() != KineisModulation::VLDA4) {
+		bool next_likely_lda2 = (gps_device && gps_device->has_degraded_pvt() &&
+		                         !m_has_gnss_fix_since_surfacing && m_doppler_burst_count > 0);
+		if (!next_likely_lda2 && m_kineis.get_current_modulation() != KineisModulation::VLDA4) {
 			DEBUG_INFO("ArgosTxService::react: pre-switch to VLDA4 for next Doppler");
 			ensure_modulation(KineisModulation::VLDA4);
 		}

@@ -107,8 +107,9 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 #define SMDSAT_TIMING_POLL_MS           500    // TX polling interval
 
 // Inter-transaction delays
-#define SMDSAT_SPI_INTER_TX_DELAY_MS    15     // STM32 DMA re-arm time
+#define SMDSAT_SPI_INTER_TX_DELAY_MS    15     // STM32 DMA re-arm time between SPI transactions
 #define SMDSAT_SPI_RETRY_DELAY_MS       50     // Command retry delay
+#define SMDSAT_SPI_BUSY_WAIT_MS         100    // BUSY pattern (0xBB) = flash write in progress
 #define SMDSAT_SPI_BOOT_DELAY_MS        100    // SPI ready ~30ms after reset, 100ms = 3x margin
 #define SMDSAT_SPI_DETECT_TIMEOUT_MS    10     // SPI activity detection
 #define SMDSAT_SPI_POST_TX_DELAY_MS     100    // Async processing delay
@@ -119,7 +120,7 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 #define SMDSAT_DELAY_LOAD_KMAC_MS       (500)
 #define SMDSAT_DELAY_TICK_INTERRUPT_MS  (10)
 #define SMDSAT_DELAY_CMD_MS             SMDSAT_TIMING_STANDARD_MS
-#define SMDSAT_DELAY_CMD_TX             (1000)
+#define SMDSAT_DELAY_CMD_TX             (200)   // SMD v2: first poll after PA boot (~160ms)
 #define SMDSAT_DELAY_RST_MS             (100)
 
 // SPI retry configuration

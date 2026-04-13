@@ -82,17 +82,17 @@ SmdSat::~SmdSat() {
 
 void SmdSat::shutdown(void) {
 	GPIOPins::init_pin(SAT_RESET);
-	GPIOPins::clear(SAT_RESET);
+	GPIOPins::clear(SAT_RESET);  // Hold RESET LOW
 	nrf_delay_ms(SMDSAT_DELAY_RST_MS);
-	GPIOPins::clear(SAT_PWR_EN);
+	GPIOPins::clear(SAT_PWR_EN);  // Cut power
 #ifdef SMD_VPA_PIN
 	GPIOPins::drive_low(SMD_VPA_PIN);
 #endif
-	// No discharge delay — the STM32WL VDD caps keep it alive briefly.
-	// This is intentional: on the next power_on, the STM32 resumes from
-	// its previous state (NVM already initialized, SPI ready) instead of
-	// doing a full POR which requires NVM re-initialization time.
-	// If a true POR is needed (e.g., after DFU), call power_off_immediate().
+	// Wait for VDD caps to discharge — ensures a true POR on next power_on.
+	// Without this, the STM32WL stays alive on residual VDD (~10-50ms) and
+	// resumes from its previous SPI sequence number, causing INVALID_CMD
+	// when the nRF restarts with seq=0 after a soft reset.
+	nrf_delay_ms(50);
 }
 
 void SmdSat::power_on_blocking() {
@@ -240,8 +240,7 @@ void SmdSat::state_starting_exit() {}
 void SmdSat::state_starting()
 {
 	m_is_first_tx = true;
-	// is_kmac_profil_loaded is NOT reset here — the KMAC profile is persisted
-	// in SMD flash across power cycles. Only reset on credential/RCONF changes.
+	is_kmac_profil_loaded = false;  // Force KMAC reload on every boot (v4.0.9 behavior)
 	m_credentials_written = false;
 	m_rconf_recovery_attempted = false;
 	// SPI init is deferred to state_idle_pending (after power-on + reset release).
@@ -291,9 +290,10 @@ void SmdSat::state_stopped_enter() {
 	GPIOPins::release_sensors_pwr();
 	nrf_gpio_cfg_default(BSP::GPIO_Inits[SAT_RESET].pin_number);
 
-	// Keep is_kmac_profil_loaded = true — the KMAC profile is persisted in
-	// SMD flash and does not need reloading on every boot. It is only reset
-	// to false when credentials change or a deferred RCONF is applied.
+	// Force KMAC reload on next boot — the STM32WL may have lost its state
+	// after power cycle (shutdown cuts VDD, NVM needs re-initialization).
+	// v4.0.9 behavior: always reload KMAC after any stop/restart cycle.
+	is_kmac_profil_loaded = false;
 
 	m_packet_buffer.clear();
 
@@ -314,11 +314,20 @@ void SmdSat::state_powering_on() {
 
 	GPIOPins::acquire_sensors_pwr();
 
+	// Step 0: Force a clean power cycle — kill any residual power from previous session.
+	// After a nRF soft reset, SAT_PWR_EN may have been HIGH and the STM32WL
+	// is still alive on VDD decoupling caps with a stale SPI sequence counter.
+	// Without this, the first 2-phase write fails with INVALID_CMD.
+	GPIOPins::init_pin(SAT_RESET);
+	GPIOPins::clear(SAT_RESET);
+	GPIOPins::clear(SAT_PWR_EN);
+#ifdef SMD_VPA_PIN
+	GPIOPins::drive_low(SMD_VPA_PIN);
+#endif
+	nrf_delay_ms(200);  // Allow VDD caps to fully discharge (100ms insufficient for some boards)
+
 	// Step 1: Assert RESET LOW before powering on — hold STM32WL in reset
 	// during VDD ramp-up to prevent undefined behavior at low voltage.
-	// SAT_RESET is open-drain (S0D1) with external pull-up on SMD VDD rail.
-	// While SAT_PWR_EN is LOW, the pull-up is unpowered → no leakage.
-	GPIOPins::init_pin(SAT_RESET);
 	GPIOPins::clear(SAT_RESET);
 
 	// Step 2: Assert wakeup pin HIGH (LinkIt only) before power-on
@@ -327,10 +336,13 @@ void SmdSat::state_powering_on() {
 	GPIOPins::set(SAT_EXTWAKEUP);
 #endif
 
-	// Step 3: Power ON — VDD ramp starts, STM32WL held in reset by RESET_B=LOW
-	// VPA stays LOW (driven by nRF) to prevent PA regulator activation during boot.
+	// Step 3: Power ON + release VPA (v4.0.9 behavior)
+	// VPA must be HIGH during boot — STM32WL SPI init depends on PA regulator rail.
 	GPIOPins::set(SAT_PWR_EN);
-	DEBUG_TRACE("SmdSat::%s: SAT_PWR_EN=HIGH, RESET=LOW, VPA=LOW", __func__);
+#ifdef SMD_VPA_PIN
+	GPIOPins::release_to_highz(SMD_VPA_PIN);
+#endif
+	DEBUG_TRACE("SmdSat::%s: SAT_PWR_EN=HIGH, RESET=LOW, VPA=HIGH", __func__);
 
 	// Step 4: Wait for VDD stabilization (150ms >> 5ms required)
 	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
@@ -361,7 +373,8 @@ void SmdSat::state_load_kmac() {
 	// Step 1a: Apply deferred RCONF from switch_modulation() while stopped.
 	if (!m_pending_rconf.empty()) {
 		DEBUG_INFO("SmdSat::%s: applying deferred RCONF for modulation %d", __func__, static_cast<int>(m_modulation));
-		auto wait_cmd = []() { nrf_delay_ms(150); };
+		// SMD v2: BUSY pattern handles flash timing — 30ms inter-command sufficient
+		auto wait_cmd = []() { nrf_delay_ms(SMDSAT_TIMING_STANDARD_MS); };
 		std::string rconf_bin = Binascii::unhexlify(m_pending_rconf);
 		smd_uint8_array_t rconf_struct = {static_cast<uint16_t>(rconf_bin.size()),
 		                                  reinterpret_cast<uint8_t *>(rconf_bin.data())};
@@ -487,6 +500,9 @@ void SmdSat::state_idle_pending_exit() {
 
 void SmdSat::state_idle_pending() {
 	if (m_cmd.ping()) {
+		// Wait for STM32 MAC init to complete before sending 2-phase commands.
+		// The ping ACK means SPI is alive but KNS_MAC may still be initializing.
+		nrf_delay_ms(100);
 		// VPA stays LOW — only released just before TX (state_transmit_pending)
 		if (!is_kmac_profil_loaded) {
 			SMD_STATE_CHANGE(idle_pending, load_kmac);
@@ -830,6 +846,39 @@ bool SmdSat::write_credentials_from_config() {
 			wait_cmd();
 		} else {
 			DEBUG_INFO("SmdSat::%s: adaptive modulation ON — skipping master RCONF write", __func__);
+		}
+	}
+
+	// If adaptive modulation is active and we just wrote the master RCONF as baseline,
+	// re-apply the RCONF for the current modulation so the next TX uses the right config.
+	{
+		bool is_adaptive = false;
+		if (configuration_store)
+			is_adaptive = configuration_store->read_param<bool>(ParamID::ARGOS_ADAPTIVE_MODULATION);
+		if (is_adaptive && m_modulation != ARGOS_MOD_LDA2) {
+			std::string active_rconf;
+			ArgosConfig ac;
+			configuration_store->get_argos_configuration(ac);
+			KineisModulation km = smd_to_kineis_mod(m_modulation);
+			if (km == KineisModulation::VLDA4) active_rconf = ac.radioconf_vlda4;
+			else if (km == KineisModulation::LDK) active_rconf = ac.radioconf_ldk;
+
+			if (!active_rconf.empty() && active_rconf.size() == 32) {
+				DEBUG_INFO("SmdSat::%s: restoring RCONF for active modulation %d", __func__, static_cast<int>(m_modulation));
+				std::string rconf_bin = Binascii::unhexlify(active_rconf);
+				smd_uint8_array_t rconf_struct = {static_cast<uint16_t>(rconf_bin.size()),
+				                                  reinterpret_cast<uint8_t *>(rconf_bin.data())};
+				try {
+					m_cmd.set_radio_conf(&rconf_struct);
+					wait_cmd();
+					m_cmd.save_radio_conf();
+					wait_cmd();
+					m_cmd.load_kmac_profil(1);
+					wait_cmd();
+				} catch (...) {
+					DEBUG_WARN("SmdSat::%s: failed to restore active RCONF", __func__);
+				}
+			}
 		}
 	}
 
