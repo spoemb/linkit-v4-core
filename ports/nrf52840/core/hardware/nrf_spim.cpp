@@ -1,125 +1,123 @@
-/**
- * @file nrf_spim.cpp
- * @brief nRF52840 SPI master driver — blocking transfers with manual CS.
- */
-
-#include <cstdint>
-#include <cstring>
+#include <stdint.h>
 
 #include "nrf_spim.hpp"
-#include "nrf_peripheral_power.hpp"
 #include "bsp.hpp"
 #include "nrf_gpio.h"
 #include "nrfx_spim.h"
-#include "nrf_delay.h"
-#include "error.hpp"
-#include "debug.hpp"
+#include "nrf_pwr_mgmt.h"
 
-// CS setup/hold time for SPI slave devices.
-// At high clock rates (>= 1 MHz), the slave needs time between CS assertion
-// and the first SCK edge (setup) and between the last SCK edge and CS
-// de-assertion (hold). 2 µs is conservative and covers STM32WL SPI slave.
-static constexpr unsigned int SPI_CS_SETUP_US = 2;
-static constexpr unsigned int SPI_CS_HOLD_US  = 2;
+static uint32_t sspin_internal[BSP::SPI::SPI_TOTAL_NUMBER] = {NRFX_SPIM_PIN_NOT_USED};
 
-/// @brief Cached CS pin per SPI instance.  Default 0xFF = NRFX_SPIM_PIN_NOT_USED.
-///        Set by NrfSPIM constructor.  activate_cs/deactivate_cs skip if 0xFF.
-static_assert(NRFX_SPIM_PIN_NOT_USED == 0xFF, "CS init relies on memset(0xFF)");
-static uint32_t s_cs_pin[BSP::SPI::SPI_TOTAL_NUMBER];
+#ifdef SPI_USE_IRQ
 
-// .bss zero-inits to 0x00 which is P0.00 (a real pin) — unsafe.
-// Force 0xFF at static init time so uninitialised instances are inert.
-static const bool s_cs_pin_inited = [] {
-	memset(s_cs_pin, 0xFF, sizeof(s_cs_pin));
-	return true;
-}();
-
-static void activate_cs(unsigned int instance) {
-	if (s_cs_pin[instance] == NRFX_SPIM_PIN_NOT_USED) return;
-	if (BSP::SPI_Inits[instance].config.ss_active_high)
-		nrf_gpio_pin_set(s_cs_pin[instance]);
-	else
-		nrf_gpio_pin_clear(s_cs_pin[instance]);
-}
-
-static void deactivate_cs(unsigned int instance) {
-	if (s_cs_pin[instance] == NRFX_SPIM_PIN_NOT_USED) return;
-	if (BSP::SPI_Inits[instance].config.ss_active_high)
-		nrf_gpio_pin_clear(s_cs_pin[instance]);
-	else
-		nrf_gpio_pin_set(s_cs_pin[instance]);
-}
-
-
-NrfSPIM::NrfSPIM(unsigned int instance) : m_instance(instance)
+static void event_handler(nrfx_spim_evt_t const * p_event, void * p_context)
 {
-	if (instance >= BSP::SPI::SPI_TOTAL_NUMBER) {
-		DEBUG_ERROR("NrfSPIM: invalid instance %u", instance);
-		throw ErrorCode::RESOURCE_NOT_AVAILABLE;
+	NrfSPIM *obj = static_cast<NrfSPIM *>(p_context);
+    obj->m_xfer_done = true;
+}
+
+#endif
+
+
+void activate_ss(uint32_t instance)
+{
+    if (sspin_internal[instance] != NRFX_SPIM_PIN_NOT_USED)
+    {
+        if (BSP::SPI_Inits[instance].config.ss_active_high)
+            nrf_gpio_pin_set(sspin_internal[instance]);
+        else
+            nrf_gpio_pin_clear(sspin_internal[instance]);
+    }
+}
+
+void deactivate_ss(uint32_t instance)
+{
+    if (sspin_internal[instance] != NRFX_SPIM_PIN_NOT_USED)
+    {
+        if (BSP::SPI_Inits[instance].config.ss_active_high)
+            nrf_gpio_pin_clear(sspin_internal[instance]);
+        else
+            nrf_gpio_pin_set(sspin_internal[instance]);
+    }
+}
+
+
+NrfSPIM::NrfSPIM(unsigned int instance)
+{
+	m_instance = instance;
+
+	sspin_internal[instance] = BSP::SPI_Inits[instance].config.ss_pin;
+
+	if (BSP::SPI_Inits[instance].config.ss_pin != NRFX_SPIM_PIN_NOT_USED)
+	{
+		deactivate_ss(instance);
+	    nrf_gpio_cfg_output(sspin_internal[instance]);
 	}
 
-	s_cs_pin[instance] = BSP::SPI_Inits[instance].config.ss_pin;
-
-	if (s_cs_pin[instance] != NRFX_SPIM_PIN_NOT_USED) {
-		deactivate_cs(instance);
-		nrf_gpio_cfg_output(s_cs_pin[instance]);
-	}
-
-	// Copy config and remove SS pin — we manage CS manually
 	BSP::SPI_InitTypeDefAndInst_t spi_init = BSP::SPI_Inits[instance];
+
 	spi_init.config.ss_pin = NRFX_SPIM_PIN_NOT_USED;
 
-	// Blocking mode (no event handler)
-	nrfx_err_t err = nrfx_spim_init(&spi_init.spim, &spi_init.config, nullptr, nullptr);
-	if (err != NRFX_SUCCESS) {
-		DEBUG_ERROR("NrfSPIM: init failed instance %u (0x%08X)", instance, err);
-		throw ErrorCode::RESOURCE_NOT_AVAILABLE;
-	}
-
+#ifdef SPI_USE_IRQ
+	nrfx_spim_init(&spi_init.spim, &spi_init.config, spim_event_handler, (void *)this);
+#else
+	nrfx_spim_init(&spi_init.spim, &spi_init.config, NULL, NULL);
+#endif
 }
+
 
 NrfSPIM::~NrfSPIM()
 {
-	nrfx_spim_uninit(&BSP::SPI_Inits[m_instance].spim);
-	// Errata 89: toggle POWER register to prevent 400 µA idle current leak
-	nrf_peripheral_power_reset(reinterpret_cast<uint32_t>(BSP::SPI_Inits[m_instance].spim.p_reg));
+    nrfx_spim_uninit(&BSP::SPI_Inits[m_instance].spim);
 }
 
 int NrfSPIM::transfer(const uint8_t *tx_data, uint8_t *rx_data, uint16_t size)
 {
-	nrfx_spim_xfer_desc_t xfer_desc = NRFX_SPIM_XFER_TRX(tx_data, size, rx_data, size);
+	int ret;
+    nrfx_spim_xfer_desc_t xfer_desc = NRFX_SPIM_XFER_TRX(tx_data, size, rx_data, size);
 
-	activate_cs(m_instance);
-	nrf_delay_us(SPI_CS_SETUP_US);   // CS-to-SCK setup time for slave
-	nrfx_err_t ret = nrfx_spim_xfer(&BSP::SPI_Inits[m_instance].spim, &xfer_desc, 0);
-	nrf_delay_us(SPI_CS_HOLD_US);    // SCK-to-CS hold time for slave
-	deactivate_cs(m_instance);
+#ifdef SPI_USE_IRQ
+    m_xfer_done = false;
+#endif
 
-	if (ret != NRFX_SUCCESS) {
-		DEBUG_ERROR("SPI transfer failed instance %u (0x%08X)", m_instance, ret);
-		return -1;
-	}
-	return 0;
+    activate_ss(m_instance);
+
+    ret = nrfx_spim_xfer(&BSP::SPI_Inits[m_instance].spim, &xfer_desc, 0);
+
+#ifdef SPI_USE_IRQ
+    while (!m_xfer_done)
+        syshal_pmu_sleep(SLEEP_LIGHT);
+#endif
+
+    deactivate_ss(m_instance);
+
+    return ret;
 }
 
 int NrfSPIM::transfer_continuous(const uint8_t *tx_data, uint8_t *rx_data, uint16_t size)
 {
-	nrfx_spim_xfer_desc_t xfer_desc = NRFX_SPIM_XFER_TRX(tx_data, size, rx_data, size);
+	int ret;
+    nrfx_spim_xfer_desc_t xfer_desc = NRFX_SPIM_XFER_TRX(tx_data, size, rx_data, size);
 
-	activate_cs(m_instance);
-	nrf_delay_us(SPI_CS_SETUP_US);
-	nrfx_err_t ret = nrfx_spim_xfer(&BSP::SPI_Inits[m_instance].spim, &xfer_desc, 0);
+#ifdef SPI_USE_IRQ
+    m_xfer_done = false;
+#endif
 
-	if (ret != NRFX_SUCCESS) {
-		deactivate_cs(m_instance);
-		DEBUG_ERROR("SPI transfer_continuous failed instance %u (0x%08X)", m_instance, ret);
-		return -1;
-	}
-	return 0;
+    activate_ss(m_instance);
+
+    ret = nrfx_spim_xfer(&BSP::SPI_Inits[m_instance].spim, &xfer_desc, 0);
+
+#ifdef SPI_USE_IRQ
+    while (!m_xfer_done)
+    	nrf_pwr_mgmt_run();
+#endif
+
+    return ret;
 }
 
 int NrfSPIM::finish_transfer()
 {
-	deactivate_cs(m_instance);
+	deactivate_ss(m_instance);
+
 	return 0;
 }

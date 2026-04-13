@@ -88,11 +88,11 @@ void SmdSat::shutdown(void) {
 #ifdef SMD_VPA_PIN
 	GPIOPins::drive_low(SMD_VPA_PIN);
 #endif
-	// Discharge delay: ensure VDD caps drain fully so next power_on
-	// triggers a true POR on the STM32WL. Without this, a fast
-	// shutdown→power_on cycle can leave the STM32 in a corrupted state.
-	PMU::kick_watchdog();
-	nrf_delay_ms(SMDSAT_DISCHARGE_DELAY_MS);
+	// No discharge delay — the STM32WL VDD caps keep it alive briefly.
+	// This is intentional: on the next power_on, the STM32 resumes from
+	// its previous state (NVM already initialized, SPI ready) instead of
+	// doing a full POR which requires NVM re-initialization time.
+	// If a true POR is needed (e.g., after DFU), call power_off_immediate().
 }
 
 void SmdSat::power_on_blocking() {
