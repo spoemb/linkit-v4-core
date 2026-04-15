@@ -92,6 +92,8 @@ if(NOT ${BATTERY_MONITOR_TYPE} MATCHES "ANALOG|FAKE|STC3117")
 endif()
 
 message(STATUS "Battery monitor type: ${BATTERY_MONITOR_TYPE}")
+message(STATUS "Sensors: AXL=${ENABLE_AXL_SENSOR} PRESSURE=${ENABLE_PRESSURE_SENSOR} THERMISTOR=${ENABLE_THERMISTOR_SENSOR} SEA_TEMP=${ENABLE_SEA_TEMP_SENSOR} ALS=${ENABLE_ALS_SENSOR} CDT=${ENABLE_CDT_SENSOR} PH=${ENABLE_PH_SENSOR} MORTALITY=${ENABLE_MORTALITY_SENSOR}")
+message(STATUS "GNSS: BBR=${GNSS_HAS_BACKUP_BATTERY} SWS_LOG=${ENABLE_SWS_LOG}")
 
 # Convert ON/OFF to 1/0 for C preprocessor compatibility
 if(ENABLE_PRESSURE_SENSOR)
@@ -268,17 +270,17 @@ target_include_directories(${TARGET_NAME} SYSTEM PRIVATE
     ${PROJ_DIR}/core/filesystem
     ${PROJ_DIR}/core/scheduling
     ${PROJ_DIR}/core/hardware/kim2
-    ${PROJ_DIR}/core/hardware/pressure_sensor
-    ${PROJ_DIR}/core/hardware/ms58xx
-    ${PROJ_DIR}/core/hardware/bar100
-    ${PROJ_DIR}/core/hardware/ad5933
-    ${PROJ_DIR}/core/hardware/ltr_303
+    $<$<OR:$<BOOL:${ENABLE_PRESSURE_SENSOR}>,$<BOOL:${ENABLE_CDT_SENSOR}>>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/pressure_sensor>
+    $<$<OR:$<BOOL:${ENABLE_PRESSURE_SENSOR}>,$<BOOL:${ENABLE_CDT_SENSOR}>>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/ms58xx>
+    $<$<OR:$<BOOL:${ENABLE_PRESSURE_SENSOR}>,$<BOOL:${ENABLE_CDT_SENSOR}>>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/bar100>
+    $<$<BOOL:${ENABLE_CDT_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/ad5933>
+    $<$<BOOL:${ENABLE_ALS_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/ltr_303>
     $<$<BOOL:${ENABLE_PH_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/oem_ph>
     $<$<BOOL:${ENABLE_SEA_TEMP_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/oem_rtd>
     $<$<BOOL:${ENABLE_SEA_TEMP_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/ezo_rtd>
-    ${PROJ_DIR}/core/hardware/cdt
+    $<$<BOOL:${ENABLE_CDT_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/cdt>
     $<$<BOOL:${ENABLE_AXL_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/bma400>
-    ${PROJ_DIR}/core/hardware/tsys01
+    $<$<BOOL:${ENABLE_SEA_TEMP_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/tsys01>
     ${PROJ_DIR}/core/hardware/run_cam
     $<$<BOOL:${ENABLE_PRESSURE_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/lps28dfw>
     $<$<STREQUAL:${BATTERY_MONITOR_TYPE},STC3117>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/stc3117>
@@ -374,15 +376,15 @@ target_sources(${TARGET_NAME} PRIVATE
     ${CORE_DIR}/configuration/calibration.cpp
     ${BOARD_DIR}/bsp.cpp
     ${PROJ_DIR}/core/filesystem/is25_flash.cpp
-    ${PROJ_DIR}/core/hardware/ms58xx/ms58xx.cpp
-    ${PROJ_DIR}/core/hardware/bar100/bar100.cpp
+    $<$<OR:$<BOOL:${ENABLE_PRESSURE_SENSOR}>,$<BOOL:${ENABLE_CDT_SENSOR}>>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/ms58xx/ms58xx.cpp>
+    $<$<OR:$<BOOL:${ENABLE_PRESSURE_SENSOR}>,$<BOOL:${ENABLE_CDT_SENSOR}>>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/bar100/bar100.cpp>
     $<$<BOOL:${ENABLE_PRESSURE_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/lps28dfw/lps28dfw.cpp>
     $<$<BOOL:${ENABLE_PRESSURE_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/lps28dfw/lps28dfw_reg.c>
-    ${PROJ_DIR}/core/hardware/ad5933/ad5933.cpp
+    $<$<BOOL:${ENABLE_CDT_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/ad5933/ad5933.cpp>
     $<$<BOOL:${ENABLE_AXL_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/bma400/bma400.cpp>
     $<$<BOOL:${ENABLE_AXL_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/bma400/bma400.c>
-    ${PROJ_DIR}/core/hardware/cdt/cdt.cpp
-    ${PROJ_DIR}/core/hardware/ltr_303/ltr_303.cpp
+    $<$<BOOL:${ENABLE_CDT_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/cdt/cdt.cpp>
+    $<$<BOOL:${ENABLE_ALS_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/ltr_303/ltr_303.cpp>
     $<$<BOOL:${ENABLE_PH_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/oem_ph/oem_ph.cpp>
     $<$<BOOL:${ENABLE_SEA_TEMP_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/oem_rtd/oem_rtd.cpp>
     $<$<BOOL:${ENABLE_SEA_TEMP_SENSOR}>:${CMAKE_CURRENT_SOURCE_DIR}/core/hardware/ezo_rtd/ezo_rtd.cpp>
