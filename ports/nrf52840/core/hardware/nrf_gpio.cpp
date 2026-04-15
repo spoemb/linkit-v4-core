@@ -35,7 +35,10 @@ void GPIOPins::initialise()
 	clear(GPS_POWER);
 	release_to_highz(GPS_RST);  // Disconnect (ext pull-up, GPS off)
 
-	// SMD satellite module — keep powered OFF at init
+	// SMD satellite module — force OFF at init.
+	// Hold RESET LOW before cutting power to prevent STM32WL boot on residual VDD.
+	init_pin(SAT_RESET);
+	clear(SAT_RESET);
 	clear(SAT_PWR_EN);
 	release_to_highz(SAT_RESET);  // Disconnect (ext pull-up, SMD off)
 #ifdef SMD_VPA_PIN

@@ -122,48 +122,46 @@ void PMU::powerdown() {
 			static_cast<unsigned int>(rtc->gettime()));
 	}
 
-#if defined(EXTERNAL_WAKEUP)
-	DEBUG_TRACE("Powerdown with external wakeup enabled");
-
-	// Force all LEDs off at hardware level
+	// Shut down all peripherals before power-off (all boards)
 	NrfRGBLed::set_color_raw(BSP::GPIO::GPIO_LED_RED, BSP::GPIO::GPIO_LED_GREEN, BSP::GPIO::GPIO_LED_BLUE, RGBLedColor::BLACK);
-
-	// Disable all power rails to peripherals
 #ifdef SENSORS_PWR_PIN
-	GPIOPins::clear(SENSORS_PWR_PIN);  // Sensors power OFF
+	GPIOPins::clear(SENSORS_PWR_PIN);
 #endif
 #ifdef GPS_POWER
-	GPIOPins::clear(GPS_POWER);        // GPS power OFF
+	GPIOPins::clear(GPS_POWER);
 #endif
 #ifdef GPS_RST
-	GPIOPins::set(GPS_RST);            // GPS held in reset
+	GPIOPins::set(GPS_RST);
 #endif
 #ifdef SAT_PWR_EN
-	GPIOPins::clear(SAT_PWR_EN);       // Satellite module power OFF
+	GPIOPins::clear(SAT_PWR_EN);
 #endif
 #ifdef SAT_RESET
-	GPIOPins::set(SAT_RESET);          // Satellite module held in reset
+	GPIOPins::set(SAT_RESET);
 #endif
-
-	// Disable SWS (Slow Wire Service) to save power
+#ifdef SMD_VPA_PIN
+	GPIOPins::drive_low(SMD_VPA_PIN);
+#endif
 #ifdef SWS_ENABLE_PIN
 	GPIOPins::clear(SWS_ENABLE_PIN);
 #endif
-#endif // EXTERNAL_WAKEUP
 
 #ifdef VSYS_SEL
-	GPIOPins::clear(VSYS_SEL);  // Switch to 1.8V before power down
+	GPIOPins::clear(VSYS_SEL);
 #endif
 
 #if defined(POWER_CONTROL_PIN)
-	DEBUG_TRACE("Attempt power off using power pin");
+	// Cut power control pin — on LinkIt V4 this de-asserts the VSYS latch.
+	// If the hardware pull-up keeps it HIGH (pseudo power-off), the soft reset
+	// below handles the actual shutdown. On boards with a real load switch,
+	// this cuts VDD directly.
+	DEBUG_TRACE("Attempt power off using power control pin");
 	GPIOPins::clear(POWER_CONTROL_PIN);
-	PMU::delay_ms(1000); // If power on pin is connected then allow time for it to take effect
+	PMU::delay_ms(1000);  // Wait for load switch to take effect (if real power-off)
 #endif
 
 #if defined(PSEUDO_POWER_OFF)
-	DEBUG_TRACE("Pseudo power off (soft reset)");
-	// Mark this as a pseudo power off
+	DEBUG_TRACE("Pseudo power off (soft reset with GPREGRET)");
 	NRF_POWER->GPREGRET = 0x80;
 	sd_nvic_SystemReset();
 #endif
