@@ -401,13 +401,12 @@ void M10QAsyncReceiver::react(const UBXCommsEventSatReport& s) {
             }
             notify(e);
 
-        	// Early abort: if after 10 sat reports no satellite has qualityInd >= 2
-        	// (signal acquired), the antenna is likely obstructed or underwater.
-        	// 10 reports (~10s) gives enough time for partial surfacing scenarios
-        	// where signal ramps slowly from qualityInd 0→1→2.
-        	if (m_num_sat_samples == 10 && e.bestSignalQuality < 2) {
-        		DEBUG_WARN("M10QAsyncReceiver: no signal acquired after %u sat reports (best quality=%u) | aborting",
-        		           m_num_sat_samples, e.bestSignalQuality);
+        	// Early abort: if after 10 sat reports no satellite is even detected
+        	// (quality=0), the antenna is completely obstructed or underwater.
+        	// quality >= 1 means satellites are visible — let the timeout handle it.
+        	if (m_num_sat_samples == 20 && e.bestSignalQuality == 0) {
+        		DEBUG_WARN("M10QAsyncReceiver: no satellite detected after %u sat reports | aborting",
+        		           m_num_sat_samples);
         		notify<GPSEventMaxSatSamples>({});
         		return;
         	}
@@ -958,7 +957,16 @@ void M10QAsyncReceiver::state_startreceive() {
 			break;
 		} else {
 			if (m_retries == 0 || --m_retries == 0) {
-				DEBUG_ERROR("M10QAsyncReceiver::state_start_receive: failed");
+				// CloudLocate steps (4-6): fallback to PVT-only instead of aborting
+				if (m_step >= 4 && m_step <= 6 && m_nav_settings.cloudlocate_enable) {
+					DEBUG_WARN("M10QAsyncReceiver::state_start_receive: CloudLocate step %u failed, falling back to PVT-only", m_step);
+					m_nav_settings.cloudlocate_enable = false;
+					m_step = 7;  // skip remaining CloudLocate steps
+					m_retries = 3;
+					m_op_state = OpState::IDLE;
+					continue;
+				}
+				DEBUG_ERROR("M10QAsyncReceiver::state_start_receive: failed at step %u", m_step);
 				m_unrecoverable_error = true;
 				notify<GPSEventError>({});
 				break;

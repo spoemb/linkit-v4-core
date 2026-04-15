@@ -369,10 +369,10 @@ namespace UBX
             inline UBXParameter NAV_SAT_UART1   = {0x20910016, 1, {}}; // Output rate of the UBX-NAV-SAT message on UART1
 
             // CloudLocate raw measurement output rates on UART1
-            // TODO: verify key IDs against u-blox M10 SPG 5.10 interface description (UBX-21035062)
-            inline UBXParameter RXM_MEASC12_UART1 = {0x20910c01, 1, {}};  // Output rate of UBX-RXM-MEASC12 on UART1
-            inline UBXParameter RXM_MEAS20_UART1  = {0x20910303, 1, {}};  // Output rate of UBX-RXM-MEAS20 on UART1
-            inline UBXParameter RXM_MEAS50_UART1  = {0x20910306, 1, {}};  // Output rate of UBX-RXM-MEAS50 on UART1
+            // Key IDs from u-blox M10 SPG 5.10 interface description (UBX-21035062)
+            inline UBXParameter RXM_MEASC12_UART1 = {0x2091063F, 1, {}};  // CFG-MSGOUT-UBX_RXM_MEASC12_UART1
+            inline UBXParameter RXM_MEAS20_UART1  = {0x20910644, 1, {}};  // CFG-MSGOUT-UBX_RXM_MEAS20_UART1
+            inline UBXParameter RXM_MEAS50_UART1  = {0x20910649, 1, {}};  // CFG-MSGOUT-UBX_RXM_MEAS50_UART1
         }
 
 
@@ -985,8 +985,8 @@ namespace UBX
 		enum Id : uint8_t
 		{
 			ID_PMREQ  = 0x41,
-			ID_MEAS20 = 0x72,  // RXM-MEAS20: 20-byte compact raw GNSS measurement (CloudLocate)
-			ID_MEAS50 = 0x73,  // RXM-MEAS50: 50-byte extended raw GNSS measurement (CloudLocate)
+			ID_MEAS20 = 0x84,  // RXM-MEAS20: 20-byte compact raw GNSS measurement (CloudLocate)
+			ID_MEAS50 = 0x86,  // RXM-MEAS50: 50-byte extended raw GNSS measurement (CloudLocate)
 			ID_MEASC12 = 0x82  // RXM-MEASC12: 12-byte minimal raw GNSS measurement (CloudLocate)
 		};
 

@@ -633,6 +633,8 @@ void ArgosTxService::process_sensor_burst() {
 		}
 #else
 		// Generic sensor packet for LinkIt V4 (all sensors, no RSPB-specific packing)
+		DEBUG_INFO("TX_RAW: SENS lat=%.6f lon=%.6f hAcc=%u nSV=%u hDOP=%.1f batt=%.3fV",
+		           gps->info.lat, gps->info.lon, gps->info.hAcc, gps->info.numSV, (double)gps->info.hDOP, gps->info.batt_voltage);
 		m_scheduled_mode = KineisModulation::LDA2;
 		packet = ArgosPacketBuilder::build_sensor_packet(gps,
 				m_depth_pile_manager.retrieve_sensor_single((unsigned int)argos_config.depth_pile, ServiceIdentifier::ALS_SENSOR),
@@ -725,6 +727,10 @@ void ArgosTxService::process_gnss_burst() {
 				service_complete();
 				return;
 			}
+			for (unsigned int i = 0; i < v.size(); i++) {
+				DEBUG_INFO("TX_RAW: GNSS[%u] lat=%.6f lon=%.6f hAcc=%u nSV=%u hDOP=%.1f batt=%.3fV",
+				           i, v[i]->info.lat, v[i]->info.lon, v[i]->info.hAcc, v[i]->info.numSV, (double)v[i]->info.hDOP, v[i]->info.batt_voltage);
+			}
 			packet = ArgosPacketBuilder::build_gnss_packet(v, argos_config.is_out_of_zone, argos_config.is_lb,
 					argos_config.delta_time_loc,
 					size_bits);
@@ -782,6 +788,8 @@ void ArgosTxService::process_doppler_burst() {
 		}
 
 		if (blob) {
+			DEBUG_INFO("TX_RAW: CL fmt=%u sz=%u batt=%.3fV blob=%s",
+			           format_id, blob_size, service_get_voltage(), Binascii::hexlify(std::string((const char*)blob, blob_size)).c_str());
 			KineisPacket packet = ArgosPacketBuilder::build_cloudlocate_packet(blob, blob_size, format_id,
 			                                                                   service_get_voltage(), argos_config.is_lb);
 			size_bits = ArgosPacketBuilder::cloudlocate_packet_bits(format_id);
@@ -840,6 +848,8 @@ void ArgosTxService::process_doppler_burst() {
 		fastloc_entry.info.valid = true;
 		fastloc_entry.info.event_type = GPSEventType::FASTLOC;
 
+		DEBUG_INFO("TX_RAW: FLOC lat=%.6f lon=%.6f hAcc=%u nSV=%u hDOP=%.1f batt=%.3fV",
+		           degraded.lat, degraded.lon, degraded.hAcc, degraded.numSV, (double)degraded.hDOP, service_get_voltage());
 		KineisPacket packet = ArgosPacketBuilder::build_fastloc_packet(&fastloc_entry, argos_config.is_lb);
 		size_bits = ArgosPacketBuilder::FASTLOC_PACKET_BITS;
 
@@ -870,10 +880,14 @@ void ArgosTxService::process_doppler_burst() {
 		mort_conf = mortality_service->get_confidence();
 		activity = mortality_service->get_last_activity();
 	}
+	DEBUG_INFO("TX_RAW: DOPP soc=%u activity=%u mortality=%u",
+	           service_get_level(), activity, mort_conf);
 	packet = ArgosPacketBuilder::build_rspb_doppler_packet(
 		service_get_level(), activity, mort_conf, size_bits);
 #else
 	// Standard Doppler: battery voltage only
+	DEBUG_INFO("TX_RAW: DOPP batt=%.3fV low_batt=%u",
+	           service_get_voltage(), service_is_battery_level_low() ? 1 : 0);
 	packet = ArgosPacketBuilder::build_doppler_packet(
 		service_get_voltage(), service_is_battery_level_low(), size_bits);
 #endif

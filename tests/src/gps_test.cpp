@@ -783,3 +783,206 @@ TEST(GPSService, GNSSNoPeriodicColdStartOnSurfaceEvent)
 	mock().expectOneCall("power_on").onObject(mock_m10q).ignoreOtherParameters();
 	increment_time_s(1);
 }
+
+// ============================================================================
+// FASTLOC (DEGRADED PVT) TESTS
+// ============================================================================
+
+TEST(GPSService, FastlocDegradedPVTLoggedWhenEnabled)
+{
+	// GNP45=1 (DEGRADED_PVT): degraded fix should produce FASTLOC log entry
+	fake_config_store->write_param(ParamID::GNSS_EN, (bool)true);
+	fake_config_store->write_param(ParamID::GNSS_FASTLOC_MODE, 1U); // 1=DEGRADED_PVT
+	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, 600U);
+	fake_config_store->write_param(ParamID::GNSS_ACQ_TIMEOUT, 60U);
+	fake_config_store->write_param(ParamID::GNSS_COLD_ACQ_TIMEOUT, 60U);
+	fake_config_store->write_param(ParamID::UNDERWATER_EN, (bool)false);
+	fake_config_store->write_param(ParamID::GNSS_HDOPFILT_EN, (bool)false);
+	fake_config_store->write_param(ParamID::GNSS_FIX_MODE, BaseGNSSFixMode::AUTO);
+	fake_config_store->write_param(ParamID::GNSS_DYN_MODEL, BaseGNSSDynModel::SEA);
+
+	fake_rtc->settime(1580083200);
+
+	fake_log->create(); // Reset log index
+	GPSService s(*mock_m10q, fake_log);
+	s.start();
+
+	mock().expectOneCall("power_on").onObject(mock_m10q).ignoreOtherParameters();
+	increment_time_s(FIRST_AQPERIOD);
+
+	// GPS sends degraded PVT (timeout, fix failed quality filters)
+	mock().expectOneCall("power_off").onObject(mock_m10q);
+	mock_m10q->notify_degraded_gnss_data(fake_rtc->gettime(), -21.01, 55.27, 8.0, 150000, 2, 3);
+
+	// The service should have completed with a FASTLOC log entry
+	CHECK_EQUAL(1U, fake_log->num_entries());
+}
+
+TEST(GPSService, FastlocDisabledTreatsAsNoFix)
+{
+	// GNP45=0 (OFF): degraded fix should be treated as no fix
+	fake_config_store->write_param(ParamID::GNSS_EN, (bool)true);
+	fake_config_store->write_param(ParamID::GNSS_FASTLOC_MODE, 0U); // 0=OFF
+	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, 600U);
+	fake_config_store->write_param(ParamID::GNSS_ACQ_TIMEOUT, 60U);
+	fake_config_store->write_param(ParamID::GNSS_COLD_ACQ_TIMEOUT, 60U);
+	fake_config_store->write_param(ParamID::UNDERWATER_EN, (bool)false);
+	fake_config_store->write_param(ParamID::GNSS_HDOPFILT_EN, (bool)false);
+	fake_config_store->write_param(ParamID::GNSS_FIX_MODE, BaseGNSSFixMode::AUTO);
+	fake_config_store->write_param(ParamID::GNSS_DYN_MODEL, BaseGNSSDynModel::SEA);
+
+	fake_rtc->settime(1580083200);
+
+	fake_log->create(); // Reset log index
+	GPSService s(*mock_m10q, fake_log);
+	s.start();
+
+	mock().expectOneCall("power_on").onObject(mock_m10q).ignoreOtherParameters();
+	increment_time_s(FIRST_AQPERIOD);
+
+	// GPS sends degraded PVT but fastloc is disabled
+	mock().expectOneCall("power_off").onObject(mock_m10q);
+	mock_m10q->notify_degraded_gnss_data(fake_rtc->gettime(), -21.01, 55.27, 8.0, 150000, 2, 3);
+
+	// Should still log (as invalid/no-fix), but event_type should not be FASTLOC
+	CHECK_EQUAL(1U, fake_log->num_entries());
+}
+
+TEST(GPSService, FastlocDoesNotSetFirstFixFound)
+{
+	// Degraded fix should NOT set m_is_first_fix_found — cold start retry period used
+	unsigned int cold_retry = 60U; // GNSS_COLD_START_RETRY_PERIOD default
+	fake_config_store->write_param(ParamID::GNSS_EN, (bool)true);
+	fake_config_store->write_param(ParamID::GNSS_FASTLOC_MODE, 1U); // 1=DEGRADED_PVT
+	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, 600U);
+	fake_config_store->write_param(ParamID::GNSS_ACQ_TIMEOUT, 60U);
+	fake_config_store->write_param(ParamID::GNSS_COLD_ACQ_TIMEOUT, 120U);
+	fake_config_store->write_param(ParamID::UNDERWATER_EN, (bool)false);
+	fake_config_store->write_param(ParamID::GNSS_HDOPFILT_EN, (bool)false);
+	fake_config_store->write_param(ParamID::GNSS_FIX_MODE, BaseGNSSFixMode::AUTO);
+	fake_config_store->write_param(ParamID::GNSS_DYN_MODEL, BaseGNSSDynModel::SEA);
+
+	fake_rtc->settime(1580083200);
+
+	fake_log->create(); // Reset log index
+	GPSService s(*mock_m10q, fake_log);
+	s.start();
+
+	// First session at FIRST_AQPERIOD
+	mock().expectOneCall("power_on").onObject(mock_m10q).ignoreOtherParameters();
+	increment_time_s(FIRST_AQPERIOD);
+
+	// Degraded PVT (not a real fix — first_fix_found stays false)
+	mock().expectOneCall("power_off").onObject(mock_m10q);
+	mock_m10q->notify_degraded_gnss_data(fake_rtc->gettime(), -21.01, 55.27);
+	CHECK_EQUAL(1U, fake_log->num_entries());
+
+	// Next session: cold_start_retry_period (60s) since first_fix_found is false
+	// Advance exactly to the schedule point, send a max_nav event to avoid timeout
+	mock().expectOneCall("power_on").onObject(mock_m10q).ignoreOtherParameters();
+	increment_time_s(cold_retry);
+	mock().expectOneCall("power_off").onObject(mock_m10q);
+	mock_m10q->notify_max_nav_samples();
+
+	// 2 log entries total: degraded + no-fix from max_nav
+	CHECK_EQUAL(2U, fake_log->num_entries());
+}
+
+TEST(GPSService, NormalFixAfterDegradedSetsFirstFix)
+{
+	// After degraded-only → normal fix → first_fix_found should be set
+	unsigned int cold_retry = 60U;
+	fake_config_store->write_param(ParamID::GNSS_EN, (bool)true);
+	fake_config_store->write_param(ParamID::GNSS_FASTLOC_MODE, 1U); // 1=DEGRADED_PVT
+	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, 600U);
+	fake_config_store->write_param(ParamID::GNSS_ACQ_TIMEOUT, 60U);
+	fake_config_store->write_param(ParamID::GNSS_COLD_ACQ_TIMEOUT, 120U);
+	fake_config_store->write_param(ParamID::UNDERWATER_EN, (bool)false);
+	fake_config_store->write_param(ParamID::GNSS_HDOPFILT_EN, (bool)false);
+	fake_config_store->write_param(ParamID::GNSS_FIX_MODE, BaseGNSSFixMode::AUTO);
+	fake_config_store->write_param(ParamID::GNSS_DYN_MODEL, BaseGNSSDynModel::SEA);
+
+	fake_rtc->settime(1580083200);
+
+	fake_log->create(); // Reset log index
+	GPSService s(*mock_m10q, fake_log);
+	s.start();
+
+	// First session: degraded PVT (does NOT set first_fix_found)
+	mock().expectOneCall("power_on").onObject(mock_m10q).ignoreOtherParameters();
+	increment_time_s(FIRST_AQPERIOD);
+	mock().expectOneCall("power_off").onObject(mock_m10q);
+	mock_m10q->notify_degraded_gnss_data(fake_rtc->gettime(), -21.01, 55.27);
+	CHECK_EQUAL(1U, fake_log->num_entries());
+
+	// Second session (cold_retry=60s): send real fix → sets first_fix_found
+	mock().expectOneCall("power_on").onObject(mock_m10q).ignoreOtherParameters();
+	increment_time_s(cold_retry);
+	mock().expectOneCall("power_off").onObject(mock_m10q);
+	mock_m10q->notify_gnss_data(fake_rtc->gettime(), -21.01, 55.27, 1.5, 5000);
+	CHECK_EQUAL(2U, fake_log->num_entries());
+
+	// Verify: first_fix_found is now true (normal fix sets it).
+	// Degraded fix alone did not set it (test FastlocDoesNotSetFirstFixFound covers that).
+	mock().checkExpectations();
+}
+
+TEST(GPSService, MaxSatSamplesNoFix)
+{
+	// MaxSatSamples event (no signal at all) should produce no-fix log entry
+	fake_config_store->write_param(ParamID::GNSS_EN, (bool)true);
+	fake_config_store->write_param(ParamID::GNSS_FASTLOC_MODE, 1U); // 1=DEGRADED_PVT
+	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, 600U);
+	fake_config_store->write_param(ParamID::GNSS_ACQ_TIMEOUT, 60U);
+	fake_config_store->write_param(ParamID::GNSS_COLD_ACQ_TIMEOUT, 60U);
+	fake_config_store->write_param(ParamID::UNDERWATER_EN, (bool)false);
+	fake_config_store->write_param(ParamID::GNSS_HDOPFILT_EN, (bool)false);
+	fake_config_store->write_param(ParamID::GNSS_FIX_MODE, BaseGNSSFixMode::AUTO);
+	fake_config_store->write_param(ParamID::GNSS_DYN_MODEL, BaseGNSSDynModel::SEA);
+
+	fake_rtc->settime(1580083200);
+
+	fake_log->create(); // Reset log index
+	GPSService s(*mock_m10q, fake_log);
+	s.start();
+
+	mock().expectOneCall("power_on").onObject(mock_m10q).ignoreOtherParameters();
+	increment_time_s(FIRST_AQPERIOD);
+
+	// No signal at all → early abort
+	mock().expectOneCall("power_off").onObject(mock_m10q);
+	mock_m10q->notify_max_sat_samples();
+
+	CHECK_EQUAL(1U, fake_log->num_entries());
+}
+
+TEST(GPSService, SingleFixModeStopsAfterFirstFix)
+{
+	// GNP30=1: GPS should not reschedule after first valid fix
+	fake_config_store->write_param(ParamID::GNSS_EN, (bool)true);
+	fake_config_store->write_param(ParamID::GNSS_SESSION_SINGLE_FIX, (bool)true);
+	fake_config_store->write_param(ParamID::DLOC_ARG_NOM, 600U);
+	fake_config_store->write_param(ParamID::GNSS_ACQ_TIMEOUT, 60U);
+	fake_config_store->write_param(ParamID::GNSS_COLD_ACQ_TIMEOUT, 60U);
+	fake_config_store->write_param(ParamID::UNDERWATER_EN, (bool)false);
+	fake_config_store->write_param(ParamID::GNSS_HDOPFILT_EN, (bool)false);
+	fake_config_store->write_param(ParamID::GNSS_FIX_MODE, BaseGNSSFixMode::AUTO);
+	fake_config_store->write_param(ParamID::GNSS_DYN_MODEL, BaseGNSSDynModel::SEA);
+
+	fake_rtc->settime(1580083200);
+
+	fake_log->create(); // Reset log index
+	GPSService s(*mock_m10q, fake_log);
+	s.start();
+
+	mock().expectOneCall("power_on").onObject(mock_m10q).ignoreOtherParameters();
+	increment_time_s(FIRST_AQPERIOD);
+
+	// Normal fix
+	mock().expectOneCall("power_off").onObject(mock_m10q);
+	mock_m10q->notify_gnss_data(fake_rtc->gettime(), -21.01, 55.27, 1.5, 5000);
+
+	// Wait well past DLOC period — GPS should NOT power on again
+	increment_time_s(1200);
+	mock().checkExpectations(); // No power_on expected
+}

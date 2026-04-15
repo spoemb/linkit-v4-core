@@ -1944,3 +1944,249 @@ TEST(ArgosTxService, FastlocHAccEncoding16bit)
 
 // NOTE: LoRa fastloc packet tests require lora_tx_service.cpp in test build (not currently included).
 // LoRa fastloc encoding is validated via firmware build (build_linkitv4_lora.sh).
+
+// ============================================================================
+// COOLDOWN TESTS
+// ============================================================================
+
+TEST(ArgosTxService, CooldownBlocksSecondSurfacing)
+{
+	// After a successful TX cycle, cooldown prevents new TX on next surfacing
+	fake_config_store->write_param(ParamID::ARGOS_MODE, BaseArgosMode::SURFACING_BURST);
+	fake_config_store->write_param(ParamID::ARGOS_DEPTH_PILE, BaseDepthPile::DEPTH_PILE_1);
+	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, (bool)false);
+	fake_config_store->write_param(ParamID::UNDERWATER_EN, (bool)true);
+	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, (bool)false);
+	fake_config_store->write_param(ParamID::DRY_TIME_BEFORE_TX, 0U);
+	fake_config_store->write_param(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S, 2700U);
+	fake_config_store->write_param(ParamID::COOLDOWN_TRIGGER_MODE, 3U); // AFTER_LAST_TX
+
+	ArgosTxService serv(*mock_kineis);
+
+	// Use a distinct epoch far from other cooldown tests to avoid static state leaks
+	std::time_t t = 1700000000000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	serv.start();
+
+	// Dive
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
+	notify_underwater_state(true);
+
+	// Advance 60s underwater
+	t += 60000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	// Surface → first burst starts
+	notify_underwater_state(false);
+	CHECK_EQUAL(0U, serv.get_last_schedule());
+
+	// Fire Doppler TX
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("send").onObject(mock_kineis).ignoreOtherParameters();
+	system_scheduler->run();
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	mock_kineis->notify(KineisEventTxComplete({}));
+
+	// Dive again → cooldown starts
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
+	notify_underwater_state(true);
+
+	// Advance only 120s (well within 2700s cooldown)
+	t += 120000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	// Surface again → should be blocked by cooldown
+	notify_underwater_state(false);
+
+	// No TX should be scheduled — service is disabled during cooldown
+	// Verify no send mock call is expected
+	mock().checkExpectations();
+}
+
+TEST(ArgosTxService, CooldownExpiresAllowsNewBurst)
+{
+	// After cooldown expires, a new surfacing should trigger TX
+	fake_config_store->write_param(ParamID::ARGOS_MODE, BaseArgosMode::SURFACING_BURST);
+	fake_config_store->write_param(ParamID::ARGOS_DEPTH_PILE, BaseDepthPile::DEPTH_PILE_1);
+	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, (bool)false);
+	fake_config_store->write_param(ParamID::UNDERWATER_EN, (bool)true);
+	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, (bool)false);
+	fake_config_store->write_param(ParamID::DRY_TIME_BEFORE_TX, 0U);
+	fake_config_store->write_param(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S, 60U); // Short cooldown for test
+	fake_config_store->write_param(ParamID::COOLDOWN_TRIGGER_MODE, 3U);
+
+	ArgosTxService serv(*mock_kineis);
+
+	// Use a distinct epoch far from other cooldown tests to avoid static state leaks
+	std::time_t t = 1750000000000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	serv.start();
+
+	// Dive → surface → TX → dive (first cycle)
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
+	notify_underwater_state(true);
+	t += 30000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+	notify_underwater_state(false);
+
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("send").onObject(mock_kineis).ignoreOtherParameters();
+	system_scheduler->run();
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	mock_kineis->notify(KineisEventTxComplete({}));
+
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
+	notify_underwater_state(true);
+
+	// Advance PAST cooldown (60s + margin)
+	t += 120000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	// Surface again → cooldown expired → TX should be scheduled
+	notify_underwater_state(false);
+	CHECK_EQUAL(0U, serv.get_last_schedule());
+}
+
+// ============================================================================
+// NTRY_PER_MESSAGE (depth pile burst counter) TESTS
+// ============================================================================
+
+TEST(ArgosTxService, NtryPerMessageLimitsGnssTx)
+{
+	// NTRY_PER_MESSAGE=2 → each GPS fix sent exactly 2 times, then no more
+	fake_config_store->write_param(ParamID::ARGOS_MODE, BaseArgosMode::SURFACING_BURST);
+	fake_config_store->write_param(ParamID::ARGOS_DEPTH_PILE, BaseDepthPile::DEPTH_PILE_1);
+	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, (bool)false);
+	fake_config_store->write_param(ParamID::UNDERWATER_EN, (bool)true);
+	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, (bool)false);
+	fake_config_store->write_param(ParamID::DRY_TIME_BEFORE_TX, 0U);
+	fake_config_store->write_param(ParamID::TR_NOM, 10U); // 10s for fast test
+	fake_config_store->write_param(ParamID::NTRY_PER_MESSAGE, 2U);
+
+	ArgosTxService serv(*mock_kineis);
+
+	std::time_t t = 1652105502000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	serv.start();
+
+	// Dive → surface
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
+	notify_underwater_state(true);
+	t += 60000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+	notify_underwater_state(false);
+
+	// Fire initial Doppler
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("send").onObject(mock_kineis).ignoreOtherParameters();
+	system_scheduler->run();
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	mock_kineis->notify(KineisEventTxComplete({}));
+
+	// Inject GPS fix → switches to GNSS phase
+	inject_gps_location(true, 55.27, -21.01, t/1000, true);
+
+	// GNSS TX #1
+	mock().expectOneCall("send").onObject(mock_kineis).ignoreOtherParameters();
+	t += 1000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+	system_scheduler->run();
+	mock_kineis->notify(KineisEventTxComplete({}));
+
+	// GNSS TX #2 (last allowed by NTRY=2)
+	mock().expectOneCall("send").onObject(mock_kineis).ignoreOtherParameters();
+	t += 10000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+	system_scheduler->run();
+	mock_kineis->notify(KineisEventTxComplete({}));
+
+	// GNSS TX #3 should NOT happen (burst_counter exhausted)
+	t += 10000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+	system_scheduler->run();
+	// No send expected — verify
+	mock().checkExpectations();
+}
+
+TEST(ArgosTxService, NtryZeroSendsOnce)
+{
+	// NTRY_PER_MESSAGE=0 → in surfacing burst mode, each fix sent exactly once
+	fake_config_store->write_param(ParamID::ARGOS_MODE, BaseArgosMode::SURFACING_BURST);
+	fake_config_store->write_param(ParamID::ARGOS_DEPTH_PILE, BaseDepthPile::DEPTH_PILE_1);
+	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, (bool)false);
+	fake_config_store->write_param(ParamID::UNDERWATER_EN, (bool)true);
+	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, (bool)false);
+	fake_config_store->write_param(ParamID::DRY_TIME_BEFORE_TX, 0U);
+	fake_config_store->write_param(ParamID::TR_NOM, 10U);
+	fake_config_store->write_param(ParamID::NTRY_PER_MESSAGE, 0U); // 0 = once in burst mode
+
+	ArgosTxService serv(*mock_kineis);
+
+	std::time_t t = 1652105502000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	serv.start();
+
+	// Dive → surface → Doppler
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
+	notify_underwater_state(true);
+	t += 60000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+	notify_underwater_state(false);
+
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("send").onObject(mock_kineis).ignoreOtherParameters();
+	system_scheduler->run();
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	mock_kineis->notify(KineisEventTxComplete({}));
+
+	// GPS fix → GNSS phase
+	inject_gps_location(true, 55.27, -21.01, t/1000, true);
+
+	// GNSS TX #1 (only one allowed)
+	mock().expectOneCall("send").onObject(mock_kineis).ignoreOtherParameters();
+	t += 1000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+	system_scheduler->run();
+	mock_kineis->notify(KineisEventTxComplete({}));
+
+	// GNSS TX #2 should NOT happen
+	t += 10000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+	system_scheduler->run();
+	mock().checkExpectations();
+}

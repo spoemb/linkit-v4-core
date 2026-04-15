@@ -143,9 +143,17 @@ void DepthPileManager::update_depth_pile() {
 		// Get the required burst counter
 		ArgosConfig argos_config;
 		configuration_store->get_argos_configuration(argos_config);
-		unsigned int burst_counter = (argos_config.ntry_per_message == 0 ||
-				argos_config.mode == BaseArgosMode::DUTY_CYCLE ||
-				argos_config.mode == BaseArgosMode::LEGACY) ? UINT_MAX : argos_config.ntry_per_message;
+		unsigned int burst_counter;
+		if (argos_config.mode == BaseArgosMode::DUTY_CYCLE ||
+			argos_config.mode == BaseArgosMode::LEGACY) {
+			// Legacy/Duty: unlimited retransmissions (depth pile manages history)
+			burst_counter = UINT_MAX;
+		} else if (argos_config.ntry_per_message == 0) {
+			// Surfacing burst / Pass prediction: 0 means send once per fix
+			burst_counter = 1;
+		} else {
+			burst_counter = argos_config.ntry_per_message;
+		}
 
 		// Synchronously update the depth piles
 		if (m_sensor_tx_current & (1 << (int)ServiceIdentifier::GNSS_SENSOR)) {

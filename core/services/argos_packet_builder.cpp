@@ -257,7 +257,7 @@ KineisPacket ArgosPacketBuilder::build_cloudlocate_packet(const uint8_t* blob, u
 
 	// Remaining bits are zero-padded (already zeroed by assign)
 
-	DEBUG_INFO("ArgosPacketBuilder::build_cloudlocate_packet: format=%u blob_size=%u batt=%u data=%s",
+	DEBUG_INFO("CL_PKT: fmt=%u sz=%u batt=%u data=%s",
 	           format_id, blob_size, battery_voltage, Binascii::hexlify(packet).c_str());
 
 	return packet;
