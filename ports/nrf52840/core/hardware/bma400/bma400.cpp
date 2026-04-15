@@ -284,10 +284,13 @@ void BMA400LL::read_xyz(double& x, double& y, double& z, int16_t& temperature)
 	struct bma400_int_enable int_en = { .type = BMA400_DRDY_INT_EN, .conf = BMA400_ENABLE };
 	rslt = bma400_enable_interrupt(&int_en, 1, &m_bma400_dev);
 	check_result("enable_interrupt(DRDY)", rslt);
-	PMU::delay_ms(20);
 
-	// Poll for data ready with timeout
+	// Clear any stale DRDY status from previous read, then wait for a FRESH sample
 	uint16_t int_status = 0;
+	int8_t __attribute__((unused)) clr = bma400_get_interrupt_status(&int_status, &m_bma400_dev);  // Clear stale
+	PMU::delay_ms(20);  // Wait for new sample at ODR
+
+	// Poll for fresh data ready with timeout
 	bool data_ready = false;
 	for (unsigned int i = 0; i < BMA400_DRDY_MAX_POLLS; i++) {
 		rslt = bma400_get_interrupt_status(&int_status, &m_bma400_dev);
@@ -553,9 +556,10 @@ bool BMA400LL::check_and_clear_wakeup()
 // ═══════════════════════════════════════════════════════
 
 /// @brief Enable hardware FIFO in stream mode at the given ODR.
+/// @note Caller must ensure VSENSORS is ON (no local SensorsPowerGuard here —
+///       the FIFO needs power to persist between calls).
 void BMA400LL::enable_fifo(uint8_t odr)
 {
-	SensorsPowerGuard power_guard;
 	int8_t rslt;
 
 	// Enter NORMAL mode with requested ODR
@@ -586,9 +590,9 @@ void BMA400LL::enable_fifo(uint8_t odr)
 }
 
 /// @brief Disable FIFO, return to SLEEP mode.
+/// @note Caller releases VSENSORS after this call.
 void BMA400LL::disable_fifo()
 {
-	SensorsPowerGuard power_guard;
 
 	struct bma400_device_conf dev_conf = {};
 	dev_conf.type = BMA400_FIFO_CONF;
@@ -604,12 +608,11 @@ void BMA400LL::disable_fifo()
 
 /// @brief Read and parse all available FIFO frames into the output array.
 /// @return Number of samples read (0 if empty or error).
+/// @note Caller must ensure VSENSORS is ON.
 unsigned int BMA400LL::read_fifo(BMA400FifoSample *samples, unsigned int max_samples)
 {
 	if (!m_fifo_enabled || !samples || max_samples == 0)
 		return 0;
-
-	SensorsPowerGuard power_guard;
 
 	// Read raw FIFO data (1024 bytes max + overhead)
 	static constexpr uint16_t FIFO_BUF_SIZE = 1028;
@@ -720,8 +723,9 @@ double BMA400::read(unsigned int offset)
 /// Falls back to single-sample read_xyz() if FIFO read returns 0.
 void BMA400::read_fifo_batch()
 {
-	// Start FIFO on first read
+	// Start FIFO on first read — keep VSENSORS ON for the entire FIFO session
 	if (!m_fifo_started) {
+		GPIOPins::acquire_sensors_pwr();  // Hold VSENSORS ON until FIFO disabled
 		m_bma400.enable_fifo(BMA400_ODR_100HZ);
 		m_fifo_started = true;
 		// Wait for samples to accumulate (sample_count / 100 Hz)
@@ -756,8 +760,9 @@ void BMA400::read_fifo_batch()
 	m_last_y = avg_y - m_bma400.get_y_calibration();
 	m_last_z = avg_z - (m_bma400.get_z_calibration() - 1.0);
 
-	// Read temperature while sensor is in active mode
-	m_last_temperature = m_bma400.read_temperature();
+	// Skip temperature read during FIFO — read_temperature() puts BMA400
+	// into sleep mode which kills the FIFO. Temperature from last single
+	// read or init is still valid (BMA400 die temp changes slowly).
 
 	DEBUG_INFO("BMA400: FIFO batch %u samples avg(%.3f|%.3f|%.3f) g",
 	           count, m_last_x, m_last_y, m_last_z);
@@ -863,6 +868,7 @@ void BMA400::remove_event_handler(unsigned int)
 	if (m_fifo_started) {
 		m_bma400.disable_fifo();
 		m_fifo_started = false;
+		GPIOPins::release_sensors_pwr();  // Release VSENSORS held since FIFO start
 	}
 }
 
