@@ -168,6 +168,10 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 				}
 				if (m_depth_pile_manager.eligible() == 0) {
 					DEBUG_TRACE("ArgosTxService::SURFACING_BURST: GNSS phase but no eligible entries");
+					m_is_surfacing_burst = false;
+					m_awaiting_surfacing = true;
+					m_has_gnss_fix_since_surfacing = false;
+					m_first_gnss_tx_sent = false;
 					return Service::SCHEDULE_DISABLED;
 				}
 
@@ -707,7 +711,7 @@ void ArgosTxService::process_sensor_burst() {
 		m_kineis.send(m_scheduled_mode, packet, size_bits);
 	} else {
 		DEBUG_WARN("ArgosTxService::process_sensor_burst: no entries eligible in depth pile");
-		if (m_is_surfacing_burst) {
+		if (m_is_surfacing_burst || m_has_gnss_fix_since_surfacing) {
 			DEBUG_INFO("ArgosTxService::process_sensor_burst: ending surfacing burst (depth pile exhausted)");
 			m_is_surfacing_burst = false;
 			m_awaiting_surfacing = true;
@@ -792,7 +796,7 @@ void ArgosTxService::process_gnss_burst() {
 		m_kineis.send(m_scheduled_mode, packet, size_bits);
 	} else {
 		DEBUG_WARN("ArgosTxService::process_gnss_burst: no entries eligible in depth pile");
-		if (m_is_surfacing_burst) {
+		if (m_is_surfacing_burst || m_has_gnss_fix_since_surfacing) {
 			DEBUG_INFO("ArgosTxService::process_gnss_burst: ending surfacing burst (depth pile exhausted)");
 			m_is_surfacing_burst = false;
 			m_awaiting_surfacing = true;

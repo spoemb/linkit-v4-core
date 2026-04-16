@@ -156,6 +156,10 @@ unsigned int LoRaTxService::service_next_schedule_in_ms() {
 		if (m_has_gnss_fix_since_surfacing) {
 			if (!m_depth_pile_manager.eligible()) {
 				DEBUG_TRACE("LoRaTxService::SURFACING_BURST: GNSS phase but no eligible entries");
+				m_is_surfacing_burst = false;
+				m_awaiting_surfacing = true;
+				m_has_gnss_fix_since_surfacing = false;
+				m_first_gnss_tx_sent = false;
 				return Service::SCHEDULE_DISABLED;
 			}
 			if (argos_config.sensor_tx_enable) {
@@ -377,8 +381,9 @@ void LoRaTxService::process_gps_burst() {
 		m_device.send(KineisModulation::LDA2, packet, size_bits);
 	} else {
 		DEBUG_WARN("LoRaTxService::process_gps_burst: no eligible entries in depth pile");
-		if (m_has_gnss_fix_since_surfacing) {
+		if (m_is_surfacing_burst || m_has_gnss_fix_since_surfacing) {
 			DEBUG_INFO("LoRaTxService::process_gps_burst: ending GNSS phase (depth pile exhausted)");
+			m_is_surfacing_burst = false;
 			m_has_gnss_fix_since_surfacing = false;
 			m_first_gnss_tx_sent = false;
 			m_awaiting_surfacing = true;
@@ -440,8 +445,9 @@ void LoRaTxService::process_sensor_burst() {
 		m_device.send(KineisModulation::LDA2, packet, size_bits);
 	} else {
 		DEBUG_WARN("LoRaTxService::process_sensor_burst: no eligible entries in depth pile");
-		if (m_has_gnss_fix_since_surfacing) {
+		if (m_is_surfacing_burst || m_has_gnss_fix_since_surfacing) {
 			DEBUG_INFO("LoRaTxService::process_sensor_burst: ending GNSS phase (depth pile exhausted)");
+			m_is_surfacing_burst = false;
 			m_has_gnss_fix_since_surfacing = false;
 			m_first_gnss_tx_sent = false;
 			m_awaiting_surfacing = true;

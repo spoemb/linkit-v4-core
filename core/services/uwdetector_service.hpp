@@ -46,4 +46,5 @@ protected:
 	unsigned int service_next_schedule_in_ms() override;
 	void service_initiate() override;
 	bool service_is_usable_underwater() override;
+	void reset_state_for_cooldown_exit() override { m_is_first_time = true; }
 };

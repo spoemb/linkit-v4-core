@@ -144,6 +144,7 @@ public:
 	// Cooldown sleep: pause/resume service externally (used by ServiceManager)
 	void pause_for_cooldown();
 	void resume_from_cooldown();
+	virtual void reset_state_for_cooldown_exit() {}  ///< Override to force state re-emission after cooldown
 };
 
 /// @brief Global service orchestrator — manages all Service instances, peer events, cooldown.

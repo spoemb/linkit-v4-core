@@ -203,14 +203,19 @@ void ServiceManager::enter_cooldown_sleep() {
 	}
 }
 
-/// @brief Exit cooldown sleep — restart SWS to resume underwater detection.
+/// @brief Exit cooldown sleep — restart SWS with forced first-time detection.
+/// The SWS will re-emit its current state on the first sample, which triggers
+/// surface/UW events to wake all services. This avoids incorrectly broadcasting
+/// a surface event when the device might actually be underwater.
 void ServiceManager::exit_cooldown_sleep() {
 	DEBUG_INFO("ServiceManager: exiting cooldown sleep (RTC=%u) — restarting SWS",
 	           (rtc && rtc->is_set()) ? (unsigned int)rtc->gettime() : 0);
 
-	// Restart SWS (UW_SENSOR) — it will detect current state and resume sampling
+	// Restart SWS with first-time flag — it will re-emit its current state
+	// on the next sample, triggering surface/UW notification to all peers.
 	for (auto& p : m_map) {
 		if (p.second.get_service_id() == ServiceIdentifier::UW_SENSOR) {
+			p.second.reset_state_for_cooldown_exit();
 			p.second.resume_from_cooldown();
 		}
 	}
