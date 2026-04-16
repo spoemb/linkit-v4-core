@@ -840,6 +840,50 @@ void LoRaDevice::load_config_from_store()
         DEBUG_INFO("LoRaDevice: APPEUI=%s", m_config.appeui.c_str());
 }
 
+/// @brief Read LoRa credentials from RAK3172 module via AT commands.
+/// Module must be powered on (idle/standby/configure state).
+LoRaDevice::LoRaCredentials LoRaDevice::read_lora_credentials()
+{
+    LoRaCredentials creds;
+    creds.read_ok = false;
+
+    if (m_state == State::power_off) {
+        DEBUG_WARN("LoRaDevice::read_lora_credentials: module is powered off");
+        return creds;
+    }
+
+    // Read NJM
+    if (send_AT(AT_GET_NJM)) {
+        creds.njm = static_cast<uint8_t>(std::stoul(m_lora_comm.m_last_value));
+    } else {
+        DEBUG_WARN("LoRaDevice::read_lora_credentials: failed to read NJM");
+        return creds;
+    }
+
+    // Read DEVEUI
+    if (send_AT(AT_GET_DEVEUI)) {
+        creds.deveui = m_lora_comm.m_last_value;
+    }
+
+    if (creds.njm == 1) {
+        // OTAA: read APPEUI + APPKEY
+        if (send_AT(AT_GET_APPEUI)) {
+            creds.appeui = m_lora_comm.m_last_value;
+        }
+        if (send_AT(AT_GET_APPKEY)) {
+            creds.appkey = m_lora_comm.m_last_value;
+        }
+    } else {
+        // ABP: read DEVADDR (NWKSKEY/APPSKEY are write-only on RAK3172)
+        if (send_AT(AT_GET_DEVADDR)) {
+            creds.devaddr = m_lora_comm.m_last_value;
+        }
+    }
+
+    creds.read_ok = true;
+    return creds;
+}
+
 // ========================================================================
 // KineisDevice interface - unused methods for LoRa
 // ========================================================================

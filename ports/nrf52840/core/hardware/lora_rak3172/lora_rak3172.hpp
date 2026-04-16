@@ -45,6 +45,17 @@ public:
     // LoRa-specific public API
     bool is_joined() const { return m_joined; }
 
+    /// @brief Read credentials from RAK3172 module for verification.
+    struct LoRaCredentials {
+        std::string deveui;
+        std::string appeui;
+        std::string appkey;
+        std::string devaddr;
+        uint8_t njm = 0;
+        bool read_ok = false;
+    };
+    LoRaCredentials read_lora_credentials();
+
     // Bridge/passthrough mode: direct USB ↔ UART access for RUI3 AT commands
     bool start_bridge(LoRaComm::PassthroughCallback rx_callback);
     void stop_bridge();

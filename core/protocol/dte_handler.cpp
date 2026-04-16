@@ -670,34 +670,86 @@ std::string DTEHandler::SATVF_REQ(int error_code, std::vector<BaseType>& arg_lis
 	}
 
 	try {
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+		// LoRa module: read credentials from RAK3172 via AT commands
+		if (!lora_device_instance) {
+			DEBUG_ERROR("SATVF_REQ: no LoRa device available");
+			return DTEEncoder::encode(DTECommand::SATVF_RESP, (int)DTEError::INCORRECT_DATA);
+		}
+
+		auto hw = lora_device_instance->read_lora_credentials();
+		if (!hw.read_ok) {
+			DEBUG_ERROR("SATVF_REQ: failed to read LoRa credentials from module");
+			return DTEEncoder::encode(DTECommand::SATVF_RESP, (int)DTEError::INCORRECT_DATA);
+		}
+
+		// Read credentials from config store
+		std::string cfg_deveui  = configuration_store->read_param<std::string>(ParamID::LORA_DEVEUI);
+		std::string cfg_appeui  = configuration_store->read_param<std::string>(ParamID::LORA_APPEUI);
+		std::string cfg_appkey  = configuration_store->read_param<std::string>(ParamID::LORA_APPKEY);
+		std::string cfg_devaddr = configuration_store->read_param<std::string>(ParamID::LORA_DEVADDR);
+		unsigned int cfg_njm    = configuration_store->read_param<unsigned int>(ParamID::LORA_NJM);
+
+		// Compare (case-insensitive hex)
+		auto to_upper = [](std::string s) { for (auto& c : s) c = toupper(c); return s; };
+		bool match = (hw.njm == cfg_njm);
+		match = match && (to_upper(hw.deveui) == to_upper(cfg_deveui));
+		if (hw.njm == 1) {
+			match = match && (to_upper(hw.appeui) == to_upper(cfg_appeui));
+			match = match && (to_upper(hw.appkey) == to_upper(cfg_appkey));
+		} else {
+			match = match && (to_upper(hw.devaddr) == to_upper(cfg_devaddr));
+		}
+
+		// Build response fields that map to SATVF format:
+		// hw_id=0 (N/A for LoRa), hw_addr=0 (N/A),
+		// hw_seckey=credentials summary, hw_rconf=mode info, match
+		std::string cred_summary = "NJM=" + std::to_string(hw.njm) +
+			" DEVEUI=" + hw.deveui;
+		std::string mode_info;
+		if (hw.njm == 1) {
+			cred_summary += " APPEUI=" + hw.appeui + " APPKEY=" + hw.appkey;
+			mode_info = "OTAA";
+		} else {
+			cred_summary += " DEVADDR=" + hw.devaddr;
+			mode_info = "ABP";
+		}
+
+		DEBUG_INFO("SATVF(LoRa): %s match=%d", cred_summary.c_str(), match);
+
+		return DTEEncoder::encode(DTECommand::SATVF_RESP,
+			(unsigned int)0,
+			(unsigned int)0,             // hw_id (N/A for LoRa)
+			(unsigned int)hw.njm,        // hw_addr repurposed as NJM mode
+			cred_summary,                // hw_seckey repurposed as credential summary
+			mode_info,                   // hw_rconf repurposed as mode info
+			(unsigned int)(match ? 1U : 0U));
+#else
+		// Satellite module (SMD or KIM2): read credentials from hardware
 		if (!kineis_device_instance) {
 			DEBUG_ERROR("SATVF_REQ: no satellite device available");
 			return DTEEncoder::encode(DTECommand::SATVF_RESP, (int)DTEError::INCORRECT_DATA);
 		}
 
-		// Read credentials from satellite hardware (SMD or KIM2)
 		unsigned int hw_id = 0, hw_addr = 0;
 		std::string hw_seckey, hw_rconf;
 		kineis_device_instance->read_credentials(&hw_id, &hw_addr, &hw_seckey, &hw_rconf);
 
-		// Read credentials from config store
 		unsigned int cfg_id = configuration_store->read_param<unsigned int>(ParamID::ARGOS_DECID);
 		unsigned int cfg_addr = configuration_store->read_param<unsigned int>(ParamID::ARGOS_HEXID);
 
-		// Compare ID and address
 		bool match = (hw_id == cfg_id && hw_addr == cfg_addr);
 		DEBUG_INFO("SATVF: hw_id=%u cfg_id=%u hw_addr=0x%08X cfg_addr=0x%08X match=%d",
 		           hw_id, cfg_id, hw_addr, cfg_addr, match);
 
-		// Encode response: error_code=0, hw_id, hw_addr, hw_seckey, hw_rconf, match
-		// DTEEncoder::encode uses C varargs — pass args directly, not in a vector.
 		return DTEEncoder::encode(DTECommand::SATVF_RESP,
-			(unsigned int)0,         // error_code = success
+			(unsigned int)0,
 			(unsigned int)hw_id,
 			(unsigned int)hw_addr,
-			hw_seckey,               // std::string
-			hw_rconf,                // std::string
+			hw_seckey,
+			hw_rconf,
 			(unsigned int)(match ? 1U : 0U));
+#endif
 	} catch (...) {
 		error_code = (int)DTEError::INCORRECT_DATA;
 	}
@@ -896,6 +948,7 @@ std::string DTEHandler::LORABR_REQ(int error_code, std::vector<BaseType>& arg_li
 
 	return DTEEncoder::encode(DTECommand::LORABR_RESP, (int)DTEError::OK);
 }
+
 #endif
 
 
