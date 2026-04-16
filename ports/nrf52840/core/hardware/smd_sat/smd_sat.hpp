@@ -53,7 +53,9 @@ private:
 	unsigned int m_state_counter;
 	unsigned int m_next_delay;
 	bool m_stopping;
-	bool is_kmac_profil_loaded = false;
+	bool is_kmac_profil_loaded = false;       ///< Routes idle_pending → load_kmac for boot config (TCXO, LPM)
+	bool m_needs_explicit_kmac_load = true;   ///< True when RCONF changed and explicit load_kmac_profil SPI command is needed.
+	                                          ///< False when RCONF unchanged — STM32 auto-inits MAC from flash at POR.
 	bool m_credentials_written = false;
 	bool m_rconf_recovery_attempted = false;
 

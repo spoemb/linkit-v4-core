@@ -135,6 +135,7 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 						DEBUG_INFO("ArgosTxService: cooldown armed (END_OF_DOPPLER, max msg)");
 					}
 					m_is_surfacing_burst = false;
+					m_awaiting_surfacing = true;
 					m_first_gnss_tx_sent = false;
 					return Service::SCHEDULE_DISABLED;
 				}
@@ -177,9 +178,10 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 				}
 
 				// First GNSS TX is immediate after fix, then use tx_interval_s
+				// Note: m_first_gnss_tx_sent is set in service_initiate(), not here,
+				// because scheduling can be called while a TX is still in progress.
 				if (!m_first_gnss_tx_sent) {
 					DEBUG_INFO("ArgosTxService::SURFACING_BURST: GNSS TX #1 (immediate after fix)");
-					m_first_gnss_tx_sent = true;
 					m_sched.schedule_at(now);
 					return 0;
 				}
@@ -188,7 +190,12 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 				return m_sched.schedule_legacy(argos_config, now);
 			}
 
-			// Not in surfacing burst and no GNSS fix: send Doppler at legacy rate
+			// Burst ended — wait for next surfacing event
+			if (m_awaiting_surfacing) {
+				return Service::SCHEDULE_DISABLED;
+			}
+
+			// Not yet surfaced (boot): send Doppler at legacy rate
 			m_scheduled_task = [this]() { process_doppler_burst(); };
 			return m_sched.schedule_legacy(argos_config, now);
 		} else {
@@ -321,6 +328,13 @@ void ArgosTxService::service_initiate() {
 		m_doppler_burst_count++;
 	}
 
+	// Mark first GNSS TX as sent only when actually executing (not during scheduling).
+	// Check m_has_gnss_fix (not m_is_surfacing_burst) because the GPS fix can arrive
+	// after the burst ended (m_awaiting_surfacing path).
+	if (m_has_gnss_fix_since_surfacing && !m_first_gnss_tx_sent) {
+		m_first_gnss_tx_sent = true;
+	}
+
 	m_scheduled_task();
 }
 
@@ -400,13 +414,14 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 				DEBUG_INFO("ArgosTxService::notify_peer_event: purged %u non-fix entries from depth pile", purged);
 			}
 
-			// SURFACING_BURST: GNSS fix received — switch from Doppler to GNSS phase
-			// Fastloc (degraded) does NOT end Doppler phase — let satellite Doppler
-			// compute a potentially better position from the ongoing burst
-			if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing) {
+			// SURFACING_BURST: GNSS fix received — switch to GNSS phase.
+			// Works during active burst OR after burst ended (awaiting surfacing):
+			// a real GPS fix always deserves to be transmitted.
+			if ((m_is_surfacing_burst || m_awaiting_surfacing) && !m_has_gnss_fix_since_surfacing) {
 				DEBUG_INFO("ArgosTxService::SURFACING_BURST: GNSS fix acquired after %u Doppler messages - switching to GNSS phase",
 				           m_doppler_burst_count);
 				m_has_gnss_fix_since_surfacing = true;
+				m_awaiting_surfacing = false;
 
 				// Arm cooldown if trigger mode is END_OF_DOPPLER (Doppler phase ends on GNSS fix)
 				unsigned int trigger = configuration_store->read_param<unsigned int>(ParamID::COOLDOWN_TRIGGER_MODE);
@@ -444,6 +459,7 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 
 			// Reset surfacing burst state on dive
 			m_is_surfacing_burst = false;
+			m_awaiting_surfacing = false;
 			m_doppler_burst_count = 0;
 			m_has_gnss_fix_since_surfacing = false;
 			m_first_gnss_tx_sent = false;
@@ -482,6 +498,7 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 			// Activate surfacing burst mode
 			if (argos_config.mode == BaseArgosMode::SURFACING_BURST) {
 				m_is_surfacing_burst = true;
+				m_awaiting_surfacing = false;
 				m_doppler_burst_count = 0;
 				m_has_gnss_fix_since_surfacing = false;
 				m_first_gnss_tx_sent = false;
@@ -693,6 +710,7 @@ void ArgosTxService::process_sensor_burst() {
 		if (m_is_surfacing_burst) {
 			DEBUG_INFO("ArgosTxService::process_sensor_burst: ending surfacing burst (depth pile exhausted)");
 			m_is_surfacing_burst = false;
+			m_awaiting_surfacing = true;
 			m_has_gnss_fix_since_surfacing = false;
 			m_first_gnss_tx_sent = false;
 		}
@@ -777,6 +795,7 @@ void ArgosTxService::process_gnss_burst() {
 		if (m_is_surfacing_burst) {
 			DEBUG_INFO("ArgosTxService::process_gnss_burst: ending surfacing burst (depth pile exhausted)");
 			m_is_surfacing_burst = false;
+			m_awaiting_surfacing = true;
 			m_has_gnss_fix_since_surfacing = false;
 			m_first_gnss_tx_sent = false;
 		}

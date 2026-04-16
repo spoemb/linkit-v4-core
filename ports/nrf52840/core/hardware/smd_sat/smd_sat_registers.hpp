@@ -104,7 +104,8 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 #define SMDSAT_TIMING_WRITE_MS          100    // Flash/NVM write (matches Zephyr ARGOS_TIMING_WRITE_MS)
 #define SMDSAT_TIMING_ERASE_MS          3000   // Flash erase (critical!)
 #define SMDSAT_TIMING_RESET_MS          100    // Reset/jump commands
-#define SMDSAT_TIMING_POLL_MS           500    // TX polling interval
+#define SMDSAT_TIMING_POLL_MS           500    // General polling interval (DFU, etc.)
+#define SMDSAT_TIMING_TX_POLL_MS        200    // TX status polling — faster for Doppler latency
 
 // Inter-transaction delays
 #define SMDSAT_SPI_INTER_TX_DELAY_MS    15     // STM32 DMA re-arm time between SPI transactions
@@ -115,9 +116,9 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 #define SMDSAT_SPI_POST_TX_DELAY_MS     100    // Async processing delay
 
 // Power-on timing: STM32WL boots in ~25ms, SPI ready at ~30ms.
-// 150ms gives >5x margin for supply stabilization + oscillator startup.
-#define SMDSAT_DELAY_POWER_ON_MS        (150)
-#define SMDSAT_DELAY_LOAD_KMAC_MS       (500)
+// 50ms gives 10x margin for VDD stabilization (STM32WL spec: 5ms max rise time).
+#define SMDSAT_DELAY_POWER_ON_MS        (50)
+#define SMDSAT_DELAY_LOAD_KMAC_MS       (150)   // MAC init completes in <200ms, 500ms was overly conservative
 #define SMDSAT_DELAY_TICK_INTERRUPT_MS  (10)
 #define SMDSAT_DELAY_CMD_MS             SMDSAT_TIMING_STANDARD_MS
 #define SMDSAT_DELAY_CMD_TX             (1000)  // First poll delay after initiate_tx

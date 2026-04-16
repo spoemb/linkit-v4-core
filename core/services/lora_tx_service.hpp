@@ -45,7 +45,9 @@ private:
 	unsigned int m_session_tx_count = 0;
 	bool m_last_tx_had_gps = false;
 	bool m_is_surfacing_burst = false;
+	bool m_awaiting_surfacing = false;  ///< Burst ended, waiting for next surface event
 	bool m_has_gnss_fix_since_surfacing = false;
+	bool m_first_gnss_tx_sent = false;
 	unsigned int m_status_burst_count = 0;
 	std::function<void()> m_scheduled_task;
 

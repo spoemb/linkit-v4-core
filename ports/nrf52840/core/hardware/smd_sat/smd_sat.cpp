@@ -240,7 +240,10 @@ void SmdSat::state_starting_exit() {}
 void SmdSat::state_starting()
 {
 	m_is_first_tx = true;
-	is_kmac_profil_loaded = false;  // Force KMAC reload on every boot (v4.0.9 behavior)
+	is_kmac_profil_loaded = false;  // Force entry to state_load_kmac for boot config (TCXO, LPM)
+	// m_needs_explicit_kmac_load is NOT reset here — it persists across power cycles.
+	// Only set true when RCONF/credentials actually change (steps 1a/1b in load_kmac).
+	// When false, STM32 auto-initializes MAC from flash at POR — no SPI command needed.
 	m_credentials_written = false;
 	m_rconf_recovery_attempted = false;
 	// SPI init is deferred to state_idle_pending (after power-on + reset release).
@@ -290,9 +293,9 @@ void SmdSat::state_stopped_enter() {
 	GPIOPins::release_sensors_pwr();
 	nrf_gpio_cfg_default(BSP::GPIO_Inits[SAT_RESET].pin_number);
 
-	// Force KMAC reload on next boot — the STM32WL may have lost its state
-	// after power cycle (shutdown cuts VDD, NVM needs re-initialization).
-	// v4.0.9 behavior: always reload KMAC after any stop/restart cycle.
+	// Force entry to state_load_kmac on next boot for TCXO/LPM writes (RAM registers).
+	// The explicit load_kmac_profil SPI command is only sent when RCONF changed
+	// (m_needs_explicit_kmac_load) — otherwise STM32 auto-inits MAC from flash at POR.
 	is_kmac_profil_loaded = false;
 
 	m_packet_buffer.clear();
@@ -324,7 +327,7 @@ void SmdSat::state_powering_on() {
 #ifdef SMD_VPA_PIN
 	GPIOPins::drive_low(SMD_VPA_PIN);
 #endif
-	nrf_delay_ms(200);  // Allow VDD caps to fully discharge (100ms insufficient for some boards)
+	nrf_delay_ms(100);  // VDD cap discharge — 100ms sufficient for LinkIt V4 (smaller caps than RSPB)
 
 	// Step 1: Assert RESET LOW before powering on — hold STM32WL in reset
 	// during VDD ramp-up to prevent undefined behavior at low voltage.
@@ -363,11 +366,10 @@ void SmdSat::state_load_kmac_exit() {}
 
 void SmdSat::state_load_kmac() {
 	// Sequence per firmware spec:
-	// 1. Write RCONF/credentials (flash operations — don't need MAC_OK)
-	// 2. Load KMAC (triggers KNS_MAC_INIT with the RCONF now in flash)
+	// 1. Write RCONF/credentials if changed (flash operations — don't need MAC_OK)
+	// 2. Load KMAC only if RCONF changed (otherwise STM32 auto-inits MAC from flash at POR)
 	// 3. Poll READ_SPIMAC_STATE (0x27) until MAC_OK
-	// Writing credentials BEFORE KMAC is critical: KMAC init reads RCONF
-	// from flash, so the flash must contain valid data first.
+	// 4. Write TCXO warmup + LPM (RAM registers, lost on every power cycle)
 
 	// Step 1a: Apply deferred RCONF from switch_modulation() while stopped.
 	if (!m_pending_rconf.empty()) {
@@ -382,7 +384,7 @@ void SmdSat::state_load_kmac() {
 			m_cmd.save_radio_conf();
 			wait_cmd();
 			m_credentials_written = true;
-			is_kmac_profil_loaded = false;  // Force KMAC reload with new RCONF
+			m_needs_explicit_kmac_load = true;  // RCONF changed — must reload MAC
 			DEBUG_INFO("SmdSat::%s: deferred RCONF applied OK", __func__);
 		} catch (...) {
 			DEBUG_ERROR("SmdSat::%s: failed to apply deferred RCONF — continuing with previous config", __func__);
@@ -401,18 +403,18 @@ void SmdSat::state_load_kmac() {
 				return;
 			}
 			configuration_store->clear_credentials_dirty();
-			is_kmac_profil_loaded = false;  // Force KMAC reload with new credentials
+			m_needs_explicit_kmac_load = true;  // Credentials changed — must reload MAC
 		}
 	}
 
-	// Step 2: Load KMAC profile — triggers KNS_MAC_INIT on the STM32.
-	// The MAC reads RCONF from flash during init, so credentials must be
-	// written first (step 1). KMAC load is idempotent — safe to call even
-	// if already loaded (just re-inits the MAC).
-	if (!is_kmac_profil_loaded) {
+	// Step 2: Send load_kmac_profil only when RCONF/credentials changed.
+	// When unchanged, the STM32 auto-initializes MAC from flash at POR —
+	// we just wait for MAC_OK in step 3.
+	if (m_needs_explicit_kmac_load) {
 		try {
 			m_cmd.load_kmac_profil(1);
-			is_kmac_profil_loaded = true;
+			m_needs_explicit_kmac_load = false;
+			DEBUG_TRACE("SmdSat::%s: explicit KMAC load sent (RCONF changed)", __func__);
 		} catch (...) {
 			DEBUG_ERROR("SmdSat::%s: KMAC load failed", __func__);
 			SMD_STATE_CHANGE(load_kmac, error);
@@ -420,11 +422,20 @@ void SmdSat::state_load_kmac() {
 		}
 	}
 
-	// Step 3: Poll READ_SPIMAC_STATE (0x27) for MAC_OK.
+	// Step 3: Poll READ_SPIMAC_STATE (0x27) for MAC ready.
+	// After explicit load_kmac_profil: MAC resets to MAC_OK (0x01).
+	// After STM32 auto-init from flash at POR: MAC reports last session status
+	// (e.g. MAC_TX_DONE after a successful TX). Any state except UNKNOWN (not
+	// initialized), ERROR (init failed), and TX_IN_PROGRESS (busy) means the
+	// MAC has initialized from flash and is ready to accept TX commands.
 	uint8_t spi_st = 0, mac_st = 0;
 	try { m_cmd.read_spimac_state(&spi_st, &mac_st); } catch (...) {}
-	if (mac_st == MAC_OK) {
-		// Write TCXO warmup — RAM register on STM32, lost on power cycle.
+	bool mac_ready = (mac_st != MAC_UNKNOWN && mac_st != MAC_ERROR && mac_st != MAC_TX_IN_PROGRESS);
+	if (mac_ready) {
+		is_kmac_profil_loaded = true;
+		DEBUG_TRACE("SmdSat::%s: MAC ready (mac=%u, explicit_load=%u)", __func__, mac_st, m_needs_explicit_kmac_load);
+
+		// Step 4: Write TCXO warmup — RAM register on STM32, lost on power cycle.
 		try {
 			m_cmd.write_tcxo_warmup(m_tcxo_warmup_time * 1000);
 			DEBUG_TRACE("SmdSat::%s: TCXO warmup written: %u s", __func__, m_tcxo_warmup_time);
@@ -442,15 +453,14 @@ void SmdSat::state_load_kmac() {
 			}
 		}
 
-		SMD_STATE_CHANGE(load_kmac, idle_pending);
+		// Go directly to idle — SPI bus already confirmed working by
+		// read_spimac_state + write_tcxo above. No need for a second ping.
+		SMD_STATE_CHANGE(load_kmac, idle);
 	} else if (mac_st == MAC_ERROR && !m_rconf_recovery_attempted) {
-		// Recovery: MAC_ERROR after KMAC load means the RCONF in STM32 flash
-		// is corrupted or missing. Force-write the master RCONF from config store,
-		// save to flash, then re-attempt KMAC load. This can happen after a
-		// previous test corrupted the STM32 flash, or on first boot with
-		// adaptive modulation where RCONF was never written.
+		// Recovery: MAC_ERROR means RCONF in STM32 flash is corrupted or missing.
+		// Force-write the master RCONF, save to flash, then re-attempt KMAC load.
 		m_rconf_recovery_attempted = true;
-		DEBUG_WARN("SmdSat::%s: MAC_ERROR after KMAC — attempting RCONF recovery", __func__);
+		DEBUG_WARN("SmdSat::%s: MAC_ERROR — attempting RCONF recovery", __func__);
 		if (configuration_store) {
 			std::string radioconf = configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF);
 			if (!radioconf.empty() && radioconf.size() >= 2 && (radioconf.size() % 2) == 0) {
@@ -463,7 +473,8 @@ void SmdSat::state_load_kmac() {
 					wait_cmd();
 					m_cmd.save_radio_conf();
 					wait_cmd();
-					is_kmac_profil_loaded = false;  // Force re-attempt
+					m_needs_explicit_kmac_load = true;  // Force KMAC reload after recovery
+					is_kmac_profil_loaded = false;
 					m_state_counter = 10;  // Reset poll counter for MAC_OK after recovery
 					DEBUG_INFO("SmdSat::%s: RCONF recovery written — retrying KMAC", __func__);
 					m_next_delay = SMDSAT_DELAY_CMD_MS;
@@ -477,6 +488,10 @@ void SmdSat::state_load_kmac() {
 	} else {
 		if (--m_state_counter == 0) {
 			DEBUG_ERROR("SmdSat::%s: MAC not OK after KMAC load (spi=%u mac=%u)", __func__, spi_st, mac_st);
+			// Auto-init failed — force explicit KMAC load on next boot to recover.
+			// Without this, m_needs_explicit_kmac_load stays false and we'd loop
+			// through the same timeout on every subsequent boot attempt.
+			m_needs_explicit_kmac_load = true;
 			SMD_STATE_CHANGE(load_kmac, error);
 		} else {
 			m_next_delay = SMDSAT_DELAY_LOAD_KMAC_MS;
@@ -498,9 +513,9 @@ void SmdSat::state_idle_pending_exit() {
 
 void SmdSat::state_idle_pending() {
 	if (m_cmd.ping()) {
-		// Wait for STM32 MAC init to complete before sending 2-phase commands.
-		// The ping ACK means SPI is alive but KNS_MAC may still be initializing.
-		nrf_delay_ms(100);
+		// Small delay after ping ACK for STM32 DMA re-arm.
+		// MAC readiness is verified in state_load_kmac (poll MAC_OK).
+		nrf_delay_ms(10);
 		// VPA stays LOW — only released just before TX (state_transmit_pending)
 		if (!is_kmac_profil_loaded) {
 			SMD_STATE_CHANGE(idle_pending, load_kmac);
@@ -567,7 +582,11 @@ void SmdSat::state_transmit_pending_enter() {
 }
 
 void SmdSat::state_transmit_pending_exit() {
-	m_next_delay = SMDSAT_DELAY_CMD_TX + (m_tcxo_warmup_time*1000);
+	// When TCXO warmup is skipped (first TX after surfacing), the STM32 starts
+	// TX in ~100ms — use a shorter first-poll delay to avoid wasting 800ms.
+	// With TCXO warmup active, keep the full delay for oscillator stabilization.
+	unsigned int base_delay = (m_tcxo_warmup_time > 0) ? SMDSAT_DELAY_CMD_TX : 200;
+	m_next_delay = base_delay + (m_tcxo_warmup_time * 1000);
 }
 
 void SmdSat::state_transmit_pending() {
@@ -596,7 +615,7 @@ void SmdSat::state_transmit_pending() {
 void SmdSat::state_transmitting_enter() {
 	DEBUG_TRACE("SmdSat::%s", __func__);
 	uint32_t total_timeout_ms = (m_tcxo_warmup_time * 1000) + 5000;
-	m_state_counter = (total_timeout_ms / SMDSAT_TIMING_POLL_MS) + 1;
+	m_state_counter = (total_timeout_ms / SMDSAT_TIMING_TX_POLL_MS) + 1;
 	DEBUG_TRACE("SmdSat::%s: poll timeout=%ums | counter=%u", __func__, total_timeout_ms, m_state_counter);
 }
 
@@ -625,7 +644,7 @@ void SmdSat::state_transmitting() {
 			DEBUG_ERROR("SmdSat::%s: TX timeout after polling",__func__);
 			SMD_STATE_CHANGE(transmitting, error);
 		} else {
-			m_next_delay = SMDSAT_TIMING_POLL_MS;
+			m_next_delay = SMDSAT_TIMING_TX_POLL_MS;
 		}
 	}
 }

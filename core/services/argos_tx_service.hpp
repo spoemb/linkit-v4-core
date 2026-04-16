@@ -45,6 +45,7 @@ private:
 
 	// Surfacing burst state
 	bool m_is_surfacing_burst = false;
+	bool m_awaiting_surfacing = false;  ///< Burst ended, waiting for next surface event
 	unsigned int m_doppler_burst_count = 0;
 	bool m_has_gnss_fix_since_surfacing = false;
 	bool m_first_gnss_tx_sent = false;
