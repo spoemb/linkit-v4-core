@@ -365,7 +365,24 @@ bool ArgosTxService::service_is_triggered_on_surfaced(bool &immediate) {
 void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 	//DEBUG_TRACE("ArgosTxService::notify_peer_event: (%u|%u)", e.event_source, e.event_type);
 
-	m_depth_pile_manager.notify_peer_event(e);
+	// During SURFACING_BURST Doppler phase, CloudLocate/Fastloc/NO_FIX entries are already
+	// sent directly in process_doppler_burst() — skip depth pile to avoid double transmission.
+	// Only real GPS fixes should enter the depth pile for the GNSS phase.
+	bool skip_depth_pile = false;
+	if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing &&
+	    e.event_source == ServiceIdentifier::GNSS_SENSOR &&
+	    e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+		GPSLogEntry& gps = std::get<GPSLogEntry>(e.event_data);
+		if (gps.info.event_type == GPSEventType::CLOUDLOCATE ||
+		    gps.info.event_type == GPSEventType::FASTLOC ||
+		    gps.info.event_type == GPSEventType::NO_FIX) {
+			skip_depth_pile = true;
+		}
+	}
+
+	if (!skip_depth_pile) {
+		m_depth_pile_manager.notify_peer_event(e);
+	}
 
 	if (e.event_source == ServiceIdentifier::GNSS_SENSOR &&
 		e.event_type == ServiceEventType::SERVICE_LOG_UPDATED)
@@ -376,6 +393,12 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 		if (entry.info.valid && entry.info.event_type != GPSEventType::FASTLOC) {
 			DEBUG_TRACE("ArgosTxService::notify_peer_event: updated GPS location");
 			m_sched.set_last_location(entry.info.lon, entry.info.lat);
+
+			// Real GPS fix supersedes any CloudLocate/Fastloc/NO_FIX entries in the depth pile
+			unsigned int purged = m_depth_pile_manager.purge_non_fix_entries();
+			if (purged) {
+				DEBUG_INFO("ArgosTxService::notify_peer_event: purged %u non-fix entries from depth pile", purged);
+			}
 
 			// SURFACING_BURST: GNSS fix received — switch from Doppler to GNSS phase
 			// Fastloc (degraded) does NOT end Doppler phase — let satellite Doppler
@@ -670,6 +693,7 @@ void ArgosTxService::process_sensor_burst() {
 		if (m_is_surfacing_burst) {
 			DEBUG_INFO("ArgosTxService::process_sensor_burst: ending surfacing burst (depth pile exhausted)");
 			m_is_surfacing_burst = false;
+			m_has_gnss_fix_since_surfacing = false;
 			m_first_gnss_tx_sent = false;
 		}
 		service_complete();
@@ -753,6 +777,7 @@ void ArgosTxService::process_gnss_burst() {
 		if (m_is_surfacing_burst) {
 			DEBUG_INFO("ArgosTxService::process_gnss_burst: ending surfacing burst (depth pile exhausted)");
 			m_is_surfacing_burst = false;
+			m_has_gnss_fix_since_surfacing = false;
 			m_first_gnss_tx_sent = false;
 		}
 		service_complete();

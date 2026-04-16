@@ -57,6 +57,25 @@ public:
 		return count;
 	}
 
+	/// @brief Remove entries matching a predicate.
+	template<typename Pred>
+	unsigned int remove_if(Pred pred) {
+		unsigned int removed = 0;
+		auto it = m_entry.begin();
+		while (it != m_entry.end()) {
+			if (pred(it->data)) {
+				it = m_entry.erase(it);
+				removed++;
+			} else {
+				++it;
+			}
+		}
+		if (removed) {
+			m_retrieve_index = 0;
+		}
+		return removed;
+	}
+
 	std::vector<T*> retrieve_latest() {
 		std::vector<T*> v;
 		if (m_entry.size()) {
@@ -135,6 +154,16 @@ public:
 	}
 	bool eligible() {
 		return m_gps_depth_pile.eligible();
+	}
+
+	/// @brief Remove all CloudLocate/Fastloc/NO_FIX entries from GPS depth pile.
+	/// Called when a real GPS fix arrives to replace degraded entries.
+	unsigned int purge_non_fix_entries() {
+		return m_gps_depth_pile.remove_if([](const GPSLogEntry& e) {
+			return e.info.event_type == GPSEventType::CLOUDLOCATE ||
+			       e.info.event_type == GPSEventType::FASTLOC ||
+			       e.info.event_type == GPSEventType::NO_FIX;
+		});
 	}
 
 	std::vector<GPSLogEntry*> retrieve_gps_latest() {
