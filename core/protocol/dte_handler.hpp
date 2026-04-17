@@ -37,6 +37,11 @@ extern KineisDevice *kineis_device_instance;
 extern LoRaDevice *lora_device_instance;
 #endif
 
+#if !(defined(LORA_RAK3172) && (LORA_RAK3172 == 1)) && !(defined(ARGOS_SMD) && (ARGOS_SMD == 1))
+#include "kim2.hpp"
+extern KIM2Device *kim2_device_instance;
+#endif
+
 // External sensor access for SENSR command
 extern BatteryMonitor *battery_monitor;
 extern GPSDevice *gps_device;
@@ -181,13 +186,15 @@ public:
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	static std::string SMDDFU_REQ(int error_code, std::vector<BaseType>& arg_list);
 	static std::string SMDTST_REQ(int error_code, std::vector<BaseType>& arg_list);
-	std::string SMDCD_REQ(int error_code, std::vector<BaseType>& arg_list);
 #endif
 	std::string SATVF_REQ(int error_code, std::vector<BaseType>& arg_list);
 
 #if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
 	std::string LORATX_REQ(int error_code, std::vector<BaseType>& arg_list);
 	std::string LORABR_REQ(int error_code, std::vector<BaseType>& arg_list);
+#endif
+#if !(defined(LORA_RAK3172) && (LORA_RAK3172 == 1)) && !(defined(ARGOS_SMD) && (ARGOS_SMD == 1))
+	std::string KIMBR_REQ(int error_code, std::vector<BaseType>& arg_list);
 #endif
 
 	DTEAction handle_dte_message(const std::string& req, std::string& resp);

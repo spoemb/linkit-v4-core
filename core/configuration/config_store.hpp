@@ -584,6 +584,11 @@ public:
 	/// @brief Clear credentials dirty flag (called after SMD credential write).
 	void clear_credentials_dirty() { m_credentials_dirty = false; }
 
+	/// @brief Force credentials re-push to satellite module on next read/TX.
+	/// @note Used by SATVF force-write path to re-trigger state_load_kmac without
+	///       rewriting individual params.
+	void mark_credentials_dirty() { m_credentials_dirty = true; }
+
 	/// @brief Persist all parameters to flash.
 	void save_params() {
 		try {

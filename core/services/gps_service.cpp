@@ -100,8 +100,27 @@ unsigned int GPSService::service_next_schedule_in_ms() {
         return Service::SCHEDULE_DISABLED;
     }
 
+    // GNSS_NTRY: max consecutive failed acquisitions per cycle (0=unlimited).
+    // After reaching the limit, skip retries and wait for the next dloc_arg_nom
+    // cycle or next surfacing event. This saves battery when GPS has no sky view.
+    unsigned int gnss_ntry = configuration_store->read_param<unsigned int>(ParamID::GNSS_NTRY);
+    bool ntry_exhausted = (gnss_ntry > 0 && m_cold_start_ntry >= gnss_ntry);
+    if (ntry_exhausted) {
+        DEBUG_INFO("GPSService: GNSS_NTRY limit reached (%u/%u) | backing off to dloc_arg_nom",
+                   m_cold_start_ntry, gnss_ntry);
+        m_cold_start_ntry = 0;  // Reset for the next cycle
+    }
+
     std::time_t now = service_current_time();
-    std::time_t aq_period = m_is_first_schedule ? FIRST_AQPERIOD_SEC : (m_is_first_fix_found ? gnss_config.dloc_arg_nom : gnss_config.cold_start_retry_period);
+    std::time_t aq_period;
+    if (m_is_first_schedule) {
+        aq_period = FIRST_AQPERIOD_SEC;
+    } else if (ntry_exhausted) {
+        // NTRY exhausted: back off to dloc_arg_nom regardless of first_fix state
+        aq_period = gnss_config.dloc_arg_nom;
+    } else {
+        aq_period = m_is_first_fix_found ? gnss_config.dloc_arg_nom : gnss_config.cold_start_retry_period;
+    }
 
     if (aq_period == 0) {
     	return Service::SCHEDULE_DISABLED;
@@ -206,6 +225,7 @@ bool GPSService::service_is_triggered_on_surfaced(bool& immediate) {
 	GNSSConfig gnss_config;
 	configuration_store->get_gnss_configuration(gnss_config);
 	immediate = gnss_config.trigger_on_surfaced;
+	m_cold_start_ntry = 0;  // Reset retry counter on each surfacing
 	return true;
 }
 
@@ -220,6 +240,8 @@ bool GPSService::service_is_usable_underwater() {
 GPSLogEntry GPSService::invalid_log_entry()
 {
     DEBUG_INFO("GPSService::invalid_log_entry");
+    m_cold_start_ntry++;
+    DEBUG_TRACE("GPSService: ntry=%u", m_cold_start_ntry);
 
     GPSLogEntry gps_entry{};
 
@@ -241,6 +263,7 @@ GPSLogEntry GPSService::invalid_log_entry()
 void GPSService::task_process_gnss_data()
 {
     DEBUG_TRACE("GPSService::task_process_gnss_data");
+    m_cold_start_ntry = 0;
 
     GPSLogEntry gps_entry{};
     gps_entry.header.log_type = LOG_GPS;

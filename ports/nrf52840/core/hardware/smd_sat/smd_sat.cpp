@@ -832,8 +832,8 @@ bool SmdSat::write_credentials_from_config() {
 	// When adaptive modulation is ON, per-modulation RCONFs are managed by
 	// ensure_modulation()/switch_modulation(). However, the master RCONF must
 	// still be written on first boot or when credentials are dirty (chiperase,
-	// DTE SMDCD) — otherwise the STM32 flash may contain invalid RCONF data
-	// and KMAC init will fail with MAC_ERROR.
+	// PARMW on ARGOS_RADIOCONF, SATVF with force) — otherwise the STM32 flash
+	// may contain invalid RCONF data and KMAC init will fail with MAC_ERROR.
 	// After the first successful write, ensure_modulation() takes over.
 	if (!radioconf.empty()) {
 		bool adaptive = false;

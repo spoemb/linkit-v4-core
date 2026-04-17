@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <string>
 #include <optional>
+#include <functional>
 
 namespace KIM2 {
 
@@ -103,8 +104,16 @@ public:
 	/// @brief Send an AT command (non-blocking).
 	bool send(KIM2::ATCmd cmd, const std::optional<std::string>& params = std::nullopt);
 
+	/// @brief Send raw bytes (bridge mode).
+	bool send_raw_data(const uint8_t* data, size_t len);
+
 	/// @brief Process ISR-buffered RX data. Call periodically from main context.
 	void process_rx();
+
+	// Bridge/passthrough mode: forward raw UART RX to callback instead of parsing
+	using PassthroughCallback = std::function<void(const uint8_t*, size_t)>;
+	void set_passthrough(bool active, PassthroughCallback callback = nullptr);
+	bool is_passthrough() const { return m_passthrough_active; }
 
 protected:
 	/// @brief Parse a complete RX line and emit events (KIM2 protocol).
@@ -114,6 +123,9 @@ protected:
 	void on_rx_error(unsigned int error_type) override;
 
 private:
+	bool m_passthrough_active = false;
+	PassthroughCallback m_passthrough_callback;
+
 	bool send_at_cmd(KIM2::ATCmd cmd, const std::optional<std::string>& params = std::nullopt);
 	KIM2::RespType parse_rx_line_protocol(const std::string& line);
 };

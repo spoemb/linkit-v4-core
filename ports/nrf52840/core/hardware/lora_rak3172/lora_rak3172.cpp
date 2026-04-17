@@ -343,6 +343,14 @@ void LoRaDevice::state_power_on()
 
     DEBUG_INFO("LoRaDevice::state_power_on retry=%u", m_power_on_retry);
 
+    // Send a wakeup byte before AT ping — RAK3172 in STOP2 (LPM) needs
+    // UART activity to wake up. The first byte is consumed by the wakeup
+    // and not processed as data, so we send a dummy 0xFF + short delay.
+    if (m_power_on_retry == 1 || m_power_on_retry == 4) {
+        m_lora_comm.send_raw_data((const uint8_t *)"\xff", 1);
+        PMU::delay_ms(50);
+    }
+
     // Try AT ping
     if (send_AT(AT_TEST))
     {
@@ -882,6 +890,83 @@ LoRaDevice::LoRaCredentials LoRaDevice::read_lora_credentials()
 
     creds.read_ok = true;
     return creds;
+}
+
+/// @brief Write LoRa credentials from the config store to the RAK3172 module.
+/// Module must be powered on (idle/standby/configure state). Caller must reload
+/// the module config (e.g. via read_lora_credentials()) afterwards to refresh cache.
+/// @note Changing NJM triggers a RAK3172 reboot; subsequent AT writes in the same
+///       call will fail. Callers should only change NJM outside this path or
+///       re-invoke after the reboot completes.
+bool LoRaDevice::write_credentials_from_config()
+{
+    if (m_state == State::power_off) {
+        DEBUG_WARN("LoRaDevice::write_credentials_from_config: module is powered off");
+        return false;
+    }
+
+    // Load latest values from config store into m_config (keeps local cache coherent)
+    load_config_from_store();
+
+    // Set join mode first — module may reboot if NJM changes
+    if (!send_AT(AT_SET_NJM, std::to_string(m_config.njm))) {
+        DEBUG_ERROR("LoRaDevice::write_credentials_from_config: AT_SET_NJM failed");
+        return false;
+    }
+
+    if (!m_config.deveui.empty()) {
+        if (m_config.deveui.size() != 16) {
+            DEBUG_ERROR("LoRaDevice::write_credentials_from_config: invalid DEVEUI length %u",
+                        static_cast<unsigned>(m_config.deveui.size()));
+            return false;
+        }
+        if (!send_AT(AT_SET_DEVEUI, m_config.deveui)) {
+            DEBUG_ERROR("LoRaDevice::write_credentials_from_config: AT_SET_DEVEUI failed");
+            return false;
+        }
+    }
+
+    if (m_config.njm == 1) {
+        // OTAA: APPEUI + APPKEY
+        if (!m_config.appeui.empty()) {
+            if (m_config.appeui.size() != 16) {
+                DEBUG_ERROR("LoRaDevice::write_credentials_from_config: invalid APPEUI length %u",
+                            static_cast<unsigned>(m_config.appeui.size()));
+                return false;
+            }
+            if (!send_AT(AT_SET_APPEUI, m_config.appeui)) {
+                DEBUG_ERROR("LoRaDevice::write_credentials_from_config: AT_SET_APPEUI failed");
+                return false;
+            }
+        }
+        if (!m_config.appkey.empty()) {
+            if (m_config.appkey.size() != 32) {
+                DEBUG_ERROR("LoRaDevice::write_credentials_from_config: invalid APPKEY length %u",
+                            static_cast<unsigned>(m_config.appkey.size()));
+                return false;
+            }
+            if (!send_AT(AT_SET_APPKEY, m_config.appkey)) {
+                DEBUG_ERROR("LoRaDevice::write_credentials_from_config: AT_SET_APPKEY failed");
+                return false;
+            }
+        }
+    } else {
+        // ABP: DEVADDR (session keys NWKSKEY/APPSKEY are write-only, skipped here)
+        if (!m_config.devaddr.empty()) {
+            if (m_config.devaddr.size() != 8) {
+                DEBUG_ERROR("LoRaDevice::write_credentials_from_config: invalid DEVADDR length %u",
+                            static_cast<unsigned>(m_config.devaddr.size()));
+                return false;
+            }
+            if (!send_AT(AT_SET_DEVADDR, m_config.devaddr)) {
+                DEBUG_ERROR("LoRaDevice::write_credentials_from_config: AT_SET_DEVADDR failed");
+                return false;
+            }
+        }
+    }
+
+    DEBUG_INFO("LoRaDevice::write_credentials_from_config: credentials written (njm=%u)", m_config.njm);
+    return true;
 }
 
 // ========================================================================

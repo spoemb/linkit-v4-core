@@ -46,6 +46,13 @@ public:
 	/// @brief No-op — KIM2 manages TCXO warmup internally.
 	void set_tcxo_warmup_time(unsigned int ms) override;
 
+	// Bridge/passthrough mode: direct USB ↔ UART access for raw AT commands
+	bool start_bridge(KIM2Comm::PassthroughCallback rx_callback);
+	void stop_bridge();
+	bool is_bridge_active() const { return m_bridge_active; }
+	bool bridge_send(const uint8_t* data, size_t len);
+	void bridge_process_rx();  // Call periodically to pump UART RX
+
 private:
 	/// @brief KIM2 state machine states.
 	enum KIM2ManagerState {
@@ -68,6 +75,9 @@ private:
 		Scheduler::TaskHandle handle;
 	} m_timeout;
 	/// @}
+
+	/// @brief Bridge mode active flag — pauses state machine, routes raw UART.
+	bool m_bridge_active = false;
 
 	/// @name TX state
 	/// @{

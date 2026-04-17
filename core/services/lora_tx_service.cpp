@@ -39,6 +39,7 @@ void LoRaTxService::service_init() {
 	m_is_first_tx = true;
 	m_is_tx_pending = false;
 	m_session_tx_count = 0;
+	m_consecutive_device_errors = 0;
 	m_is_surfacing_burst = false;
 	m_awaiting_surfacing = false;
 	m_has_gnss_fix_since_surfacing = false;
@@ -191,6 +192,14 @@ unsigned int LoRaTxService::service_next_schedule_in_ms() {
 
 void LoRaTxService::service_initiate() {
 	DEBUG_TRACE("LoRaTxService::service_initiate");
+
+	if (m_consecutive_device_errors >= DEVICE_ERROR_MAX_CONSECUTIVE) {
+		DEBUG_WARN("LoRaTxService::service_initiate: skipping TX — %u consecutive errors, suspending",
+		           m_consecutive_device_errors);
+		service_complete(nullptr, nullptr, false);
+		return;
+	}
+
 	m_is_first_tx = false;
 	m_is_tx_pending = true;
 
@@ -577,6 +586,7 @@ void LoRaTxService::react(KineisEventTxStarted const&) {
 void LoRaTxService::react(KineisEventTxComplete const&) {
 	DEBUG_TRACE("LoRaTxService::react: KineisEventTxComplete");
 	m_is_tx_pending = false;
+	m_consecutive_device_errors = 0;
 
 	// Increment TX counter
 	configuration_store->increment_tx_counter();
@@ -611,7 +621,21 @@ void LoRaTxService::react(KineisEventTxComplete const&) {
 }
 
 void LoRaTxService::react(KineisEventDeviceError const&) {
-	DEBUG_TRACE("LoRaTxService::react: KineisEventDeviceError");
-	if (service_cancel())
-		service_complete();
+	m_consecutive_device_errors++;
+	DEBUG_WARN("LoRaTxService::react: KineisEventDeviceError (consecutive=%u/%u)",
+	           m_consecutive_device_errors, DEVICE_ERROR_MAX_CONSECUTIVE);
+
+	if (service_cancel()) {
+		if (m_consecutive_device_errors >= DEVICE_ERROR_MAX_CONSECUTIVE) {
+			DEBUG_ERROR("LoRaTxService: %u consecutive device errors — suspending TX for this session",
+			            m_consecutive_device_errors);
+			service_complete(nullptr, nullptr, false);  // no reschedule
+		} else {
+			unsigned int backoff_ms = DEVICE_ERROR_BACKOFF_BASE_MS << (m_consecutive_device_errors - 1);
+			if (backoff_ms > DEVICE_ERROR_BACKOFF_MAX_MS) backoff_ms = DEVICE_ERROR_BACKOFF_MAX_MS;
+			DEBUG_WARN("LoRaTxService: backoff %u ms before next TX attempt", backoff_ms);
+			m_sched.set_earliest_schedule(service_current_time() + backoff_ms / 1000);
+			service_complete();
+		}
+	}
 }

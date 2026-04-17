@@ -39,6 +39,12 @@
 extern LoRaDevice *lora_device_instance;
 #endif
 
+// KIM2 device instance (for bridge mode in process_usb_data)
+#if !(defined(LORA_RAK3172) && (LORA_RAK3172 == 1)) && !(defined(ARGOS_SMD) && (ARGOS_SMD == 1))
+#include "kim2.hpp"
+extern KIM2Device *kim2_device_instance;
+#endif
+
 // LED hardware access for forced LED off before powerdown
 extern RGBLed *status_led;
 extern Led *ext_status_led;
@@ -455,11 +461,32 @@ void ConfigurationState::entry() {
 #endif
 }
 
+#ifdef USB_DTE_ENABLED
+static void sync_bridge_log_silencing();  // Forward decl — defined near process_usb_data
+#endif
+
 void ConfigurationState::exit() {
 	DEBUG_INFO("exit: ConfigurationState");
 	system_scheduler->cancel_task(m_ble_inactivity_timeout_task);
 #ifdef USB_DTE_ENABLED
 	system_scheduler->cancel_task(m_usb_poll_task);
+#endif
+	// Ensure any active bridge is stopped before leaving configuration mode —
+	// otherwise the bridge would prevent services from using the underlying UART.
+	if (gps_device && gps_device->is_bridge_active())
+		gps_device->stop_bridge();
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+	if (lora_device_instance && lora_device_instance->is_bridge_active())
+		lora_device_instance->stop_bridge();
+#endif
+#if !(defined(LORA_RAK3172) && (LORA_RAK3172 == 1)) && !(defined(ARGOS_SMD) && (ARGOS_SMD == 1))
+	if (kim2_device_instance && kim2_device_instance->is_bridge_active())
+		kim2_device_instance->stop_bridge();
+#endif
+#ifdef USB_DTE_ENABLED
+	// Restore USB console logs after stopping bridges — otherwise logs stay
+	// suppressed until next process_usb_data tick (which is cancelled above).
+	sync_bridge_log_silencing();
 #endif
 	ble_service->stop();
 	led_handle::dispatch<SetLEDOff>({});
@@ -630,8 +657,32 @@ void ConfigurationState::schedule_usb_poll() {
 	);
 }
 
+/// @brief Suppress USB console logs while any bridge is active, restore when stopped.
+/// Debug output would pollute the raw UART passthrough stream sent to the host
+/// (u-center, AT terminal, etc.). Call this from any context where bridge state
+/// may have changed (process_usb_data tick, FSM exit).
+static void sync_bridge_log_silencing() {
+	static Logger *s_saved_console_log = nullptr;
+	bool bridge_active = (gps_device && gps_device->is_bridge_active());
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+	bridge_active = bridge_active || (lora_device_instance && lora_device_instance->is_bridge_active());
+#endif
+#if !(defined(LORA_RAK3172) && (LORA_RAK3172 == 1)) && !(defined(ARGOS_SMD) && (ARGOS_SMD == 1))
+	bridge_active = bridge_active || (kim2_device_instance && kim2_device_instance->is_bridge_active());
+#endif
+	if (bridge_active && DebugLogger::console_log != nullptr) {
+		s_saved_console_log = DebugLogger::console_log;
+		DebugLogger::console_log = nullptr;
+	} else if (!bridge_active && s_saved_console_log != nullptr) {
+		DebugLogger::console_log = s_saved_console_log;
+		s_saved_console_log = nullptr;
+	}
+}
+
 void ConfigurationState::process_usb_data() {
 	auto& usb = UsbInterface::get_instance();
+
+	sync_bridge_log_silencing();
 
 	// GNSS UART bridge mode: forward USB ↔ GNSS UART directly (binary UBX)
 	if (gps_device && gps_device->is_bridge_active()) {
@@ -695,6 +746,39 @@ void ConfigurationState::process_usb_data() {
 				// Forward to RAK3172 UART with \r\n termination
 				std::string data = line + "\r\n";
 				lora_device_instance->bridge_send(
+					reinterpret_cast<const uint8_t*>(data.c_str()), data.size());
+			}
+		}
+
+		schedule_usb_poll();
+		return;
+	}
+#endif
+
+#if !(defined(LORA_RAK3172) && (LORA_RAK3172 == 1)) && !(defined(ARGOS_SMD) && (ARGOS_SMD == 1))
+	// KIM2 UART bridge mode: forward USB ↔ KIM2 UART directly (AT commands)
+	if (kim2_device_instance && kim2_device_instance->is_bridge_active()) {
+		// Process UART RX → USB (via passthrough callback)
+		kim2_device_instance->bridge_process_rx();
+
+		// Process USB → UART
+		if (usb.has_data()) {
+			auto line = usb.read_line();
+			if (line.size()) {
+				restart_inactivity_timeout();
+				PMU::kick_watchdog();
+
+				// Check for exit sequence "+++"
+				if (line == "+++") {
+					kim2_device_instance->stop_bridge();
+					usb.write("\r\n[BRIDGE OFF]\r\n");
+					schedule_usb_poll();
+					return;
+				}
+
+				// Forward to KIM2 UART with \r\n termination (AT command framing)
+				std::string data = line + "\r\n";
+				kim2_device_instance->bridge_send(
 					reinterpret_cast<const uint8_t*>(data.c_str()), data.size());
 			}
 		}

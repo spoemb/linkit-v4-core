@@ -521,61 +521,29 @@ const DTECommandMap command_map[] = {
 		.command = DTECommand::SMDTST_REQ,
 		.prototype = {}
 	},
+#endif
+	// Satellite credentials verify — read-back from hardware, compare with config store.
+	// Required `force` arg (0 or 1): when 1 and hardware differs, credentials are written
+	// from the config store to the satellite module, then re-read.
+	// Supported on SMD (dirty flag → state_load_kmac) and LoRa (AT_SET_* sequence).
+	// KIM2 has no write path; `force` is ignored on KIM2 builds.
+	// Usage: $SATVF#001;0\r   or   $SATVF#001;1\r
 	{
-		.name = "SMDCD",
-		.command = DTECommand::SMDCD_REQ,
+		.name = "SATVF",
+		.command = DTECommand::SATVF_REQ,
 		.prototype =
 		{
 			{
-				.name = "id",
+				.name = "force",
 				.key = "",
 				.encoding = BaseEncoding::UINT,
 				.min_value = 0U,
-				.max_value = 999999U,
-				.permitted_values = {},
-				.is_implemented = false,
-				.is_writable = false
-			},
-			{
-				.name = "addr",
-				.key = "",
-				.encoding = BaseEncoding::HEXADECIMAL,
-				.min_value = 0U,
-				.max_value = 0xFFFFFFFFU,
-				.permitted_values = {},
-				.is_implemented = false,
-				.is_writable = false
-			},
-			{
-				.name = "seckey",
-				.key = "",
-				.encoding = BaseEncoding::TEXT,
-				.min_value = "",
-				.max_value = "",
-				.permitted_values = {},
-				.is_implemented = false,
-				.is_writable = false
-			},
-			{
-				.name = "radioconf",
-				.key = "",
-				.encoding = BaseEncoding::TEXT,
-				.min_value = "",
-				.max_value = "",
+				.max_value = 1U,
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false
 			}
 		}
-	},
-#endif
-	// Satellite credentials verify — read-back from hardware and compare with config store
-	// Works on both SMD and KIM2
-	// Usage: $SATVF#000;\r
-	{
-		.name = "SATVF",
-		.command = DTECommand::SATVF_REQ,
-		.prototype = {}
 	},
 #if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
 	// LoRa test transmission
@@ -602,6 +570,27 @@ const DTECommandMap command_map[] = {
 	{
 		.name = "LORABR",
 		.command = DTECommand::LORABR_REQ,
+		.prototype =
+		{
+			{
+				.name = "action",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 1U,  // 0=stop, 1=start
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	},
+#endif
+#if !(defined(LORA_RAK3172) && (LORA_RAK3172 == 1)) && !(defined(ARGOS_SMD) && (ARGOS_SMD == 1))
+	// KIM2 UART bridge/passthrough mode (direct AT command access via USB)
+	// Usage: $KIMBR#001;1\r (start) — exit by typing +++
+	{
+		.name = "KIMBR",
+		.command = DTECommand::KIMBR_REQ,
 		.prototype =
 		{
 			{
@@ -1406,13 +1395,6 @@ const DTECommandMap command_map[] = {
 			}
 		}
 	},
-	{
-		.name = "SMDCD",
-		.command = DTECommand::SMDCD_RESP,
-		.prototype =
-		{
-		}
-	},
 #endif
 	{
 		.name = "SATVF",
@@ -1468,6 +1450,16 @@ const DTECommandMap command_map[] = {
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false
+			},
+			{
+				.name = "forced",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = (unsigned int)0,
+				.max_value = (unsigned int)0,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
 			}
 		}
 	},
@@ -1480,6 +1472,13 @@ const DTECommandMap command_map[] = {
 	{
 		.name = "LORABR",
 		.command = DTECommand::LORABR_RESP,
+		.prototype = {}
+	},
+#endif
+#if !(defined(LORA_RAK3172) && (LORA_RAK3172 == 1)) && !(defined(ARGOS_SMD) && (ARGOS_SMD == 1))
+	{
+		.name = "KIMBR",
+		.command = DTECommand::KIMBR_RESP,
 		.prototype = {}
 	},
 #endif

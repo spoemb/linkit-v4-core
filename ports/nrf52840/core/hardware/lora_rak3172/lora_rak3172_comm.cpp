@@ -43,7 +43,8 @@ bool LoRaComm::send(ATCmd cmd, const std::optional<std::string>& params)
         DEBUG_ERROR("LoRaComm: already busy");
         return false;
     }
-    m_is_send_busy = true;
+    // Note: m_is_send_busy is set by NrfUartAsync::send_string(), not here.
+    // Setting it here would cause send_string() to see it as "already busy".
     return send_at_cmd(cmd, params);
 }
 
@@ -112,7 +113,6 @@ bool LoRaComm::send_at_cmd(ATCmd cmd, const std::optional<std::string>& params)
 {
     // O(1) lookup: ATCmd enum values match cmd_table indices
     if (cmd >= AT_UNKNOWN || cmd >= static_cast<ATCmd>(std::size(cmd_table))) {
-        m_is_send_busy = false;
         return false;
     }
     const auto& entry = cmd_table[cmd];

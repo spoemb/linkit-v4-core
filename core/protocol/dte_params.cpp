@@ -55,7 +55,7 @@ const BaseMap param_map[] = {
 	{ "GNSS_HDOPFILT_EN", "GNP02", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "GNSS_HDOPFILT_THR", "GNP03", BaseEncoding::UINT, 2U, 15U, {}, true, true },
 	{ "GNSS_ACQ_TIMEOUT", "GNP05", BaseEncoding::UINT, 10U, 600U, {}, true, true },
-	{ "GNSS_NTRY", "GNP04", BaseEncoding::UINT, 0U, 0U, {}, false, true },
+	{ "GNSS_NTRY", "GNP04", BaseEncoding::UINT, 0U, 255U, {}, true, true },
 	{ "UNDERWATER_EN", "UNP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "DRY_TIME_BEFORE_TX", "UNP02", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true },
 	{ "SAMPLING_UNDER_FREQ", "UNP03", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },

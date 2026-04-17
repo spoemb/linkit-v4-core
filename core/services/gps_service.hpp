@@ -92,6 +92,7 @@ private:
 	GPSDevice&   m_device;
 	bool         m_is_first_fix_found = false;
 	bool         m_is_first_schedule = true;
+	unsigned int m_cold_start_ntry = 0;  ///< Consecutive failed acquisitions (reset on fix or surface)
 	uint64_t     m_wakeup_time = 0;
 	std::time_t  m_next_schedule = 0;
 	struct {

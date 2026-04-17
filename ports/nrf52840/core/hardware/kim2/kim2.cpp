@@ -75,7 +75,78 @@ KIM2Device::KIM2Device()
 
 KIM2Device::~KIM2Device()
 {
+    stop_bridge();
     power_off_immediate();
+}
+
+// ============================================================================
+// Bridge/passthrough mode — raw UART access for DTE KIMBR command
+// ============================================================================
+
+bool KIM2Device::start_bridge(KIM2Comm::PassthroughCallback rx_callback)
+{
+    if (m_bridge_active)
+        return true;
+
+    // Cancel any pending state machine task / timeout — bridge owns the UART
+    cancel_timeout();
+    system_scheduler->cancel_task(m_task);
+
+    // Power on module hardware if not already on (required for UART communication).
+    // If already powered (state=init/idle/transmit), we reuse the current GPIO state.
+    bool was_off = (m_state == KIM2ManagerState::power_off);
+    if (was_off) {
+        GPIOPins::set(SAT_PWR_EN);
+        GPIOPins::set(SAT_EXTWAKEUP);
+    }
+
+    // Ensure UART is initialized (may be off if no TX happened yet)
+    m_kim2_comm.init();
+
+    // Wait for module boot if we just powered it on
+    if (was_off) {
+        PMU::delay_ms(KIM2_DELAY_POWER_ON_MS);
+    }
+
+    // Enable passthrough: raw UART RX goes to callback (line-framed with CRLF)
+    m_kim2_comm.set_passthrough(true, rx_callback);
+    m_bridge_active = true;
+
+    DEBUG_INFO("KIM2Device: bridge mode ACTIVE (was_off=%u)", was_off ? 1 : 0);
+    return true;
+}
+
+void KIM2Device::stop_bridge()
+{
+    if (!m_bridge_active)
+        return;
+
+    m_kim2_comm.set_passthrough(false);
+    m_bridge_active = false;
+
+    DEBUG_INFO("KIM2Device: bridge mode STOPPED");
+
+    // Force power_off — bridge usage may have left the module in an arbitrary
+    // AT protocol state. Next send() will do a clean power-on cycle via
+    // start_device(). This avoids resuming into stale idle/transmit states.
+    cancel_timeout();
+    system_scheduler->cancel_task(m_task);
+    m_kim2_comm.unsubscribe(*this);
+    m_state = KIM2ManagerState::power_off;
+    state_power_off_enter();  // Deinit UART, cut GPIOs, clear buffers
+}
+
+bool KIM2Device::bridge_send(const uint8_t* data, size_t len)
+{
+    if (!m_bridge_active)
+        return false;
+    return m_kim2_comm.send_raw_data(data, len);
+}
+
+void KIM2Device::bridge_process_rx()
+{
+    if (m_bridge_active)
+        m_kim2_comm.process_rx();
 }
 
 // ============================================================================
@@ -88,6 +159,14 @@ KIM2Device::~KIM2Device()
 /// @param payload_length  Payload length in bits.
 void KIM2Device::send(const KineisModulation mode, const KineisPacket& user_payload, const unsigned int payload_length)
 {
+    // Reject TX while bridge is active — bridge owns the UART exclusively.
+    // Stop the bridge first via stop_bridge() if a TX is needed.
+    if (m_bridge_active) {
+        DEBUG_WARN("KIM2Device::send: rejected — bridge mode active");
+        notify(KineisEventDeviceError({}));
+        return;
+    }
+
     KineisPacket packet;
     uint16_t total_bits;
     uint16_t modulo;

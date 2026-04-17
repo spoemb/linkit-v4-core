@@ -628,45 +628,18 @@ std::string DTEHandler::SMDTST_REQ(int error_code, std::vector<BaseType>& arg_li
 
 	return DTEEncoder::encode(DTECommand::SMDTST_RESP, (unsigned int)0, test_result);
 }
-
-std::string DTEHandler::SMDCD_REQ(int error_code, std::vector<BaseType>& arg_list) {
-
-	if (error_code) {
-		return DTEEncoder::encode(DTECommand::SMDCD_RESP, error_code);
-	}
-
-	// Extract credentials from arguments
-	unsigned int dec_id = std::get<unsigned int>(arg_list[0]);
-	unsigned int address = std::get<unsigned int>(arg_list[1]);
-	std::string seckey = std::get<std::string>(arg_list[2]);
-	std::string radioconf = std::get<std::string>(arg_list[3]);
-
-	try {
-		DEBUG_TRACE("SMDCD_REQ: writing credentials to config store (dirty flag set)");
-
-		// Write credentials to config store — dirty flag is set automatically
-		// Hardware write happens at next SMD power-on via state_load_kmac
-		configuration_store->write_param(ParamID::ARGOS_DECID, dec_id);
-		configuration_store->write_param(ParamID::ARGOS_HEXID, address);
-		configuration_store->write_param(ParamID::ARGOS_SECKEY, seckey);
-		configuration_store->write_param(ParamID::ARGOS_RADIOCONF, radioconf);
-		configuration_store->save_params();
-
-		DEBUG_INFO("SMDCD_REQ: credentials saved (id=%u addr=0x%08X) | will be written to SMD at next TX",
-		           dec_id, address);
-	} catch (...) {
-		error_code = (int)DTEError::INCORRECT_DATA;
-	}
-
-	return DTEEncoder::encode(DTECommand::SMDCD_RESP, error_code);
-}
 #endif
 
 std::string DTEHandler::SATVF_REQ(int error_code, std::vector<BaseType>& arg_list) {
-	(void)arg_list;
 
 	if (error_code) {
 		return DTEEncoder::encode(DTECommand::SATVF_RESP, error_code);
+	}
+
+	// force: 0 = read-only verify, 1 = re-write from config store when hardware differs
+	unsigned int force = 0;
+	if (!arg_list.empty()) {
+		force = std::get<unsigned int>(arg_list[0]);
 	}
 
 	try {
@@ -683,27 +656,47 @@ std::string DTEHandler::SATVF_REQ(int error_code, std::vector<BaseType>& arg_lis
 			return DTEEncoder::encode(DTECommand::SATVF_RESP, (int)DTEError::INCORRECT_DATA);
 		}
 
-		// Read credentials from config store
-		std::string cfg_deveui  = configuration_store->read_param<std::string>(ParamID::LORA_DEVEUI);
-		std::string cfg_appeui  = configuration_store->read_param<std::string>(ParamID::LORA_APPEUI);
-		std::string cfg_appkey  = configuration_store->read_param<std::string>(ParamID::LORA_APPKEY);
-		std::string cfg_devaddr = configuration_store->read_param<std::string>(ParamID::LORA_DEVADDR);
-		unsigned int cfg_njm    = configuration_store->read_param<unsigned int>(ParamID::LORA_NJM);
-
-		// Compare (case-insensitive hex)
+		// Lambda: compare hardware snapshot with config store (case-insensitive hex)
 		auto to_upper = [](std::string s) { for (auto& c : s) c = toupper(c); return s; };
-		bool match = (hw.njm == cfg_njm);
-		match = match && (to_upper(hw.deveui) == to_upper(cfg_deveui));
-		if (hw.njm == 1) {
-			match = match && (to_upper(hw.appeui) == to_upper(cfg_appeui));
-			match = match && (to_upper(hw.appkey) == to_upper(cfg_appkey));
-		} else {
-			match = match && (to_upper(hw.devaddr) == to_upper(cfg_devaddr));
+		auto compare = [&](const LoRaDevice::LoRaCredentials& h) {
+			std::string cfg_deveui  = configuration_store->read_param<std::string>(ParamID::LORA_DEVEUI);
+			std::string cfg_appeui  = configuration_store->read_param<std::string>(ParamID::LORA_APPEUI);
+			std::string cfg_appkey  = configuration_store->read_param<std::string>(ParamID::LORA_APPKEY);
+			std::string cfg_devaddr = configuration_store->read_param<std::string>(ParamID::LORA_DEVADDR);
+			unsigned int cfg_njm    = configuration_store->read_param<unsigned int>(ParamID::LORA_NJM);
+			bool m = (h.njm == cfg_njm);
+			m = m && (to_upper(h.deveui) == to_upper(cfg_deveui));
+			if (h.njm == 1) {
+				m = m && (to_upper(h.appeui) == to_upper(cfg_appeui));
+				m = m && (to_upper(h.appkey) == to_upper(cfg_appkey));
+			} else {
+				m = m && (to_upper(h.devaddr) == to_upper(cfg_devaddr));
+			}
+			return m;
+		};
+
+		bool match = compare(hw);
+		unsigned int forced = 0;
+
+		if (force == 1 && !match) {
+			DEBUG_INFO("SATVF(LoRa): force=1, hardware differs — writing credentials from config store");
+			if (lora_device_instance->write_credentials_from_config()) {
+				forced = 1;
+				// Re-read to confirm post-write state
+				hw = lora_device_instance->read_lora_credentials();
+				if (hw.read_ok) {
+					match = compare(hw);
+				} else {
+					DEBUG_WARN("SATVF(LoRa): re-read after force-write failed");
+					match = false;
+				}
+			} else {
+				DEBUG_ERROR("SATVF(LoRa): force-write failed");
+			}
 		}
 
-		// Build response fields that map to SATVF format:
-		// hw_id=0 (N/A for LoRa), hw_addr=0 (N/A),
-		// hw_seckey=credentials summary, hw_rconf=mode info, match
+		// Build response fields: hw_id=0 (N/A for LoRa), hw_addr=NJM,
+		// hw_seckey=credential summary, hw_rconf=mode info, match, forced
 		std::string cred_summary = "NJM=" + std::to_string(hw.njm) +
 			" DEVEUI=" + hw.deveui;
 		std::string mode_info;
@@ -715,7 +708,7 @@ std::string DTEHandler::SATVF_REQ(int error_code, std::vector<BaseType>& arg_lis
 			mode_info = "ABP";
 		}
 
-		DEBUG_INFO("SATVF(LoRa): %s match=%d", cred_summary.c_str(), match);
+		DEBUG_INFO("SATVF(LoRa): %s match=%d forced=%u", cred_summary.c_str(), match, forced);
 
 		return DTEEncoder::encode(DTECommand::SATVF_RESP,
 			(unsigned int)0,
@@ -723,7 +716,8 @@ std::string DTEHandler::SATVF_REQ(int error_code, std::vector<BaseType>& arg_lis
 			(unsigned int)hw.njm,        // hw_addr repurposed as NJM mode
 			cred_summary,                // hw_seckey repurposed as credential summary
 			mode_info,                   // hw_rconf repurposed as mode info
-			(unsigned int)(match ? 1U : 0U));
+			(unsigned int)(match ? 1U : 0U),
+			forced);
 #else
 		// Satellite module (SMD or KIM2): read credentials from hardware
 		if (!kineis_device_instance) {
@@ -739,8 +733,25 @@ std::string DTEHandler::SATVF_REQ(int error_code, std::vector<BaseType>& arg_lis
 		unsigned int cfg_addr = configuration_store->read_param<unsigned int>(ParamID::ARGOS_HEXID);
 
 		bool match = (hw_id == cfg_id && hw_addr == cfg_addr);
-		DEBUG_INFO("SATVF: hw_id=%u cfg_id=%u hw_addr=0x%08X cfg_addr=0x%08X match=%d",
-		           hw_id, cfg_id, hw_addr, cfg_addr, match);
+		unsigned int forced = 0;
+
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+		if (force == 1 && !match) {
+			DEBUG_INFO("SATVF(SMD): force=1, hardware differs — marking credentials dirty");
+			configuration_store->mark_credentials_dirty();
+			// read_credentials() handles dirty flag: writes config creds to SMD + reloads KMAC, then re-reads
+			hw_id = 0; hw_addr = 0; hw_seckey.clear(); hw_rconf.clear();
+			kineis_device_instance->read_credentials(&hw_id, &hw_addr, &hw_seckey, &hw_rconf);
+			match = (hw_id == cfg_id && hw_addr == cfg_addr);
+			forced = 1;
+		}
+#else
+		// KIM2 has no host-side credential write path — force is a no-op
+		(void)force;
+#endif
+
+		DEBUG_INFO("SATVF: hw_id=%u cfg_id=%u hw_addr=0x%08X cfg_addr=0x%08X match=%d forced=%u",
+		           hw_id, cfg_id, hw_addr, cfg_addr, match, forced);
 
 		return DTEEncoder::encode(DTECommand::SATVF_RESP,
 			(unsigned int)0,
@@ -748,7 +759,8 @@ std::string DTEHandler::SATVF_REQ(int error_code, std::vector<BaseType>& arg_lis
 			(unsigned int)hw_addr,
 			hw_seckey,
 			hw_rconf,
-			(unsigned int)(match ? 1U : 0U));
+			(unsigned int)(match ? 1U : 0U),
+			forced);
 #endif
 	} catch (...) {
 		error_code = (int)DTEError::INCORRECT_DATA;
@@ -947,6 +959,43 @@ std::string DTEHandler::LORABR_REQ(int error_code, std::vector<BaseType>& arg_li
 	}
 
 	return DTEEncoder::encode(DTECommand::LORABR_RESP, (int)DTEError::OK);
+}
+
+#endif
+
+#if !(defined(LORA_RAK3172) && (LORA_RAK3172 == 1)) && !(defined(ARGOS_SMD) && (ARGOS_SMD == 1))
+
+std::string DTEHandler::KIMBR_REQ(int error_code, std::vector<BaseType>& arg_list) {
+	if (error_code) {
+		return DTEEncoder::encode(DTECommand::KIMBR_RESP, error_code);
+	}
+
+	if (arg_list.size() < 1) {
+		return DTEEncoder::encode(DTECommand::KIMBR_RESP, (int)DTEError::MISSING_ARGUMENT);
+	}
+
+	unsigned int action = std::get<unsigned int>(arg_list[0]);
+
+	if (!kim2_device_instance) {
+		DEBUG_WARN("DTEHandler::KIMBR_REQ: KIM2 device not available");
+		return DTEEncoder::encode(DTECommand::KIMBR_RESP, (int)DTEError::INCORRECT_DATA);
+	}
+
+	if (action == 1) {
+		// Start bridge: raw UART RX → USB CDC via async_write
+		auto write_fn = m_async_write;
+		kim2_device_instance->start_bridge([write_fn](const uint8_t* data, size_t len) {
+			if (write_fn) {
+				write_fn(std::string(reinterpret_cast<const char*>(data), len));
+			}
+		});
+		DEBUG_INFO("DTEHandler::KIMBR_REQ: bridge STARTED — type +++ to exit");
+	} else {
+		kim2_device_instance->stop_bridge();
+		DEBUG_INFO("DTEHandler::KIMBR_REQ: bridge STOPPED");
+	}
+
+	return DTEEncoder::encode(DTECommand::KIMBR_RESP, (int)DTEError::OK);
 }
 
 #endif
@@ -1669,9 +1718,6 @@ DTEAction DTEHandler::handle_dte_message(const std::string& req, std::string& re
 	case DTECommand::SMDTST_REQ:
 		resp = SMDTST_REQ(error_code, arg_list);
 		break;
-	case DTECommand::SMDCD_REQ:
-		resp = SMDCD_REQ(error_code, arg_list);
-		break;
 #endif
 	case DTECommand::SATVF_REQ:
 		resp = SATVF_REQ(error_code, arg_list);
@@ -1685,6 +1731,11 @@ DTEAction DTEHandler::handle_dte_message(const std::string& req, std::string& re
 		break;
 	case DTECommand::LORABR_REQ:
 		resp = LORABR_REQ(error_code, arg_list);
+		break;
+#endif
+#if !(defined(LORA_RAK3172) && (LORA_RAK3172 == 1)) && !(defined(ARGOS_SMD) && (ARGOS_SMD == 1))
+	case DTECommand::KIMBR_REQ:
+		resp = KIMBR_REQ(error_code, arg_list);
 		break;
 #endif
 	default:

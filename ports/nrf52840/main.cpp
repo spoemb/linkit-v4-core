@@ -166,6 +166,9 @@ SmdSat *smd_sat_instance = nullptr;       ///< SMD satellite instance (needed fo
 #if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
 LoRaDevice *lora_device_instance = nullptr;  ///< LoRa RAK3172 instance (needed for LORATX DTE)
 #endif
+#if !(defined(LORA_RAK3172) && (LORA_RAK3172 == 1)) && !(defined(ARGOS_SMD) && (ARGOS_SMD == 1))
+KIM2Device *kim2_device_instance = nullptr;  ///< KIM2 instance (needed for KIMBR DTE bridge)
+#endif
 #if ENABLE_MORTALITY_SENSOR
 MortalityService *mortality_service = nullptr;  ///< Bird mortality detection service (RSPB only)
 #endif
@@ -747,10 +750,12 @@ static void init_communication(LFSFileSystem& lfs_file_system)
 	try {
 		static KIM2Device kim2;
 		kineis_device_instance = &kim2;
+		kim2_device_instance = &kim2;
 		static ArgosTxService argos_tx_service(kim2);
 	} catch (...) {
 		DEBUG_INFO("KIM2 not detected");
 		kineis_device_instance = nullptr;
+		kim2_device_instance = nullptr;
 	}
 #endif
 

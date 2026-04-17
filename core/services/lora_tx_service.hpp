@@ -43,6 +43,10 @@ private:
 	bool m_is_first_tx = true;
 	bool m_is_tx_pending = false;
 	unsigned int m_session_tx_count = 0;
+	unsigned int m_consecutive_device_errors = 0;
+	static constexpr unsigned int DEVICE_ERROR_MAX_CONSECUTIVE = 3;
+	static constexpr unsigned int DEVICE_ERROR_BACKOFF_BASE_MS = 60000;   ///< 1 min
+	static constexpr unsigned int DEVICE_ERROR_BACKOFF_MAX_MS  = 600000;  ///< 10 min
 	bool m_last_tx_had_gps = false;
 	bool m_is_surfacing_burst = false;
 	bool m_awaiting_surfacing = false;  ///< Burst ended, waiting for next surface event

@@ -56,6 +56,12 @@ public:
     };
     LoRaCredentials read_lora_credentials();
 
+    /// @brief Write credentials from the config store to the RAK3172 module.
+    /// Sends AT_SET_NJM, DEVEUI, APPEUI/APPKEY (OTAA) or DEVADDR (ABP).
+    /// Module must be powered on (idle/standby/configure state).
+    /// @return true on success, false if any AT write fails or module is off.
+    bool write_credentials_from_config();
+
     // Bridge/passthrough mode: direct USB ↔ UART access for RUI3 AT commands
     bool start_bridge(LoRaComm::PassthroughCallback rx_callback);
     void stop_bridge();

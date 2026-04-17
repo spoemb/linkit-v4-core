@@ -41,7 +41,7 @@ bool KIM2Comm::send(ATCmd cmd, const std::optional<std::string>& params)
 		DEBUG_ERROR("KIM2Comm: already busy");
 		return false;
 	}
-	m_is_send_busy = true;
+	// Note: m_is_send_busy is set by NrfUartAsync::send_string(), not here.
 	return send_at_cmd(cmd, params);
 }
 
@@ -66,7 +66,6 @@ static constexpr ATCmdEntry cmd_table[] = {
 bool KIM2Comm::send_at_cmd(ATCmd cmd, const std::optional<std::string>& params)
 {
 	if (cmd >= AT_UNKNOWN || cmd >= static_cast<ATCmd>(std::size(cmd_table))) {
-		m_is_send_busy = false;
 		return false;
 	}
 	const auto& entry = cmd_table[cmd];
@@ -90,11 +89,37 @@ void KIM2Comm::process_rx()
 }
 
 // ============================================================================
+// Bridge/passthrough mode — raw UART access for DTE KIMBR command
+// ============================================================================
+
+bool KIM2Comm::send_raw_data(const uint8_t* data, size_t len)
+{
+	return NrfUartAsync::send_raw(data, len);
+}
+
+void KIM2Comm::set_passthrough(bool active, PassthroughCallback callback)
+{
+	m_passthrough_active = active;
+	m_passthrough_callback = callback;
+}
+
+// ============================================================================
 // Protocol parsing — NrfUartAsync callbacks
 // ============================================================================
 
 void KIM2Comm::on_rx_line(std::string& line)
 {
+	// Bridge/passthrough mode: forward raw line (with CRLF) to callback, skip AT parsing.
+	// Base class strips CRLF so we reconstitute for terminal-style display on USB.
+	if (m_passthrough_active) {
+		if (m_passthrough_callback && !line.empty()) {
+			std::string framed = line + "\r\n";
+			m_passthrough_callback(reinterpret_cast<const uint8_t*>(framed.data()),
+			                        framed.size());
+		}
+		return;
+	}
+
 	RespType msg = parse_rx_line_protocol(line);
 
 	if (msg == RESP_OK) {
