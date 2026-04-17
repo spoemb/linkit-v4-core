@@ -320,7 +320,7 @@ protected:
 		/* [206] RSPB_PACKET_FORMAT */ 0U,  // 0=RSPB_LONG (LDA2), 1=RSPB_SHORT (LDK)
 		/* [207] ARGOS_RADIOCONF_LDK */ std::string("03921fb104b92859209b18abd009de96"),
 		/* [208] ARGOS_RADIOCONF_LDA2 */ std::string("2c93600d6be3bac0ccfe9047c02c058e"),
-		/* [209] ARGOS_RADIOCONF_VLDA4 */ std::string("550b4bec21009c7a7b5bebaa937cdb41"),
+		/* [209] ARGOS_RADIOCONF_VLDA4 */ std::string("82d07f9d9ce081ee4492983672d75493"),
 		/* [210] ARGOS_ADAPTIVE_MODULATION */ (bool)false,
 		/* [211] MIN_SURFACE_CYCLE_INTERVAL_S */ 2700U,  // 45 min default cooldown
 		/* [212] SURFACING_BURST_MAX_MSG */ 0U,  // 0 = unlimited Doppler messages per surfacing

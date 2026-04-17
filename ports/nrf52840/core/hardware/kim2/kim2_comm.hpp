@@ -21,14 +21,17 @@
 namespace KIM2 {
 
 /// @brief AT command types supported by the KIM2 module.
+/// @note  Per KIM2 Integration Manual v0.8: RCONF is kept in RAM and
+///        reapplied on every power-on, so SAVE_RCONF is not used. LPM is
+///        not a supported AT command. KMAC=1 (basic MAC profile) must be
+///        called after RCONF and before any AT+TX.
 enum ATCmd {
 	AT_PING = 0,
 	AT_GET_ID,
 	AT_GET_ADDR,
 	AT_SET_RCONF,
-	AT_SAVE_RCONF,
+	AT_GET_RCONF,
 	AT_SET_KMAC_BASIC,
-	AT_SET_LPM,
 	AT_TX,
 	AT_UNKNOWN
 };
@@ -51,6 +54,7 @@ static constexpr uint8_t END_CHAR_2 = '\n';
 static constexpr const char *OK_RESPONSE   = "+OK";
 static constexpr const char *ID_RESPONSE   = "+ID=";
 static constexpr const char *ADDR_RESPONSE = "+ADDR=";
+static constexpr const char *RCONF_RESPONSE = "+RCONF=";
 static constexpr const char *TX_RESPONSE   = "+TX=";
 static constexpr const char *ERR_RESPONSE  = "+ERROR=";
 /// @}
@@ -91,6 +95,7 @@ public:
 	unsigned int m_kineis_id = 0;      ///< Device ID from +ID= response
 	unsigned int m_hex_addr = 0;       ///< Device address from +ADDR= response
 	uint16_t m_tx_status = 0xFFFF;     ///< Last TX status from +TX= response
+	std::string m_rconf_info;          ///< Last +RCONF=? response payload (diag)
 
 	/// @param libuarte_async_instance  BSP UART instance index (default 1).
 	KIM2Comm(unsigned int libuarte_async_instance = 1);

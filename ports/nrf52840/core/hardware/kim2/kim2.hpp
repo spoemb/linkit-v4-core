@@ -85,7 +85,6 @@ private:
 	KineisPacket m_packet_buffer;            ///< Incoming packet from send()
 	KineisModulation m_tx_mode;              ///< Modulation for current TX
 	KineisModulation m_current_rconf_mode;   ///< Last RCONF modulation written
-	std::string m_last_saved_rconf;          ///< Last saved RCONF hex (skip re-write if unchanged)
 	std::atomic<bool> m_tx_done;             ///< Set by ISR on +TX= response
 	unsigned int m_tx_poll_counter;          ///< Remaining TX poll ticks before timeout
 	/// @}
@@ -122,6 +121,15 @@ private:
 
 	/// @return Current RCONF modulation.
 	KineisModulation get_current_modulation() const override;
+
+	/// @brief Return the last ID/ADDR read from the KIM2 module during
+	///        state_init, plus the last decoded RCONF info from AT+RCONF=?.
+	/// @note  KIM2 has no per-module SECKEY AT command (unlike SMD), so
+	///        @p seckey is always empty. @p radioconf carries the decoded
+	///        "freq_min,freq_max,mod_type,rf_level" string from the module
+	///        (diagnostic use — not the encrypted hex written via AT+RCONF=).
+	void read_credentials(unsigned int *dec_id, unsigned int *address,
+	                      std::string *seckey, std::string *radioconf) override;
 	/// @}
 
 	/// @name Internal helpers

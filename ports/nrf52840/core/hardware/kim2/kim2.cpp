@@ -31,6 +31,20 @@ static constexpr uint16_t KIM2_DELAY_POWER_ON_MS = 500;   ///< Wait after power-
 static constexpr uint16_t KIM2_DELAY_POLL_MS     = 100;   ///< TX poll interval
 static constexpr uint32_t KIM2_TX_TIMEOUT_MS     = 60000; ///< Max time for TX complete
 static constexpr uint16_t KIM2_IDLE_TICK_MS      = 100;   ///< Idle state poll interval
+/// @brief Delay after AT+RCONF= so the module can process the new radio config
+///        (analogous to SMD's 80ms STM32 RCONF processing window).
+static constexpr uint16_t KIM2_DELAY_AFTER_RCONF_MS = 80;
+/// @brief Delay after AT+KMAC=1 so the MAC layer can re-initialize with the
+///        new RCONF. Sending AT+TX before the MAC is ready causes the module
+///        to reject the frame (observed as +ERROR=5 / KNS_STATUS_BAD_LEN).
+///        SMD uses 200 ms here; same value reused for KIM2.
+static constexpr uint16_t KIM2_DELAY_AFTER_KMAC_MS  = 200;
+/// @brief Timeout for the synchronous +OK ACK of AT+TX. The KIM2 firmware
+///        can take up to ~3 s to emit +OK (even though the +TX=<status>
+///        completion arrives later via the async path). The 1 s default is
+///        too short and causes a spurious "send_AT: timeout" warning while
+///        the TX is actually succeeding. Match SMD AT's 5 s budget.
+static constexpr uint16_t KIM2_TX_ACK_TIMEOUT_MS    = 5000;
 /// @}
 
 #define KIM2_STATE_CHANGE(x, y)                     \
@@ -260,14 +274,17 @@ void KIM2Device::set_frequency(double freq_mhz)
 void KIM2Device::set_tcxo_warmup_time(unsigned int ms)
 {
     (void)ms;
-    // KIM2 TCXO warmup is managed internally by the module
+    // KIM2 has no configurable TCXO AT command — warmup is handled
+    // internally by the module firmware. The observed ~3 s delay between
+    // AT+TX and the +OK ACK is the module's internal TCXO warmup + actual
+    // RF transmission, which is why KIM2_TX_ACK_TIMEOUT_MS is set to 5 s.
 }
 
 // ============================================================================
 // Runtime modulation switching
 // ============================================================================
 
-/// @brief Runtime modulation switch: write RCONF + save + reload KMAC.
+/// @brief Runtime modulation switch: write RCONF then reload KMAC.
 /// @param mode       Target modulation.
 /// @param rconf_hex  32-char hex RCONF string for the target modulation.
 /// @return true on success, false on AT command failure.
@@ -296,18 +313,14 @@ bool KIM2Device::switch_modulation(KineisModulation mode, const std::string& rco
         DEBUG_ERROR("KIM2Device::%s: failed to set RCONF", __func__);
         return false;
     }
-
-    if (!send_AT(AT_SAVE_RCONF)) {
-        DEBUG_ERROR("KIM2Device::%s: failed to save RCONF", __func__);
-        return false;
-    }
+    PMU::delay_ms(KIM2_DELAY_AFTER_RCONF_MS);
 
     if (!send_AT(AT_SET_KMAC_BASIC)) {
         DEBUG_ERROR("KIM2Device::%s: failed to reload KMAC", __func__);
         return false;
     }
+    PMU::delay_ms(KIM2_DELAY_AFTER_KMAC_MS);
 
-    m_last_saved_rconf = rconf_hex;
     m_current_rconf_mode = mode;
     DEBUG_INFO("KIM2Device::%s: modulation switched OK", __func__);
     return true;
@@ -315,6 +328,90 @@ bool KIM2Device::switch_modulation(KineisModulation mode, const std::string& rco
 
 KineisModulation KIM2Device::get_current_modulation() const {
     return m_current_rconf_mode;
+}
+
+// ============================================================================
+// Credential read-back (SATVF)
+// ============================================================================
+
+/// @brief Actively read ID, address and decoded RCONF from the KIM2 module.
+///
+/// When the device is stopped, this does a synchronous power-on / ping /
+/// power-off cycle so SATVF always returns fresh values (not stale cache).
+/// If the state machine is currently running (init/idle/transmit) we reuse
+/// the live UART session and leave power state untouched.
+///
+/// @note KIM2 exposes no AT+SECKEY command (unlike SMD), so @p seckey is
+///       always cleared. @p radioconf carries the decoded
+///       "freq_min,freq_max,mod_type,rf_level" string from AT+RCONF=? —
+///       useful for SATVF diagnostics (e.g. confirming the active modulation).
+void KIM2Device::read_credentials(unsigned int *dec_id, unsigned int *address,
+                                   std::string *seckey, std::string *radioconf)
+{
+    DEBUG_TRACE("KIM2Device::read_credentials");
+
+    // Zero outputs up-front so callers see a clean state on early return.
+    if (dec_id)    *dec_id = 0;
+    if (address)   *address = 0;
+    if (seckey)    seckey->clear();
+    if (radioconf) radioconf->clear();
+
+    // Bridge owns the UART — can't issue AT reads. Fall back to cached values.
+    if (m_bridge_active) {
+        DEBUG_WARN("KIM2Device::read_credentials: bridge active, returning cached values");
+        if (dec_id)    *dec_id    = m_kim2_comm.m_kineis_id;
+        if (address)   *address   = m_kim2_comm.m_hex_addr;
+        if (radioconf) *radioconf = m_kim2_comm.m_rconf_info;
+        return;
+    }
+
+    const bool was_off = (m_state == KIM2ManagerState::power_off);
+
+    if (was_off) {
+        // Freeze the state machine so it doesn't race with our synchronous reads.
+        cancel_timeout();
+        system_scheduler->cancel_task(m_task);
+
+        GPIOPins::set(SAT_PWR_EN);
+        GPIOPins::set(SAT_EXTWAKEUP);
+        m_kim2_comm.init();
+        m_kim2_comm.subscribe(*this);
+        PMU::delay_ms(KIM2_DELAY_POWER_ON_MS);
+
+        if (!send_AT(AT_PING)) {
+            DEBUG_WARN("KIM2Device::read_credentials: ping failed — module not responding");
+            m_kim2_comm.unsubscribe(*this);
+            m_kim2_comm.deinit();
+            GPIOPins::clear(SAT_EXTWAKEUP);
+            GPIOPins::clear(SAT_PWR_EN);
+            return;
+        }
+    }
+
+    if (send_AT(AT_GET_ID)) {
+        if (dec_id) *dec_id = m_kim2_comm.m_kineis_id;
+    } else {
+        DEBUG_WARN("KIM2Device::read_credentials: AT+ID=? failed");
+    }
+
+    if (send_AT(AT_GET_ADDR)) {
+        if (address) *address = m_kim2_comm.m_hex_addr;
+    } else {
+        DEBUG_WARN("KIM2Device::read_credentials: AT+ADDR=? failed");
+    }
+
+    if (send_AT(AT_GET_RCONF)) {
+        if (radioconf) *radioconf = m_kim2_comm.m_rconf_info;
+    } else {
+        DEBUG_WARN("KIM2Device::read_credentials: AT+RCONF=? failed");
+    }
+
+    if (was_off) {
+        m_kim2_comm.unsubscribe(*this);
+        m_kim2_comm.deinit();
+        GPIOPins::clear(SAT_EXTWAKEUP);
+        GPIOPins::clear(SAT_PWR_EN);
+    }
 }
 
 // ============================================================================
@@ -348,6 +445,11 @@ void KIM2Device::react(const KIM2CommEventUartError& err) {
 /// @param params      Optional parameter string.
 /// @param timeout_ms  Max wait time in ms (default 1000).
 /// @return true if +OK received before timeout.
+/// @note Enforces the KIM2 Integration Manual v0.8 timing constraint:
+///       "User shall wait at minimum 10ms before sending a new command
+///       after previous is completed." The 10ms gap is applied after the
+///       response is received so the next send_AT() call is already clear
+///       to transmit.
 bool KIM2Device::send_AT(ATCmd cmd, const std::optional<std::string>& params, uint16_t timeout_ms)
 {
     m_cmd_is_ok = false;
@@ -357,7 +459,6 @@ bool KIM2Device::send_AT(ATCmd cmd, const std::optional<std::string>& params, ui
 
     // Busy-wait for UART response — blocking but bounded.
     // AT protocol is synchronous; async would require full state machine rewrite.
-    // 1s max per command × 6 commands in init = ~6s total during power-on sequence.
     while (!m_cmd_is_ok && !m_is_error && timeout_ms != 0) {
         PMU::delay_ms(1);
         m_kim2_comm.process_rx();  // Drain ISR buffer → parse → notify
@@ -367,6 +468,9 @@ bool KIM2Device::send_AT(ATCmd cmd, const std::optional<std::string>& params, ui
     if(timeout_ms == 0) {
         DEBUG_WARN("KIM2Device::send_AT: timeout (cmd=%d)", static_cast<int>(cmd));
     }
+
+    // Mandatory inter-command gap (KIM2 manual v0.8, §3.A timing constraints).
+    PMU::delay_ms(10);
 
     return m_cmd_is_ok && !m_is_error;
 }
@@ -530,7 +634,11 @@ void KIM2Device::state_init_enter()
     ;
 }
 
-/// @brief Init: read ID/ADDR, write RCONF + KMAC, set LPM → transition to idle.
+/// @brief Init: read ID/ADDR, write RCONF + KMAC → transition to idle.
+/// @note Per KIM2 Integration Manual v0.8, RCONF is kept in RAM and must be
+///       reapplied after every power-on (SAVE_RCONF is discouraged for
+///       normal use). KMAC=1 (basic MAC profile) must be set after RCONF
+///       and before any AT+TX.
 void KIM2Device::state_init()
 {
     // Read credentials from module if not already known
@@ -555,7 +663,7 @@ void KIM2Device::state_init()
         configuration_store->write_param(ParamID::ARGOS_HEXID, m_kim2_comm.m_hex_addr);
     }
 
-    // Configure RCONF + KMAC
+    // Configure RCONF for the target modulation, then start basic MAC profile.
     // When adaptive modulation is ON, use the per-modulation RCONF matching
     // m_current_rconf_mode (set by switch_modulation() while device was OFF).
     // When adaptive is OFF, use the master RCONF entered by the user.
@@ -570,24 +678,20 @@ void KIM2Device::state_init()
         DEBUG_WARN("KIM2Device::state_init: RCONF empty, using default LDK fallback");
     }
 
-    if (rconf != m_last_saved_rconf) {
-        if(!send_AT(AT_SET_RCONF, rconf))
-        {
-            DEBUG_ERROR("KIM2Device::state_init: can not set RCONF");
-            KIM2_STATE_CHANGE(init, error);
-            return;
-        }
+    if(!send_AT(AT_SET_RCONF, rconf))
+    {
+        DEBUG_ERROR("KIM2Device::state_init: can not set RCONF");
+        KIM2_STATE_CHANGE(init, error);
+        return;
+    }
+    PMU::delay_ms(KIM2_DELAY_AFTER_RCONF_MS);
 
-        if(!send_AT(AT_SAVE_RCONF))
-        {
-            DEBUG_ERROR("KIM2Device::state_init: can not save RCONF");
-            KIM2_STATE_CHANGE(init, error);
-            return;
-        }
-        m_last_saved_rconf = rconf;
-        DEBUG_TRACE("KIM2Device::state_init RCONF set and saved");
+    // Diagnostic: query what the module actually stored (freq_min,freq_max,mod_type,rf_level).
+    // Useful to confirm the encrypted RCONF decoded to the expected modulation.
+    if (send_AT(AT_GET_RCONF)) {
+        DEBUG_INFO("KIM2Device::state_init: module RCONF=%s", m_kim2_comm.m_rconf_info.c_str());
     } else {
-        DEBUG_TRACE("KIM2Device::state_init RCONF unchanged, skipping");
+        DEBUG_WARN("KIM2Device::state_init: AT+RCONF=? query failed");
     }
 
     if(!send_AT(AT_SET_KMAC_BASIC))
@@ -596,19 +700,12 @@ void KIM2Device::state_init()
         KIM2_STATE_CHANGE(init, error);
         return;
     }
-    DEBUG_TRACE("KIM2Device::state_init KMAC set");
+    PMU::delay_ms(KIM2_DELAY_AFTER_KMAC_MS);
+    DEBUG_TRACE("KIM2Device::state_init RCONF set and KMAC=1 activated");
     if (!adaptive) {
         configuration_store->write_param(ParamID::ARGOS_RADIOCONF, rconf);
     }
 
-    std::string lpm_standby = "0x0F";
-    if(!send_AT(AT_SET_LPM, lpm_standby))
-    {
-        DEBUG_ERROR("KIM2Device::state_init: can not set LPM");
-        KIM2_STATE_CHANGE(init, error);
-        return;
-    }
-    DEBUG_TRACE("KIM2Device::state_init LPM=standby set");
     KIM2_STATE_CHANGE(init, idle);
 }
 
@@ -671,10 +768,11 @@ void KIM2Device::state_transmit_enter()
     DEBUG_INFO("KIM2Device::state_transmit_enter: mode=%u", static_cast<unsigned int>(m_tx_mode));
 
     // Auto-recovery: if the module's RCONF doesn't match the requested TX
-    // modulation, rewrite it before AT+TX. Otherwise KIM rejects with +ERROR=5
-    // (mode mismatch). Happens when ensure_modulation() wasn't called by the
-    // service or when state_init fell back to a default RCONF for a different
-    // mode than the caller wants.
+    // modulation, rewrite it before AT+TX. Otherwise KIM rejects the TX with
+    // +ERROR=5 (KNS_STATUS_BAD_LEN, per v0.8) because the payload length no
+    // longer matches the active modulation's allowed sizes. Happens when
+    // ensure_modulation() wasn't called by the service or when state_init
+    // fell back to a default RCONF for a different mode than the caller wants.
     if (m_tx_mode != m_current_rconf_mode) {
         DEBUG_WARN("KIM2Device::state_transmit_enter: TX mode %u != RCONF mode %u, realigning",
             static_cast<unsigned int>(m_tx_mode), static_cast<unsigned int>(m_current_rconf_mode));
@@ -687,13 +785,27 @@ void KIM2Device::state_transmit_enter()
             KIM2_STATE_CHANGE(transmit, error);
             return;
         }
-        if (!send_AT(AT_SET_RCONF, rconf) || !send_AT(AT_SAVE_RCONF) || !send_AT(AT_SET_KMAC_BASIC)) {
-            DEBUG_ERROR("KIM2Device::state_transmit_enter: RCONF realign failed — aborting TX");
+        if (!send_AT(AT_SET_RCONF, rconf)) {
+            DEBUG_ERROR("KIM2Device::state_transmit_enter: RCONF write failed — aborting TX");
             m_tx_buffer.clear();
             KIM2_STATE_CHANGE(transmit, error);
             return;
         }
-        m_last_saved_rconf = rconf;
+        PMU::delay_ms(KIM2_DELAY_AFTER_RCONF_MS);
+
+        // Diagnostic: log what the module decoded from the RCONF hex.
+        if (send_AT(AT_GET_RCONF)) {
+            DEBUG_INFO("KIM2Device::state_transmit_enter: module RCONF=%s",
+                m_kim2_comm.m_rconf_info.c_str());
+        }
+
+        if (!send_AT(AT_SET_KMAC_BASIC)) {
+            DEBUG_ERROR("KIM2Device::state_transmit_enter: KMAC reload failed — aborting TX");
+            m_tx_buffer.clear();
+            KIM2_STATE_CHANGE(transmit, error);
+            return;
+        }
+        PMU::delay_ms(KIM2_DELAY_AFTER_KMAC_MS);
         m_current_rconf_mode = m_tx_mode;
         DEBUG_INFO("KIM2Device::state_transmit_enter: RCONF realigned to mode %u",
             static_cast<unsigned int>(m_tx_mode));
@@ -701,7 +813,11 @@ void KIM2Device::state_transmit_enter()
 
     m_tx_done = false;
     m_is_error = false;
-    send_AT(AT_TX, m_tx_buffer);
+    DEBUG_INFO("KIM2Device::state_transmit_enter: AT+TX=%s (hex_len=%u bytes=%u)",
+        m_tx_buffer.c_str(),
+        static_cast<unsigned>(m_tx_buffer.size()),
+        static_cast<unsigned>(m_tx_buffer.size() / 2));
+    send_AT(AT_TX, m_tx_buffer, KIM2_TX_ACK_TIMEOUT_MS);
     notify(KineisEventTxStarted({}));
     initiate_timeout(KIM2_TX_TIMEOUT_MS);
 

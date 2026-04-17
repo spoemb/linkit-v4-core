@@ -57,9 +57,8 @@ static constexpr ATCmdEntry cmd_table[] = {
 	{ AT_GET_ID,         "AT+ID=?\r\n",       false },
 	{ AT_GET_ADDR,       "AT+ADDR=?\r\n",     false },
 	{ AT_SET_RCONF,      "AT+RCONF=",          true },
-	{ AT_SAVE_RCONF,     "AT+SAVE_RCONF\r\n", false },
+	{ AT_GET_RCONF,      "AT+RCONF=?\r\n",    false },
 	{ AT_SET_KMAC_BASIC, "AT+KMAC=1\r\n",     false },
-	{ AT_SET_LPM,        "AT+LPM=",            true },
 	{ AT_TX,             "AT+TX=",              true },
 };
 
@@ -120,6 +119,10 @@ void KIM2Comm::on_rx_line(std::string& line)
 		return;
 	}
 
+	// Diagnostic: trace every line received from the module so we can see
+	// +OK / +RCONF= / +ERROR= / +TX= etc. during debugging.
+	DEBUG_INFO("KIM2 RX: %s", line.c_str());
+
 	RespType msg = parse_rx_line_protocol(line);
 
 	if (msg == RESP_OK) {
@@ -149,11 +152,12 @@ KIM2::RespType KIM2Comm::parse_rx_line_protocol(const std::string& line)
 	if (line.empty() || line[0] != SYNC_CHAR)
 		return RESP_UNKNOWN;
 
-	size_t ok_len   = strlen(OK_RESPONSE);
-	size_t id_len   = strlen(ID_RESPONSE);
-	size_t addr_len = strlen(ADDR_RESPONSE);
-	size_t tx_len   = strlen(TX_RESPONSE);
-	size_t err_len  = strlen(ERR_RESPONSE);
+	size_t ok_len    = strlen(OK_RESPONSE);
+	size_t id_len    = strlen(ID_RESPONSE);
+	size_t addr_len  = strlen(ADDR_RESPONSE);
+	size_t rconf_len = strlen(RCONF_RESPONSE);
+	size_t tx_len    = strlen(TX_RESPONSE);
+	size_t err_len   = strlen(ERR_RESPONSE);
 
 	// +OK
 	if (line.compare(0, ok_len, OK_RESPONSE) == 0 && line.size() == ok_len)
@@ -176,6 +180,13 @@ KIM2::RespType KIM2Comm::parse_rx_line_protocol(const std::string& line)
 		char *end = nullptr;
 		unsigned long addr_val = strtoul(ascii_addr, &end, 16);
 		m_hex_addr = (end != ascii_addr) ? static_cast<unsigned int>(addr_val) : 0;
+		return RESP_CONFIG;
+	}
+
+	// +RCONF=<freq_min>,<freq_max>,<mod_type>,<rf_level>
+	// Store the payload portion for diagnostics (e.g. verify mod_type).
+	if (line.compare(0, rconf_len, RCONF_RESPONSE) == 0) {
+		m_rconf_info = line.substr(rconf_len);
 		return RESP_CONFIG;
 	}
 
