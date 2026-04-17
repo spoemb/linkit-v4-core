@@ -559,28 +559,15 @@ void KIM2Device::state_init()
     // When adaptive modulation is ON, use the per-modulation RCONF matching
     // m_current_rconf_mode (set by switch_modulation() while device was OFF).
     // When adaptive is OFF, use the master RCONF entered by the user.
-    std::string rconf;
     bool adaptive = configuration_store->read_param<bool>(ParamID::ARGOS_ADAPTIVE_MODULATION);
+    std::string rconf = load_rconf_for_mode(m_current_rconf_mode);
     if (adaptive) {
-        switch (m_current_rconf_mode) {
-            case KineisModulation::LDK:
-                rconf = configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF_LDK);
-                break;
-            case KineisModulation::VLDA4:
-                rconf = configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF_VLDA4);
-                break;
-            case KineisModulation::LDA2:
-            default:
-                rconf = configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF_LDA2);
-                break;
-        }
         DEBUG_INFO("KIM2Device::state_init: adaptive ON, using RCONF for mode %d", static_cast<int>(m_current_rconf_mode));
-    } else {
-        rconf = configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF);
     }
     if (rconf.empty()) {
         rconf = "03921fb104b92859209b18abd009de96"; // Default: ESS4 - LDK - 27dBm
-        DEBUG_WARN("KIM2Device::state_init: RCONF empty, using default");
+        m_current_rconf_mode = KineisModulation::LDK; // default matches LDK
+        DEBUG_WARN("KIM2Device::state_init: RCONF empty, using default LDK fallback");
     }
 
     if (rconf != m_last_saved_rconf) {
@@ -683,9 +670,33 @@ void KIM2Device::state_transmit_enter()
 {
     DEBUG_INFO("KIM2Device::state_transmit_enter: mode=%u", static_cast<unsigned int>(m_tx_mode));
 
+    // Auto-recovery: if the module's RCONF doesn't match the requested TX
+    // modulation, rewrite it before AT+TX. Otherwise KIM rejects with +ERROR=5
+    // (mode mismatch). Happens when ensure_modulation() wasn't called by the
+    // service or when state_init fell back to a default RCONF for a different
+    // mode than the caller wants.
     if (m_tx_mode != m_current_rconf_mode) {
-        DEBUG_WARN("KIM2Device::state_transmit_enter: TX mode %u != RCONF mode %u",
+        DEBUG_WARN("KIM2Device::state_transmit_enter: TX mode %u != RCONF mode %u, realigning",
             static_cast<unsigned int>(m_tx_mode), static_cast<unsigned int>(m_current_rconf_mode));
+
+        std::string rconf = load_rconf_for_mode(m_tx_mode);
+        if (rconf.size() != 32) {
+            DEBUG_ERROR("KIM2Device::state_transmit_enter: no valid RCONF for mode %u (len=%u) — aborting TX",
+                static_cast<unsigned int>(m_tx_mode), static_cast<unsigned int>(rconf.size()));
+            m_tx_buffer.clear();
+            KIM2_STATE_CHANGE(transmit, error);
+            return;
+        }
+        if (!send_AT(AT_SET_RCONF, rconf) || !send_AT(AT_SAVE_RCONF) || !send_AT(AT_SET_KMAC_BASIC)) {
+            DEBUG_ERROR("KIM2Device::state_transmit_enter: RCONF realign failed — aborting TX");
+            m_tx_buffer.clear();
+            KIM2_STATE_CHANGE(transmit, error);
+            return;
+        }
+        m_last_saved_rconf = rconf;
+        m_current_rconf_mode = m_tx_mode;
+        DEBUG_INFO("KIM2Device::state_transmit_enter: RCONF realigned to mode %u",
+            static_cast<unsigned int>(m_tx_mode));
     }
 
     m_tx_done = false;
@@ -761,4 +772,25 @@ void KIM2Device::state_error()
 void KIM2Device::state_error_exit()
 {
     ;
+}
+
+// ============================================================================
+// Internal helpers
+// ============================================================================
+
+std::string KIM2Device::load_rconf_for_mode(KineisModulation mode)
+{
+    bool adaptive = configuration_store->read_param<bool>(ParamID::ARGOS_ADAPTIVE_MODULATION);
+    if (!adaptive) {
+        return configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF);
+    }
+    switch (mode) {
+        case KineisModulation::LDK:
+            return configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF_LDK);
+        case KineisModulation::VLDA4:
+            return configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF_VLDA4);
+        case KineisModulation::LDA2:
+        default:
+            return configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF_LDA2);
+    }
 }

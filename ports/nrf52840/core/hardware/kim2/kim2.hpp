@@ -144,5 +144,11 @@ private:
 	void cancel_timeout();                              ///< Cancel pending AT response timeout
 	void initiate_timeout(unsigned int timeout_ms = 1000); ///< Schedule AT response timeout
 	void on_timeout();                                   ///< Timeout handler — sets m_is_error
+
+	/// @brief Read the RCONF configured for a modulation from ConfigStore.
+	/// @note  Honors ARGOS_ADAPTIVE_MODULATION: when ON, reads per-mode RCONF
+	///        (ARGOS_RADIOCONF_LDK / _LDA2 / _VLDA4); when OFF, reads the master
+	///        ARGOS_RADIOCONF. Returns empty if nothing is configured.
+	std::string load_rconf_for_mode(KineisModulation mode);
 	/// @}
 };

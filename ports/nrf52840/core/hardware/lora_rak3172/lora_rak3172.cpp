@@ -343,13 +343,11 @@ void LoRaDevice::state_power_on()
 
     DEBUG_INFO("LoRaDevice::state_power_on retry=%u", m_power_on_retry);
 
-    // Send a wakeup byte before AT ping — RAK3172 in STOP2 (LPM) needs
-    // UART activity to wake up. The first byte is consumed by the wakeup
-    // and not processed as data, so we send a dummy 0xFF + short delay.
-    if (m_power_on_retry == 1 || m_power_on_retry == 4) {
-        m_lora_comm.send_raw_data((const uint8_t *)"\xff", 1);
-        PMU::delay_ms(50);
-    }
+    // DIAG (Hyp #1): 0xFF STOP2-wakeup byte temporarily disabled. On a cold
+    // boot the module is not in LPM and the 0xFF gets concatenated with
+    // "AT\r\n" → invalid command → AT ping fails. If we need to wake from
+    // STOP2 in the future, gate this on a flag set only when entering
+    // state_standby.
 
     // Try AT ping
     if (send_AT(AT_TEST))
