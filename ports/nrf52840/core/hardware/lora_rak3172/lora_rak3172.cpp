@@ -122,8 +122,20 @@ void LoRaDevice::send(const KineisModulation mode, const KineisPacket& user_payl
         return;
     }
 
-    // Convert binary payload to hex string
+    // Defense in depth: reject oversized payloads before handing to the module.
+    // Service layer should already clamp to LoRaPayloadLimits::max_payload_for_dr,
+    // but a stale config cache or programming error must not be able to wedge the
+    // module with an AT_PARAM_ERROR that falls through the error retry path.
     unsigned int payload_bytes = (payload_length + 7) / 8;
+    static constexpr unsigned int dr_limits[] = { 51, 51, 51, 115, 222, 222 };
+    unsigned int max_bytes = (m_config.dr < 6) ? dr_limits[m_config.dr] : dr_limits[0];
+    if (payload_bytes > max_bytes) {
+        DEBUG_ERROR("LoRaDevice::send: payload %u bytes > DR%u limit %u — rejecting",
+                    payload_bytes, m_config.dr, max_bytes);
+        notify(KineisEventDeviceError({}));
+        return;
+    }
+
     KineisPacket packet(user_payload.begin(), user_payload.begin() + payload_bytes);
     m_packet_buffer = Binascii::hexlify(packet);
 
@@ -324,7 +336,7 @@ void LoRaDevice::state_power_on_enter()
 {
     GPIOPins::set(SAT_PWR_EN);
     GPIOPins::set(SAT_EXTWAKEUP);
-    m_lora_comm.init();
+    m_lora_comm.init();  // RAK3172 RUI3 factory default 115200 8N1
     m_lora_comm.subscribe(*this);
     m_joined = false;
     m_join_failed = false;
@@ -341,13 +353,13 @@ void LoRaDevice::state_power_on()
         return;
     }
 
-    DEBUG_INFO("LoRaDevice::state_power_on retry=%u", m_power_on_retry);
+    // Drain boot banner / noise before the first AT ping. The RAK3172 prints a
+    // welcome banner at power-on which would otherwise trigger a spurious
+    // framing error and confuse the next send_AT's polling loop.
+    if (m_power_on_retry == 1)
+        m_lora_comm.process_rx();
 
-    // DIAG (Hyp #1): 0xFF STOP2-wakeup byte temporarily disabled. On a cold
-    // boot the module is not in LPM and the 0xFF gets concatenated with
-    // "AT\r\n" → invalid command → AT ping fails. If we need to wake from
-    // STOP2 in the future, gate this on a flag set only when entering
-    // state_standby.
+    DEBUG_INFO("LoRaDevice::state_power_on retry=%u", m_power_on_retry);
 
     // Try AT ping
     if (send_AT(AT_TEST))
@@ -363,7 +375,7 @@ void LoRaDevice::state_power_on()
         return;
     }
 
-    DEBUG_ERROR("LoRaDevice: AT ping failed after 3 attempts");
+    DEBUG_ERROR("LoRaDevice: AT ping failed after %u attempts — check wiring/module", m_power_on_retry);
     LORA_STATE_CHANGE(power_on, error);
 }
 
@@ -417,9 +429,13 @@ void LoRaDevice::state_configure()
                 break;
             }
             DEBUG_INFO("LoRaDevice: setting NWM=1 (module will reboot)");
-            m_lora_comm.send(AT_SET_NWM, "1");
+            if (!m_lora_comm.send(AT_SET_NWM, "1")) {
+                DEBUG_ERROR("LoRaDevice: failed to issue AT+NWM=1 (UART busy/deinit)");
+                at_error = true;
+                break;
+            }
             m_nwm_reboot_pending = true;
-            run_state_machine(3000);
+            run_state_machine(3000);  // Wait for module autoreboot after NWM change
             return;
         }
 

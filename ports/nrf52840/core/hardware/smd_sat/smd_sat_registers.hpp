@@ -320,7 +320,7 @@ struct SmdDfuInfo {
 //   LDK:   402895000-402990000, 27dBm, max payload 16 bytes
 #define SMDSAT_DEFAULT_RCONF_LDK    "03921fb104b92859209b18abd009de96"
 //   VLDA4: 401625000-401635000, 27dBm, max payload 3 bytes
-#define SMDSAT_DEFAULT_RCONF_VLDA4  "82d07f9d9ce081ee4492983672d75493"
+#define SMDSAT_DEFAULT_RCONF_VLDA4  "550b4bec21009c7a7b5bebaa937cdb41"
 
 // Local helper type for SPI data transfers
 struct smd_uint8_array_t {

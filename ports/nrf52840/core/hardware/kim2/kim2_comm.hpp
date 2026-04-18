@@ -62,6 +62,23 @@ static constexpr const char *ERR_RESPONSE  = "+ERROR=";
 static constexpr uint8_t ID_SIZE   = 6;   ///< Decimal ID string length
 static constexpr uint8_t ADDR_SIZE = 8;   ///< Hex address string length
 
+/// @brief Decoded payload of an AT+RCONF=? response.
+/// Format per KIM2 Integration Manual v0.8:
+///   +RCONF=<min_freq_Hz>,<max_freq_Hz>,<rf_level_dBm>,<modulation_name>
+/// where modulation_name is one of: LDA2, LDA2L, VLDA4, HDA4, LDK, UNKNOWN.
+struct RConfDecoded {
+	bool         valid        = false;  ///< True if all 4 fields parsed successfully
+	unsigned int min_freq_hz  = 0;
+	unsigned int max_freq_hz  = 0;
+	int          rf_level_dbm = 0;
+	std::string  modulation;            ///< Upper-case modulation name from the module
+};
+
+/// @brief Parse the trailing payload of a "+RCONF=..." response into its 4 fields.
+/// @param info  Payload portion (already stripped of the "+RCONF=" prefix).
+/// @return Decoded struct. On parse failure, RConfDecoded::valid is false.
+RConfDecoded parse_rconf_info(const std::string& info);
+
 } // namespace KIM2
 
 /// @name KIM2 communication events

@@ -1408,7 +1408,7 @@ TEST(ArgosTxService, SurfacingBurstAdaptiveModulationPreSwitch)
 	fake_config_store->write_param(ParamID::SURFACING_BURST_STEP_S, 5U);
 	fake_config_store->write_param(ParamID::SURFACING_BURST_MAX_S, 60U);
 	fake_config_store->write_param(ParamID::ARGOS_ADAPTIVE_MODULATION, (bool)true);
-	fake_config_store->write_param(ParamID::ARGOS_RADIOCONF_VLDA4, std::string("82d07f9d9ce081ee4492983672d75493"));
+	fake_config_store->write_param(ParamID::ARGOS_RADIOCONF_VLDA4, std::string("550b4bec21009c7a7b5bebaa937cdb41"));
 	fake_config_store->write_param(ParamID::ARGOS_RADIOCONF_LDK, std::string("03921fb104b92859209b18abd009de96"));
 
 	ArgosTxService serv(*mock_kineis);
@@ -1436,7 +1436,7 @@ TEST(ArgosTxService, SurfacingBurstAdaptiveModulationPreSwitch)
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
 	mock().expectOneCall("switch_modulation").onObject(mock_kineis)
 		.withUnsignedIntParameter("mode", (unsigned int)KineisModulation::VLDA4)
-		.withStringParameter("rconf", "82d07f9d9ce081ee4492983672d75493");
+		.withStringParameter("rconf", "550b4bec21009c7a7b5bebaa937cdb41");
 	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::VLDA4).
 			withUnsignedIntParameter("size_bits", 24);
 	system_scheduler->run();
@@ -1462,7 +1462,7 @@ TEST(ArgosTxService, SurfacingBurstAdaptiveModulationPreSwitch)
 	// TX complete → should pre-switch back to VLDA4
 	mock().expectOneCall("switch_modulation").onObject(mock_kineis)
 		.withUnsignedIntParameter("mode", (unsigned int)KineisModulation::VLDA4)
-		.withStringParameter("rconf", "82d07f9d9ce081ee4492983672d75493");
+		.withStringParameter("rconf", "550b4bec21009c7a7b5bebaa937cdb41");
 	mock_kineis->notify(KineisEventTxComplete({}));
 
 	// Verify device is back to VLDA4

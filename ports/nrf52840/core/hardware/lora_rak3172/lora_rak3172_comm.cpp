@@ -22,10 +22,10 @@ LoRaComm::LoRaComm(unsigned int instance)
 {
 }
 
-void LoRaComm::init()
+void LoRaComm::init(uint32_t baudrate_override)
 {
     m_last_value.reserve(64);
-    NrfUartAsync::init(NRF_UARTE_BAUDRATE_115200);
+    NrfUartAsync::init(baudrate_override);
 }
 
 void LoRaComm::deinit()

@@ -1396,7 +1396,7 @@ TEST(ConfigStore, CredentialsDirtyResetOnRadioconfWrite)
 	CHECK_FALSE(store->is_credentials_dirty());
 
 	// Writing ARGOS_RADIOCONF should re-set the dirty flag
-	std::string rconf = "82d07f9d9ce081ee4492983672d75493"s;
+	std::string rconf = "550b4bec21009c7a7b5bebaa937cdb41"s;
 	store->write_param(ParamID::ARGOS_RADIOCONF, rconf);
 	CHECK_TRUE(store->is_credentials_dirty());
 }

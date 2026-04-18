@@ -122,14 +122,32 @@ bool NrfUartAsync::send_raw(const uint8_t* data, size_t len)
     if (!m_is_init || len == 0)
         return false;
 
+    // DMA TX is async: the peripheral keeps reading from the buffer after this
+    // returns. The caller typically passes a stack buffer, so we copy into
+    // m_tx_buffer which is held until TX_DONE clears m_is_send_busy.
+    if (m_is_send_busy) {
+        DEBUG_ERROR("NrfUartAsync::send_raw: UART%u already busy", m_uart_instance);
+        return false;
+    }
+
     if (!m_is_rx_started) {
         nrf_libuarte_async_start_rx(BSP::UARTAsync_Inits[m_uart_instance].uart);
         m_is_rx_started = true;
     }
 
+    m_tx_buffer.assign(reinterpret_cast<const char*>(data), len);
+    m_is_send_busy = true;
+
     ret_code_t ret = nrf_libuarte_async_tx(
         BSP::UARTAsync_Inits[m_uart_instance].uart,
-        const_cast<uint8_t*>(data), len);
+        reinterpret_cast<uint8_t*>(m_tx_buffer.data()),
+        m_tx_buffer.length());
+
+    if (ret != NRF_SUCCESS) {
+        m_is_send_busy = false;
+        DEBUG_ERROR("NrfUartAsync::send_raw: UART%u TX failed (0x%08X)",
+                    m_uart_instance, static_cast<unsigned>(ret));
+    }
     return (ret == NRF_SUCCESS);
 }
 

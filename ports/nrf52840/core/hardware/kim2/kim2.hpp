@@ -53,6 +53,12 @@ public:
 	bool bridge_send(const uint8_t* data, size_t len);
 	void bridge_process_rx();  // Call periodically to pump UART RX
 
+	/// @brief VLDA4 regulatory gate — KIM2 only accepts VLDA4 at 27 dBm.
+	/// Set false by state_init / switch_modulation when the module reports
+	/// VLDA4 at a different rf_level. While false, any VLDA4 TX or switch is
+	/// rejected to prevent out-of-spec emissions. Reset to true on each boot.
+	bool is_vlda4_allowed() const { return m_vlda4_allowed; }
+
 private:
 	/// @brief KIM2 state machine states.
 	enum KIM2ManagerState {
@@ -78,6 +84,11 @@ private:
 
 	/// @brief Bridge mode active flag — pauses state machine, routes raw UART.
 	bool m_bridge_active = false;
+
+	/// @brief VLDA4 regulatory gate (see is_vlda4_allowed()). Reset to true at
+	///        every state_init entry so a newly uploaded compliant RCONF is
+	///        re-tried on the next boot instead of being latched off forever.
+	bool m_vlda4_allowed = true;
 
 	/// @name TX state
 	/// @{
@@ -158,5 +169,19 @@ private:
 	///        (ARGOS_RADIOCONF_LDK / _LDA2 / _VLDA4); when OFF, reads the master
 	///        ARGOS_RADIOCONF. Returns empty if nothing is configured.
 	std::string load_rconf_for_mode(KineisModulation mode);
+
+	/// @brief Write @p rconf_hex, read back via AT+RCONF=?, then enforce the
+	///        KIM2 regulatory constraint: VLDA4 is only allowed at 27 dBm.
+	///        Updates @c m_vlda4_allowed. Module must already be powered on
+	///        and UART subscribed.
+	/// @param rconf_hex       32-char hex RCONF to program.
+	/// @param expected_mode   Modulation the caller thinks this RCONF encodes.
+	///                        Used for diagnostic logging only.
+	/// @param out_decoded     Optional: receives the decoded +RCONF= fields.
+	/// @return true if RCONF applied and (when VLDA4) at 27 dBm. False on AT
+	///         failure or VLDA4-at-wrong-power (caller must fall back).
+	bool write_and_validate_rconf(const std::string& rconf_hex,
+	                              KineisModulation expected_mode,
+	                              KIM2::RConfDecoded* out_decoded = nullptr);
 	/// @}
 };

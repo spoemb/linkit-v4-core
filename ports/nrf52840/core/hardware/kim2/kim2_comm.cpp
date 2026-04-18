@@ -8,9 +8,54 @@
 
 #include "kim2_comm.hpp"
 #include "debug.hpp"
+#include <cstdlib>
 #include <cstring>
 
 using namespace KIM2;
+
+// ============================================================================
+// RCONF response parser (namespace-scope helper — reusable by KIM2Device)
+// ============================================================================
+
+KIM2::RConfDecoded KIM2::parse_rconf_info(const std::string& info)
+{
+	// Expected: "<min_freq>,<max_freq>,<rf_level>,<modulation>"
+	// e.g. "401625000,401635000,27,VLDA4"
+	RConfDecoded out;
+
+	const size_t c1 = info.find(',');
+	if (c1 == std::string::npos) return out;
+	const size_t c2 = info.find(',', c1 + 1);
+	if (c2 == std::string::npos) return out;
+	const size_t c3 = info.find(',', c2 + 1);
+	if (c3 == std::string::npos) return out;
+
+	char* end = nullptr;
+	const std::string s_min = info.substr(0, c1);
+	const std::string s_max = info.substr(c1 + 1, c2 - c1 - 1);
+	const std::string s_rf  = info.substr(c2 + 1, c3 - c2 - 1);
+	const std::string s_mod = info.substr(c3 + 1);
+
+	const unsigned long min_hz = strtoul(s_min.c_str(), &end, 10);
+	if (end == s_min.c_str()) return out;
+	const unsigned long max_hz = strtoul(s_max.c_str(), &end, 10);
+	if (end == s_max.c_str()) return out;
+	const long rf = strtol(s_rf.c_str(), &end, 10);
+	if (end == s_rf.c_str()) return out;
+
+	out.min_freq_hz  = static_cast<unsigned int>(min_hz);
+	out.max_freq_hz  = static_cast<unsigned int>(max_hz);
+	out.rf_level_dbm = static_cast<int>(rf);
+	out.modulation   = s_mod;
+	// Strip any trailing whitespace/CR left over (base class should have stripped CRLF)
+	while (!out.modulation.empty() &&
+	       (out.modulation.back() == '\r' || out.modulation.back() == '\n' ||
+	        out.modulation.back() == ' '  || out.modulation.back() == '\t')) {
+		out.modulation.pop_back();
+	}
+	out.valid = !out.modulation.empty();
+	return out;
+}
 
 // ============================================================================
 // Constructor / Init / Deinit — delegate to NrfUartAsync
@@ -121,7 +166,7 @@ void KIM2Comm::on_rx_line(std::string& line)
 
 	// Diagnostic: trace every line received from the module so we can see
 	// +OK / +RCONF= / +ERROR= / +TX= etc. during debugging.
-	DEBUG_INFO("KIM2 RX: %s", line.c_str());
+	DEBUG_TRACE("KIM2 RX: %s", line.c_str());
 
 	RespType msg = parse_rx_line_protocol(line);
 

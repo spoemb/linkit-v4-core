@@ -13,6 +13,7 @@
 #include "bitpack.hpp"
 #include "binascii.hpp"
 #include "config_store.hpp"
+#include "ledsm.hpp"
 #include <cstdint>
 #include <string>
 
@@ -39,6 +40,12 @@ static constexpr uint16_t KIM2_DELAY_AFTER_RCONF_MS = 80;
 ///        to reject the frame (observed as +ERROR=5 / KNS_STATUS_BAD_LEN).
 ///        SMD uses 200 ms here; same value reused for KIM2.
 static constexpr uint16_t KIM2_DELAY_AFTER_KMAC_MS  = 200;
+/// @brief Regulatory power level required by the KIM2 module for VLDA4 TX.
+///        The default stored VLDA4 RCONF encodes 22 dBm, which is not
+///        permitted — a compliant RCONF must be programmed at 27 dBm.
+static constexpr int      KIM2_VLDA4_REQUIRED_DBM   = 27;
+/// @brief Modulation name reported by +RCONF= for VLDA4 (KIM2 firmware string).
+static constexpr const char *KIM2_MOD_NAME_VLDA4 = "VLDA4";
 /// @brief Timeout for the synchronous +OK ACK of AT+TX. The KIM2 firmware
 ///        can take up to ~3 s to emit +OK (even though the +TX=<status>
 ///        completion arrives later via the async path). The 1 s default is
@@ -181,6 +188,16 @@ void KIM2Device::send(const KineisModulation mode, const KineisPacket& user_payl
         return;
     }
 
+    // Regulatory gate: VLDA4 was observed decoded at != 27 dBm on a previous
+    // probe. Refuse to TX at a non-compliant power level. Caller (argos_tx_service)
+    // should have already fallen back to LDK/LDA2 via ensure_modulation().
+    if (mode == KineisModulation::VLDA4 && !m_vlda4_allowed) {
+        DEBUG_ERROR("KIM2Device::send: VLDA4 disabled on this unit — required %d dBm not met",
+                    KIM2_VLDA4_REQUIRED_DBM);
+        notify(KineisEventDeviceError({}));
+        return;
+    }
+
     KineisPacket packet;
     uint16_t total_bits;
     uint16_t modulo;
@@ -284,10 +301,13 @@ void KIM2Device::set_tcxo_warmup_time(unsigned int ms)
 // Runtime modulation switching
 // ============================================================================
 
-/// @brief Runtime modulation switch: write RCONF then reload KMAC.
+/// @brief Runtime modulation switch: write RCONF, validate, then reload KMAC.
 /// @param mode       Target modulation.
 /// @param rconf_hex  32-char hex RCONF string for the target modulation.
-/// @return true on success, false on AT command failure.
+/// @return true on success, false on AT failure or VLDA4 gated off.
+/// @note Programming a VLDA4 RCONF at != 27 dBm is rejected here — the flag
+///       @c m_vlda4_allowed is cleared and the KMAC reload is skipped so the
+///       module is not left in a non-compliant armed state.
 bool KIM2Device::switch_modulation(KineisModulation mode, const std::string& rconf_hex) {
     if (mode == m_current_rconf_mode) {
         DEBUG_TRACE("KIM2Device::%s: already in target modulation %d", __func__, static_cast<int>(mode));
@@ -301,6 +321,14 @@ bool KIM2Device::switch_modulation(KineisModulation mode, const std::string& rco
         return false;
     }
 
+    // Regulatory gate: a previous probe already flagged VLDA4 as non-compliant.
+    // Refuse without ever touching the RF config so the module stays on the
+    // current (compliant) modulation.
+    if (mode == KineisModulation::VLDA4 && !m_vlda4_allowed) {
+        DEBUG_WARN("KIM2Device::%s: VLDA4 gated off (non-27dBm) — refusing switch", __func__);
+        return false;
+    }
+
     // If device is powered off, just store the target mode.
     // state_init() will write the correct RCONF at next power-on.
     if (m_state == KIM2ManagerState::power_off) {
@@ -309,11 +337,12 @@ bool KIM2Device::switch_modulation(KineisModulation mode, const std::string& rco
         return true;
     }
 
-    if (!send_AT(AT_SET_RCONF, rconf_hex)) {
-        DEBUG_ERROR("KIM2Device::%s: failed to set RCONF", __func__);
+    // Write RCONF + read back, enforcing the VLDA4-at-27dBm rule. On rejection
+    // m_vlda4_allowed is cleared and we bail out before KMAC is reloaded.
+    if (!write_and_validate_rconf(rconf_hex, mode)) {
+        DEBUG_ERROR("KIM2Device::%s: RCONF rejected (mode=%d)", __func__, static_cast<int>(mode));
         return false;
     }
-    PMU::delay_ms(KIM2_DELAY_AFTER_RCONF_MS);
 
     if (!send_AT(AT_SET_KMAC_BASIC)) {
         DEBUG_ERROR("KIM2Device::%s: failed to reload KMAC", __func__);
@@ -402,6 +431,18 @@ void KIM2Device::read_credentials(unsigned int *dec_id, unsigned int *address,
 
     if (send_AT(AT_GET_RCONF)) {
         if (radioconf) *radioconf = m_kim2_comm.m_rconf_info;
+
+        // SATVF-time regulatory check: if the module currently reports VLDA4
+        // at anything other than 27 dBm, update the gate so subsequent TX /
+        // switch_modulation calls refuse to emit on non-compliant power.
+        KIM2::RConfDecoded decoded = KIM2::parse_rconf_info(m_kim2_comm.m_rconf_info);
+        if (decoded.valid &&
+            decoded.modulation == KIM2_MOD_NAME_VLDA4 &&
+            decoded.rf_level_dbm != KIM2_VLDA4_REQUIRED_DBM) {
+            DEBUG_WARN("KIM2Device::read_credentials: VLDA4 at %d dBm (required %d) — gating VLDA4 off",
+                       decoded.rf_level_dbm, KIM2_VLDA4_REQUIRED_DBM);
+            m_vlda4_allowed = false;
+        }
     } else {
         DEBUG_WARN("KIM2Device::read_credentials: AT+RCONF=? failed");
     }
@@ -639,8 +680,16 @@ void KIM2Device::state_init_enter()
 ///       reapplied after every power-on (SAVE_RCONF is discouraged for
 ///       normal use). KMAC=1 (basic MAC profile) must be set after RCONF
 ///       and before any AT+TX.
+/// @note Regulatory gate: VLDA4 is only permitted at 27 dBm on KIM2. If the
+///       decoded RCONF reports VLDA4 at a lower level, we fall back to
+///       LDK → LDA2 (adaptive and non-adaptive both), trigger a red error
+///       LED, and refuse to enter idle when no compliant fallback exists.
 void KIM2Device::state_init()
 {
+    // Fresh session: re-enable VLDA4 so a newly uploaded compliant RCONF is
+    // re-probed on this boot instead of staying latched off from a prior boot.
+    m_vlda4_allowed = true;
+
     // Read credentials from module if not already known
     if(m_kim2_comm.m_kineis_id == 0 && m_kim2_comm.m_hex_addr == 0)
     {
@@ -668,30 +717,56 @@ void KIM2Device::state_init()
     // m_current_rconf_mode (set by switch_modulation() while device was OFF).
     // When adaptive is OFF, use the master RCONF entered by the user.
     bool adaptive = configuration_store->read_param<bool>(ParamID::ARGOS_ADAPTIVE_MODULATION);
-    std::string rconf = load_rconf_for_mode(m_current_rconf_mode);
+    KineisModulation target_mode = m_current_rconf_mode;
+    std::string rconf = load_rconf_for_mode(target_mode);
     if (adaptive) {
-        DEBUG_INFO("KIM2Device::state_init: adaptive ON, using RCONF for mode %d", static_cast<int>(m_current_rconf_mode));
+        DEBUG_INFO("KIM2Device::state_init: adaptive ON, using RCONF for mode %d", static_cast<int>(target_mode));
     }
     if (rconf.empty()) {
         rconf = "03921fb104b92859209b18abd009de96"; // Default: ESS4 - LDK - 27dBm
-        m_current_rconf_mode = KineisModulation::LDK; // default matches LDK
+        target_mode = KineisModulation::LDK;         // default matches LDK
+        m_current_rconf_mode = target_mode;
         DEBUG_WARN("KIM2Device::state_init: RCONF empty, using default LDK fallback");
     }
 
-    if(!send_AT(AT_SET_RCONF, rconf))
-    {
-        DEBUG_ERROR("KIM2Device::state_init: can not set RCONF");
-        KIM2_STATE_CHANGE(init, error);
-        return;
-    }
-    PMU::delay_ms(KIM2_DELAY_AFTER_RCONF_MS);
+    // Program + validate. Returns false on AT error OR on VLDA4-not-27dBm
+    // rejection (in which case m_vlda4_allowed is now false).
+    if (!write_and_validate_rconf(rconf, target_mode)) {
+        // Try to recover before giving up: if the user configured a compliant
+        // non-VLDA4 fallback (LDK or LDA2, in that order), program it instead
+        // and red-blink so the failure is visible. Applies to both adaptive
+        // and non-adaptive — in adaptive mode VLDA4 is simply dropped from
+        // the rotation for this session.
+        DEBUG_WARN("KIM2Device::state_init: primary RCONF rejected — attempting fallback");
+        LEDState::dispatch<SetLEDError>({});
 
-    // Diagnostic: query what the module actually stored (freq_min,freq_max,mod_type,rf_level).
-    // Useful to confirm the encrypted RCONF decoded to the expected modulation.
-    if (send_AT(AT_GET_RCONF)) {
-        DEBUG_INFO("KIM2Device::state_init: module RCONF=%s", m_kim2_comm.m_rconf_info.c_str());
-    } else {
-        DEBUG_WARN("KIM2Device::state_init: AT+RCONF=? query failed");
+        const KineisModulation fallback_chain[] = {
+            KineisModulation::LDK,
+            KineisModulation::LDA2,
+        };
+        bool recovered = false;
+        for (auto fb : fallback_chain) {
+            if (fb == target_mode) continue;  // already tried
+            std::string fb_rconf = load_rconf_for_mode(fb);
+            if (fb_rconf.size() != 32) {
+                DEBUG_WARN("KIM2Device::state_init: no stored RCONF for fallback mode %d", static_cast<int>(fb));
+                continue;
+            }
+            if (write_and_validate_rconf(fb_rconf, fb)) {
+                target_mode = fb;
+                rconf = fb_rconf;
+                m_current_rconf_mode = fb;
+                DEBUG_INFO("KIM2Device::state_init: fallback to mode %d OK", static_cast<int>(fb));
+                recovered = true;
+                break;
+            }
+        }
+
+        if (!recovered) {
+            DEBUG_ERROR("KIM2Device::state_init: no compliant RCONF available — entering error");
+            KIM2_STATE_CHANGE(init, error);
+            return;
+        }
     }
 
     if(!send_AT(AT_SET_KMAC_BASIC))
@@ -777,6 +852,15 @@ void KIM2Device::state_transmit_enter()
         DEBUG_WARN("KIM2Device::state_transmit_enter: TX mode %u != RCONF mode %u, realigning",
             static_cast<unsigned int>(m_tx_mode), static_cast<unsigned int>(m_current_rconf_mode));
 
+        // Regulatory gate: VLDA4 already probed off on this boot — never
+        // reprogram it even if a caller slipped through.
+        if (m_tx_mode == KineisModulation::VLDA4 && !m_vlda4_allowed) {
+            DEBUG_ERROR("KIM2Device::state_transmit_enter: VLDA4 gated off — aborting TX");
+            m_tx_buffer.clear();
+            KIM2_STATE_CHANGE(transmit, error);
+            return;
+        }
+
         std::string rconf = load_rconf_for_mode(m_tx_mode);
         if (rconf.size() != 32) {
             DEBUG_ERROR("KIM2Device::state_transmit_enter: no valid RCONF for mode %u (len=%u) — aborting TX",
@@ -785,18 +869,13 @@ void KIM2Device::state_transmit_enter()
             KIM2_STATE_CHANGE(transmit, error);
             return;
         }
-        if (!send_AT(AT_SET_RCONF, rconf)) {
-            DEBUG_ERROR("KIM2Device::state_transmit_enter: RCONF write failed — aborting TX");
+        // Write + read back + enforce VLDA4-at-27dBm. If this trips on VLDA4,
+        // m_vlda4_allowed is cleared so future switches are refused upstream.
+        if (!write_and_validate_rconf(rconf, m_tx_mode)) {
+            DEBUG_ERROR("KIM2Device::state_transmit_enter: RCONF rejected — aborting TX");
             m_tx_buffer.clear();
             KIM2_STATE_CHANGE(transmit, error);
             return;
-        }
-        PMU::delay_ms(KIM2_DELAY_AFTER_RCONF_MS);
-
-        // Diagnostic: log what the module decoded from the RCONF hex.
-        if (send_AT(AT_GET_RCONF)) {
-            DEBUG_INFO("KIM2Device::state_transmit_enter: module RCONF=%s",
-                m_kim2_comm.m_rconf_info.c_str());
         }
 
         if (!send_AT(AT_SET_KMAC_BASIC)) {
@@ -909,4 +988,65 @@ std::string KIM2Device::load_rconf_for_mode(KineisModulation mode)
         default:
             return configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF_LDA2);
     }
+}
+
+/// @brief Write RCONF to the module, then read it back and enforce the
+///        KIM2 VLDA4-at-27dBm regulatory constraint.
+/// @note Does NOT reload KMAC — that is the caller's responsibility once the
+///       RCONF is accepted. Skipping the KMAC reload on rejection keeps the
+///       radio MAC tied to the previously-compliant config.
+bool KIM2Device::write_and_validate_rconf(const std::string& rconf_hex,
+                                          KineisModulation expected_mode,
+                                          KIM2::RConfDecoded* out_decoded)
+{
+    if (rconf_hex.size() != 32) {
+        DEBUG_ERROR("KIM2Device::write_and_validate_rconf: invalid RCONF length %u",
+                    static_cast<unsigned>(rconf_hex.size()));
+        return false;
+    }
+
+    if (!send_AT(AT_SET_RCONF, rconf_hex)) {
+        DEBUG_ERROR("KIM2Device::write_and_validate_rconf: AT+RCONF= failed");
+        return false;
+    }
+    PMU::delay_ms(KIM2_DELAY_AFTER_RCONF_MS);
+
+    if (!send_AT(AT_GET_RCONF)) {
+        DEBUG_WARN("KIM2Device::write_and_validate_rconf: AT+RCONF=? failed — cannot verify compliance");
+        // Be conservative: without a read-back we cannot prove VLDA4 is at 27 dBm.
+        if (expected_mode == KineisModulation::VLDA4) {
+            m_vlda4_allowed = false;
+            return false;
+        }
+        return true;  // Non-VLDA4 path — accept even without verification
+    }
+
+    DEBUG_INFO("KIM2Device::write_and_validate_rconf: module RCONF=%s (expected mode=%d)",
+               m_kim2_comm.m_rconf_info.c_str(), static_cast<int>(expected_mode));
+
+    KIM2::RConfDecoded decoded = KIM2::parse_rconf_info(m_kim2_comm.m_rconf_info);
+    if (out_decoded) *out_decoded = decoded;
+
+    if (!decoded.valid) {
+        DEBUG_WARN("KIM2Device::write_and_validate_rconf: could not decode +RCONF= payload");
+        if (expected_mode == KineisModulation::VLDA4) {
+            m_vlda4_allowed = false;
+            return false;
+        }
+        return true;
+    }
+
+    // KIM2 rule: VLDA4 TX is only authorized at 27 dBm. If the module reports
+    // VLDA4 at any other power level, disable VLDA4 for the rest of this
+    // session. Upstream (ArgosTxService via ensure_modulation()) then sticks
+    // to LDK/LDA2 even if adaptive modulation is on.
+    if (decoded.modulation == KIM2_MOD_NAME_VLDA4 &&
+        decoded.rf_level_dbm != KIM2_VLDA4_REQUIRED_DBM) {
+        DEBUG_ERROR("KIM2Device::write_and_validate_rconf: VLDA4 rejected — rf_level=%d dBm (required %d dBm)",
+                    decoded.rf_level_dbm, KIM2_VLDA4_REQUIRED_DBM);
+        m_vlda4_allowed = false;
+        return false;
+    }
+
+    return true;
 }

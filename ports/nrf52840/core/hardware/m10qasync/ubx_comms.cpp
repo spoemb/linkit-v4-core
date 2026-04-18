@@ -86,9 +86,28 @@ bool UBXComms::send_raw(const uint8_t* data, size_t len)
     if (!m_is_init || len == 0)
         return false;
 
+    // DMA TX is async: the peripheral keeps reading from the buffer after this
+    // returns. The caller typically passes a stack buffer, so we must copy into
+    // m_tx_buffer and hold it until TX_DONE clears m_is_send_busy.
+    wait_tx_idle();
+
+    if (len > sizeof(m_tx_buffer)) {
+        DEBUG_ERROR("UBXComms::send_raw: too large len=%u max=%u",
+                    (unsigned int)len, (unsigned int)sizeof(m_tx_buffer));
+        return false;
+    }
+    std::memcpy(m_tx_buffer, data, len);
+    m_is_send_busy = true;
+    m_notify_sent = false;
+
     ret_code_t ret = nrf_libuarte_async_tx(BSP::UARTAsync_Inits[m_instance].uart,
-                                            const_cast<uint8_t*>(data), len);
-    return (ret == NRF_SUCCESS);
+                                            m_tx_buffer, len);
+    if (ret != NRF_SUCCESS) {
+        m_is_send_busy = false;
+        DEBUG_ERROR("UBXComms::send_raw: TX failed ret=0x%08x", (unsigned int)ret);
+        return false;
+    }
+    return true;
 }
 
 void UBXComms::set_passthrough(bool active, PassthroughCallback callback)

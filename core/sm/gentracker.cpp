@@ -455,6 +455,14 @@ void ConfigurationState::entry() {
 	restart_inactivity_timeout();
 
 #ifdef USB_DTE_ENABLED
+	// Default async writer → USB CDC. BLE overrides this on CONNECT
+	// (see on_ble_event CONNECTED). Restored on BLE DISCONNECTED.
+	// This lets bridges (GNSSBR/KIMBR/LORABR) started over USB route
+	// raw UART RX back to the USB host via the DTEHandler async_write.
+	dte_handler->set_async_write([](const std::string& msg) {
+		UsbInterface::get_instance().write(msg);
+	});
+
 	// Start USB DTE polling (runs in parallel with BLE)
 	DEBUG_TRACE("ConfigurationState: Starting DTE polling");
 	schedule_usb_poll();
@@ -521,6 +529,14 @@ int ConfigurationState::on_ble_event(BLEServiceEvent& event) {
 	case BLEServiceEventType::DISCONNECTED:
 		DEBUG_TRACE("ConfigurationState::on_ble_event: DISCONNECTED");
 		ota_updater->abort_file_transfer();
+#ifdef USB_DTE_ENABLED
+		// Restore USB writer so future DTE async responses / USB-started
+		// bridges route to USB. Note: any bridge still active that captured
+		// the (now stale) BLE writer will silently drop RX until stopped.
+		dte_handler->set_async_write([](const std::string& msg) {
+			UsbInterface::get_instance().write(msg);
+		});
+#endif
 		led_handle::dispatch<SetLEDConfigNotConnected>({});
 		break;
 	case BLEServiceEventType::DTE_DATA_RECEIVED:
@@ -584,6 +600,48 @@ void ConfigurationState::process_received_data() {
 
 	if (req.size())
 	{
+		// Bridge mode: forward raw BLE bytes straight to the UART, bypassing
+		// the DTE parser. Mirrors the USB bridge path in process_usb_data().
+		// BLE NUS RX is line-buffered (\r triggers flush), so AT-based modules
+		// (KIM2/LoRa) work cleanly; GNSS binary UBX over BLE is limited by
+		// this line buffering — host should prefer USB for u-center.
+		// Exit sequence: user sends "+++\r" over BLE.
+		auto bridge_forward = [&req, this](auto* device) -> bool {
+			if (!device || !device->is_bridge_active())
+				return false;
+
+			PMU::kick_watchdog();
+
+			// BLE read_line() keeps the trailing \r. Strip before inspection.
+			std::string line = req;
+			while (!line.empty() && (line.back() == '\r' || line.back() == '\n'))
+				line.pop_back();
+
+			if (line == "+++") {
+				device->stop_bridge();
+				ble_service->write("\r\n[BRIDGE OFF]\r\n");
+				return true;
+			}
+
+			// Re-append CRLF for AT framing (safe no-op for payloads that
+			// already end in it, since we stripped above).
+			std::string data = line + "\r\n";
+			device->bridge_send(reinterpret_cast<const uint8_t*>(data.c_str()),
+					data.size());
+			return true;
+		};
+
+		if (bridge_forward(gps_device))
+			return;
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+		if (bridge_forward(lora_device_instance))
+			return;
+#endif
+#if !(defined(LORA_RAK3172) && (LORA_RAK3172 == 1)) && !(defined(ARGOS_SMD) && (ARGOS_SMD == 1))
+		if (bridge_forward(kim2_device_instance))
+			return;
+#endif
+
 		DEBUG_TRACE("received %u bytes:", req.size());
 #if defined(DEBUG_ENABLE) && DEBUG_LEVEL >= 4
 		printf("%s\n", req.c_str());

@@ -157,8 +157,9 @@ public:
 
     LoRaComm(unsigned int libuarte_async_instance = 1);
 
-    /// @brief Init UART at 115200 baud (RAK3172 default).
-    void init();
+    /// @brief Init UART at the given baudrate (default 115200 = RAK3172 RUI3 factory).
+    /// @param baudrate_override NRF_UARTE_BAUDRATE_* value. 0 keeps BSP default.
+    void init(uint32_t baudrate_override = NRF_UARTE_BAUDRATE_115200);
 
     /// @brief Deinit UART.
     void deinit();
