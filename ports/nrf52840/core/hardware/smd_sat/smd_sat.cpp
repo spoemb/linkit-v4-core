@@ -1521,6 +1521,53 @@ SmdDfuResponse SmdSat::firmware_update_from_file(const std::string& filepath,
 	return DFU_RSP_ERROR;
 }
 
+bool SmdSat::cw_start(uint32_t freq_hz, uint16_t power_dbm, uint16_t duration_s) {
+	DEBUG_INFO("SmdSat::cw_start: %lu Hz, %u dBm, %u s",
+	           (unsigned long)freq_hz, power_dbm, duration_s);
+
+	bool was_stopped = (m_state == SmdSatState::stopped);
+	if (was_stopped) {
+		power_on_blocking();
+	}
+
+	uint8_t payload[9];
+	payload[0] = 0x01;  // mode = start
+	payload[1] = static_cast<uint8_t>(freq_hz & 0xFF);
+	payload[2] = static_cast<uint8_t>((freq_hz >> 8) & 0xFF);
+	payload[3] = static_cast<uint8_t>((freq_hz >> 16) & 0xFF);
+	payload[4] = static_cast<uint8_t>((freq_hz >> 24) & 0xFF);
+	payload[5] = static_cast<uint8_t>(power_dbm & 0xFF);
+	payload[6] = static_cast<uint8_t>((power_dbm >> 8) & 0xFF);
+	size_t len = 7;
+	if (duration_s > 0) {
+		payload[7] = static_cast<uint8_t>(duration_s & 0xFF);
+		payload[8] = static_cast<uint8_t>((duration_s >> 8) & 0xFF);
+		len = 9;
+	}
+
+	try {
+		m_cmd.write_cw(payload, static_cast<uint16_t>(len));
+		return true;
+	} catch (...) {
+		DEBUG_ERROR("SmdSat::cw_start: write_cw threw");
+		return false;
+	}
+}
+
+bool SmdSat::cw_stop() {
+	DEBUG_INFO("SmdSat::cw_stop");
+	if (m_state == SmdSatState::stopped) return true;
+
+	uint8_t payload[7] = { 0x00, 0, 0, 0, 0, 0, 0 };  // mode = stop
+	try {
+		m_cmd.write_cw(payload, sizeof(payload));
+		return true;
+	} catch (...) {
+		DEBUG_ERROR("SmdSat::cw_stop: write_cw threw");
+		return false;
+	}
+}
+
 std::string SmdSat::get_firmware_version() {
 	DEBUG_TRACE("SmdSat::%s", __func__);
 

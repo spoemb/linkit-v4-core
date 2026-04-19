@@ -38,8 +38,9 @@ enum class DTECommand {
 	SWSTST_REQ,    // SWS test mode start/stop
 	SWSCAL_REQ,    // SWS guided calibration (LED-assisted air/water measurement)
 	GNSSBR_REQ,    // GNSS UART bridge/passthrough (u-center access)
+	SMDDFU_REQ,    // Comm module command: VERSION (all builds), DFU actions (SMD only)
+	COMCW_REQ,     // Comm module Continuous Wave test (SMD / LoRa; KIM2 not supported)
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
-	SMDDFU_REQ,    // SMD satellite module DFU command
 	SMDTST_REQ,    // SMD satellite module SPI applicative test
 #endif
 	SATVF_REQ,     // Satellite credentials verify (SMD + KIM2 + LoRa), optional force re-write
@@ -78,8 +79,9 @@ enum class DTECommand {
 	SWSTST_RESP,   // SWS test mode response
 	SWSCAL_RESP,   // SWS guided calibration response
 	GNSSBR_RESP,   // GNSS UART bridge/passthrough response
+	SMDDFU_RESP,   // Comm module response (VERSION: all builds, DFU: SMD only)
+	COMCW_RESP,    // Comm module Continuous Wave response
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
-	SMDDFU_RESP,   // SMD satellite module DFU response
 	SMDTST_RESP,   // SMD satellite module SPI applicative test response
 #endif
 	SATVF_RESP,    // Satellite credentials verify response (SMD + KIM2 + LoRa)

@@ -183,8 +183,9 @@ public:
 
 	std::string SATDP_REQ(int error_code, std::vector<BaseType>& arg_list);
 
-#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	static std::string SMDDFU_REQ(int error_code, std::vector<BaseType>& arg_list);
+	static std::string COMCW_REQ(int error_code, std::vector<BaseType>& arg_list);
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	static std::string SMDTST_REQ(int error_code, std::vector<BaseType>& arg_list);
 #endif
 	std::string SATVF_REQ(int error_code, std::vector<BaseType>& arg_list);

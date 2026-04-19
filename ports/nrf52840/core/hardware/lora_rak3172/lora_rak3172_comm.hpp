@@ -60,6 +60,7 @@ namespace LoRa {
         AT_SET_PNM,         // AT+PNM=        - public network mode
         AT_SET_LPM,         // AT+LPM=        - low power mode
         AT_SET_SLEEP,       // AT+SLEEP=      - enter sleep
+        AT_SET_CW,          // AT+CW=         - continuous wave (RF test)
         AT_UNKNOWN
     };
 

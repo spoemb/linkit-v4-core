@@ -107,6 +107,7 @@ static constexpr ATCmdEntry cmd_table[] = {
     { AT_SET_PNM,    "AT+PNM=",         true  },
     { AT_SET_LPM,    "AT+LPM=",         true  },
     { AT_SET_SLEEP,  "AT+SLEEP=",       true  },
+    { AT_SET_CW,     "AT+CW=",          true  },
 };
 
 bool LoRaComm::send_at_cmd(ATCmd cmd, const std::optional<std::string>& params)

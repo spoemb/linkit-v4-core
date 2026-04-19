@@ -62,6 +62,21 @@ public:
     /// @return true on success, false if any AT write fails or module is off.
     bool write_credentials_from_config();
 
+    /// @brief Read RAK3172 firmware version (AT+VER=?).
+    /// Module must be powered on. Returns empty string on failure.
+    std::string get_firmware_version();
+
+    /// @brief Start Continuous Wave transmission for RF testing / certification.
+    /// @param freq_hz    Carrier frequency in Hz (must be in a licensed LoRa band).
+    /// @param power_dbm  TX power in dBm (0-22 for RAK3172).
+    /// @param duration_s Duration in seconds (1-65535, RUI3 requires non-zero).
+    /// @return true if AT+CW accepted.
+    bool cw_start(uint32_t freq_hz, uint16_t power_dbm, uint16_t duration_s);
+
+    /// @brief Stop active Continuous Wave — RUI3 stops when duration expires;
+    /// issuing ATZ (software reset) is the reliable way to abort immediately.
+    bool cw_stop();
+
     // Bridge/passthrough mode: direct USB ↔ UART access for RUI3 AT commands
     bool start_bridge(LoRaComm::PassthroughCallback rx_callback);
     void stop_bridge();

@@ -519,7 +519,6 @@ std::string DTEHandler::SCALR_REQ(int error_code, std::vector<BaseType>& arg_lis
 	return DTEEncoder::encode(DTECommand::SCALR_RESP, error_code, value);
 }
 
-#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 std::string DTEHandler::SMDDFU_REQ(int error_code, std::vector<BaseType>& arg_list) {
 	if (error_code) {
 		return DTEEncoder::encode(DTECommand::SMDDFU_RESP, error_code);
@@ -531,30 +530,50 @@ std::string DTEHandler::SMDDFU_REQ(int error_code, std::vector<BaseType>& arg_li
 	unsigned int progress = 0;
 	std::string info = "";
 
+	// VERSION action is build-agnostic: returns the firmware/identity string of
+	// whichever comm module is active (SMD / KIM2 / LoRa). Other actions (DFU,
+	// INFO, STATUS, UPDATE) remain SMD-only.
+	if ((SmdDfuAction)action == SmdDfuAction::VERSION) {
+		std::string version;
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+		if (!smd_sat_instance) {
+			return smd_not_available_error("SMDDFU_REQ", DTECommand::SMDDFU_RESP);
+		}
+		if (smd_sat_instance->is_dfu_mode()) {
+			return DTEEncoder::encode(DTECommand::SMDDFU_RESP, (unsigned int)0,
+			                          (unsigned int)1, true, (unsigned int)0,
+			                          std::string("SMD in DFU mode - exit first"));
+		}
+		version = smd_sat_instance->get_firmware_version();
+#elif defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+		if (!lora_device_instance) {
+			return DTEEncoder::encode(DTECommand::SMDDFU_RESP, (unsigned int)0,
+			                          (unsigned int)1, false, (unsigned int)0,
+			                          std::string("LoRa module not available"));
+		}
+		version = lora_device_instance->get_firmware_version();
+#else
+		if (!kim2_device_instance) {
+			return DTEEncoder::encode(DTECommand::SMDDFU_RESP, (unsigned int)0,
+			                          (unsigned int)1, false, (unsigned int)0,
+			                          std::string("KIM2 module not available"));
+		}
+		version = kim2_device_instance->get_firmware_version();
+#endif
+		status = version.empty() ? 1u : 0u;
+		info   = version.empty() ? std::string("Failed to read version") : version;
+		return DTEEncoder::encode(DTECommand::SMDDFU_RESP, (unsigned int)0,
+		                          status, dfu_mode, progress, info);
+	}
+
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	if (!smd_sat_instance) {
 		return smd_not_available_error("SMDDFU_REQ", DTECommand::SMDDFU_RESP);
 	}
 
 	switch ((SmdDfuAction)action) {
 	case SmdDfuAction::VERSION:
-		// Get application firmware version (SMD must NOT be in DFU/bootloader mode)
-		{
-			// Check if SMD is in DFU mode - cannot read app version in bootloader
-			if (smd_sat_instance->is_dfu_mode()) {
-				status = 1;
-				info = "SMD in DFU mode - exit first";
-				break;
-			}
-
-			std::string version = smd_sat_instance->get_firmware_version();
-			if (version.empty()) {
-				status = 1;  // Error
-				info = "Failed to read version";
-			} else {
-				status = 0;  // OK
-				info = version;
-			}
-		}
+		// Handled above — should not reach here.
 		break;
 
 	case SmdDfuAction::ENTER:
@@ -609,8 +628,79 @@ std::string DTEHandler::SMDDFU_REQ(int error_code, std::vector<BaseType>& arg_li
 	}
 
 	return DTEEncoder::encode(DTECommand::SMDDFU_RESP, (unsigned int)0, status, dfu_mode, progress, info);
+#else
+	// Non-SMD builds: only VERSION action (handled above) is supported.
+	(void)status; (void)dfu_mode; (void)progress; (void)info;
+	return DTEEncoder::encode(DTECommand::SMDDFU_RESP, (int)DTEError::INCORRECT_DATA);
+#endif
 }
 
+/// @brief COMCW_REQ — Continuous Wave RF test for SMD / LoRa modules.
+/// Args: mode (0=stop, 1=start), freq_hz, power_dbm, duration_s.
+/// Returns status code + info string via COMCW_RESP.
+std::string DTEHandler::COMCW_REQ(int error_code, std::vector<BaseType>& arg_list) {
+	if (error_code) {
+		return DTEEncoder::encode(DTECommand::COMCW_RESP, error_code);
+	}
+	if (arg_list.empty()) {
+		return DTEEncoder::encode(DTECommand::COMCW_RESP, (int)DTEError::MISSING_ARGUMENT);
+	}
+
+	unsigned int mode       = std::get<unsigned int>(arg_list[0]);
+	unsigned int freq_hz    = (arg_list.size() > 1) ? std::get<unsigned int>(arg_list[1]) : 0U;
+	unsigned int power_dbm  = (arg_list.size() > 2) ? std::get<unsigned int>(arg_list[2]) : 0U;
+	unsigned int duration_s = (arg_list.size() > 3) ? std::get<unsigned int>(arg_list[3]) : 0U;
+
+	unsigned int status = 0;
+	std::string info = "";
+	bool ok = false;
+
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	if (!smd_sat_instance) {
+		return DTEEncoder::encode(DTECommand::COMCW_RESP, (unsigned int)0,
+		                          (unsigned int)1, std::string("SMD not available"));
+	}
+	if (mode == 0) {
+		ok = smd_sat_instance->cw_stop();
+		info = ok ? "CW stop OK" : "CW stop failed";
+	} else {
+		if (arg_list.size() < 3) {
+			return DTEEncoder::encode(DTECommand::COMCW_RESP, (int)DTEError::MISSING_ARGUMENT);
+		}
+		ok = smd_sat_instance->cw_start(freq_hz,
+		                                 static_cast<uint16_t>(power_dbm),
+		                                 static_cast<uint16_t>(duration_s));
+		info = ok ? "CW start OK" : "CW start failed";
+	}
+#elif defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+	if (!lora_device_instance) {
+		return DTEEncoder::encode(DTECommand::COMCW_RESP, (unsigned int)0,
+		                          (unsigned int)1, std::string("LoRa not available"));
+	}
+	if (mode == 0) {
+		ok = lora_device_instance->cw_stop();
+		info = ok ? "CW stop OK (module reset)" : "CW stop failed";
+	} else {
+		if (arg_list.size() < 3) {
+			return DTEEncoder::encode(DTECommand::COMCW_RESP, (int)DTEError::MISSING_ARGUMENT);
+		}
+		ok = lora_device_instance->cw_start(freq_hz,
+		                                     static_cast<uint16_t>(power_dbm),
+		                                     static_cast<uint16_t>(duration_s));
+		info = ok ? "CW start OK" : "CW start failed";
+	}
+#else
+	(void)mode; (void)freq_hz; (void)power_dbm; (void)duration_s;
+	return DTEEncoder::encode(DTECommand::COMCW_RESP, (unsigned int)0,
+	                          (unsigned int)1,
+	                          std::string("CW not supported on this module"));
+#endif
+
+	status = ok ? 0u : 1u;
+	return DTEEncoder::encode(DTECommand::COMCW_RESP, (unsigned int)0, status, info);
+}
+
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 std::string DTEHandler::SMDTST_REQ(int error_code, std::vector<BaseType>& arg_list) {
 	(void)arg_list;
 	if (error_code) {
@@ -1711,10 +1801,14 @@ DTEAction DTEHandler::handle_dte_message(const std::string& req, std::string& re
 	case DTECommand::RTCW_REQ:
 		resp = RTCW_REQ(error_code, arg_list);
 		break;
-#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	case DTECommand::SMDDFU_REQ:
+		// VERSION action works for SMD/KIM2/LoRa builds; other actions SMD-only
 		resp = SMDDFU_REQ(error_code, arg_list);
 		break;
+	case DTECommand::COMCW_REQ:
+		resp = COMCW_REQ(error_code, arg_list);
+		break;
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	case DTECommand::SMDTST_REQ:
 		resp = SMDTST_REQ(error_code, arg_list);
 		break;

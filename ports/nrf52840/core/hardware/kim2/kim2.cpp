@@ -789,6 +789,25 @@ void KIM2Device::state_init_exit()
     ;
 }
 
+/// @brief Return KIM2 module identifier (AT+ID=?) as a hex string.
+/// KIM2 firmware does not expose a firmware-version command, so we report the
+/// hardware Kineis ID instead — it is unique per module and sufficient for the
+/// GUI to identify the communication module.
+std::string KIM2Device::get_firmware_version()
+{
+    if (m_state == power_off) {
+        DEBUG_WARN("KIM2Device::get_firmware_version: module is powered off");
+        return "";
+    }
+    if (!send_AT(AT_GET_ID)) {
+        DEBUG_WARN("KIM2Device::get_firmware_version: AT+ID=? failed");
+        return "";
+    }
+    char buf[16];
+    snprintf(buf, sizeof(buf), "KIM2-%08X", m_kim2_comm.m_kineis_id);
+    return std::string(buf);
+}
+
 // ============================================================================
 // State: idle (with configurable timeout like SMD)
 // ============================================================================

@@ -492,11 +492,10 @@ const DTECommandMap command_map[] = {
 			}
 		}
 	},
-#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
-	// SMD DFU command - allows firmware update of SMD satellite module
+	// SMDDFU command - always available: VERSION action (5) works on SMD/KIM2/LoRa
+	// builds; other actions (enter/exit/status/update/info) are SMD-only.
 	// Usage: $SMDDFU#001;<action>\r
 	// Actions: 0=enter, 1=exit, 2=status, 3=update, 4=info, 5=version
-	// Note: Firmware data is sent via OTA file transfer, not in this command
 	{
 		.name = "SMDDFU",
 		.command = DTECommand::SMDDFU_REQ,
@@ -514,6 +513,40 @@ const DTECommandMap command_map[] = {
 			}
 		}
 	},
+	// COMCW command - Continuous Wave RF test (SMD / LoRa). KIM2 returns "unsupported".
+	// Usage: $COMCW#00N;<mode>[,<freq_hz>,<power_dbm>,<duration_s>]\r
+	// mode: 0=stop, 1=start
+	// freq_hz: carrier frequency (Hz)
+	// power_dbm: TX power (dBm)
+	// duration_s: 1-65535 s (LoRa requires non-zero; SMD allows 0=until stop)
+	{
+		.name = "COMCW",
+		.command = DTECommand::COMCW_REQ,
+		.prototype =
+		{
+			{
+				.name = "mode", .key = "", .encoding = BaseEncoding::UINT,
+				.min_value = 0U, .max_value = 1U,
+				.permitted_values = {}, .is_implemented = false, .is_writable = false
+			},
+			{
+				.name = "freq_hz", .key = "", .encoding = BaseEncoding::UINT,
+				.min_value = 0U, .max_value = 4294967295U,
+				.permitted_values = {}, .is_implemented = false, .is_writable = false
+			},
+			{
+				.name = "power_dbm", .key = "", .encoding = BaseEncoding::UINT,
+				.min_value = 0U, .max_value = 30U,
+				.permitted_values = {}, .is_implemented = false, .is_writable = false
+			},
+			{
+				.name = "duration_s", .key = "", .encoding = BaseEncoding::UINT,
+				.min_value = 0U, .max_value = 65535U,
+				.permitted_values = {}, .is_implemented = false, .is_writable = false
+			},
+		}
+	},
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	// SMD SPI applicative test - tests all A+ protocol read commands
 	// Usage: $SMDTST#000;\r
 	{
@@ -1327,8 +1360,7 @@ const DTECommandMap command_map[] = {
 		.command = DTECommand::GNSSBR_RESP,
 		.prototype = {}
 	},
-#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
-	// SMD DFU response
+	// SMDDFU response — always available (VERSION action works for all builds)
 	// Response: $SMDDFU,<status>,<dfu_mode>,<progress>[,<info>]*<checksum>\r\n
 	{
 		.name = "SMDDFU",
@@ -1377,6 +1409,25 @@ const DTECommandMap command_map[] = {
 			}
 		}
 	},
+	// COMCW response — status code + optional info string
+	{
+		.name = "COMCW",
+		.command = DTECommand::COMCW_RESP,
+		.prototype =
+		{
+			{
+				.name = "status", .key = "", .encoding = BaseEncoding::UINT,
+				.min_value = 0U, .max_value = 0xFFU,
+				.permitted_values = {}, .is_implemented = false, .is_writable = false
+			},
+			{
+				.name = "info", .key = "", .encoding = BaseEncoding::TEXT,
+				.min_value = "", .max_value = "",
+				.permitted_values = {}, .is_implemented = false, .is_writable = false
+			},
+		}
+	},
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	// SMDTST response - applicative SPI test results
 	{
 		.name = "SMDTST",

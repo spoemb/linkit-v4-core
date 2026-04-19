@@ -59,6 +59,12 @@ public:
 	/// rejected to prevent out-of-spec emissions. Reset to true on each boot.
 	bool is_vlda4_allowed() const { return m_vlda4_allowed; }
 
+	/// @brief Read KIM2 module identifier via AT+ID=?.
+	/// The KIM2 RUI does not expose a dedicated firmware-version command,
+	/// so we return the hardware ID string as the identity reported to the host.
+	/// Module must be powered on. Returns empty string on failure.
+	std::string get_firmware_version();
+
 private:
 	/// @brief KIM2 state machine states.
 	enum KIM2ManagerState {

@@ -153,6 +153,16 @@ public:
 	std::string get_new_firmware_version() const { return m_new_firmware_version; }
 	std::string smd_spi_test();
 
+	/// @brief Start Continuous Wave transmission for RF testing / certification.
+	/// @param freq_hz    Carrier frequency in Hz (must be in a licensed SMD band).
+	/// @param power_dbm  TX power in dBm.
+	/// @param duration_s Duration in seconds (0 = continuous until cw_stop()).
+	/// @return true on success, false if module not ready or AT+CW failed.
+	bool cw_start(uint32_t freq_hz, uint16_t power_dbm, uint16_t duration_s = 0);
+
+	/// @brief Stop any active Continuous Wave transmission.
+	bool cw_stop();
+
 	// Runtime modulation switching (RCONF + save + KMAC reload, no power cycle)
 	bool switch_modulation(KineisModulation mode, const std::string& rconf_hex) override;
 	KineisModulation get_current_modulation() const override;

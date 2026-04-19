@@ -561,8 +561,10 @@ void LoRaDevice::state_configure()
             break;
 
         case 12:
-            // Enable low power mode
-            at_error = !send_AT(AT_SET_LPM, std::to_string(LoRa::DEFAULT_LPM));
+            // Apply user-configured low-power mode (LORA_LP_MODE / LRP15):
+            //   0 = shutdown (0 µA idle, ~2.5 s reboot on next TX)
+            //   1 = standby Stop2 (~1.7 µA idle, ~10 ms wake)
+            at_error = !send_AT(AT_SET_LPM, std::to_string(m_config.lp_mode));
             break;
 
         case 13:
@@ -853,6 +855,70 @@ void LoRaDevice::load_config_from_store()
     unsigned int lora_class = configuration_store->read_param<unsigned int>(ParamID::LORA_CLASS);
     m_config.device_class = 'A' + static_cast<uint8_t>(lora_class);
 
+    // Compute the largest packet the current config will ever produce, and bump
+    // LORA_DR to the minimum rate that guarantees it fits. This replaces the
+    // previous "silent skip" behavior: every packet the service emits is now
+    // transmittable. Only applies to packet types actually enabled by config.
+    //
+    // EU868 max MAC payload: DR0-2 = 51 B, DR3 = 115 B, DR4-5 = 222 B.
+    unsigned int max_packet_bytes = 2;  // Status packet floor (14 bits)
+
+    // CloudLocate MEAS50 is only emitted when FASTLOC_MODE=CLOUDLOCATE + fmt=MEAS50
+    unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
+    unsigned int cl_format    = configuration_store->read_param<unsigned int>(ParamID::GNSS_CLOUDLOCATE_FORMAT);
+    if (fastloc_mode == (unsigned int)BaseFastlocMode::CLOUDLOCATE &&
+        cl_format    == (unsigned int)BaseCloudLocateFormat::MEAS50) {
+        // type(3)+fmt(2)+flags(4)+volt(7)+50B = 16+400 = 416 bits = 52 B
+        if (52 > max_packet_bytes) max_packet_bytes = 52;
+    }
+
+    // Sensor packet: header + mask + always-present GPS_FULL + enabled sensors
+    unsigned int sensor_bits = 14 + 6 + 86;  // header + mask + GPS_FULL
+    if (fastloc_mode >= (unsigned int)BaseFastlocMode::DEGRADED_PVT)
+        sensor_bits += 60;                   // BITS_FASTLOC_QUALITY
+#if ENABLE_ALS_SENSOR
+    if (configuration_store->read_param<bool>(ParamID::ALS_SENSOR_ENABLE))
+        sensor_bits += 17;
+#endif
+#if ENABLE_PH_SENSOR
+    if (configuration_store->read_param<bool>(ParamID::PH_SENSOR_ENABLE))
+        sensor_bits += 14;
+#endif
+#if ENABLE_PRESSURE_SENSOR
+    if (configuration_store->read_param<bool>(ParamID::PRESSURE_SENSOR_ENABLE))
+        sensor_bits += 29;                   // pressure + press_temp
+#endif
+    // SEA_TEMP and THERMISTOR share the same 14-bit slot (mutually exclusive at build)
+#if ENABLE_SEA_TEMP_SENSOR
+    if (configuration_store->read_param<bool>(ParamID::SEA_TEMP_SENSOR_ENABLE))
+        sensor_bits += 14;
+#endif
+#if ENABLE_THERMISTOR_SENSOR
+    if (configuration_store->read_param<bool>(ParamID::THERMISTOR_SENSOR_ENABLE))
+        sensor_bits += 14;
+#endif
+#if ENABLE_AXL_SENSOR
+    if (configuration_store->read_param<bool>(ParamID::AXL_SENSOR_ENABLE))
+        sensor_bits += 67;                   // AXL temp + 3 axis + act
+#endif
+    unsigned int sensor_bytes = (sensor_bits + 7) / 8;
+    if (sensor_bytes > max_packet_bytes) max_packet_bytes = sensor_bytes;
+
+    // GPS multi is always size-clamped by max_gps_entries(), so it never
+    // exceeds the current DR — no contribution to max_packet_bytes.
+
+    // Map byte threshold → min required DR
+    uint8_t min_dr = 0;
+    if      (max_packet_bytes > 115) min_dr = 4;  // DR4 (222 B)
+    else if (max_packet_bytes > 51)  min_dr = 3;  // DR3 (115 B)
+    else                             min_dr = 0;  // any DR
+
+    if (m_config.dr < min_dr) {
+        DEBUG_WARN("LoRaDevice: max packet %u B requires DR≥%u — bumping LORA_DR %u → %u",
+                   max_packet_bytes, min_dr, m_config.dr, min_dr);
+        m_config.dr = min_dr;
+    }
+
     DEBUG_INFO("LoRaDevice: config NJM=%u BAND=%u DR=%u ADR=%u TXP=%u CFM=%u FPORT=%u CLASS=%c LP=%u",
                m_config.njm, m_config.band, m_config.dr, m_config.adr,
                m_config.txp, m_config.cfm, m_config.fport, m_config.device_class, m_config.lp_mode);
@@ -981,6 +1047,42 @@ bool LoRaDevice::write_credentials_from_config()
 
     DEBUG_INFO("LoRaDevice::write_credentials_from_config: credentials written (njm=%u)", m_config.njm);
     return true;
+}
+
+/// @brief Start RF Continuous Wave on the RAK3172 (AT+CW=freq,pwr,duration).
+bool LoRaDevice::cw_start(uint32_t freq_hz, uint16_t power_dbm, uint16_t duration_s)
+{
+    if (m_state == State::power_off) {
+        DEBUG_WARN("LoRaDevice::cw_start: module is powered off");
+        return false;
+    }
+    if (duration_s == 0) duration_s = 60;   // RUI3 requires a duration
+    std::string params = std::to_string(freq_hz) + "," +
+                         std::to_string(power_dbm) + "," +
+                         std::to_string(duration_s);
+    DEBUG_INFO("LoRaDevice::cw_start: %s", params.c_str());
+    return send_AT(AT_SET_CW, params);
+}
+
+/// @brief Stop CW — RUI3 does not expose AT+CW stop; reset the module.
+bool LoRaDevice::cw_stop()
+{
+    DEBUG_INFO("LoRaDevice::cw_stop (ATZ reset)");
+    return send_AT(AT_RESET);
+}
+
+/// @brief Read RAK3172 RUI3 firmware version. Module must be powered on.
+std::string LoRaDevice::get_firmware_version()
+{
+    if (m_state == State::power_off) {
+        DEBUG_WARN("LoRaDevice::get_firmware_version: module is powered off");
+        return "";
+    }
+    if (!send_AT(AT_GET_VER)) {
+        DEBUG_WARN("LoRaDevice::get_firmware_version: AT+VER=? failed");
+        return "";
+    }
+    return m_lora_comm.m_last_value;
 }
 
 // ========================================================================
