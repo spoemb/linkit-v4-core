@@ -146,11 +146,10 @@ void LoRaComm::set_passthrough(bool active, PassthroughCallback callback)
 
 void LoRaComm::process_rx()
 {
-    // If passthrough is active, we need custom handling — but the base class
-    // deferred RX pattern still applies. For simplicity, delegate to base class
-    // which calls on_rx_line() for parsed lines.
-    // Passthrough mode is handled in lora_rak3172.cpp via bridge_process_rx()
-    // which calls process_rx() + the passthrough callback reads raw data.
+    // Delegate to base class. on_rx_line() below checks m_passthrough_active
+    // first and, when set, forwards the raw line (+CRLF) to the callback
+    // instead of running the RUI3 AT parser. This is how bridge mode pipes
+    // RAK3172 output back to the USB/BLE host untouched.
     NrfUartAsync::process_rx();
 }
 
@@ -160,6 +159,19 @@ void LoRaComm::process_rx()
 
 void LoRaComm::on_rx_line(std::string& line)
 {
+    // Bridge / passthrough mode: forward every RAK3172 line unparsed to the
+    // host (with CR+LF re-added — base class strips terminators). The AT
+    // protocol parser is skipped entirely so the host sees exactly what the
+    // module says (RUI3 "OK", "+EVT:...", banner text, etc.).
+    if (m_passthrough_active) {
+        if (m_passthrough_callback && !line.empty()) {
+            std::string framed = line + "\r\n";
+            m_passthrough_callback(reinterpret_cast<const uint8_t*>(framed.data()),
+                                   framed.size());
+        }
+        return;
+    }
+
     LoRa::RespType resp = parse_rx_line_protocol(line);
 
     DEBUG_TRACE("LoRaComm::rx< %s", line.c_str());
