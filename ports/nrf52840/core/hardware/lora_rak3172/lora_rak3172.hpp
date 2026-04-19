@@ -201,6 +201,14 @@ private:
     // Helpers
     bool send_AT(LoRa::ATCmd cmd, const std::optional<std::string>& params = std::nullopt, uint16_t timeout_ms = 2000);
     void start_device();
+    /// @brief Synchronous wake: if the module is powered off, trigger power-on
+    /// and poll until it responds to AT_TEST (or timeout). Does NOT wait for
+    /// LoRaWAN join — only UART + AT command channel readiness. Used by DTE
+    /// helpers (SATVF, get_firmware_version, cw_start) so the GUI can query
+    /// the module without having to issue a TX first.
+    /// @param timeout_ms  Max wait in ms (default 3500 ≈ 2 s boot + ping retries).
+    /// @return true if the module responded to AT within timeout, false otherwise.
+    bool ensure_module_awake(unsigned int timeout_ms = 3500);
     void cancel_timeout();
     void initiate_timeout(unsigned int timeout_ms = 1000);
     void on_timeout();

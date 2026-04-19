@@ -944,8 +944,12 @@ LoRaDevice::LoRaCredentials LoRaDevice::read_lora_credentials()
     LoRaCredentials creds;
     creds.read_ok = false;
 
-    if (m_state == State::power_off) {
-        DEBUG_WARN("LoRaDevice::read_lora_credentials: module is powered off");
+    // Auto-wake: if the module is off (LORA_LP_MODE=0 shutdown, or
+    // LORA_POWER_OFF_UNDERWATER during a dive), boot it up just for this read.
+    // Restore to power_off on exit so the caller's idle state is preserved.
+    bool was_off = (m_state == State::power_off);
+    if (!ensure_module_awake()) {
+        DEBUG_ERROR("LoRaDevice::read_lora_credentials: module wake-up failed");
         return creds;
     }
 
@@ -954,6 +958,7 @@ LoRaDevice::LoRaCredentials LoRaDevice::read_lora_credentials()
         creds.njm = static_cast<uint8_t>(std::stoul(m_lora_comm.m_last_value));
     } else {
         DEBUG_WARN("LoRaDevice::read_lora_credentials: failed to read NJM");
+        if (was_off) power_off_immediate();
         return creds;
     }
 
@@ -978,6 +983,11 @@ LoRaDevice::LoRaCredentials LoRaDevice::read_lora_credentials()
     }
 
     creds.read_ok = true;
+
+    if (was_off) {
+        DEBUG_TRACE("LoRaDevice::read_lora_credentials: restoring power-off");
+        power_off_immediate();
+    }
     return creds;
 }
 
@@ -989,8 +999,9 @@ LoRaDevice::LoRaCredentials LoRaDevice::read_lora_credentials()
 ///       re-invoke after the reboot completes.
 bool LoRaDevice::write_credentials_from_config()
 {
-    if (m_state == State::power_off) {
-        DEBUG_WARN("LoRaDevice::write_credentials_from_config: module is powered off");
+    bool was_off = (m_state == State::power_off);
+    if (!ensure_module_awake()) {
+        DEBUG_ERROR("LoRaDevice::write_credentials_from_config: wake-up failed");
         return false;
     }
 
@@ -1055,14 +1066,22 @@ bool LoRaDevice::write_credentials_from_config()
     }
 
     DEBUG_INFO("LoRaDevice::write_credentials_from_config: credentials written (njm=%u)", m_config.njm);
+    if (was_off) {
+        DEBUG_TRACE("LoRaDevice::write_credentials_from_config: restoring power-off");
+        power_off_immediate();
+    }
     return true;
 }
 
 /// @brief Start RF Continuous Wave on the RAK3172 (AT+CW=freq,pwr,duration).
+/// Auto-wakes if needed — CW is a test command so we do NOT restore power-off
+/// afterwards: the CW itself takes over the radio for its `duration_s` window,
+/// and the caller typically pairs with cw_stop (ATZ) which brings the driver
+/// back to power_off anyway.
 bool LoRaDevice::cw_start(uint32_t freq_hz, uint16_t power_dbm, uint16_t duration_s)
 {
-    if (m_state == State::power_off) {
-        DEBUG_WARN("LoRaDevice::cw_start: module is powered off");
+    if (!ensure_module_awake()) {
+        DEBUG_WARN("LoRaDevice::cw_start: module wake-up failed");
         return false;
     }
     if (duration_s == 0) duration_s = 60;   // RUI3 requires a duration
@@ -1092,18 +1111,75 @@ bool LoRaDevice::cw_stop()
     return true;
 }
 
-/// @brief Read RAK3172 RUI3 firmware version. Module must be powered on.
+/// @brief Synchronous wake-up helper — auto power-on + wait for AT readiness.
+/// Does NOT block on configure/join so DTE callers (SATVF, get_firmware_version,
+/// COMCW) get a fast turnaround. Returns as soon as AT_TEST succeeds.
+bool LoRaDevice::ensure_module_awake(unsigned int timeout_ms)
+{
+    if (m_state != State::power_off) {
+        return true;  // Already powered (idle, standby, configure, joining, transmit)
+    }
+
+    DEBUG_INFO("LoRaDevice::ensure_module_awake: module off — booting");
+
+    // Kick off the state machine (power_off → power_on). The async state machine
+    // will run configure + join in the background after we return.
+    GPIOPins::set(SAT_PWR_EN);
+    GPIOPins::set(SAT_EXTWAKEUP);
+    m_lora_comm.init();
+    m_lora_comm.subscribe(*this);
+
+    // Wait for the RAK3172 boot banner to settle (~1.5 s typical) and drain it.
+    const unsigned int boot_delay_ms = 2000;
+    for (unsigned int i = 0; i < boot_delay_ms && timeout_ms > boot_delay_ms; i += 50) {
+        PMU::delay_ms(50);
+    }
+    if (timeout_ms <= boot_delay_ms) {
+        DEBUG_WARN("LoRaDevice::ensure_module_awake: timeout < boot delay, skipping wait");
+    } else {
+        timeout_ms -= boot_delay_ms;
+    }
+    m_lora_comm.process_rx();  // drain boot banner
+
+    // Probe the module with AT. First ping after cold boot sometimes needs retry.
+    while (timeout_ms > 0) {
+        if (send_AT(AT_TEST, std::nullopt, 500)) {
+            // Transition the driver state to idle so the normal FSM path resumes.
+            // configure/join will run asynchronously on the next scheduler tick.
+            DEBUG_INFO("LoRaDevice::ensure_module_awake: module responded in < %ums", 3500 - timeout_ms);
+            m_state = State::idle;
+            run_state_machine(50);
+            return true;
+        }
+        if (timeout_ms < 500) break;
+        timeout_ms -= 500;
+    }
+
+    DEBUG_ERROR("LoRaDevice::ensure_module_awake: module did not respond to AT within timeout");
+    return false;
+}
+
+/// @brief Read RAK3172 RUI3 firmware version. Auto-wakes if needed, restores
+/// the initial power state (off) on exit so idle power draw is unchanged by
+/// DTE queries.
 std::string LoRaDevice::get_firmware_version()
 {
-    if (m_state == State::power_off) {
-        DEBUG_WARN("LoRaDevice::get_firmware_version: module is powered off");
+    bool was_off = (m_state == State::power_off);
+    if (!ensure_module_awake()) {
+        DEBUG_WARN("LoRaDevice::get_firmware_version: module wake-up failed");
         return "";
     }
-    if (!send_AT(AT_GET_VER)) {
+    std::string version;
+    if (send_AT(AT_GET_VER)) {
+        version = m_lora_comm.m_last_value;
+    } else {
         DEBUG_WARN("LoRaDevice::get_firmware_version: AT+VER=? failed");
-        return "";
     }
-    return m_lora_comm.m_last_value;
+    if (was_off) {
+        DEBUG_TRACE("LoRaDevice::get_firmware_version: restoring power-off");
+        power_off_immediate();
+    }
+    return version;
 }
 
 // ========================================================================
