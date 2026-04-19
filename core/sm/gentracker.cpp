@@ -411,7 +411,11 @@ void OperationalState::service_event_handler(ServiceEvent& e) {
 		}
 		return;
 	}
-	else if (e.event_source == ServiceIdentifier::ARGOS_TX) {
+	else if (e.event_source == ServiceIdentifier::ARGOS_TX ||
+	         e.event_source == ServiceIdentifier::LORA_TX) {
+		// Same visual signal for both radio backends: MAGENTA while TX is in
+		// progress, off when complete. Let's the operator see any outgoing
+		// transmission (Argos or LoRaWAN) with a consistent LED pattern.
 		if (e.event_type == ServiceEventType::SERVICE_ACTIVE) {
 			led_handle::dispatch<SetLEDArgosTX>({});
 		}
