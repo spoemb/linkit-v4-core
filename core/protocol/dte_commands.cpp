@@ -544,7 +544,8 @@ const DTECommandMap command_map[] = {
 				.min_value = 0U, .max_value = 65535U,
 				.permitted_values = {}, .is_implemented = false, .is_writable = false
 			},
-		}
+		},
+		.min_args = 1  // mode is required; freq/power/duration optional (only for start)
 	},
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	// SMD SPI applicative test - tests all A+ protocol read commands

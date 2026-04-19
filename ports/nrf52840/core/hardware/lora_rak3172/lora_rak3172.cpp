@@ -1064,11 +1064,23 @@ bool LoRaDevice::cw_start(uint32_t freq_hz, uint16_t power_dbm, uint16_t duratio
     return send_AT(AT_SET_CW, params);
 }
 
-/// @brief Stop CW — RUI3 does not expose AT+CW stop; reset the module.
+/// @brief Stop CW — RUI3 does not expose AT+CW stop; issue ATZ. The module
+/// resets without sending "OK", so we dispatch the write without waiting and
+/// force our own state machine back to power_off. The next send() will bring
+/// the module up cleanly via the normal configure path.
 bool LoRaDevice::cw_stop()
 {
     DEBUG_INFO("LoRaDevice::cw_stop (ATZ reset)");
-    return send_AT(AT_RESET);
+    if (m_state == State::power_off) return true;  // Already stopped
+
+    // Fire-and-forget: RUI3 silently resets on ATZ, so waiting for OK would
+    // always time out and falsely report failure.
+    m_lora_comm.send(AT_RESET);
+    PMU::delay_ms(10);  // Let the bytes drain to UART before we tear down the state machine.
+
+    // Match internal state to the fact that the module is rebooting.
+    power_off_immediate();
+    return true;
 }
 
 /// @brief Read RAK3172 RUI3 firmware version. Module must be powered on.
