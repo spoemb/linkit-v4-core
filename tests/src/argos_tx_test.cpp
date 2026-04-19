@@ -66,7 +66,7 @@ TEST_GROUP(ArgosTxService)
 	}
 
 	GPSLogEntry make_gps_location(bool is_valid=true, double longitude=0, double latitude=0, std::time_t t=0, bool is_3d_fix = false, int32_t hMSL=0, int32_t gSpeed=0, uint16_t batt=4200) {
-		GPSLogEntry log;
+		GPSLogEntry log{};  // Zero-init to avoid UB on unset fields (e.g. headMot)
 		log.info.valid = is_valid;
 		log.info.lon = longitude;
 		log.info.lat = latitude;
