@@ -27,6 +27,24 @@ void DepthPileManager::notify_peer_event(ServiceEvent& e) {
 		e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
 		GPSLogEntry& entry = std::get<GPSLogEntry>(e.event_data);
 		if (!entry.info.valid) {
+			// NO_FIX entries carry no position — they become 0xFF markers in
+			// the transmitted packet, wasting airtime. Skip them ONLY when
+			// both conditions hold:
+			//  - fastloc fallback is enabled (GNP45 != OFF)
+			//  - ARGOS_MODE is SURFACING_BURST (the only mode where
+			//    process_status_burst() actually runs and can emit the
+			//    DEGRADED_PVT or CLOUDLOCATE replacement packet).
+			// In LEGACY/DUTY_CYCLE, or when fastloc is OFF, we keep the legacy
+			// Argos behavior so the timestamp still serves as an "alive"
+			// heartbeat — avoids going silent when GPS is weak.
+			unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
+			BaseArgosMode  argos_mode  = configuration_store->read_param<BaseArgosMode>(ParamID::ARGOS_MODE);
+			if (fastloc_mode != (unsigned int)BaseFastlocMode::OFF &&
+			    argos_mode   == BaseArgosMode::SURFACING_BURST) {
+				DEBUG_INFO("DepthPileManager::notify_peer_event: skip NO_FIX (fastloc GNP45=%u + SURFACING_BURST)",
+				           fastloc_mode);
+				return;  // Do NOT cache, do NOT mark ready — fastloc will handle fallback
+			}
 			DEBUG_WARN("DepthPileManager::notify_peer_event: GNSS cache set (no fix, position invalid)");
 		} else {
 			DEBUG_TRACE("DepthPileManager::notify_peer_event: GNSS cache set");
