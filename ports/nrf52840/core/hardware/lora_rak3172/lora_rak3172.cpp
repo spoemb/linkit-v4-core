@@ -568,6 +568,15 @@ void LoRaDevice::state_configure()
             break;
 
         case 13:
+            // Duty Cycle Setting — compile-time flag LORA_DCS_ENABLE.
+            //   1 (default) : RAK3172 enforces EU868 1%/0.1%/10% limits (ETSI legal)
+            //   0           : DCS off — test builds only, **illegal in EU deployment**
+            // We always set this explicitly so the module does not keep a stale
+            // value written by an earlier firmware flash.
+            at_error = !send_AT(AT_SET_DCS, std::to_string(LORA_DCS_ENABLE));
+            break;
+
+        case 14:
             // Full config done — mark configured, jump to common path
             m_is_configured = true;
             m_config_step = 99;  // Will be incremented to 100

@@ -20,6 +20,20 @@ set(BOARD "LINKIT" CACHE STRING "Board to compile for")
 option(ARGOS_SMD "Use SMD satellite module" OFF)
 option(LORA_RAK3172 "Use RAK3172-SiP LoRa module instead of satellite" OFF)
 
+# LoRa-specific tuning flags (only meaningful when LORA_RAK3172=ON)
+#
+# LORA_DCS_ENABLE: Duty Cycle Setting — when ON, the RAK3172 enforces EU868
+#   legal airtime limits (1 %/0.1 %/10 % per sub-band). Default ON.
+#   OFF is for RF bench testing only — **illegal in EU production deployment**.
+option(LORA_DCS_ENABLE "Enforce LoRaWAN duty-cycle on RAK3172 (ETSI EN 300 220)" ON)
+#
+# LORA_POWER_OFF_UNDERWATER: when ON, the LoRa service cuts the module's power
+#   rail (SAT_PWR_EN → 0 V) on every dive event, going from ~1.7 µA (Stop2
+#   standby) down to 0 µA. On the next surfacing the full configure path runs,
+#   adding ~2 s to time-to-first-TX. Default OFF — standby is fast-wake (~10 ms)
+#   which matters for short surfacings (sea turtle, diving bird).
+option(LORA_POWER_OFF_UNDERWATER "Cut LoRa module power during underwater periods" OFF)
+
 # Configure GPIO5 device (default: CAM)
 if(NOT DEFINED EXT_GPIO5_DEVICE)
     set(EXT_GPIO5_DEVICE "CAM")
@@ -151,6 +165,16 @@ else()
         set(LORA_RAK3172_ENABLED 1)
     else()
         set(LORA_RAK3172_ENABLED 0)
+    endif()
+    if(LORA_DCS_ENABLE)
+        set(LORA_DCS_ENABLE_VAL 1)
+    else()
+        set(LORA_DCS_ENABLE_VAL 0)
+    endif()
+    if(LORA_POWER_OFF_UNDERWATER)
+        set(LORA_POWER_OFF_UNDERWATER_VAL 1)
+    else()
+        set(LORA_POWER_OFF_UNDERWATER_VAL 0)
     endif()
     set(BOOTLOADER "bootloader/secure_bootloader/linkitv4_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex")
     if(NOT DEFINED ENABLE_SWS_ANALOG)
@@ -555,6 +579,8 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     GNSS_HAS_BACKUP_BATTERY=${GNSS_HAS_BACKUP_BATTERY}
     ARGOS_SMD=${ARGOS_SMD_ENABLED}
     $<$<BOOL:${LORA_RAK3172_ENABLED}>:LORA_RAK3172=1>
+    $<$<BOOL:${LORA_RAK3172_ENABLED}>:LORA_DCS_ENABLE=${LORA_DCS_ENABLE_VAL}>
+    $<$<BOOL:${LORA_RAK3172_ENABLED}>:LORA_POWER_OFF_UNDERWATER=${LORA_POWER_OFF_UNDERWATER_VAL}>
     # Battery monitor type defines
     $<$<STREQUAL:${BATTERY_MONITOR_TYPE},ANALOG>:BATTERY_MONITOR_ANALOG>
     $<$<STREQUAL:${BATTERY_MONITOR_TYPE},FAKE>:BATTERY_MONITOR_FAKE>

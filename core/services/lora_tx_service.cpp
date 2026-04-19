@@ -303,6 +303,15 @@ void LoRaTxService::notify_peer_event(ServiceEvent& e) {
 				m_has_gnss_fix_since_surfacing = false;
 				m_first_gnss_tx_sent = false;
 			}
+#if defined(LORA_POWER_OFF_UNDERWATER) && (LORA_POWER_OFF_UNDERWATER == 1)
+			// Compile-time opt-in: cut module power completely during dives.
+			// Saves ~1.7 µA × dive-duration vs Stop2 standby, at the cost of a
+			// ~2 s boot on the next surface (configure path must re-run).
+			// Default OFF — keep standby for short surfacings where 2 s wake
+			// would miss the tortue / bird surfacing window.
+			DEBUG_INFO("LoRaTxService: dive detected — powering off LoRa module (LORA_POWER_OFF_UNDERWATER=1)");
+			m_device.power_off_immediate();
+#endif
 		} else {
 			// Surface
 			std::time_t earliest_schedule = service_current_time() + argos_config.dry_time_before_tx;

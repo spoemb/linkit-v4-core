@@ -42,6 +42,12 @@ public:
     void set_frequency(double freq_mhz) override;
     void set_tcxo_warmup_time(unsigned int ms) override;
 
+    /// @brief Hard shutdown — cut SAT_PWR_EN and deinit UART. Next send() goes
+    /// through the full power_on → configure path (≈2 s wake vs 10 ms standby).
+    /// Overrides KineisDevice::power_off_immediate() for service-driven shutdown
+    /// (e.g. LORA_POWER_OFF_UNDERWATER compile flag).
+    void power_off_immediate() override;
+
     // LoRa-specific public API
     bool is_joined() const { return m_joined; }
 
@@ -195,7 +201,6 @@ private:
     // Helpers
     bool send_AT(LoRa::ATCmd cmd, const std::optional<std::string>& params = std::nullopt, uint16_t timeout_ms = 2000);
     void start_device();
-    void power_off_immediate();
     void cancel_timeout();
     void initiate_timeout(unsigned int timeout_ms = 1000);
     void on_timeout();
