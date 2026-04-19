@@ -53,6 +53,12 @@ private:
 	bool m_has_gnss_fix_since_surfacing = false;
 	bool m_first_gnss_tx_sent = false;
 	unsigned int m_status_burst_count = 0;
+
+	/// @brief Cooldown arming flag — mirrors ArgosTxService::m_cooldown_armed.
+	/// Set when a condition matching COOLDOWN_TRIGGER_MODE is met during a
+	/// surfacing cycle; the cooldown timer actually starts on the next dive
+	/// event (notify_peer_event UW=true), keeping parity with Argos semantics.
+	bool m_cooldown_armed = false;
 	std::function<void()> m_scheduled_task;
 
 	void react(KineisEventTxStarted const&) override;

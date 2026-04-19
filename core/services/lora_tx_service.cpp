@@ -46,6 +46,7 @@ void LoRaTxService::service_init() {
 	m_first_gnss_tx_sent = false;
 	m_status_burst_count = 0;
 	m_last_tx_had_gps = false;
+	m_cooldown_armed = false;
 
 	DEBUG_TRACE("LoRaTxService::service_init: initialized");
 }
@@ -128,6 +129,13 @@ unsigned int LoRaTxService::service_next_schedule_in_ms() {
 				m_status_burst_count >= burst_max_msg) {
 				DEBUG_INFO("LoRaTxService::SURFACING_BURST: max status messages reached (%u/%u)",
 				           m_status_burst_count, burst_max_msg);
+				// Arm cooldown if trigger mode is END_OF_DOPPLER (status burst ends
+				// because max_msg reached without GNSS fix) — parity with Argos.
+				unsigned int trigger = configuration_store->read_param<unsigned int>(ParamID::COOLDOWN_TRIGGER_MODE);
+				if (trigger == (unsigned int)BaseCooldownTrigger::END_OF_DOPPLER && !m_cooldown_armed) {
+					m_cooldown_armed = true;
+					DEBUG_INFO("LoRaTxService: cooldown armed (END_OF_DOPPLER, max msg)");
+				}
 				m_is_surfacing_burst = false;
 				m_awaiting_surfacing = true;
 				return Service::SCHEDULE_DISABLED;
@@ -281,6 +289,14 @@ void LoRaTxService::notify_peer_event(ServiceEvent& e) {
 					m_has_gnss_fix_since_surfacing = true;
 					m_awaiting_surfacing = false;
 					m_first_gnss_tx_sent = false;
+
+					// Arm cooldown if trigger mode is END_OF_DOPPLER (status burst
+					// ends naturally because a GNSS fix arrived) — parity with Argos.
+					unsigned int trigger = configuration_store->read_param<unsigned int>(ParamID::COOLDOWN_TRIGGER_MODE);
+					if (trigger == (unsigned int)BaseCooldownTrigger::END_OF_DOPPLER && !m_cooldown_armed) {
+						m_cooldown_armed = true;
+						DEBUG_INFO("LoRaTxService: cooldown armed (END_OF_DOPPLER, GNSS fix)");
+					}
 					service_reschedule();
 				}
 			} else {
@@ -295,6 +311,14 @@ void LoRaTxService::notify_peer_event(ServiceEvent& e) {
 		ArgosConfig argos_config;
 		configuration_store->get_argos_configuration(argos_config);
 		if (std::get<bool>(e.event_data) == true) {
+			// Activate cooldown on dive if armed during this surfacing session
+			// (parity with ArgosTxService). The cooldown timer starts now; the
+			// interval `MIN_SURFACE_CYCLE_INTERVAL_S` is measured from this point.
+			if (m_cooldown_armed) {
+				ServiceManager::set_cycle_complete(service_current_time());
+				m_cooldown_armed = false;
+			}
+
 			// Dive: reset surfacing burst state
 			if (argos_config.mode == BaseArgosMode::SURFACING_BURST) {
 				m_is_surfacing_burst = false;
@@ -316,6 +340,14 @@ void LoRaTxService::notify_peer_event(ServiceEvent& e) {
 			// Surface
 			std::time_t earliest_schedule = service_current_time() + argos_config.dry_time_before_tx;
 			m_sched.set_earliest_schedule(earliest_schedule);
+
+			// Arm cooldown immediately if trigger mode is AT_SURFACE (parity with Argos).
+			unsigned int trigger = configuration_store->read_param<unsigned int>(ParamID::COOLDOWN_TRIGGER_MODE);
+			if (trigger == (unsigned int)BaseCooldownTrigger::AT_SURFACE) {
+				m_cooldown_armed = true;
+				DEBUG_INFO("LoRaTxService: cooldown armed (AT_SURFACE)");
+			}
+
 			if (argos_config.mode == BaseArgosMode::SURFACING_BURST) {
 				m_is_surfacing_burst = true;
 				m_awaiting_surfacing = false;
@@ -610,11 +642,23 @@ void LoRaTxService::react(KineisEventTxComplete const&) {
 		return;
 	}
 
-	// Activate cooldown on any TX during a surfacing cycle
+	// Cooldown arming based on trigger mode — parity with ArgosTxService.
+	// The cooldown timer actually starts on the next UW event (dive), not here.
 	{
-		std::time_t now = service_current_time();
-		if (now > 0)
-			ServiceManager::set_cycle_complete(now);
+		unsigned int trigger = configuration_store->read_param<unsigned int>(ParamID::COOLDOWN_TRIGGER_MODE);
+		if (trigger == (unsigned int)BaseCooldownTrigger::AFTER_LAST_TX) {
+			// Mode 3: arm on every TX complete (during a surfacing session)
+			if (m_last_tx_had_gps || m_is_surfacing_burst) {
+				m_cooldown_armed = true;
+			}
+		} else if (trigger == (unsigned int)BaseCooldownTrigger::AFTER_FIRST_GNSS) {
+			// Mode 2: arm after first GNSS TX only
+			if (m_last_tx_had_gps && !m_cooldown_armed) {
+				m_cooldown_armed = true;
+				DEBUG_INFO("LoRaTxService: cooldown armed (AFTER_FIRST_GNSS)");
+			}
+		}
+		// Modes 0 (AT_SURFACE) and 1 (END_OF_DOPPLER) handled in notify_peer_event
 	}
 
 	m_sched.notify_tx_complete();
