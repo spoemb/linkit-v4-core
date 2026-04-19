@@ -51,6 +51,8 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     ENABLE_SWS_LOG=1
     ENABLE_SWS_ANALOG=1
     LORA_RAK3172=1
+    LORA_DCS_ENABLE=1           # Default ON: RAK3172 enforces EU868 duty-cycle
+    LORA_POWER_OFF_UNDERWATER=0 # Default OFF: keep module in Stop2 standby during dives
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE
