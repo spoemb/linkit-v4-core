@@ -647,9 +647,19 @@ void LoRaTxService::react(KineisEventTxComplete const&) {
 	{
 		unsigned int trigger = configuration_store->read_param<unsigned int>(ParamID::COOLDOWN_TRIGGER_MODE);
 		if (trigger == (unsigned int)BaseCooldownTrigger::AFTER_LAST_TX) {
-			// Mode 3: arm on every TX complete (during a surfacing session)
-			if (m_last_tx_had_gps || m_is_surfacing_burst) {
+			// Mode 3: arm on every GNSS or Doppler (status-burst) TX.
+			// Bool arming is idempotent — the effective anchor is the dive event.
+			// Log only on first transition per cycle to avoid spam on long bursts.
+			bool qualifies_gnss   = m_last_tx_had_gps;
+			bool qualifies_dopper = m_is_surfacing_burst && !m_last_tx_had_gps;
+			if ((qualifies_gnss || qualifies_dopper) && !m_cooldown_armed) {
 				m_cooldown_armed = true;
+				DEBUG_INFO("LoRaTxService: cooldown armed (AFTER_LAST_TX, reason=%s)",
+				           qualifies_gnss ? "GNSS" : "DOPPLER");
+			} else if (qualifies_gnss || qualifies_dopper) {
+				// Subsequent qualifying TX — keep armed, refresh effective arm reason at TRACE.
+				DEBUG_TRACE("LoRaTxService: cooldown re-armed (AFTER_LAST_TX, reason=%s)",
+				            qualifies_gnss ? "GNSS" : "DOPPLER");
 			}
 		} else if (trigger == (unsigned int)BaseCooldownTrigger::AFTER_FIRST_GNSS) {
 			// Mode 2: arm after first GNSS TX only
