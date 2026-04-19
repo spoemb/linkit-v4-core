@@ -265,7 +265,37 @@ LoRa::RespType LoRaComm::parse_rx_line_protocol(std::string& line)
         return RESP_UNKNOWN;
     }
 
-    // Value response (e.g., DEVEUI, band number, etc.)
-    m_last_value.assign(line);
+    // Filter out RAK3172 boot banner / unsolicited notifications so they
+    // don't pollute m_last_value and race with the next AT query.
+    // Typical boot output: "Current Work Mode: LoRaWAN.", "RAKwireless...",
+    // "Welcome...", "LoRaWAN stack has been initialized".
+    if (line.compare(0, 5, "Curren") == 0 ||    // "Current Work Mode: ..."
+        line.compare(0, 10, "RAKwireless") == 0 ||
+        line.compare(0, 7, "Welcome") == 0 ||
+        line.compare(0, 7, "LoRaWAN") == 0 ||
+        line.compare(0, 6, "Region") == 0) {
+        DEBUG_TRACE("LoRaComm: banner line ignored: %s", line.c_str());
+        return RESP_UNKNOWN;
+    }
+
+    // Value response: RUI3 echoes the query as "AT+XXX=<value>" or "+XXX:<value>".
+    // Strip the prefix so callers get the bare value (e.g. "1" instead of
+    // "AT+NJM=1", hex string instead of "AT+DEVEUI=xxxx"). Without this,
+    // std::stoul() on NJM and string comparison on credentials would break.
+    std::string value = line;
+    if (line.size() > 3 && line.compare(0, 3, "AT+") == 0) {
+        size_t eq = line.find('=');
+        if (eq != std::string::npos && eq + 1 < line.size())
+            value = line.substr(eq + 1);
+    } else if (line.size() > 1 && line[0] == '+') {
+        size_t colon = line.find(':');
+        if (colon != std::string::npos && colon + 1 < line.size()) {
+            size_t v_start = colon + 1;
+            while (v_start < line.size() && line[v_start] == ' ') v_start++;
+            value = line.substr(v_start);
+        }
+    }
+
+    m_last_value.assign(value);
     return RESP_VALUE;
 }

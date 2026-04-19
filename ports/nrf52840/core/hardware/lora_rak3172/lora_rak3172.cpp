@@ -953,9 +953,17 @@ LoRaDevice::LoRaCredentials LoRaDevice::read_lora_credentials()
         return creds;
     }
 
-    // Read NJM
+    // Read NJM — defensive parse: only accept "0" or "1", anything else is
+    // likely leftover banner/noise that slipped past the comm filter.
     if (send_AT(AT_GET_NJM)) {
-        creds.njm = static_cast<uint8_t>(std::stoul(m_lora_comm.m_last_value));
+        const std::string& v = m_lora_comm.m_last_value;
+        if (v == "0") creds.njm = 0;
+        else if (v == "1") creds.njm = 1;
+        else {
+            DEBUG_WARN("LoRaDevice::read_lora_credentials: unexpected NJM value '%s' — treating as read failure", v.c_str());
+            if (was_off) power_off_immediate();
+            return creds;
+        }
     } else {
         DEBUG_WARN("LoRaDevice::read_lora_credentials: failed to read NJM");
         if (was_off) power_off_immediate();
@@ -1161,7 +1169,8 @@ bool LoRaDevice::ensure_module_awake(unsigned int timeout_ms)
 
 /// @brief Read RAK3172 RUI3 firmware version. Auto-wakes if needed, restores
 /// the initial power state (off) on exit so idle power draw is unchanged by
-/// DTE queries.
+/// DTE queries. Retries once if the first response looks like lingering boot
+/// banner text instead of a version string.
 std::string LoRaDevice::get_firmware_version()
 {
     bool was_off = (m_state == State::power_off);
@@ -1169,12 +1178,26 @@ std::string LoRaDevice::get_firmware_version()
         DEBUG_WARN("LoRaDevice::get_firmware_version: module wake-up failed");
         return "";
     }
+
+    // Valid RUI3 version strings start with "RUI_" (e.g. "RUI_4.0.6_RAK3272-SiP").
+    // If the first response is anything else (typically leftover boot banner),
+    // drain RX and retry once — the comm filter may have missed a late banner.
     std::string version;
-    if (send_AT(AT_GET_VER)) {
-        version = m_lora_comm.m_last_value;
-    } else {
-        DEBUG_WARN("LoRaDevice::get_firmware_version: AT+VER=? failed");
+    for (int attempt = 0; attempt < 2; attempt++) {
+        if (!send_AT(AT_GET_VER)) {
+            DEBUG_WARN("LoRaDevice::get_firmware_version: AT+VER=? failed (attempt %d)", attempt + 1);
+            break;
+        }
+        const std::string& v = m_lora_comm.m_last_value;
+        if (v.compare(0, 4, "RUI_") == 0 || v.compare(0, 4, "RAK") == 0) {
+            version = v;
+            break;
+        }
+        DEBUG_WARN("LoRaDevice::get_firmware_version: unexpected response '%s', draining and retrying", v.c_str());
+        PMU::delay_ms(200);
+        m_lora_comm.process_rx();
     }
+
     if (was_off) {
         DEBUG_TRACE("LoRaDevice::get_firmware_version: restoring power-off");
         power_off_immediate();
