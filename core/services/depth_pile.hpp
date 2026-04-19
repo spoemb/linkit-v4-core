@@ -45,6 +45,23 @@ public:
 		DEBUG_TRACE("DepthPile::store: depth pile has %u/%u entries", m_entry.size(), m_max_size);
 	}
 
+	/// @brief Store, but if the last entry matches `pred`, replace it in-place
+	/// rather than append. Used for deduplication: e.g. consecutive NO_FIX
+	/// GPS entries convey the same information ("still no fix") and the
+	/// older one wastes airtime + pile capacity.
+	/// @return true if the last entry was replaced; false if a new entry was appended.
+	template<typename Pred>
+	bool store_or_replace_last(T& e, unsigned int burst_count, Pred pred) {
+		if (!m_entry.empty() && pred(m_entry.back().data)) {
+			m_entry.back() = Entry(e, burst_count);
+			DEBUG_TRACE("DepthPile::store_or_replace_last: replaced last entry, size=%u/%u",
+			            m_entry.size(), m_max_size);
+			return true;
+		}
+		store(e, burst_count);
+		return false;
+	}
+
 	unsigned int size() {
 		return m_entry.size();
 	}

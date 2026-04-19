@@ -175,8 +175,23 @@ void DepthPileManager::update_depth_pile() {
 
 		// Synchronously update the depth piles
 		if (m_sensor_tx_current & (1 << (int)ServiceIdentifier::GNSS_SENSOR)) {
-			// Store the entry into the depth pile
-			m_gps_depth_pile.store(m_gps_cache, burst_counter);
+			// NO_FIX dedup: if the cache is NO_FIX and the last pile entry is
+			// also NO_FIX, replace rather than append. Multiple consecutive
+			// NO_FIX markers carry the same information ("still no fix") — we
+			// keep one fresh timestamp as heartbeat and drop the older ones
+			// instead of wasting airtime (each NO_FIX costs 50+ bits of 0xFF
+			// padding in a GPS Multi packet).
+			if (m_gps_cache.info.event_type == GPSEventType::NO_FIX) {
+				bool replaced = m_gps_depth_pile.store_or_replace_last(m_gps_cache, burst_counter,
+					[](const GPSLogEntry& prev) {
+						return prev.info.event_type == GPSEventType::NO_FIX;
+					});
+				if (replaced) {
+					DEBUG_INFO("DepthPileManager: NO_FIX dedup — replaced previous NO_FIX (heartbeat refreshed)");
+				}
+			} else {
+				m_gps_depth_pile.store(m_gps_cache, burst_counter);
+			}
 		}
 		if (m_sensor_tx_current & (1 << (int)ServiceIdentifier::ALS_SENSOR)) {
 			// Store the entry into the depth pile
