@@ -1015,21 +1015,34 @@ bool LoRaDevice::write_credentials_from_config()
 
     // Load latest values from config store into m_config (keeps local cache coherent)
     load_config_from_store();
+    DEBUG_INFO("write_credentials: njm=%u deveui='%s' (len=%u) devaddr='%s' (len=%u) "
+               "appeui_len=%u appkey_len=%u nwkskey_len=%u appskey_len=%u",
+               m_config.njm,
+               m_config.deveui.c_str(),  static_cast<unsigned>(m_config.deveui.size()),
+               m_config.devaddr.c_str(), static_cast<unsigned>(m_config.devaddr.size()),
+               static_cast<unsigned>(m_config.appeui.size()),
+               static_cast<unsigned>(m_config.appkey.size()),
+               static_cast<unsigned>(m_config.nwkskey.size()),
+               static_cast<unsigned>(m_config.appskey.size()));
 
     // Set join mode first — module may reboot if NJM changes
+    DEBUG_TRACE("write_credentials: step NJM");
     if (!send_AT(AT_SET_NJM, std::to_string(m_config.njm))) {
-        DEBUG_ERROR("LoRaDevice::write_credentials_from_config: AT_SET_NJM failed");
+        DEBUG_ERROR("write_credentials: AT_SET_NJM failed");
         return false;
     }
 
-    if (!m_config.deveui.empty()) {
+    // DEVEUI: OTAA always writes if set; ABP only writes if user explicitly
+    // provided one (empty/all-zeros is skipped — RAK3172 rejects 0s in OTAA).
+    if (!m_config.deveui.empty() && m_config.deveui != "0000000000000000") {
         if (m_config.deveui.size() != 16) {
-            DEBUG_ERROR("LoRaDevice::write_credentials_from_config: invalid DEVEUI length %u",
+            DEBUG_ERROR("write_credentials: invalid DEVEUI length %u",
                         static_cast<unsigned>(m_config.deveui.size()));
             return false;
         }
+        DEBUG_TRACE("write_credentials: step DEVEUI");
         if (!send_AT(AT_SET_DEVEUI, m_config.deveui)) {
-            DEBUG_ERROR("LoRaDevice::write_credentials_from_config: AT_SET_DEVEUI failed");
+            DEBUG_ERROR("write_credentials: AT_SET_DEVEUI failed");
             return false;
         }
     }
@@ -1038,42 +1051,72 @@ bool LoRaDevice::write_credentials_from_config()
         // OTAA: APPEUI + APPKEY
         if (!m_config.appeui.empty()) {
             if (m_config.appeui.size() != 16) {
-                DEBUG_ERROR("LoRaDevice::write_credentials_from_config: invalid APPEUI length %u",
+                DEBUG_ERROR("write_credentials: invalid APPEUI length %u",
                             static_cast<unsigned>(m_config.appeui.size()));
                 return false;
             }
+            DEBUG_TRACE("write_credentials: step APPEUI");
             if (!send_AT(AT_SET_APPEUI, m_config.appeui)) {
-                DEBUG_ERROR("LoRaDevice::write_credentials_from_config: AT_SET_APPEUI failed");
+                DEBUG_ERROR("write_credentials: AT_SET_APPEUI failed");
                 return false;
             }
         }
         if (!m_config.appkey.empty()) {
             if (m_config.appkey.size() != 32) {
-                DEBUG_ERROR("LoRaDevice::write_credentials_from_config: invalid APPKEY length %u",
+                DEBUG_ERROR("write_credentials: invalid APPKEY length %u",
                             static_cast<unsigned>(m_config.appkey.size()));
                 return false;
             }
+            DEBUG_TRACE("write_credentials: step APPKEY");
             if (!send_AT(AT_SET_APPKEY, m_config.appkey)) {
-                DEBUG_ERROR("LoRaDevice::write_credentials_from_config: AT_SET_APPKEY failed");
+                DEBUG_ERROR("write_credentials: AT_SET_APPKEY failed");
                 return false;
             }
         }
     } else {
-        // ABP: DEVADDR (session keys NWKSKEY/APPSKEY are write-only, skipped here)
+        // ABP: DEVADDR + NWKSKEY + APPSKEY all required for a functional session.
+        // (Previously only DEVADDR was written — session keys were skipped with a
+        // misleading "write-only" comment. They ARE write-only at the RAK3172 read
+        // side but MUST be written for ABP activation.)
         if (!m_config.devaddr.empty()) {
             if (m_config.devaddr.size() != 8) {
-                DEBUG_ERROR("LoRaDevice::write_credentials_from_config: invalid DEVADDR length %u",
+                DEBUG_ERROR("write_credentials: invalid DEVADDR length %u",
                             static_cast<unsigned>(m_config.devaddr.size()));
                 return false;
             }
+            DEBUG_TRACE("write_credentials: step DEVADDR");
             if (!send_AT(AT_SET_DEVADDR, m_config.devaddr)) {
-                DEBUG_ERROR("LoRaDevice::write_credentials_from_config: AT_SET_DEVADDR failed");
+                DEBUG_ERROR("write_credentials: AT_SET_DEVADDR failed");
+                return false;
+            }
+        }
+        if (!m_config.nwkskey.empty()) {
+            if (m_config.nwkskey.size() != 32) {
+                DEBUG_ERROR("write_credentials: invalid NWKSKEY length %u",
+                            static_cast<unsigned>(m_config.nwkskey.size()));
+                return false;
+            }
+            DEBUG_TRACE("write_credentials: step NWKSKEY");
+            if (!send_AT(AT_SET_NWKSKEY, m_config.nwkskey)) {
+                DEBUG_ERROR("write_credentials: AT_SET_NWKSKEY failed");
+                return false;
+            }
+        }
+        if (!m_config.appskey.empty()) {
+            if (m_config.appskey.size() != 32) {
+                DEBUG_ERROR("write_credentials: invalid APPSKEY length %u",
+                            static_cast<unsigned>(m_config.appskey.size()));
+                return false;
+            }
+            DEBUG_TRACE("write_credentials: step APPSKEY");
+            if (!send_AT(AT_SET_APPSKEY, m_config.appskey)) {
+                DEBUG_ERROR("write_credentials: AT_SET_APPSKEY failed");
                 return false;
             }
         }
     }
 
-    DEBUG_INFO("LoRaDevice::write_credentials_from_config: credentials written (njm=%u)", m_config.njm);
+    DEBUG_INFO("write_credentials: credentials written OK (njm=%u)", m_config.njm);
     if (was_off) {
         DEBUG_TRACE("LoRaDevice::write_credentials_from_config: restoring power-off");
         power_off_immediate();

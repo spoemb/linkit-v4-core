@@ -755,12 +755,23 @@ std::string DTEHandler::SATVF_REQ(int error_code, std::vector<BaseType>& arg_lis
 			std::string cfg_devaddr = configuration_store->read_param<std::string>(ParamID::LORA_DEVADDR);
 			unsigned int cfg_njm    = configuration_store->read_param<unsigned int>(ParamID::LORA_NJM);
 			bool m = (h.njm == cfg_njm);
-			m = m && (to_upper(h.deveui) == to_upper(cfg_deveui));
 			if (h.njm == 1) {
+				// OTAA: DEVEUI is part of the join procedure, must match.
+				m = m && (to_upper(h.deveui) == to_upper(cfg_deveui));
 				m = m && (to_upper(h.appeui) == to_upper(cfg_appeui));
 				m = m && (to_upper(h.appkey) == to_upper(cfg_appkey));
 			} else {
+				// ABP: DEVADDR selects the session, session keys encrypt. DEVEUI
+				// is only a device identifier with no LoRaWAN function, so we
+				// only enforce its match when the user explicitly set one in
+				// LRP01 (non-empty and non-zero). This avoids spurious
+				// mismatches when the RAK3172 reports 0000...0000 and the user
+				// never wrote a DEVEUI (common ABP provisioning).
 				m = m && (to_upper(h.devaddr) == to_upper(cfg_devaddr));
+				if (!cfg_deveui.empty() &&
+				    cfg_deveui != "0000000000000000") {
+					m = m && (to_upper(h.deveui) == to_upper(cfg_deveui));
+				}
 			}
 			return m;
 		};
