@@ -730,7 +730,18 @@ void LoRaDevice::state_idle_exit() {
 // ========================================================================
 
 void LoRaDevice::state_standby_enter() {
-    DEBUG_INFO("LoRaDevice: standby (LPM Stop2 ~1.7uA)");
+    // Deinitialize the nRF UARTE1 peripheral while the RAK3172 sleeps in
+    // its own Stop2 LPM. Without this, UARTE1 stays clocked and burns
+    // ~300-500 µA even when idle — that's the difference between the
+    // LoRa board measuring 0.7 mA vs SMD measuring 27 µA.
+    //
+    // The RAK3172 itself continues to receive power via SAT_PWR_EN so it
+    // retains LoRaWAN session state. We only detach the nRF-side UART;
+    // the module's internal Stop2 wake-on-UART is still active on its
+    // side, but we no longer clock our peripheral while waiting for a
+    // send() call from the service layer.
+    DEBUG_INFO("LoRaDevice: standby (RAK Stop2 ~1.7uA + UARTE1 deinit)");
+    m_lora_comm.deinit();
 }
 
 void LoRaDevice::state_standby() {
@@ -738,7 +749,13 @@ void LoRaDevice::state_standby() {
 }
 
 void LoRaDevice::state_standby_exit() {
-    ;
+    // Re-initialize UARTE1 so we can talk to the RAK3172 again. This is
+    // the mirror of state_standby_enter's deinit. The module is still
+    // powered (SAT_PWR_EN high), so the first UART byte we send (typically
+    // an AT ping from start_device's wake path, or the AT+SEND from
+    // state_transmit_enter) will wake it from Stop2 in ~15 µs.
+    DEBUG_TRACE("LoRaDevice: standby exit — reinit UART");
+    m_lora_comm.init();
 }
 
 // ========================================================================
