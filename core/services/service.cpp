@@ -139,14 +139,24 @@ void ServiceManager::set_cycle_complete(std::time_t t) {
 /// @param now  Current RTC time.
 /// @return true if less than MIN_SURFACE_CYCLE_INTERVAL_S has elapsed since last cycle.
 bool ServiceManager::is_in_cooldown(std::time_t now) {
+	return get_cooldown_remaining_s(now) > 0;
+}
+
+/// @brief Seconds remaining until cooldown expires.
+/// @param now  Current RTC time.
+/// @return  Remaining cooldown seconds, or 0 if no active cooldown.
+unsigned int ServiceManager::get_cooldown_remaining_s(std::time_t now) {
 	unsigned int interval = configuration_store->read_param<unsigned int>(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S);
 	if (interval == 0)
-		return false;
+		return 0;
 	if (m_last_successful_cycle_time == 0)
-		return false;
+		return 0;
 	if (now <= m_last_successful_cycle_time)
-		return false;  // RTC went backward or same — treat as cooldown expired
-	return (now - m_last_successful_cycle_time) < (std::time_t)interval;
+		return 0;  // RTC went backward or same — treat as cooldown expired
+	std::time_t elapsed = now - m_last_successful_cycle_time;
+	if (elapsed >= (std::time_t)interval)
+		return 0;
+	return (unsigned int)((std::time_t)interval - elapsed);
 }
 
 void ServiceManager::notify_passive_surfacing() {

@@ -12,6 +12,7 @@
 #include "service.hpp"
 #include "config_store.hpp"
 #include "service_scheduler.hpp"
+#include "scheduler.hpp"
 #include "depth_pile.hpp"
 #include "lora_packet_builder.hpp"
 #include "lora_tx_scheduler.hpp"
@@ -60,6 +61,17 @@ private:
 	/// event (notify_peer_event UW=true), keeping parity with Argos semantics.
 	bool m_cooldown_armed = false;
 	std::function<void()> m_scheduled_task;
+
+	/// @brief Task handle for the delayed "cooldown-end warm-up". Scheduled
+	/// on dive when the module is left off for a cooldown; fires at the end
+	/// of the cooldown so the module is back in standby (configured, joined)
+	/// before the next surfacing event, giving fast first-TX dispatch.
+	Scheduler::TaskHandle m_cooldown_warm_up_task;
+
+	/// @brief Arm / disarm the cooldown-end warm-up task. Cancels any pending
+	/// warm-up task; if we're actually in a cooldown window and the module is
+	/// currently off, schedules a new task at cooldown-end.
+	void reschedule_cooldown_warm_up();
 
 	void react(KineisEventTxStarted const&) override;
 	void react(KineisEventTxComplete const&) override;

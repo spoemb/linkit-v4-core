@@ -69,6 +69,10 @@ public:
 	virtual void send(const KineisModulation mode, const KineisPacket& packet, const unsigned int size_bits) = 0;
 	virtual void stop_send() = 0;
 	virtual void power_off_immediate() {}  // Hard shutdown (default: no-op for backends without power control)
+	/// @brief Pre-boot the radio module without sending anything. Lets the
+	/// next send() dispatch immediately instead of paying the boot+configure
+	/// cost. Default no-op for backends where wake is already fast enough.
+	virtual void warm_up_for_tx() {}
 	virtual void start_receive(const KineisModulation mode) = 0;
 	virtual bool stop_receive() = 0;
 	virtual void set_frequency(double freq_mhz) = 0;

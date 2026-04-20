@@ -99,18 +99,53 @@ void NrfUartAsync::init(uint32_t baudrate_override)
 
 /// @note Includes Nordic SDK workaround: UARTE HF clock and DMA bus not properly
 ///       released on uninit — force POWER register toggle to fully shut down.
+///       Also pins the TX line HIGH and disconnects RX so the UART peer sees a
+///       stable idle signal and can enter its deepest LPM without being woken
+///       by spurious transitions on a floating line (measured impact: ~150 µA
+///       saved on the RAK3172 Stop2 path).
 void NrfUartAsync::deinit()
 {
     if (!m_is_init) return;
 
+    // Capture pin assignments BEFORE uninit — nrfx_uarte_uninit resets them.
+    uint32_t tx_pin = BSP::UARTAsync_Inits[m_uart_instance].config.tx_pin;
+    uint32_t rx_pin = BSP::UARTAsync_Inits[m_uart_instance].config.rx_pin;
+
     nrf_libuarte_async_uninit(BSP::UARTAsync_Inits[m_uart_instance].uart);
     m_is_init = false;
+
+    // Any in-flight TX is aborted with the peripheral. Clear the busy flag so
+    // the next init+send() can proceed — TX_DONE will never fire for the
+    // aborted transfer. Also reset RX state so the next start_rx is clean.
+    m_is_send_busy = false;
+    m_is_rx_started = false;
 
     // Nordic SDK bug: UARTE HF clock and DMA bus not released on uninit.
     // UARTE0=0x40002000, UARTE1=0x40028000
     static constexpr uint32_t uarte_base[] = { 0x40002000, 0x40028000 };
     if (m_uart_instance < 2)
         nrf_peripheral_power_reset(uarte_base[m_uart_instance]);
+
+    // After uninit, nrfx drops the UART pins to input-disconnect (floating).
+    // A floating line into the peer's RX pin can look like start bits and
+    // keep the peer from entering deep LPM. Explicitly park TX as an output
+    // driven HIGH (UART idle state) so the peer sees a stable, noise-free
+    // signal. Leave RX as input-disconnect (high-Z) — the peer drives it
+    // when awake, and when sleeping either floats or holds HIGH; nRF input
+    // leakage is negligible either way.
+    nrf_gpio_cfg(tx_pin,
+                 NRF_GPIO_PIN_DIR_OUTPUT,
+                 NRF_GPIO_PIN_INPUT_DISCONNECT,
+                 NRF_GPIO_PIN_NOPULL,
+                 NRF_GPIO_PIN_S0S1,
+                 NRF_GPIO_PIN_NOSENSE);
+    nrf_gpio_pin_set(tx_pin);
+    nrf_gpio_cfg(rx_pin,
+                 NRF_GPIO_PIN_DIR_INPUT,
+                 NRF_GPIO_PIN_INPUT_DISCONNECT,
+                 NRF_GPIO_PIN_NOPULL,
+                 NRF_GPIO_PIN_S0S1,
+                 NRF_GPIO_PIN_NOSENSE);
 }
 
 // ============================================================================

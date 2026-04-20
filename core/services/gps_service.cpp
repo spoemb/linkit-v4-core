@@ -101,14 +101,15 @@ unsigned int GPSService::service_next_schedule_in_ms() {
     }
 
     // GNSS_NTRY: max consecutive failed acquisitions per cycle (0=unlimited).
-    // After reaching the limit, skip retries and wait for the next dloc_arg_nom
-    // cycle or next surfacing event. This saves battery when GPS has no sky view.
+    // Once the counter reaches the limit, back off to dloc_arg_nom
+    // (GNSS_DELTATIME_ACQ). Do NOT reset here — the counter is only reset at
+    // (a) end of the GNSS_DELTATIME_ACQ period, when service_initiate fires
+    // the back-off attempt, and (b) a new surfacing event.
     unsigned int gnss_ntry = configuration_store->read_param<unsigned int>(ParamID::GNSS_NTRY);
     bool ntry_exhausted = (gnss_ntry > 0 && m_cold_start_ntry >= gnss_ntry);
     if (ntry_exhausted) {
-        DEBUG_INFO("GPSService: GNSS_NTRY limit reached (%u/%u) | backing off to dloc_arg_nom",
+        DEBUG_INFO("GPSService::retry_counter: NTRY limit reached (%u/%u) | back-off to dloc_arg_nom",
                    m_cold_start_ntry, gnss_ntry);
-        m_cold_start_ntry = 0;  // Reset for the next cycle
     }
 
     std::time_t now = service_current_time();
@@ -121,6 +122,13 @@ unsigned int GPSService::service_next_schedule_in_ms() {
     } else {
         aq_period = m_is_first_fix_found ? gnss_config.dloc_arg_nom : gnss_config.cold_start_retry_period;
     }
+
+    DEBUG_INFO("GPSService::retry_counter: ntry=%u limit=%u exhausted=%u aq_period=%us (%s)",
+               m_cold_start_ntry, gnss_ntry, (unsigned)ntry_exhausted,
+               (unsigned)aq_period,
+               m_is_first_schedule ? "first_schedule"
+                 : ntry_exhausted ? "NTRY_BACKOFF"
+                 : m_is_first_fix_found ? "dloc_arg_nom" : "cold_start_retry_period");
 
     if (aq_period == 0) {
     	return Service::SCHEDULE_DISABLED;
@@ -143,6 +151,19 @@ unsigned int GPSService::service_next_schedule_in_ms() {
 void GPSService::service_initiate() {
 	GNSSConfig gnss_config;
 	configuration_store->get_gnss_configuration(gnss_config);
+
+	// End of GNSS_DELTATIME_ACQ back-off: if we arrive here with the counter
+	// still at/above NTRY, the previous schedule was a dloc_arg_nom back-off
+	// that has now expired. Reset the counter so this new attempt starts
+	// fresh. (The other reset trigger is a surfacing event — see
+	// service_is_triggered_on_surfaced.)
+	unsigned int gnss_ntry = configuration_store->read_param<unsigned int>(ParamID::GNSS_NTRY);
+	if (gnss_ntry > 0 && m_cold_start_ntry >= gnss_ntry) {
+		DEBUG_INFO("GPSService::retry_counter: reset ntry=%u->0 (end of GNSS_DELTATIME_ACQ back-off)",
+		           m_cold_start_ntry);
+		m_cold_start_ntry = 0;
+	}
+
 	GPSNavSettings nav_settings = {
 		gnss_config.fix_mode,
 		gnss_config.dyn_model,
@@ -225,6 +246,9 @@ bool GPSService::service_is_triggered_on_surfaced(bool& immediate) {
 	GNSSConfig gnss_config;
 	configuration_store->get_gnss_configuration(gnss_config);
 	immediate = gnss_config.trigger_on_surfaced;
+	if (m_cold_start_ntry != 0) {
+		DEBUG_INFO("GPSService::retry_counter: reset ntry=%u->0 (surfacing)", m_cold_start_ntry);
+	}
 	m_cold_start_ntry = 0;  // Reset retry counter on each surfacing
 	return true;
 }
@@ -241,7 +265,9 @@ GPSLogEntry GPSService::invalid_log_entry()
 {
     DEBUG_INFO("GPSService::invalid_log_entry");
     m_cold_start_ntry++;
-    DEBUG_TRACE("GPSService: ntry=%u", m_cold_start_ntry);
+    unsigned int ntry_limit = configuration_store->read_param<unsigned int>(ParamID::GNSS_NTRY);
+    DEBUG_INFO("GPSService::retry_counter: NO_FIX | ntry=%u/%s", m_cold_start_ntry,
+               ntry_limit == 0 ? "unlimited" : std::to_string(ntry_limit).c_str());
 
     GPSLogEntry gps_entry{};
 
@@ -263,6 +289,9 @@ GPSLogEntry GPSService::invalid_log_entry()
 void GPSService::task_process_gnss_data()
 {
     DEBUG_TRACE("GPSService::task_process_gnss_data");
+    if (m_cold_start_ntry != 0) {
+        DEBUG_INFO("GPSService::retry_counter: reset ntry=%u->0 (PVT fix)", m_cold_start_ntry);
+    }
     m_cold_start_ntry = 0;
 
     GPSLogEntry gps_entry{};
@@ -303,6 +332,8 @@ void GPSService::task_process_gnss_data()
 void GPSService::task_process_degraded_gnss_data()
 {
     DEBUG_INFO("GPSService::task_process_degraded_gnss_data");
+    DEBUG_INFO("GPSService::retry_counter: reset ntry=%u->0 (DEGRADED_PVT success)", m_cold_start_ntry);
+    m_cold_start_ntry = 0;
 
     GPSLogEntry gps_entry{};
     gps_entry.header.log_type = LOG_GPS;
@@ -330,6 +361,8 @@ void GPSService::task_process_degraded_gnss_data()
 void GPSService::task_process_cloudlocate_data()
 {
     DEBUG_INFO("GPSService::task_process_cloudlocate_data");
+    DEBUG_INFO("GPSService::retry_counter: reset ntry=%u->0 (CLOUDLOCATE success)", m_cold_start_ntry);
+    m_cold_start_ntry = 0;
 
     GPSLogEntry gps_entry{};
     gps_entry.header.log_type = LOG_GPS;

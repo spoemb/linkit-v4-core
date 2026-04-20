@@ -48,6 +48,12 @@ public:
     /// (e.g. LORA_POWER_OFF_UNDERWATER compile flag).
     void power_off_immediate() override;
 
+    /// @brief Pre-boot the RAK3172 so the next send() dispatches with only a
+    /// ~10 ms wake from Stop2 standby instead of ~3 s boot+configure. No-op
+    /// if the module is already running. Used by LoRaTxService to warm up
+    /// the module during an underwater phase when no cooldown is active.
+    void warm_up_for_tx() override;
+
     // LoRa-specific public API
     bool is_joined() const { return m_joined; }
 

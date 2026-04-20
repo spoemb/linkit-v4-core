@@ -169,6 +169,9 @@ public:
 	static unsigned int get_unique_id(const char *name);
 	static void set_cycle_complete(std::time_t t);
 	static bool is_in_cooldown(std::time_t now);
+	/// @brief Seconds remaining in the current cooldown window, or 0 if no
+	/// active cooldown (disabled, or already expired).
+	static unsigned int get_cooldown_remaining_s(std::time_t now);
 	static void notify_passive_surfacing();
 	static unsigned int get_passive_surfacing_count();
 	static void save_cooldown_state();

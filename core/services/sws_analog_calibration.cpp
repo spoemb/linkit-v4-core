@@ -87,6 +87,27 @@ bool SWSAnalogService::load_calibration_from_flash() {
         return false;
     }
 
+    // Baseline floor: a properly connected, dry electrode reads at least
+    // AIR_BASELINE_FLOOR (~50 ADC on 14-bit SAADC). Flash data below this is
+    // either a leftover from a factory/open-circuit state or a disconnected
+    // electrode during a past calibration run — trust neither. Fall back to
+    // a fresh in-air calibration instead of propagating bad baselines.
+    if ((uint16_t)air < AIR_BASELINE_FLOOR) {
+        DEBUG_WARN("SWSAnalog: stored air=%u < floor %u — discarding flash calibration",
+                   (unsigned)(uint16_t)air, (unsigned)AIR_BASELINE_FLOOR);
+        return false;
+    }
+    // Contrast floor: water-air gap must leave enough room above
+    // THRESHOLD_MIN_ABOVE_AIR (20) plus the 10 ADC minimum hysteresis (30
+    // total) so that threshold_high can live between the two baselines and
+    // actual underwater readings can cross it.
+    static constexpr uint16_t MIN_WATER_AIR_GAP = 30;
+    if ((uint16_t)(water - air) < MIN_WATER_AIR_GAP) {
+        DEBUG_WARN("SWSAnalog: stored water-air gap %u < %u — discarding flash calibration",
+                   (unsigned)(uint16_t)(water - air), (unsigned)MIN_WATER_AIR_GAP);
+        return false;
+    }
+
     m_calib.threshold_air = (uint16_t)air;
     m_calib.threshold_water = (uint16_t)water;
     update_dynamic_threshold();
@@ -97,9 +118,17 @@ bool SWSAnalogService::load_calibration_from_flash() {
 
     if (peak > 0 && peak <= ADC_INVALID_MAX) {
         m_observed_peak_adc = (uint16_t)peak;
-        m_observed_peak_crc = crc16_compute((const uint8_t *)&m_observed_peak_adc,
-                                             sizeof(m_observed_peak_adc), nullptr);
+    } else {
+        // Peak is 0 / invalid (noinit corruption or never stored). Seed from
+        // water baseline so update_dynamic_threshold's cap logic doesn't pin
+        // threshold_high below actual underwater readings. Use water itself —
+        // conservative, the cap will be re-learned from real ADC samples.
+        m_observed_peak_adc = m_calib.threshold_water;
+        DEBUG_INFO("SWSAnalog: stored peak invalid — seeding from water baseline (%u)",
+                   m_observed_peak_adc);
     }
+    m_observed_peak_crc = crc16_compute((const uint8_t *)&m_observed_peak_adc,
+                                         sizeof(m_observed_peak_adc), nullptr);
 
     DEBUG_INFO("SWSAnalog: Calibration restored from SWS.CAL - air=%u water=%u thresh=%u peak=%u",
                m_calib.threshold_air, m_calib.threshold_water,

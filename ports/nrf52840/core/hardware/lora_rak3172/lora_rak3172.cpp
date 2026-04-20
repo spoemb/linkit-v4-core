@@ -12,8 +12,36 @@
 #include "error.hpp"
 #include "binascii.hpp"
 #include "config_store.hpp"
+#include "nrf_gpio.h"
 #include <cstdint>
 #include <string>
+
+// Park unused satellite-slot pins in high-impedance on the LoRa board variant:
+//   - SAT_INT (P0.29): BSP default has INPUT_CONNECT (input buffer ON). On the
+//     LoRa PCB this pin is not wired to anything the RAK3172 drives, so the
+//     enabled buffer floats and leaks through the Schmitt trigger. Switch to
+//     INPUT_DISCONNECT.
+//   - SAT_EXTWAKEUP (P0.30): not connected on LoRa. BSP leaves it as an output;
+//     driving an unconnected pin is 0 A but toggling during state changes is
+//     wasted bus activity. Park as INPUT_DISCONNECT.
+//   - SAT_RESET (P0.31): BSP already sets INPUT_DISCONNECT for probe flashing,
+//     which coincidentally is also the lowest-leakage config — leave as is.
+//   - SAT_PWR_EN (P1.15): THE one pin we keep actively driving (module power).
+static inline void lora_park_unused_sat_pins()
+{
+    nrf_gpio_cfg(NRF_GPIO_PIN_MAP(0, 29),   // SAT_INT
+                 NRF_GPIO_PIN_DIR_INPUT,
+                 NRF_GPIO_PIN_INPUT_DISCONNECT,
+                 NRF_GPIO_PIN_NOPULL,
+                 NRF_GPIO_PIN_S0S1,
+                 NRF_GPIO_PIN_NOSENSE);
+    nrf_gpio_cfg(NRF_GPIO_PIN_MAP(0, 30),   // SAT_EXTWAKEUP
+                 NRF_GPIO_PIN_DIR_INPUT,
+                 NRF_GPIO_PIN_INPUT_DISCONNECT,
+                 NRF_GPIO_PIN_NOPULL,
+                 NRF_GPIO_PIN_S0S1,
+                 NRF_GPIO_PIN_NOSENSE);
+}
 
 using namespace LoRa;
 
@@ -215,9 +243,16 @@ void LoRaDevice::cancel_timeout() {
 void LoRaDevice::start_device()
 {
     if (m_state == State::standby) {
-        // Quick wake from LPM Stop2 via AT ping (~10ms)
-        // RAK3172 wakes on first UART byte, responds to AT within a few ms
-        // Retry up to 3 times before power cycling (module may be slow to wake)
+        // state_standby_enter deinit'd the nRF UARTE1 for power savings. We
+        // MUST reinit it before any AT command — sending on a deinit'd UART
+        // silently fails (nrf_libuarte_async_tx no-ops) and leaves
+        // m_is_send_busy stuck at true, producing "already busy" on every
+        // subsequent call. init() is idempotent (guarded by m_is_init).
+        m_lora_comm.init();
+
+        // Quick wake from LPM Stop2 via AT ping (~10ms).
+        // RAK3172 wakes on first UART byte, responds to AT within a few ms.
+        // Retry up to 3 times before power cycling (module may be slow to wake).
         bool wake_ok = false;
         for (int attempt = 0; attempt < 3 && !wake_ok; attempt++) {
             if (send_AT(AT_TEST))
@@ -254,6 +289,22 @@ void LoRaDevice::power_off_immediate(void)
         m_state = State::power_off;
         state_power_off_enter();
     }
+}
+
+/// @brief Warm up the module for a fast next-TX dispatch. The FSM runs
+/// power_on → configure → join → idle → standby asynchronously. State
+/// machine is left in standby with empty packet buffer so the next send()
+/// goes through the fast wake path (state_standby → start_device reinit
+/// UART + AT ping ~10 ms).
+void LoRaDevice::warm_up_for_tx()
+{
+    if (m_state != State::power_off) {
+        // Already running — nothing to do. start_device would just log and
+        // re-tick the FSM.
+        return;
+    }
+    DEBUG_INFO("LoRaDevice::warm_up_for_tx: pre-booting module for next surface TX");
+    LORA_STATE_CHANGE(power_off, power_on);
 }
 
 /// @brief Blocking send of an AT command with polling for OK response.
@@ -311,8 +362,11 @@ void LoRaDevice::state_power_off_enter()
 {
     DEBUG_INFO("LoRaDevice::state_power_off_enter");
     m_lora_comm.deinit();
-    GPIOPins::clear(SAT_EXTWAKEUP);
     GPIOPins::clear(SAT_PWR_EN);
+    // Park all non-essential nRF pins that touch (or might touch) the LoRa
+    // slot into high-impedance input-disconnect so the board truly draws 0 A
+    // through the satellite interface when SAT_PWR_EN is low.
+    lora_park_unused_sat_pins();
     m_packet_buffer.clear();
 }
 
@@ -335,7 +389,10 @@ void LoRaDevice::state_power_off_exit() {
 void LoRaDevice::state_power_on_enter()
 {
     GPIOPins::set(SAT_PWR_EN);
-    GPIOPins::set(SAT_EXTWAKEUP);
+    // Park unused SAT_* slot pins in input-disconnect. Runs on every power-on
+    // so first-boot (before any power_off_enter has fired) still gets the
+    // low-leakage pin config instead of the BSP default (input buffer ON).
+    lora_park_unused_sat_pins();
     m_lora_comm.init();  // RAK3172 RUI3 factory default 115200 8N1
     m_lora_comm.subscribe(*this);
     m_joined = false;
@@ -450,7 +507,13 @@ void LoRaDevice::state_configure()
             break;
 
         case 3:
-            // Set Device EUI — try: 1) config store, 2) module, 3) nRF52840 FICR
+            // Set Device EUI. Only relevant for OTAA — ABP activation uses
+            // DEVADDR + NWKSKEY + APPSKEY (written at step 5). RAK3172 rejects
+            // AT+DEVEUI writes in certain ABP states with PARAM_ERROR type=2.
+            if (m_config.njm == 0) {
+                DEBUG_TRACE("LoRaDevice: ABP mode — skipping DEVEUI set");
+                break;
+            }
             if (m_config.deveui.empty()) {
                 at_error = !send_AT(AT_GET_DEVEUI);
                 if (!at_error && !m_lora_comm.m_last_value.empty() &&
@@ -619,8 +682,15 @@ void LoRaDevice::state_configure()
 
     if (at_error)
     {
-        DEBUG_ERROR("LoRaDevice::state_configure: failed at step %u", m_config_step);
-        LORA_STATE_CHANGE(configure, error);
+        DEBUG_ERROR("LoRaDevice::state_configure: failed at step %u (fatal — no internal retry)", m_config_step);
+        // Configure failures (bad credentials, module rejecting AT command) do
+        // NOT self-heal on retry. Skip the state_error retry loop, notify the
+        // service layer immediately, and cut power. The service's global error
+        // counter (DEVICE_ERROR_MAX_CONSECUTIVE) is the single source of truth
+        // for when to give up.
+        m_consecutive_errors = 0;
+        notify(KineisEventDeviceError({}));
+        LORA_STATE_CHANGE(configure, power_off);
         return;
     }
 
@@ -742,6 +812,9 @@ void LoRaDevice::state_standby_enter() {
     // send() call from the service layer.
     DEBUG_INFO("LoRaDevice: standby (RAK Stop2 ~1.7uA + UARTE1 deinit)");
     m_lora_comm.deinit();
+    // Re-assert the unused-pin park — defensive in case some other code path
+    // reconfigured them between power_on and here.
+    lora_park_unused_sat_pins();
 }
 
 void LoRaDevice::state_standby() {
@@ -1049,9 +1122,10 @@ bool LoRaDevice::write_credentials_from_config()
         return false;
     }
 
-    // DEVEUI: OTAA always writes if set; ABP only writes if user explicitly
-    // provided one (empty/all-zeros is skipped — RAK3172 rejects 0s in OTAA).
-    if (!m_config.deveui.empty() && m_config.deveui != "0000000000000000") {
+    // DEVEUI: OTAA only. ABP activation uses DEVADDR + session keys; writing
+    // DEVEUI in ABP triggers RAK3172 PARAM_ERROR type=2 in some states.
+    if (m_config.njm == 1 &&
+        !m_config.deveui.empty() && m_config.deveui != "0000000000000000") {
         if (m_config.deveui.size() != 16) {
             DEBUG_ERROR("write_credentials: invalid DEVEUI length %u",
                         static_cast<unsigned>(m_config.deveui.size()));
@@ -1062,6 +1136,8 @@ bool LoRaDevice::write_credentials_from_config()
             DEBUG_ERROR("write_credentials: AT_SET_DEVEUI failed");
             return false;
         }
+    } else if (m_config.njm == 0) {
+        DEBUG_TRACE("write_credentials: ABP mode — skipping DEVEUI");
     }
 
     if (m_config.njm == 1) {
@@ -1169,6 +1245,12 @@ bool LoRaDevice::cw_stop()
     DEBUG_INFO("LoRaDevice::cw_stop (ATZ reset)");
     if (m_state == State::power_off) return true;  // Already stopped
 
+    // If the driver is in standby, UARTE1 is deinit'd (see state_standby_enter).
+    // Sending AT_RESET on an unclocked UART would bus-fault. Re-init first.
+    if (m_state == State::standby) {
+        m_lora_comm.init();
+    }
+
     // Fire-and-forget: RUI3 silently resets on ATZ, so waiting for OK would
     // always time out and falsely report failure.
     m_lora_comm.send(AT_RESET);
@@ -1184,8 +1266,30 @@ bool LoRaDevice::cw_stop()
 /// COMCW) get a fast turnaround. Returns as soon as AT_TEST succeeds.
 bool LoRaDevice::ensure_module_awake(unsigned int timeout_ms)
 {
+    if (m_state == State::standby) {
+        // Module is in RAK3172 Stop2 LPM and — importantly — our nRF UARTE1
+        // was deinit'd by state_standby_enter for power savings. Sending on
+        // an unclocked UARTE peripheral causes a bus fault (HARDFAULT / MCU
+        // reboot). Re-init the UART and send an AT ping to wake the module.
+        DEBUG_INFO("LoRaDevice::ensure_module_awake: module standby — reinit UART + wake ping");
+        m_lora_comm.init();
+        bool wake_ok = false;
+        for (int attempt = 0; attempt < 3 && !wake_ok; attempt++) {
+            if (send_AT(AT_TEST, std::nullopt, 500))
+                wake_ok = true;
+        }
+        if (wake_ok) {
+            m_state = State::idle;
+            return true;
+        }
+        // Wake failed — fall through to power cycle path below.
+        DEBUG_WARN("LoRaDevice::ensure_module_awake: standby wake failed — power cycling");
+        power_off_immediate();
+        // continue into the power_off branch
+    }
+
     if (m_state != State::power_off) {
-        return true;  // Already powered (idle, standby, configure, joining, transmit)
+        return true;  // Already powered (idle, configure, joining, transmit)
     }
 
     DEBUG_INFO("LoRaDevice::ensure_module_awake: module off — booting");

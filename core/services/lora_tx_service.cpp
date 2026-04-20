@@ -327,17 +327,41 @@ void LoRaTxService::notify_peer_event(ServiceEvent& e) {
 				m_has_gnss_fix_since_surfacing = false;
 				m_first_gnss_tx_sent = false;
 			}
-#if defined(LORA_POWER_OFF_UNDERWATER) && (LORA_POWER_OFF_UNDERWATER == 1)
-			// Compile-time opt-in: cut module power completely during dives.
-			// Saves ~1.7 µA × dive-duration vs Stop2 standby, at the cost of a
-			// ~2 s boot on the next surface (configure path must re-run).
-			// Default OFF — keep standby for short surfacings where 2 s wake
-			// would miss the tortue / bird surfacing window.
-			DEBUG_INFO("LoRaTxService: dive detected — powering off LoRa module (LORA_POWER_OFF_UNDERWATER=1)");
-			m_device.power_off_immediate();
-#endif
+
+			// Underwater power management:
+			//   - In cooldown (MIN_SURFACE_CYCLE_INTERVAL_S > 0 AND still
+			//     within the window): keep the module off for the whole dive;
+			//     no TX will fire until the window expires, so warming the
+			//     radio would just waste the dive's budget.
+			//   - Not in cooldown (either disabled or expired): warm up the
+			//     module now. Boot + configure + (OTAA) join runs during the
+			//     dive so the next surface burst dispatches the first Doppler
+			//     in <10 ms (fast standby wake) instead of ~3 s (cold boot) —
+			//     matches user requirement "don't lose time on first fix".
+			// NOTE: `ServiceManager::is_in_cooldown` already returns false
+			// when `MIN_SURFACE_CYCLE_INTERVAL_S == 0`, so we don't need a
+			// separate "just-armed" check. Set-then-check gives us the right
+			// answer for both (disabled) and (armed this cycle, interval > 0).
+			bool in_cooldown = ServiceManager::is_in_cooldown(service_current_time());
+			if (in_cooldown) {
+				DEBUG_INFO("LoRaTxService: dive + cooldown active — keeping module off");
+				m_device.power_off_immediate();  // idempotent if already off
+				// Schedule a delayed warm-up at cooldown end so the module is
+				// configured + in standby before the next surfacing. Priority:
+				// fast first doppler TX on every surfacing, regardless of
+				// whether the previous cycle left a cooldown active.
+				reschedule_cooldown_warm_up();
+			} else {
+				DEBUG_INFO("LoRaTxService: dive, no cooldown — warming up module for next surface");
+				m_device.warm_up_for_tx();
+			}
 		} else {
-			// Surface
+			// Surface. Any pending "cooldown-end warm-up" task from a prior
+			// dive is left armed — if the cooldown expires while the user is
+			// passively surfacing (no TX allowed yet), the task will warm up
+			// the module exactly when the cooldown ends so that the moment a
+			// TX becomes permitted the first dispatch is fast. Task is
+			// idempotent (warm_up_for_tx is a no-op on a running module).
 			std::time_t earliest_schedule = service_current_time() + argos_config.dry_time_before_tx;
 			m_sched.set_earliest_schedule(earliest_schedule);
 
@@ -673,6 +697,49 @@ void LoRaTxService::react(KineisEventTxComplete const&) {
 
 	m_sched.notify_tx_complete();
 	service_complete();
+
+	// Surface-idle power management: if the surfacing burst is complete and
+	// we're waiting for the next surfacing cycle (m_awaiting_surfacing was
+	// just set by service_next_schedule_in_ms), cut module power.
+	//
+	// IMPORTANT: this react() runs synchronously from inside the LoRa device
+	// FSM's state_transmit(), which after returning here will still execute
+	// LORA_STATE_CHANGE(transmit, idle). If we called power_off_immediate
+	// synchronously it would set m_state=power_off, but the FSM would then
+	// overwrite it with idle → standby, leaving the driver thinking it's in
+	// standby while SAT_PWR_EN is already low — the next start_device would
+	// try to wake via AT ping on a powered-off module, fail, and cold-boot
+	// (measured: +7 s on first-TX after surface). Defer to the scheduler so
+	// the power-off runs after the FSM finishes its transmit→idle→standby
+	// walk; from standby, power_off_immediate cleanly moves the state to
+	// power_off and the subsequent warm-up/dive paths see the correct state.
+	if (m_awaiting_surfacing) {
+		DEBUG_INFO("LoRaTxService: burst complete — scheduling LoRa module power-off (surface idle)");
+		system_scheduler->post_task_prio([this]() {
+			DEBUG_INFO("LoRaTxService: powering off LoRa module (post-burst, deferred)");
+			m_device.power_off_immediate();
+		}, "LoRaPostBurstOff", Scheduler::DEFAULT_PRIORITY, 500);
+	}
+}
+
+/// @brief (Re)schedule the cooldown-end warm-up task.
+/// Cancels any previously scheduled warm-up, then — if the device is off and
+/// we're actually in an active cooldown window — schedules a task that fires
+/// when the cooldown expires. The task drives the module through power_on →
+/// configure → standby so the first TX of the next surfacing is fast.
+void LoRaTxService::reschedule_cooldown_warm_up() {
+	system_scheduler->cancel_task(m_cooldown_warm_up_task);
+
+	unsigned int remaining_s = ServiceManager::get_cooldown_remaining_s(service_current_time());
+	if (remaining_s == 0) {
+		return;  // No active cooldown — nothing to schedule.
+	}
+
+	DEBUG_INFO("LoRaTxService: scheduling module warm-up in %u s (cooldown end)", remaining_s);
+	m_cooldown_warm_up_task = system_scheduler->post_task_prio([this]() {
+		DEBUG_INFO("LoRaTxService: cooldown expired — warming up LoRa module for next surface");
+		m_device.warm_up_for_tx();
+	}, "LoRaCooldownWarmUp", Scheduler::DEFAULT_PRIORITY, remaining_s * 1000);
 }
 
 void LoRaTxService::react(KineisEventDeviceError const&) {

@@ -112,7 +112,6 @@ namespace BSP
 	    GPIO_SAT_RESET,
 	    GPIO_SAT_EN,
 	    GPIO_SAT_WKUP,
-	    GPIO_SAT_INT,
 	    GPIO_KIM_PWR_ON,
 	    GPIO_GPS_PWR_EN,
 	    GPIO_GPS_RST,
@@ -130,7 +129,6 @@ namespace BSP
 	    GPIO_EXT_GPIO3,
 	    GPIO_EXT_GPIO4,
 	    GPIO_EXT_GPIO5,
-	    GPIO_SMD_INT,
 		GPIO_TOTAL_NUMBER
 	};
 
