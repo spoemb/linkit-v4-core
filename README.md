@@ -51,8 +51,8 @@ Use the build scripts (they source `build_config.sh` automatically):
 
 Build with bootloader for deployment:
 ```bash
-./scripts/build_with_bootloader.sh rspb --clean        # RSPB
-./scripts/build_with_bootloader.sh linkit-smd --clean   # LinkIt V4 SMD
+./scripts/build_with_bootloader.sh rspb --clean --recover       # RSPB
+./scripts/build_with_bootloader.sh linkit-smd --clean --recover  # LinkIt V4 SMD
 ```
 
 Or build manually with CMake:
@@ -187,6 +187,13 @@ Compatible with:
 ### Legacy (use [CLS-Argos-Linkit-CORE](https://github.com/arribada/CLS-Argos-Linkit-CORE))
 * Horizon Board (Artic R2)
 * Linkit V3 CORE (Artic R2)
+
+## Known Issues & TODO (v4.1.0)
+
+- [ ] Fix Bridge TX command
+- [ ] Tests for remaining sensors (currently validated only with BMA400, LPS28, STC31, Thermistor)
+- [ ] LoRa OTAA activation (ABP tested, OTAA still needs validation)
+- [ ] Flash LoRa over SMD path not yet tested
 
 ## How to Contribute
 

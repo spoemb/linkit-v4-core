@@ -9,6 +9,7 @@
 #include "error.hpp"
 #include "debug.hpp"
 #include "interrupt_lock.hpp"
+#include "nrf_gpio.h"
 #include <cstring>
 
 // ============================================================================

@@ -56,6 +56,8 @@ typedef void (*nrf_libuarte_async_evt_handler_t)(void * context, nrf_libuarte_as
 typedef struct
 {
     uint32_t baudrate;
+    uint32_t tx_pin;
+    uint32_t rx_pin;
 } nrf_libuarte_async_config_t;
 
 /**
