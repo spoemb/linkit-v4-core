@@ -648,13 +648,10 @@ void LoRaDevice::state_configure()
         // ==== Common path (runs every boot) ====
 
         case 100:
-            // Read Device EUI from module and save to config store
-            at_error = !send_AT(AT_GET_DEVEUI);
-            if (!at_error) {
-                m_config.deveui = m_lora_comm.m_last_value;
-                DEBUG_INFO("LoRaDevice: DEVEUI=%s", m_config.deveui.c_str());
-                configuration_store->write_param(ParamID::LORA_DEVEUI, m_config.deveui);
-            }
+            // Config store (LRP01) is the source of truth for DEVEUI — never
+            // overwrite it from the module. Bootstrap (empty store) is handled
+            // in case 3 for OTAA. ABP keeps whatever the user wrote for later
+            // analysis even though it has no LoRaWAN function.
             break;
 
         case 101:
