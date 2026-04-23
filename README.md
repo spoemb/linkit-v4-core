@@ -194,6 +194,9 @@ Compatible with:
 - [ ] Tests for remaining sensors (currently validated only with BMA400, LPS28, STC31, Thermistor)
 - [ ] LoRa OTAA activation (ABP tested, OTAA still needs validation)
 - [ ] Flash LoRa over SMD path not yet tested
+- [ ] Add blind mode management for Satellite
+- [ ] RCONF saved in RAM for KIM and required SAVE in flash command. SMD directly saved in flash, harmonize the pattern
+- [ ] Warning problem with LPM mode with SPI, not tested with KIM and UART
 
 ## How to Contribute
 
