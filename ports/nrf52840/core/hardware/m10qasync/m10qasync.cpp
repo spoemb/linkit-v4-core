@@ -1343,6 +1343,13 @@ void M10QAsyncReceiver::state_sendofflinedatabase() {
         return;
     }
 
+    // Adaptive MGA-ACK polling: a fixed 100 ms wait missed 1-2 late ACKs in
+    // ~1-5 % of cold starts (log 94/95, 93/95). Poll every 50 ms and exit as
+    // soon as the expected count is reached. Nominal case still completes in
+    // one 50 ms tick; worst case stops at MGA_ACK_POLL_COUNT × MGA_ACK_POLL_MS.
+    static constexpr unsigned int MGA_ACK_POLL_MS    = 50;
+    static constexpr unsigned int MGA_ACK_POLL_COUNT = 10;  // 500 ms cap
+
     while (true) {
 		if (m_op_state == OpState::IDLE) {
 			m_op_state = OpState::PENDING;
@@ -1356,17 +1363,28 @@ void M10QAsyncReceiver::state_sendofflinedatabase() {
 				// All data sent — schedule async wait for MGA-ACK confirmations
 				m_step++;  // Advance past m_ano_database_len to enter ACK-check state
 				m_op_state = OpState::IDLE;
-				run_state_machine(100);  // Wait 100ms non-blocking for ACKs to arrive
+				run_state_machine(MGA_ACK_POLL_MS);  // First poll (adaptive ACK wait)
 				break;
 			} else {
-				// ACK check after 100ms wait
+				// ACK polling phase. m_step is reused as poll counter:
+				// value (m_ano_database_len + N) means N polls have completed.
 				unsigned int actual_count = 0;
-				if (!m_ubx_comms.is_expected_msg_count(m_navigation_database, m_mga_ack_count,
-						m_expected_dbd_messages, actual_count, MessageClass::MSG_CLASS_MGA,
-						MGA::ID_ACK))
-					DEBUG_WARN("M10QAsyncReceiver::state_sendofflinedatabase missing MGA-ACK: %u/%u acks received",
-							actual_count, m_expected_dbd_messages);
-				STATE_CHANGE(sendofflinedatabase, startreceive);
+				bool all_received = m_ubx_comms.is_expected_msg_count(
+						m_navigation_database, m_mga_ack_count,
+						m_expected_dbd_messages, actual_count,
+						MessageClass::MSG_CLASS_MGA, MGA::ID_ACK);
+				unsigned int poll_idx = m_step - m_ano_database_len;  // 1..MGA_ACK_POLL_COUNT
+				if (all_received || poll_idx >= MGA_ACK_POLL_COUNT) {
+					if (!all_received)
+						DEBUG_WARN("M10QAsyncReceiver::state_sendofflinedatabase missing MGA-ACK: %u/%u acks received (after %u ms)",
+								actual_count, m_expected_dbd_messages,
+								poll_idx * MGA_ACK_POLL_MS);
+					STATE_CHANGE(sendofflinedatabase, startreceive);
+				} else {
+					m_step++;
+					m_op_state = OpState::IDLE;
+					run_state_machine(MGA_ACK_POLL_MS);
+				}
 				break;
 			}
 		} else if (m_op_state == OpState::SUCCESS) {

@@ -538,20 +538,36 @@ void SmdSat::state_idle_enter() {
 
 	// If LPM allows STANDBY/SHUTDOWN, release wakeup pin LOW so SMD can
 	// enter deep sleep while waiting for next TX in this session.
+	//
+	// IMPORTANT: in the normal send() path, m_packet_buffer is filled BEFORE
+	// power_on() is called, so state_idle is transient (1 tick) — we go
+	// straight to transmit_pending. Dropping WKUP here would let the STM32
+	// start entering STANDBY, and raising it 10 ms later triggers a POR wake
+	// (reset + firmware re-init ~100-200 ms) while we send SPI TX REQ
+	// immediately → TX REQ fails. So only drop WKUP if the buffer is empty,
+	// i.e. a real idle period (warm_up_for_tx-style pre-boot).
 #ifdef SAT_EXTWAKEUP
-	if (m_lpm_mode & 0x18) {
+	m_wkup_lowered = false;
+	if ((m_lpm_mode & 0x18) && !m_packet_buffer.length()) {
 		GPIOPins::clear(SAT_EXTWAKEUP);
-		DEBUG_TRACE("SmdSat::%s: WKUP LOW (LPM=0x%02X)", __func__, m_lpm_mode);
+		m_wkup_lowered = true;
+		DEBUG_TRACE("SmdSat::%s: WKUP LOW (LPM=0x%02X, idle lingering)", __func__, m_lpm_mode);
 	}
 #endif
 }
 
 void SmdSat::state_idle_exit() {
-	// Wake SMD from deep sleep before any SPI command (TX or stop)
+	// Only raise WKUP + wait if we actually lowered it in state_idle_enter.
+	// Avoids a pointless 50 ms delay (and spurious wake-up POR) in the
+	// common transient-idle case where WKUP was never dropped.
 #ifdef SAT_EXTWAKEUP
-	if (m_lpm_mode & 0x18) {
+	if (m_wkup_lowered) {
 		GPIOPins::set(SAT_EXTWAKEUP);
-		nrf_delay_ms(50);  // STM32 wakeup from STANDBY/SHUTDOWN takes ~50ms
+		nrf_delay_ms(50);  // STM32 wakeup from STANDBY/SHUTDOWN takes ~50ms (STANDBY).
+		                   // SHUTDOWN needs more — user should not enable 0x10 without
+		                   // also increasing this and re-running state_load_kmac (TCXO/LPM
+		                   // are RAM registers lost on SHUTDOWN wake = full POR).
+		m_wkup_lowered = false;
 		DEBUG_TRACE("SmdSat::%s: WKUP HIGH (wakeup from LPM)", __func__);
 	}
 #endif

@@ -998,14 +998,39 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 		return;
 	}
 
-	// Adaptive modulation: pre-switch to VLDA4 while SMD is still powered on,
-	// so the next surfacing Doppler starts without RCONF write at boot.
-	// Skip the pre-switch if GPS is still acquiring with a degraded PVT
-	// (next tick will likely be fastloc/LDA2 — avoid unnecessary RCONF churn).
+	// Post-TX adaptive modulation: pre-switch to VLDA4 while SMD is still
+	// powered on so the *next surfacing's* Doppler #1 boots with RCONF already
+	// in VLDA4 → no KMAC reload, no deferred RCONF apply in state_load_kmac.
+	// The first ping at surface must be as fast as possible (user requirement).
+	//
+	// Note: SmdSat::state_transmitting transitions directly to `stopped` after
+	// every TX (smd_sat.cpp:639), so SMD is fully powered off during inter-TX
+	// gaps. The flash write done here persists in STM32WL flash and survives
+	// the power-off; the next power-on auto-inits MAC from flash (no SPI
+	// KMAC reload needed when RCONF hasn't changed — see state_load_kmac).
+	//
+	// Guards (skip the pre-switch):
+	//   - next_likely_lda2: degraded PVT waiting for better fix → next TX is
+	//     fastloc in LDA2, don't churn to VLDA4 in between.
+	//   - fix_just_arrived: GNSS fix landed during this (Doppler/CL/FLOC) TX
+	//     and the first GNSS TX is about to fire immediately. Pre-switching
+	//     would be undone 0 ms later when process_gnss_burst() ensures LDK.
+	//     Narrow window (<1 s between TX-complete and next TX-start) — low
+	//     risk of dive interruption here.
+	//
+	// Every other post-TX path pre-switches unconditionally when current is
+	// not VLDA4 — including every GNSS-phase TX. Yes, this costs one flash
+	// write per GNSS TX (VLDA4 written here, LDK re-written at the next
+	// ensure_modulation()), but it GUARANTEES that any dive mid-burst leaves
+	// the STM32WL flash in VLDA4, so the next surfacing's first ping skips
+	// the deferred-RCONF path entirely.
 	if (argos_config.adaptive_modulation && argos_config.mode == BaseArgosMode::SURFACING_BURST) {
 		bool next_likely_lda2 = (gps_device && gps_device->has_degraded_pvt() &&
 		                         !m_has_gnss_fix_since_surfacing && m_doppler_burst_count > 0);
-		if (!next_likely_lda2 && m_kineis.get_current_modulation() != KineisModulation::VLDA4) {
+		bool fix_just_arrived = (m_has_gnss_fix_since_surfacing && !m_first_gnss_tx_sent);
+
+		if (!next_likely_lda2 && !fix_just_arrived &&
+		    m_kineis.get_current_modulation() != KineisModulation::VLDA4) {
 			DEBUG_INFO("ArgosTxService::react: pre-switch to VLDA4 for next Doppler");
 			ensure_modulation(KineisModulation::VLDA4);
 		}

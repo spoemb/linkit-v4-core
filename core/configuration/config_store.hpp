@@ -133,7 +133,7 @@ protected:
 		/* GNSS_HDOPFILT_EN */ (bool)true,
 		/* GNSS_HDOPFILT_THR */ 2U,
 		/* GNSS_ACQ_TIMEOUT */ 120U,
-		/* GNSS_NTRY */ 0U, // Not implemented
+		/* GNSS_NTRY */ 0U, // 0 = unlimited retries; otherwise cap before backing off to dloc_arg_nom (see gps_service.cpp)
 		/* UNDERWATER_EN */ (bool)false,
 		/* DRY_TIME_BEFORE_TX */ 0U,
 		/* SAMPLING_UNDER_FREQ */ 1U,

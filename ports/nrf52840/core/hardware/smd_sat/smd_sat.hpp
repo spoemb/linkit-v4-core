@@ -75,6 +75,7 @@ private:
 	bool        m_is_first_tx;
 	uint32_t    m_tcxo_warmup_time;
 	uint8_t     m_lpm_mode;  // SMD LPM bitmap written at every boot
+	bool        m_wkup_lowered = false;  // True if state_idle_enter dropped WKUP (=> idle_exit must re-raise + wait for wake)
 
 	// New firmware version (cached after DFU)
 	std::string m_new_firmware_version;
