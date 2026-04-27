@@ -291,6 +291,10 @@ KineisPacket ArgosPacketBuilder::build_long_packet(std::vector<GPSLogEntry*> &gp
 	// Reserve full LDA2 frame (24 bytes); CRC8 lands at byte 23 at the end.
 	packet.assign(LONG_PACKET_BYTES, 0);
 
+	// 3-bit type header — value 000 is shared with Short Packet but disambiguated
+	// by the LDA2 24-byte frame size on the receiver side.
+	PACK_BITS(LONG_PACKET_HEADER, packet, base_pos, 3);
+
 	// This will set the log time for the GPS entry based on when it was scheduled
 	uint16_t year;
 	uint8_t month, day, hour, min, sec;
@@ -479,8 +483,10 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 	// Reserve required number of bytes
 	packet.assign(SENSOR_PACKET_BYTES, 0);
 
-	// Payload bytes
-	// PACK_BITS(0, packet, base_pos, 8);  // Zero CRC field (computed later)
+	// 3-bit type header — Type 1 (001) discriminates sensor packets from long packets
+	// (both are 24-byte LDA2 frames).
+	PACK_BITS(SENSOR_PACKET_HEADER, packet, base_pos, 3);
+
 	// Use scheduled GPS time as day/hour/min
 	uint16_t year;
 	uint8_t month, day, hour, min, sec;
@@ -525,6 +531,17 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 	PACK_BITS(is_low_battery, packet, base_pos, 1);
 	DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: is_lb=%u", is_low_battery);
 
+	// 5-bit sensor mask describing which sensors are present (decoder reads this to know
+	// which fields follow). MSB-first: ALS, PH, Pressure, SeaTemp, AXL.
+	unsigned int sensor_mask = 0;
+	if (als_sensor != nullptr)        sensor_mask |= SENSOR_PACKET_MASK_ALS;
+	if (ph_sensor != nullptr)         sensor_mask |= SENSOR_PACKET_MASK_PH;
+	if (pressure_sensor != nullptr)   sensor_mask |= SENSOR_PACKET_MASK_PRESSURE;
+	if (sea_temp_sensor != nullptr)   sensor_mask |= SENSOR_PACKET_MASK_SEATEMP;
+	if (axl_sensor != nullptr)        sensor_mask |= SENSOR_PACKET_MASK_AXL;
+	PACK_BITS(sensor_mask, packet, base_pos, SENSOR_PACKET_MASK_BITS);
+	DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: sensor_mask=0x%02X", sensor_mask);
+
 	// Add ALS sensor data
 	if (als_sensor != nullptr) {
 		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: als=%05X", (unsigned int)als_sensor->port[0]);
@@ -548,8 +565,14 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 
 	// Add AXL (accelerometer) sensor data.
 	// port[0] = temperature (14 bits), port[1-3] = X/Y/Z (15 bits each), port[4] = activity (8 bits).
-	// AXL temperature is dropped (with warning) if it would push the data past the 184-bit
-	// LDA2 budget — XYZ + activity are kept since they are the primary AXL signal.
+	//
+	// AXL temperature inclusion rule (deterministic from sensor mask — decoder uses same rule):
+	//   - If another temperature source is present in the packet (Pressure has its own temp,
+	//     or SeaTemp/Thermistor sensor is set), AXL temperature is dropped to avoid redundancy.
+	//   - If no other temperature source is set, AXL temperature is included.
+	//
+	// If the resulting AXL data still doesn't fit the 184-bit data budget, activity LSBs are
+	// truncated last (XYZ data preserved as the primary AXL signal).
 	if (axl_sensor != nullptr) {
 		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: axl_temp=%04X X=%04X Y=%04X Z=%04X activity=%02X",
 				(unsigned int)axl_sensor->port[0],
@@ -557,18 +580,30 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 				(unsigned int)axl_sensor->port[2],
 				(unsigned int)axl_sensor->port[3],
 				(unsigned int)axl_sensor->port[4]);
-		constexpr unsigned int AXL_FULL_BITS = 14 + 15 + 15 + 15 + 8;  // 67 bits
-		constexpr unsigned int AXL_TEMP_BITS = 14;
-		if (base_pos + AXL_FULL_BITS > SENSOR_PACKET_MAX_TX_BITS) {
-			DEBUG_WARN("ArgosPacketBuilder::build_sensor_packet: dropping AXL temperature (%u + %u > %u bits LDA2 budget)",
-					base_pos, AXL_FULL_BITS, SENSOR_PACKET_MAX_TX_BITS);
+		const bool has_other_temp = (pressure_sensor != nullptr) || (sea_temp_sensor != nullptr);
+		const bool axl_with_temp = !has_other_temp;
+		if (axl_with_temp) {
+			PACK_BITS((unsigned int)axl_sensor->port[0], packet, base_pos, 14);  // Temperature
 		} else {
-			PACK_BITS((unsigned int)axl_sensor->port[0], packet, base_pos, AXL_TEMP_BITS);  // Temperature
+			DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: AXL temp dropped (other temp source present)");
 		}
-		PACK_BITS((unsigned int)axl_sensor->port[1], packet, base_pos, 15);  // X
-		PACK_BITS((unsigned int)axl_sensor->port[2], packet, base_pos, 15);  // Y
-		PACK_BITS((unsigned int)axl_sensor->port[3], packet, base_pos, 15);  // Z
-		PACK_BITS((unsigned int)axl_sensor->port[4], packet, base_pos, 8);   // Activity
+		// Pack XYZ + activity, truncating activity LSBs if budget exhausted.
+		unsigned int budget_left = (base_pos < SENSOR_PACKET_MAX_TX_BITS) ?
+				(SENSOR_PACKET_MAX_TX_BITS - base_pos) : 0;
+		auto pack_capped = [&](unsigned int value, unsigned int width) {
+			unsigned int n = std::min(width, budget_left);
+			if (n) {
+				PACK_BITS(value >> (width - n), packet, base_pos, n);
+				budget_left -= n;
+			}
+			if (n < width) {
+				DEBUG_WARN("ArgosPacketBuilder::build_sensor_packet: AXL field truncated %u→%u bits", width, n);
+			}
+		};
+		pack_capped((unsigned int)axl_sensor->port[1], 15);  // X
+		pack_capped((unsigned int)axl_sensor->port[2], 15);  // Y
+		pack_capped((unsigned int)axl_sensor->port[3], 15);  // Z
+		pack_capped((unsigned int)axl_sensor->port[4], 8);   // Activity
 	}
 
 	size_bits = base_pos;

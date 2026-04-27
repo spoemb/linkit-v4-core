@@ -36,7 +36,10 @@ public:
 	static constexpr unsigned int SHORT_PACKET_PAYLOAD_BITS = 94;
 	static constexpr unsigned int SHORT_PACKET_BYTES       = 12;
 
-	// Long packet (LDA2, firmware-embedded CRC8 at byte 23)
+	// Long packet (LDA2, firmware-embedded CRC8 at byte 23).
+	// Shares the 3-bit header value 000 with Short Packet — receivers discriminate
+	// by frame size + modulation (12B LDK = Short, 24B LDA2 = Long).
+	static constexpr unsigned int LONG_PACKET_HEADER       = 0b000;
 	static constexpr unsigned int LONG_PACKET_BITS         = LDA2_FRAME_BITS;
 	static constexpr unsigned int LONG_PACKET_PAYLOAD_BITS = LDA2_DATA_BITS;
 	static constexpr unsigned int LONG_PACKET_BYTES        = LDA2_FRAME_BYTES;
@@ -57,10 +60,23 @@ public:
 	// Sensor packet (Type 1, LDA2). Always emitted as a full 24-byte LDA2 frame so the
 	// CRC sits at byte 23. Adaptive LDK fallback for tiny sensor packets is therefore
 	// disabled — sensor packets always go on LDA2 now.
+	//
+	// Layout: header(3) + base(75) + sensor_mask(5) + sensor_data(variable) + zero-pad + CRC8.
+	// The 5-bit mask at offset 78 makes the packet self-describing, so decoders don't
+	// need an external sensor-config DB. Bit order (MSB first):
+	//   bit 4 = ALS, bit 3 = PH, bit 2 = Pressure, bit 1 = SeaTemp/Thermistor, bit 0 = AXL.
+	// AXL state (full vs no_temp) is inferred deterministically from the remaining
+	// budget after non-AXL sensors are packed (see apply_axl_layout in the .cpp).
 	static constexpr unsigned int SENSOR_PACKET_HEADER         = 0b001;
 	static constexpr unsigned int SENSOR_PACKET_BYTES          = LDA2_FRAME_BYTES;
 	static constexpr unsigned int SENSOR_PACKET_MAX_TX_BYTES   = LDA2_FRAME_BYTES;
 	static constexpr unsigned int SENSOR_PACKET_MAX_TX_BITS    = LDA2_DATA_BITS;
+	static constexpr unsigned int SENSOR_PACKET_MASK_BITS      = 5;
+	static constexpr unsigned int SENSOR_PACKET_MASK_ALS       = 1u << 4;
+	static constexpr unsigned int SENSOR_PACKET_MASK_PH        = 1u << 3;
+	static constexpr unsigned int SENSOR_PACKET_MASK_PRESSURE  = 1u << 2;
+	static constexpr unsigned int SENSOR_PACKET_MASK_SEATEMP   = 1u << 1;
+	static constexpr unsigned int SENSOR_PACKET_MASK_AXL       = 1u << 0;
 
 	// Doppler packet (24 bits, VLDA4)
 	static constexpr unsigned int DOPPLER_PACKET_BITS          = 24;

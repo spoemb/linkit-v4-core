@@ -374,26 +374,27 @@ TEST(ArgosTxService, BuildLongGNSSPacket)
 {
 	unsigned int size_bits;
 	GPSLogEntry e = make_gps_location(1, 12.3, 44.4, 1652105502);
-	// Long packet now packs up to 3 fixes (down from 4) to leave 8 bits for CRC at byte 23.
+	// Long packet: header 000 (Type 0, shared with Short Packet, disambiguated by size 24B vs 12B).
+	// Packs up to 3 fixes (down from 4) to leave 8 bits for CRC at byte 23.
 	std::vector<GPSLogEntry*> v({&e, &e});
 	std::string x = ArgosPacketBuilder::build_gnss_packet(v, false, false, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
 	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BITS, size_bits);
-	check_lda2_long_packet(x, "4B8B3633003C0F0012C26C6600781E3FFFFFFFFF");
+	check_lda2_long_packet(x, "097166C6600781E002584D8CC00F03C7FFFFFFFFFF");
 	v = {&e, &e, &e};
 	x = ArgosPacketBuilder::build_gnss_packet(v, false, false, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	check_lda2_long_packet(x, "4B8B3633003C0F0012C26C6600781E0D8CC00F03");
+	check_lda2_long_packet(x, "097166C6600781E002584D8CC00F03C1B19801E078");
 	// 4 fixes provided → 4th is silently dropped (LDA2 budget = 3 fixes after CRC).
 	v = {&e, &e, &e, &e};
 	x = ArgosPacketBuilder::build_gnss_packet(v, false, false, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	check_lda2_long_packet(x, "4B8B3633003C0F0012C26C6600781E0D8CC00F03");
+	check_lda2_long_packet(x, "097166C6600781E002584D8CC00F03C1B19801E078");
 	x = ArgosPacketBuilder::build_gnss_packet(v, true, false, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	check_lda2_long_packet(x, "4B8B3633003C0F0032C26C6600781E0D8CC00F03");
+	check_lda2_long_packet(x, "097166C6600781E006584D8CC00F03C1B19801E078");
 	x = ArgosPacketBuilder::build_gnss_packet(v, false, true, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	check_lda2_long_packet(x, "4B8B3633003C0F0012E26C6600781E0D8CC00F03");
+	check_lda2_long_packet(x, "097166C6600781E0025C4D8CC00F03C1B19801E078");
 	x = ArgosPacketBuilder::build_gnss_packet(v, true, true, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	check_lda2_long_packet(x, "4B8B3633003C0F0032E26C6600781E0D8CC00F03");
+	check_lda2_long_packet(x, "097166C6600781E0065C4D8CC00F03C1B19801E078");
 	x = ArgosPacketBuilder::build_gnss_packet(v, true, true, BaseDeltaTimeLoc::DELTA_T_30MIN, size_bits);
-	check_lda2_long_packet(x, "4B8B3633003C0F0032E66C6600781E0D8CC00F03");
+	check_lda2_long_packet(x, "097166C6600781E0065CCD8CC00F03C1B19801E078");
 }
 
 
@@ -1639,10 +1640,8 @@ TEST(ArgosTxService, DepthPileManagerTestSensorValueConversion)
 static void check_lda2_sensor_packet(const std::string& packet, const std::string& expected_data_prefix) {
 	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BYTES, packet.size());
 	std::string hex = Binascii::hexlify(packet);
-	// Data bytes (everything before byte 23) must match the expected prefix, then zero padding.
 	std::string prefix = hex.substr(0, expected_data_prefix.size());
 	CHECK_EQUAL(expected_data_prefix, prefix);
-	// Byte 23 = CRC8 over bytes 0..22 (184 bits).
 	unsigned char expected_crc = CRC8::checksum(packet, ArgosPacketBuilder::LDA2_DATA_BITS);
 	CHECK_EQUAL((unsigned int)expected_crc, (unsigned int)(unsigned char)packet[23]);
 }
@@ -1659,25 +1658,27 @@ TEST(ArgosTxService, BuildSensorPacketAll) {
 	pressure.port[1] = 4000; // 0C
 	sea_temp.port[0] = 126000; // 0C
 
-	// LDA2 sensor packets are now always 24 bytes (192-bit frame) with CRC8 at byte 23.
+	// LDA2 sensor packets are now always 24 bytes (192-bit frame) with header 001 (Type 1)
+	// at bit 0, 5-bit sensor mask at bit 78, then sensor data, then CRC8 at byte 23.
+	// Mask bits (MSB-first): ALS, PH, Pressure, SeaTemp, AXL.
 	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, nullptr, nullptr, false, false, size_bits);
 	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BITS, size_bits);
-	check_lda2_sensor_packet(x, "4B8B3633003C0F0012C0");
+	check_lda2_sensor_packet(x, "297166C6600781E00258");                              // mask=00000
 	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, &pressure, &sea_temp, nullptr, false, false, size_bits);
 	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BITS, size_bits);
-	check_lda2_sensor_packet(x, "4B8B3633003C0F0012C27106D601F41F401EC300");
+	check_lda2_sensor_packet(x, "297166C6600781E0025BC27106D601F41F401EC3");          // mask=11110 (all 4 non-AXL)
 	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, &ph, &pressure, &sea_temp, nullptr, false, false, size_bits);
 	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BITS, size_bits);
-	check_lda2_sensor_packet(x, "4B8B3633003C0F0012CDAC03E83E803D8600");
+	check_lda2_sensor_packet(x, "297166C6600781E00259CDAC03E83E803D86");              // mask=01110 (no ALS)
 	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, nullptr, &pressure, &sea_temp, nullptr, false, false, size_bits);
 	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BITS, size_bits);
-	check_lda2_sensor_packet(x, "4B8B3633003C0F0012C271007D07D007B0C0");
+	check_lda2_sensor_packet(x, "297166C6600781E0025AC271007D07D007B0C0");            // mask=10110 (no PH)
 	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, nullptr, &sea_temp, nullptr, false, false, size_bits);
 	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BITS, size_bits);
-	check_lda2_sensor_packet(x, "4B8B3633003C0F0012C27106D603D860");
+	check_lda2_sensor_packet(x, "297166C6600781E0025B427106D603D860");                // mask=11010 (no Pressure)
 	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, &pressure, nullptr, nullptr, false, false, size_bits);
 	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BITS, size_bits);
-	check_lda2_sensor_packet(x, "4B8B3633003C0F0012C27106D601F41F40");
+	check_lda2_sensor_packet(x, "297166C6600781E0025B827106D601F41F40");              // mask=11100 (no SeaTemp)
 }
 
 TEST(ArgosTxService, BuildSensorPacketSeaTemp) {
@@ -1690,7 +1691,7 @@ TEST(ArgosTxService, BuildSensorPacketSeaTemp) {
 
 	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, &sea_temp, nullptr, false, false, size_bits);
 	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BITS, size_bits);
-	check_lda2_sensor_packet(x, "4B8B3633003C0F0012C23E9C");
+	check_lda2_sensor_packet(x, "297166C6600781E00258423E9C");                        // mask=00010 (SeaTemp only)
 }
 
 
