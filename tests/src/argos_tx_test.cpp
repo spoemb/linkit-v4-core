@@ -11,6 +11,8 @@
 #include "timeutils.hpp"
 #include "scheduler.hpp"
 #include "argos_tx_service.hpp"
+#include "argos_packet_builder.hpp"
+#include "crc8.hpp"
 #include "messages.hpp"
 
 using namespace std::string_literals;
@@ -161,15 +163,14 @@ TEST(ArgosTxService, DepthPileFillsAndEmpties)
 	CHECK_EQUAL(24, dp.eligible());
 	CHECK_EQUAL(23, v.at(0)->info.day); // Should be most recent
 
-	// Retrieve entire depth pile (in blocks of 4) ensuring
-	// eligible count is decremented
-	for (unsigned int i = 0; i < 6; i++) {
-		//CHECK_EQUAL(24-i, dp.eligible());
+	// Retrieve entire depth pile (in blocks of 3 — LDA2 long packet now carries 3 fixes
+	// to leave room for the firmware-embedded CRC8 at byte 23)
+	for (unsigned int i = 0; i < 8; i++) {
 		v = dp.retrieve(24);
-		CHECK_EQUAL(4, v.size());
-		CHECK_EQUAL(20-(i*4), dp.eligible());
-		for (unsigned j = 0; j < 4; j++) {
-			CHECK_EQUAL(24-((i+1)*4)+j, v.at(j)->info.day);
+		CHECK_EQUAL(3, v.size());
+		CHECK_EQUAL(21-(i*3), dp.eligible());
+		for (unsigned j = 0; j < 3; j++) {
+			CHECK_EQUAL(24-((i+1)*3)+j, v.at(j)->info.day);
 		}
 	}
 
@@ -324,9 +325,11 @@ TEST(ArgosTxService, SchedulerDutyCycleNoJitter)
 TEST(ArgosTxService, BuildLongCertificationPacket)
 {
 	unsigned int size_bits;
+	// LONG_PACKET_BYTES is 24 (LDA2 frame); certification truncates to that size.
 	std::string x = ArgosPacketBuilder::build_certification_packet("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", size_bits);
-	CHECK_EQUAL(224, size_bits);
-	CHECK_EQUAL("\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF"s, x);
+	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BITS, size_bits);
+	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BYTES, x.size());
+	CHECK_EQUAL("\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF"s, x);
 }
 
 TEST(ArgosTxService, BuildShortCertificationPacket)
@@ -357,28 +360,40 @@ TEST(ArgosTxService, BuildShortGNSSPacket)
 }
 
 
+// Helper for LDA2 long-packet: verify size, prefix data, and self-consistent CRC8 at byte 23.
+static void check_lda2_long_packet(const std::string& packet, const std::string& expected_data_prefix) {
+	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BYTES, packet.size());
+	std::string hex = Binascii::hexlify(packet);
+	std::string prefix = hex.substr(0, expected_data_prefix.size());
+	CHECK_EQUAL(expected_data_prefix, prefix);
+	unsigned char expected_crc = CRC8::checksum(packet, ArgosPacketBuilder::LDA2_DATA_BITS);
+	CHECK_EQUAL((unsigned int)expected_crc, (unsigned int)(unsigned char)packet[23]);
+}
+
 TEST(ArgosTxService, BuildLongGNSSPacket)
 {
 	unsigned int size_bits;
 	GPSLogEntry e = make_gps_location(1, 12.3, 44.4, 1652105502);
+	// Long packet now packs up to 3 fixes (down from 4) to leave 8 bits for CRC at byte 23.
 	std::vector<GPSLogEntry*> v({&e, &e});
-	// CRC8 and BCH are now handled by the satellite module — payload only
 	std::string x = ArgosPacketBuilder::build_gnss_packet(v, false, false, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	CHECK_EQUAL("4B8B3633003C0F0012C26C6600781E3FFFFFFFFFFFFFFFFFFFFF"s, Binascii::hexlify(x));
+	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BITS, size_bits);
+	check_lda2_long_packet(x, "4B8B3633003C0F0012C26C6600781E3FFFFFFFFF");
 	v = {&e, &e, &e};
 	x = ArgosPacketBuilder::build_gnss_packet(v, false, false, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	CHECK_EQUAL("4B8B3633003C0F0012C26C6600781E0D8CC00F03C7FFFFFFFFFF"s, Binascii::hexlify(x));
+	check_lda2_long_packet(x, "4B8B3633003C0F0012C26C6600781E0D8CC00F03");
+	// 4 fixes provided → 4th is silently dropped (LDA2 budget = 3 fixes after CRC).
 	v = {&e, &e, &e, &e};
 	x = ArgosPacketBuilder::build_gnss_packet(v, false, false, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	CHECK_EQUAL("4B8B3633003C0F0012C26C6600781E0D8CC00F03C1B19801E078"s, Binascii::hexlify(x));
+	check_lda2_long_packet(x, "4B8B3633003C0F0012C26C6600781E0D8CC00F03");
 	x = ArgosPacketBuilder::build_gnss_packet(v, true, false, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	CHECK_EQUAL("4B8B3633003C0F0032C26C6600781E0D8CC00F03C1B19801E078"s, Binascii::hexlify(x));
+	check_lda2_long_packet(x, "4B8B3633003C0F0032C26C6600781E0D8CC00F03");
 	x = ArgosPacketBuilder::build_gnss_packet(v, false, true, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	CHECK_EQUAL("4B8B3633003C0F0012E26C6600781E0D8CC00F03C1B19801E078"s, Binascii::hexlify(x));
+	check_lda2_long_packet(x, "4B8B3633003C0F0012E26C6600781E0D8CC00F03");
 	x = ArgosPacketBuilder::build_gnss_packet(v, true, true, BaseDeltaTimeLoc::DELTA_T_10MIN, size_bits);
-	CHECK_EQUAL("4B8B3633003C0F0032E26C6600781E0D8CC00F03C1B19801E078"s, Binascii::hexlify(x));
+	check_lda2_long_packet(x, "4B8B3633003C0F0032E26C6600781E0D8CC00F03");
 	x = ArgosPacketBuilder::build_gnss_packet(v, true, true, BaseDeltaTimeLoc::DELTA_T_30MIN, size_bits);
-	CHECK_EQUAL("4B8B3633003C0F0032E66C6600781E0D8CC00F03C1B19801E078"s, Binascii::hexlify(x));
+	check_lda2_long_packet(x, "4B8B3633003C0F0032E66C6600781E0D8CC00F03");
 }
 
 
@@ -762,7 +777,7 @@ TEST(ArgosTxService, TxServiceCancelledByUnderwaterBeforeTx)
 	// Should now transmit (TCXO warmup skipped on first TX after submerge)
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
 	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
-			withUnsignedIntParameter("size_bits", 224);
+			withUnsignedIntParameter("size_bits", 192);
 	t += serv.get_last_schedule();
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
@@ -807,7 +822,7 @@ TEST(ArgosTxService, TxServiceCancelledDuringTx)
 	system_scheduler->run();
 
 	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
-			withUnsignedIntParameter("size_bits", 224);
+			withUnsignedIntParameter("size_bits", 192);
 
 	// TX should start
 	t += serv.get_last_schedule();
@@ -828,10 +843,11 @@ TEST(ArgosTxService, TxServiceCancelledDuringTx)
 	unsigned int dry_time_before_tx = fake_config_store->read_param<unsigned int>(ParamID::DRY_TIME_BEFORE_TX);
 	CHECK_EQUAL(dry_time_before_tx*1000, serv.get_last_schedule());
 
-	// Should now transmit (TCXO warmup skipped on first TX after submerge)
+	// Should now transmit. Depth pile has 4 fixes; with max_messages=3 the second slot
+	// only carries 1 fix, so the 2nd send is a SHORT (LDK 96-bit) packet.
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
 	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
-			withUnsignedIntParameter("size_bits", 224);
+			withUnsignedIntParameter("size_bits", 96);
 	t += serv.get_last_schedule();
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
@@ -952,7 +968,7 @@ TEST(ArgosTxService, UnderwaterFor24HoursBeforeTx)
 	// Should now transmit (TCXO warmup skipped on first TX after submerge)
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
 	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
-			withUnsignedIntParameter("size_bits", 224);
+			withUnsignedIntParameter("size_bits", 192);
 	t += serv.get_last_schedule();
 	fake_rtc->settime(t/1000);
 	fake_timer->set_counter(t);
@@ -1016,10 +1032,11 @@ TEST(ArgosTxService, DPHardFaultPartialDepthPile)
 		dp.store(e, 99999999);
 	}
 
+	// Long packet now packs up to 3 fixes (down from 4) — slot span = 3.
 	v = dp.retrieve((unsigned int)BaseDepthPile::DEPTH_PILE_16);
-	CHECK_EQUAL(4, v.size());
+	CHECK_EQUAL(3, v.size());
 	v = dp.retrieve((unsigned int)BaseDepthPile::DEPTH_PILE_16);
-	CHECK_EQUAL(2, v.size());
+	CHECK_EQUAL(3, v.size());
 }
 
 TEST(ArgosTxService, UnderwaterFor24HoursDryTimeZero)
@@ -1617,6 +1634,19 @@ TEST(ArgosTxService, DepthPileManagerTestSensorValueConversion)
 	CHECK_EQUAL(113657, (unsigned int)converted->port[0]);
 }
 
+// Helper: verify a built LDA2 sensor packet has the right size, the expected data prefix,
+// and a self-consistent CRC8 in the last byte.
+static void check_lda2_sensor_packet(const std::string& packet, const std::string& expected_data_prefix) {
+	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BYTES, packet.size());
+	std::string hex = Binascii::hexlify(packet);
+	// Data bytes (everything before byte 23) must match the expected prefix, then zero padding.
+	std::string prefix = hex.substr(0, expected_data_prefix.size());
+	CHECK_EQUAL(expected_data_prefix, prefix);
+	// Byte 23 = CRC8 over bytes 0..22 (184 bits).
+	unsigned char expected_crc = CRC8::checksum(packet, ArgosPacketBuilder::LDA2_DATA_BITS);
+	CHECK_EQUAL((unsigned int)expected_crc, (unsigned int)(unsigned char)packet[23]);
+}
+
 TEST(ArgosTxService, BuildSensorPacketAll) {
 	unsigned int size_bits;
 	GPSLogEntry e = make_gps_location(1, 12.3, 44.4, 1652105502);
@@ -1629,25 +1659,25 @@ TEST(ArgosTxService, BuildSensorPacketAll) {
 	pressure.port[1] = 4000; // 0C
 	sea_temp.port[0] = 126000; // 0C
 
-	// CRC8 is now handled by the satellite module — no leading zero byte
+	// LDA2 sensor packets are now always 24 bytes (192-bit frame) with CRC8 at byte 23.
 	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, nullptr, nullptr, false, false, size_bits);
-	CHECK_EQUAL("4B8B3633003C0F0012C0"s, Binascii::hexlify(x));
-	CHECK_EQUAL(75, size_bits);
+	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BITS, size_bits);
+	check_lda2_sensor_packet(x, "4B8B3633003C0F0012C0");
 	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, &pressure, &sea_temp, nullptr, false, false, size_bits);
-	CHECK_EQUAL("4B8B3633003C0F0012C27106D601F41F401EC300"s, Binascii::hexlify(x));
-	CHECK_EQUAL(156, size_bits);
+	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BITS, size_bits);
+	check_lda2_sensor_packet(x, "4B8B3633003C0F0012C27106D601F41F401EC300");
 	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, &ph, &pressure, &sea_temp, nullptr, false, false, size_bits);
-	CHECK_EQUAL("4B8B3633003C0F0012CDAC03E83E803D8600"s, Binascii::hexlify(x));
-	CHECK_EQUAL(139, size_bits);
+	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BITS, size_bits);
+	check_lda2_sensor_packet(x, "4B8B3633003C0F0012CDAC03E83E803D8600");
 	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, nullptr, &pressure, &sea_temp, nullptr, false, false, size_bits);
-	CHECK_EQUAL("4B8B3633003C0F0012C271007D07D007B0C0"s, Binascii::hexlify(x));
-	CHECK_EQUAL(142, size_bits);
+	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BITS, size_bits);
+	check_lda2_sensor_packet(x, "4B8B3633003C0F0012C271007D07D007B0C0");
 	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, nullptr, &sea_temp, nullptr, false, false, size_bits);
-	CHECK_EQUAL("4B8B3633003C0F0012C27106D603D860"s, Binascii::hexlify(x));
-	CHECK_EQUAL(127, size_bits);
+	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BITS, size_bits);
+	check_lda2_sensor_packet(x, "4B8B3633003C0F0012C27106D603D860");
 	x = ArgosPacketBuilder::build_sensor_packet(&e, &als, &ph, &pressure, nullptr, nullptr, false, false, size_bits);
-	CHECK_EQUAL("4B8B3633003C0F0012C27106D601F41F40"s, Binascii::hexlify(x));
-	CHECK_EQUAL(135, size_bits);
+	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BITS, size_bits);
+	check_lda2_sensor_packet(x, "4B8B3633003C0F0012C27106D601F41F40");
 }
 
 TEST(ArgosTxService, BuildSensorPacketSeaTemp) {
@@ -1659,8 +1689,8 @@ TEST(ArgosTxService, BuildSensorPacketSeaTemp) {
 	sea_temp.port[0] = 147100; // 21.1C
 
 	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, &sea_temp, nullptr, false, false, size_bits);
-	CHECK_EQUAL("4B8B3633003C0F0012C23E9C"s, Binascii::hexlify(x));
-	CHECK_EQUAL(96, size_bits);
+	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BITS, size_bits);
+	check_lda2_sensor_packet(x, "4B8B3633003C0F0012C23E9C");
 }
 
 
@@ -1733,13 +1763,14 @@ TEST(ArgosTxService, BuildSensorPacketOutOfZone) {
 	GPSLogEntry e = make_gps_location(1, 12.3, 44.4, 1652105502);
 	std::string x;
 
-	// Test with out-of-zone flag set
+	// LDA2 sensor packets are always emitted as 192-bit frames since CRC8 lives at byte 23.
 	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, nullptr, nullptr, true, false, size_bits);
-	CHECK_EQUAL(75, size_bits); // GPS-only packet size should be same
+	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BITS, size_bits);
+	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BYTES, x.size());
 
-	// Test with low battery flag set
 	x = ArgosPacketBuilder::build_sensor_packet(&e, nullptr, nullptr, nullptr, nullptr, nullptr, false, true, size_bits);
-	CHECK_EQUAL(75, size_bits);
+	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BITS, size_bits);
+	CHECK_EQUAL(ArgosPacketBuilder::LDA2_FRAME_BYTES, x.size());
 }
 
 TEST(ArgosTxService, BuildDopplerPacket) {

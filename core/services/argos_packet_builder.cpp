@@ -16,6 +16,15 @@ extern BatteryMonitor *battery_monitor;
 
 static constexpr unsigned int MS_PER_SEC = 1000;
 
+// Embed CRC8 at byte 23 of an LDA2 frame, computed over the first 184 bits (bytes 0-22).
+// LDA2 frames are 24 bytes total; LDK and VLDA4 do not need this — the SMD/KIM2 module
+// adds CRC8 on those modulations but leaves LDA2 user payload untouched on air.
+static void apply_lda2_crc8(KineisPacket& packet) {
+	packet.resize(ArgosPacketBuilder::LDA2_FRAME_BYTES, 0);
+	unsigned char crc = CRC8::checksum(packet, ArgosPacketBuilder::LDA2_DATA_BITS);
+	packet[ArgosPacketBuilder::LDA2_FRAME_BYTES - 1] = static_cast<char>(crc);
+}
+
 /// @brief Convert ground speed (mm/s) to 7-bit Argos encoding.
 /// @param x  Ground speed in mm/s.
 /// @return Encoded speed (0-127).
@@ -213,8 +222,11 @@ KineisPacket ArgosPacketBuilder::build_fastloc_packet(GPSLogEntry* gps_entry,
 	unsigned int ontime_s = std::min((unsigned int)(gps_entry->info.onTime / MS_PER_SEC), 1023U);
 	PACK_BITS(ontime_s, packet, base_pos, 10);
 
-	// Reserved (35 bits) — zero-filled for future use
-	// Total: 3+16+43+15+8+8+2+4+16+16+8+8+10+35 = 192 bits
+	// Reserved (27 bits) — zero-filled for future use
+	// Total: 3+16+43+15+8+8+2+4+16+16+8+8+10+27 = 184 data bits + 8-bit CRC = 192 bits
+
+	// LDA2 firmware-embedded CRC8 at byte 23 (modem does not add CRC for LDA2).
+	apply_lda2_crc8(packet);
 
 	DEBUG_INFO("ArgosPacketBuilder::build_fastloc_packet: fixType=%u numSV=%u hAcc=%um pDOP=%.1f batt=%u",
 	           fixType, numSV, hAcc_m, (double)gps_entry->info.pDOP, (unsigned int)gps_entry->info.batt_voltage);
@@ -255,7 +267,11 @@ KineisPacket ArgosPacketBuilder::build_cloudlocate_packet(const uint8_t* blob, u
 	PACK_BITS(batt, packet, base_pos, 7);
 	PACK_BITS(is_low_battery ? 1U : 0U, packet, base_pos, 1);
 
-	// Remaining bits are zero-padded (already zeroed by assign)
+	// Remaining bits are zero-padded (already zeroed by assign).
+	// LDA2 (MEAS20) requires firmware-embedded CRC8 at byte 23; LDK (MEASC12) does not.
+	if (format_id == (uint8_t)BaseCloudLocateFormat::MEAS20) {
+		apply_lda2_crc8(packet);
+	}
 
 	DEBUG_INFO("CL_PKT: fmt=%u sz=%u batt=%u data=%s",
 	           format_id, blob_size, battery_voltage, Binascii::hexlify(packet).c_str());
@@ -272,11 +288,8 @@ KineisPacket ArgosPacketBuilder::build_long_packet(std::vector<GPSLogEntry*> &gp
 
 	DEBUG_TRACE("ArgosPacketBuilder::build_long_packet: gps_entries: %u", gps_entries.size());
 
-	// Reserve required number of bytes
+	// Reserve full LDA2 frame (24 bytes); CRC8 lands at byte 23 at the end.
 	packet.assign(LONG_PACKET_BYTES, 0);
-
-	// Payload bytes
-	// PACK_BITS(0, packet, base_pos, 8);  // Zero CRC field (computed later)
 
 	// This will set the log time for the GPS entry based on when it was scheduled
 	uint16_t year;
@@ -340,7 +353,8 @@ KineisPacket ArgosPacketBuilder::build_long_packet(std::vector<GPSLogEntry*> &gp
 		}
 	}
 
-	// CRC8 and BCH are handled by the satellite module (SMD/KIM2)
+	// LDA2 firmware-embedded CRC8 at byte 23 (modem does not add CRC for LDA2).
+	apply_lda2_crc8(packet);
 
 	return packet;
 }
@@ -532,8 +546,10 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 		PACK_BITS((unsigned int)sea_temp_sensor->port[0], packet, base_pos, 21);
 	}
 
-	// Add AXL (accelerometer) sensor data
-	// port[0] = temperature (14 bits), port[1-3] = X/Y/Z (15 bits each), port[4] = activity (8 bits)
+	// Add AXL (accelerometer) sensor data.
+	// port[0] = temperature (14 bits), port[1-3] = X/Y/Z (15 bits each), port[4] = activity (8 bits).
+	// AXL temperature is dropped (with warning) if it would push the data past the 184-bit
+	// LDA2 budget — XYZ + activity are kept since they are the primary AXL signal.
 	if (axl_sensor != nullptr) {
 		DEBUG_TRACE("ArgosPacketBuilder::build_sensor_packet: axl_temp=%04X X=%04X Y=%04X Z=%04X activity=%02X",
 				(unsigned int)axl_sensor->port[0],
@@ -541,7 +557,14 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 				(unsigned int)axl_sensor->port[2],
 				(unsigned int)axl_sensor->port[3],
 				(unsigned int)axl_sensor->port[4]);
-		PACK_BITS((unsigned int)axl_sensor->port[0], packet, base_pos, 14);  // Temperature
+		constexpr unsigned int AXL_FULL_BITS = 14 + 15 + 15 + 15 + 8;  // 67 bits
+		constexpr unsigned int AXL_TEMP_BITS = 14;
+		if (base_pos + AXL_FULL_BITS > SENSOR_PACKET_MAX_TX_BITS) {
+			DEBUG_WARN("ArgosPacketBuilder::build_sensor_packet: dropping AXL temperature (%u + %u > %u bits LDA2 budget)",
+					base_pos, AXL_FULL_BITS, SENSOR_PACKET_MAX_TX_BITS);
+		} else {
+			PACK_BITS((unsigned int)axl_sensor->port[0], packet, base_pos, AXL_TEMP_BITS);  // Temperature
+		}
 		PACK_BITS((unsigned int)axl_sensor->port[1], packet, base_pos, 15);  // X
 		PACK_BITS((unsigned int)axl_sensor->port[2], packet, base_pos, 15);  // Y
 		PACK_BITS((unsigned int)axl_sensor->port[3], packet, base_pos, 15);  // Z
@@ -551,12 +574,14 @@ KineisPacket ArgosPacketBuilder::build_sensor_packet(GPSLogEntry* gps_entry,
 	size_bits = base_pos;
 
 	if (size_bits > SENSOR_PACKET_MAX_TX_BITS) {
-		DEBUG_WARN("ArgosPacketBuilder::build_sensor_packet: packet %u bits exceeds max %u bits (%u bytes) | too many sensors enabled | truncating",
-				size_bits, SENSOR_PACKET_MAX_TX_BITS, SENSOR_PACKET_MAX_TX_BYTES);
+		DEBUG_WARN("ArgosPacketBuilder::build_sensor_packet: packet %u bits exceeds max %u data bits | too many sensors enabled | truncating",
+				size_bits, SENSOR_PACKET_MAX_TX_BITS);
 		size_bits = SENSOR_PACKET_MAX_TX_BITS;
 	}
 
-	packet.resize((size_bits+7)/8);
+	// Always emit a full 24-byte LDA2 frame and embed CRC8 at byte 23.
+	apply_lda2_crc8(packet);
+	size_bits = LDA2_FRAME_BITS;
 
 	return packet;
 }
@@ -652,11 +677,12 @@ KineisPacket ArgosPacketBuilder::build_rspb_long_packet(GPSLogEntry* gps_entry,
 	unsigned int conf = (mortality_confidence > 100) ? 100 : mortality_confidence;
 	PACK_BITS(conf, packet, base_pos, 7);
 
-	size_bits = base_pos;
-	packet.resize((size_bits+7)/8);
+	// LDA2 firmware-embedded CRC8 at byte 23 (modem does not add CRC for LDA2).
+	apply_lda2_crc8(packet);
+	size_bits = LDA2_FRAME_BITS;
 
-	DEBUG_INFO("ArgosPacketBuilder::build_rspb_long_packet: %u bits | %s",
-			size_bits, Binascii::hexlify(packet).c_str());
+	DEBUG_INFO("ArgosPacketBuilder::build_rspb_long_packet: %u data bits + CRC | %s",
+			RSPB_LONG_PACKET_DATA_BITS, Binascii::hexlify(packet).c_str());
 	return packet;
 }
 

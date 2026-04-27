@@ -22,34 +22,45 @@ class ArgosPacketBuilder {
 public:
 	// === Packet format constants ===
 
-	// Short packet: header(3) + payload(91) + CRC handled by SMD/KIM2
+	// LDA2 frame layout (applies to long, sensor, fastloc, RSPB long, CloudLocate MEAS20):
+	// 24 bytes total = 23 bytes data (184 bits) + 1 byte CRC8 at byte 23.
+	// LDK and VLDA4 frames have CRC integrated by the SMD/KIM2 module — only LDA2
+	// requires the firmware to compute and embed CRC8 inside the payload.
+	static constexpr unsigned int LDA2_FRAME_BITS              = 192;
+	static constexpr unsigned int LDA2_FRAME_BYTES             = 24;
+	static constexpr unsigned int LDA2_DATA_BITS               = 184;  ///< Bits before CRC8
+
+	// Short packet (LDK, modem-handled CRC)
 	static constexpr unsigned int SHORT_PACKET_HEADER      = 0b000;
 	static constexpr unsigned int SHORT_PACKET_BITS        = 96;
 	static constexpr unsigned int SHORT_PACKET_PAYLOAD_BITS = 94;
 	static constexpr unsigned int SHORT_PACKET_BYTES       = 12;
 
-	// Long packet: header(3) + payload(189) + CRC handled by SMD/KIM2
-	static constexpr unsigned int LONG_PACKET_BITS         = 224;
-	static constexpr unsigned int LONG_PACKET_PAYLOAD_BITS = 192;
-	static constexpr unsigned int LONG_PACKET_BYTES        = 26;
+	// Long packet (LDA2, firmware-embedded CRC8 at byte 23)
+	static constexpr unsigned int LONG_PACKET_BITS         = LDA2_FRAME_BITS;
+	static constexpr unsigned int LONG_PACKET_PAYLOAD_BITS = LDA2_DATA_BITS;
+	static constexpr unsigned int LONG_PACKET_BYTES        = LDA2_FRAME_BYTES;
 
-	// Fastloc degraded PVT packet (LDA2)
+	// Fastloc degraded PVT packet (LDA2, firmware-embedded CRC8 at byte 23)
 	static constexpr unsigned int FASTLOC_PACKET_HEADER    = 0b010;
-	static constexpr unsigned int FASTLOC_PACKET_BITS      = 192;
-	static constexpr unsigned int FASTLOC_PACKET_BYTES     = 24;
+	static constexpr unsigned int FASTLOC_PACKET_BITS      = LDA2_FRAME_BITS;
+	static constexpr unsigned int FASTLOC_PACKET_BYTES     = LDA2_FRAME_BYTES;
 
 	// CloudLocate packet (Type 7): header(3) + format(2) + blob(variable) + battery(8)
+	// MEAS20 variant goes on LDA2 with firmware CRC8; MEASC12 stays on LDK (modem CRC).
 	static constexpr unsigned int CLOUDLOCATE_PACKET_HEADER    = 0b111;
 	static constexpr unsigned int CLOUDLOCATE_MEASC12_BITS     = 128;   // LDK
 	static constexpr unsigned int CLOUDLOCATE_MEASC12_BYTES    = 16;
-	static constexpr unsigned int CLOUDLOCATE_MEAS20_BITS      = 192;   // LDA2
-	static constexpr unsigned int CLOUDLOCATE_MEAS20_BYTES     = 24;
+	static constexpr unsigned int CLOUDLOCATE_MEAS20_BITS      = LDA2_FRAME_BITS;
+	static constexpr unsigned int CLOUDLOCATE_MEAS20_BYTES     = LDA2_FRAME_BYTES;
 
-	// Sensor packet (Type 1)
+	// Sensor packet (Type 1, LDA2). Always emitted as a full 24-byte LDA2 frame so the
+	// CRC sits at byte 23. Adaptive LDK fallback for tiny sensor packets is therefore
+	// disabled — sensor packets always go on LDA2 now.
 	static constexpr unsigned int SENSOR_PACKET_HEADER         = 0b001;
-	static constexpr unsigned int SENSOR_PACKET_BYTES          = 28;
-	static constexpr unsigned int SENSOR_PACKET_MAX_TX_BYTES   = 24;
-	static constexpr unsigned int SENSOR_PACKET_MAX_TX_BITS    = SENSOR_PACKET_MAX_TX_BYTES * 8;
+	static constexpr unsigned int SENSOR_PACKET_BYTES          = LDA2_FRAME_BYTES;
+	static constexpr unsigned int SENSOR_PACKET_MAX_TX_BYTES   = LDA2_FRAME_BYTES;
+	static constexpr unsigned int SENSOR_PACKET_MAX_TX_BITS    = LDA2_DATA_BITS;
 
 	// Doppler packet (24 bits, VLDA4)
 	static constexpr unsigned int DOPPLER_PACKET_BITS          = 24;
@@ -64,8 +75,9 @@ public:
 	// RSPB dedicated packet formats (bird tracker with mortality)
 	static constexpr unsigned int RSPB_LONG_HEADER             = 0b100;
 	static constexpr unsigned int RSPB_SHORT_HEADER            = 0b101;
-	static constexpr unsigned int RSPB_LONG_PACKET_BITS        = 181;
-	static constexpr unsigned int RSPB_LONG_PACKET_BYTES       = 23;
+	static constexpr unsigned int RSPB_LONG_PACKET_DATA_BITS   = 181;             ///< Useful bits before CRC
+	static constexpr unsigned int RSPB_LONG_PACKET_BITS        = LDA2_FRAME_BITS; ///< Full LDA2 frame (data + CRC)
+	static constexpr unsigned int RSPB_LONG_PACKET_BYTES       = LDA2_FRAME_BYTES;
 	static constexpr unsigned int RSPB_SHORT_PACKET_BITS       = 122;
 	static constexpr unsigned int RSPB_SHORT_PACKET_BYTES      = 16;
 
@@ -84,7 +96,7 @@ public:
 	static constexpr unsigned int REF_BATT_MV          = 2700;
 	static constexpr unsigned int LON_LAT_RESOLUTION   = 10000;
 	static constexpr int          NEG_LON_LAT_RESOLUTION = -10000;
-	static constexpr unsigned int MAX_GPS_ENTRIES_IN_PACKET = 4;
+	static constexpr unsigned int MAX_GPS_ENTRIES_IN_PACKET = 3;  ///< Reduced from 4 to fit CRC8 in 24-byte LDA2 frame
 	static constexpr unsigned int SECONDS_PER_HOUR     = 3600;
 
 	// === Conversion helpers ===
