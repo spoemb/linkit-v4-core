@@ -204,6 +204,7 @@ public:
         m_first_sample_done = false;
         m_fast_convergence_count = 0;
         m_coherence_high_count = 0;
+        m_air_collapse_count = 0;
         m_contrast_x10 = 0;
         for (int i = 0; i < ADC_HISTORY_SIZE; i++) {
             m_adc_history[i] = 0;
@@ -317,6 +318,11 @@ private:
 
     // Continuous coherence: consecutive samples exceeding water×2 before adapting
     uint8_t m_coherence_high_count;
+
+    // Stuck-state recovery: count consecutive surface samples with air baseline
+    // at/below AIR_BASELINE_FLOOR. Triggers a forced recalibration when the
+    // periodic Air recalib path collapses air to noise level (dry electrodes).
+    uint8_t m_air_collapse_count;
 
     // Configuration parameters (loaded from config store)
     uint16_t m_hysteresis_percent;

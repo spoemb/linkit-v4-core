@@ -224,8 +224,12 @@ void SWSAnalogService::calibrate_air_baseline() {
         if (m_calib.threshold_air < AIR_BASELINE_FLOOR)
             m_calib.threshold_air = AIR_BASELINE_FLOOR;
     } else {
-        // Normal: started in air
+        // Normal: started in air. Floor at AIR_BASELINE_FLOOR so the proactive
+        // stuck-state recovery (section 6b in detection) doesn't fire on a
+        // disconnected/zero-ADC boot — this is a clean baseline, not a collapse.
         m_calib.threshold_air = avg;
+        if (m_calib.threshold_air < AIR_BASELINE_FLOOR)
+            m_calib.threshold_air = AIR_BASELINE_FLOOR;
         if (m_calib.threshold_water == 0 || m_calib.threshold_water <= m_calib.threshold_air) {
             // Priority order for water estimate:
             // 1. Manual hint from SWS.CAL (only water provided)
@@ -305,9 +309,13 @@ void SWSAnalogService::calibrate_water_baseline(uint16_t value) {
 
     if (ok) {
         uint16_t new_water = (uint16_t)(alpha * value + (1.0f - alpha) * m_calib.threshold_water);
-        // Cap at observed peak so water baseline never exceeds actual readings
-        if (m_observed_peak_adc > 0 && new_water > m_observed_peak_adc)
+        // Cap at observed peak only when peak is established (>= value/2):
+        // a stale peak from air calibration would otherwise pin water below
+        // real underwater readings, blocking convergence on first immersion.
+        if (m_observed_peak_adc >= (uint16_t)(value / 2) &&
+            new_water > m_observed_peak_adc) {
             new_water = m_observed_peak_adc;
+        }
         m_calib.threshold_water = new_water;
         update_dynamic_threshold();
         m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
@@ -354,8 +362,13 @@ void SWSAnalogService::update_dynamic_threshold() {
     if (m_calib.hysteresis_value < 10)
         m_calib.hysteresis_value = 10;
 
-    // Cap threshold+hysteresis at observed peak ADC so we never exceed actual readings
-    if (m_observed_peak_adc > 0) {
+    // Cap threshold+hysteresis at observed peak ADC so we never exceed actual readings.
+    // B7: only trust the peak as a cap when it's plausible water (peak >= water/2).
+    // A stale peak that has decayed below water (long surface period or noise spikes)
+    // would otherwise pin threshold_high to peak*0.9, collapsing the threshold below
+    // legitimate underwater readings and preventing dive detection.
+    if (m_observed_peak_adc > 0 && m_calib.threshold_water > 0
+        && m_observed_peak_adc >= (uint16_t)(m_calib.threshold_water / 2)) {
         uint16_t max_thresh_high = m_observed_peak_adc;
         if (m_calib.threshold_current + m_calib.hysteresis_value > max_thresh_high) {
             // Adjust: keep threshold and reduce hysteresis, or lower threshold

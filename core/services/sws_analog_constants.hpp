@@ -105,6 +105,12 @@
 #define MAX_CONSECUTIVE_DIVE_TIMEOUTS 3 // Force surface after N timeouts without any surface detection
 #define GUIDED_CALIB_TIMEOUT_TICKS 300  // 300 ticks × 1s = 5 minutes max for guided calibration
 
+// Stuck-state recovery: when air baseline collapses below floor for N consecutive
+// samples while at surface, force a fresh calibration from current ADC readings.
+// Catches the dry-electrode death spiral where periodic Air recalib pulls air → 0
+// before the dive-timeout escalation (≥6h) can kick in.
+#define AIR_COLLAPSE_RECOVERY_SAMPLES 5
+
 // Adaptive sample delay (µs) — defaults, overridden by UNP09/UNP10 params at init
 // No series R on SWS line: cap charges through GPIO impedance (~100Ω) + water R.
 // Salt water (1K): τ = 1K × 100nF = 100µs → 500µs = 5τ → 99% charge

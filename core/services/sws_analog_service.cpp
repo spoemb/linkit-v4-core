@@ -414,6 +414,7 @@ void SWSAnalogService::service_init() {
     m_first_sample_done = false;
     m_fast_convergence_count = 0;
     m_coherence_high_count = 0;
+    m_air_collapse_count = 0;
 
     DEBUG_INFO("SWSAnalog: Init - hyst=%u%% ratio=%u%%",
                m_hysteresis_percent, m_threshold_ratio_percent);
@@ -444,8 +445,16 @@ unsigned int SWSAnalogService::service_next_schedule_in_ms() {
 /// @return Raw 14-bit ADC value (0-16383), or ADC_READ_ERROR on failure.
 uint16_t SWSAnalogService::read_analog_sws() {
 #ifdef CPPUTEST
-    // Test stub — real ADC not available. Tests override detector_state() instead.
-    return 0;
+    // Test stub — drive the SAADC fake so SAADC::set_adc_value(NNN) is observable
+    // by detector_state(). Mirrors the production path (init → channel_init →
+    // sample_convert) so the fake returns the most recent injected value.
+    nrfx_saadc_init(nullptr, nullptr);
+    nrfx_saadc_channel_init(0, nullptr);
+    nrf_saadc_value_t raw = 0;
+    nrfx_saadc_sample_convert(0, &raw);
+    nrfx_saadc_channel_uninit(0);
+    nrfx_saadc_uninit();
+    return static_cast<uint16_t>(raw < 0 ? 0 : raw);
 #else
     // Disconnect digital input buffer on SWS pin to prevent analog loading.
     uint32_t sws_pin = BSP::GPIO_Inits[SWS_SAMPLE_PIN].pin_number;

@@ -90,10 +90,14 @@ bool SWSAnalogService::detector_state() {
             if (m_coherence_high_count >= 3) {
                 DEBUG_WARN("SWSAnalog: Continuous coherence - raw=%u >> water=%u (%u consecutive), adapting water",
                            raw_value, m_calib.threshold_water, m_coherence_high_count);
-                // Cap at observed peak to prevent runaway water baseline
+                // Cap at observed peak only when peak is established (>= raw/2):
+                // a stale peak from air calibration would otherwise pin water below
+                // real underwater readings.
                 uint16_t new_water = raw_value;
-                if (m_observed_peak_adc > 0 && new_water > m_observed_peak_adc)
+                if (m_observed_peak_adc >= (uint16_t)(raw_value / 2) &&
+                    new_water > m_observed_peak_adc) {
                     new_water = m_observed_peak_adc;
+                }
                 m_calib.threshold_water = new_water;
                 update_dynamic_threshold();
                 m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
@@ -119,6 +123,13 @@ bool SWSAnalogService::detector_state() {
                 if (m_calib.threshold_water > ADC_INVALID_MAX)
                     m_calib.threshold_water = ADC_INVALID_MAX;
             }
+            // Apply AIR_BASELINE_FLOOR — coherence recalib can be triggered with
+            // raw≈0 (disconnected electrode) which would set air=0 and trip the
+            // section 6b stuck-state recovery on the very next sample.
+            if (m_calib.threshold_air < AIR_BASELINE_FLOOR)
+                m_calib.threshold_air = AIR_BASELINE_FLOOR;
+            if (m_calib.threshold_water <= m_calib.threshold_air * MIN_WATER_AIR_RATIO)
+                m_calib.threshold_water = m_calib.threshold_air * MIN_WATER_AIR_RATIO;
             update_dynamic_threshold();
             m_calib.is_calibrated = true;
             m_calib.last_calibration_time = PMU::get_timestamp_ms() / 1000;
@@ -275,7 +286,11 @@ bool SWSAnalogService::detector_state() {
     // === 6. SURFACE BASELINE TRACKING (blocked during lockout) ===
     if (!m_current_state && m_time_in_current_state > MIN_SURFACE_TIME_FOR_ADAPT
         && m_surface_lockout_remaining == 0) {
-        if (filtered_value < m_calib.threshold_current) {
+        // B2: reject sub-floor readings — they likely come from a dry/disconnected
+        // electrode where the RC circuit hasn't charged. Letting them in pulls
+        // the buffer average toward zero and corrupts the periodic Air recalib.
+        if (filtered_value < m_calib.threshold_current
+            && filtered_value >= AIR_BASELINE_FLOOR) {
             m_surface_readings[m_surface_readings_idx] = filtered_value;
             m_surface_readings_idx = (m_surface_readings_idx + 1) % SURFACE_BUFFER_SIZE;
             if (m_surface_readings_count < SURFACE_BUFFER_SIZE)
@@ -289,22 +304,38 @@ bool SWSAnalogService::detector_state() {
             uint16_t avg = (uint16_t)(sum / m_surface_readings_count);
 
             if (should_recalibrate()) {
+                // B1: clamp to AIR_BASELINE_FLOOR. Without this, dry-electrode
+                // surface readings (~0) can collapse air baseline to 0, breaking
+                // threshold computation and trapping the system at false-surface.
                 uint16_t old = m_calib.threshold_air;
-                m_calib.threshold_air = avg;
+                uint16_t new_air = avg;
+                if (new_air < AIR_BASELINE_FLOOR) new_air = AIR_BASELINE_FLOOR;
+                m_calib.threshold_air = new_air;
                 update_dynamic_threshold();
                 m_calib.last_calibration_time = PMU::get_timestamp_ms() / 1000;
                 m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
                                              sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
                 m_surface_readings_count = 0;
                 m_surface_readings_idx = 0;
-                DEBUG_INFO("SWSAnalog: Air recalib %u -> %u", old, m_calib.threshold_air);
+                DEBUG_INFO("SWSAnalog: Air recalib %u -> %u%s",
+                           old, m_calib.threshold_air,
+                           (avg < AIR_BASELINE_FLOOR) ? " (floored)" : "");
                 adjust_sample_delay();
             }
             else if (avg > (uint16_t)(m_calib.threshold_air * SURFACE_ADAPT_THRESHOLD) &&
                      avg < m_calib.threshold_current) {
-                // Upward adaptation: air drifting higher (biofouling)
+                // B3: when air baseline is at/below floor, the SURFACE_ADAPT_THRESHOLD
+                // gate becomes 0 and any noise sample fires this branch — rounding
+                // back to 0. Force air to AIR_BASELINE_FLOOR first to break the loop.
                 uint16_t old = m_calib.threshold_air;
-                m_calib.threshold_air = (uint16_t)(m_calib.threshold_air * 0.9f + avg * 0.1f);
+                uint16_t new_air;
+                if (m_calib.threshold_air < AIR_BASELINE_FLOOR) {
+                    new_air = AIR_BASELINE_FLOOR;
+                } else {
+                    new_air = (uint16_t)(m_calib.threshold_air * 0.9f + avg * 0.1f);
+                    if (new_air < AIR_BASELINE_FLOOR) new_air = AIR_BASELINE_FLOOR;
+                }
+                m_calib.threshold_air = new_air;
                 update_dynamic_threshold();
                 m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
                                              sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
@@ -341,6 +372,51 @@ bool SWSAnalogService::detector_state() {
     } else if (m_current_state) {
         m_surface_readings_count = 0;
         m_surface_readings_idx = 0;
+    }
+
+    // === 6b. STUCK-STATE RECOVERY (proactive) ===
+    // If air baseline has collapsed below floor while we believe we're at surface,
+    // the device is in the dry-electrode death spiral. Force a clean recalibration
+    // from current ADC readings before the dive-timeout escalation (≥6h) is needed.
+    // Only triggers if the safety-net fixes (B1/B2/B3) somehow leak — defense in depth.
+    if (!m_current_state && m_calib.threshold_air < AIR_BASELINE_FLOOR) {
+        m_air_collapse_count++;
+        if (m_air_collapse_count >= AIR_COLLAPSE_RECOVERY_SAMPLES) {
+            uint16_t old_air = m_calib.threshold_air;
+            uint16_t old_water = m_calib.threshold_water;
+            uint16_t old_peak = m_observed_peak_adc;
+
+            // Re-seed air from filtered_value (current air reading), floored.
+            uint16_t recovered_air = (filtered_value >= AIR_BASELINE_FLOOR)
+                ? filtered_value : AIR_BASELINE_FLOOR;
+            m_calib.threshold_air = recovered_air;
+            // Ensure water keeps a sane gap above air; never lower it.
+            if (m_calib.threshold_water <= recovered_air * MIN_WATER_AIR_RATIO) {
+                m_calib.threshold_water = recovered_air * MIN_WATER_AIR_RATIO;
+                if (m_calib.threshold_water > ADC_INVALID_MAX)
+                    m_calib.threshold_water = ADC_INVALID_MAX;
+            }
+            // Reset peak — it has decayed below water and is corrupting threshold cap.
+            m_observed_peak_adc = 0;
+            m_consecutive_spike_rejects = 0;
+
+            update_dynamic_threshold();
+            m_calib.last_calibration_time = PMU::get_timestamp_ms() / 1000;
+            m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
+                                         sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
+            m_observed_peak_crc = crc16_compute((const uint8_t *)&m_observed_peak_adc,
+                                                 sizeof(m_observed_peak_adc), nullptr);
+            save_calibration_to_flash();
+
+            m_surface_readings_count = 0;
+            m_surface_readings_idx = 0;
+            m_air_collapse_count = 0;
+            DEBUG_WARN("SWSAnalog: Stuck recovery — air collapsed (%u) | air %u->%u water %u->%u peak %u->0",
+                       AIR_COLLAPSE_RECOVERY_SAMPLES, old_air, m_calib.threshold_air,
+                       old_water, m_calib.threshold_water, old_peak);
+        }
+    } else {
+        m_air_collapse_count = 0;
     }
 
     // === 7. STATE DETERMINATION ===
@@ -383,17 +459,21 @@ bool SWSAnalogService::detector_state() {
     //
     // EC-3: Anti-spike filter + slow decay + coherence guard.
     // - Reject isolated spikes: new peak must be within 120% of current peak (once established)
-    // - Slow EMA decay (0.999) allows recovery from corrupted peaks
+    // - Slow EMA decay (0.999) — only when raw is plausibly water (B5)
     // - Coherence guard: reset peak if it exceeds water baseline × 3
     {
         bool peak_updated = false;
 
         if (raw_value > m_observed_peak_adc) {
-            // Anti-spike: accept unconditionally during first water contact (peak < water baseline)
-            // or if within 120% of current established peak.
-            // This allows rapid peak convergence on first immersion (air=150 → water=12000)
-            // while still rejecting isolated spikes once the peak is established in water.
-            bool first_water_contact = (m_observed_peak_adc < m_calib.threshold_current);
+            // B4: "first_water_contact" must compare to a stable water reference,
+            // not threshold_current (which collapses if air baseline drifts).
+            // A peak below half the water baseline is stale (e.g. decayed during
+            // a long surface period) — accept new readings unconditionally to
+            // re-converge instead of trapping real water samples as "spikes".
+            uint16_t stale_ref = (m_calib.threshold_water > 0)
+                ? (uint16_t)(m_calib.threshold_water / 2)
+                : m_calib.threshold_current;
+            bool first_water_contact = (m_observed_peak_adc < stale_ref);
             if (m_observed_peak_adc == 0 || first_water_contact ||
                 raw_value <= (uint32_t)m_observed_peak_adc * 6 / 5) {
                 m_observed_peak_adc = raw_value;
@@ -418,11 +498,22 @@ bool SWSAnalogService::detector_state() {
                 }
             }
         } else if (m_observed_peak_adc > 0) {
-            // Slow decay: EMA 0.999 allows gradual recovery from stale/corrupted peaks
-            uint16_t decayed = (uint16_t)(m_observed_peak_adc * 0.999f + raw_value * 0.001f);
-            if (decayed != m_observed_peak_adc) {
-                m_observed_peak_adc = decayed;
-                peak_updated = true;
+            // B5: only decay when raw is plausibly an underwater reading.
+            // At surface raw≈0; decaying peak toward 0 each surface sample makes
+            // peak collapse below water baseline over long surface periods, which
+            // then corrupts threshold_high via update_dynamic_threshold's cap.
+            // Floor the decay target at water_baseline so peak can't drop into
+            // surface-noise territory.
+            bool raw_is_water = (m_calib.threshold_water > 0 &&
+                                 raw_value > (uint16_t)(m_calib.threshold_water / 2));
+            if (raw_is_water) {
+                uint16_t decayed = (uint16_t)(m_observed_peak_adc * 0.999f + raw_value * 0.001f);
+                if (decayed < m_calib.threshold_water)
+                    decayed = m_calib.threshold_water;
+                if (decayed != m_observed_peak_adc) {
+                    m_observed_peak_adc = decayed;
+                    peak_updated = true;
+                }
             }
         }
 
@@ -482,7 +573,7 @@ bool SWSAnalogService::detector_state() {
     // === 8. MAX DIVE TIMEOUT — escalating response ===
     // First timeouts: recalibrate water baseline (legitimate long dives).
     // After MAX_CONSECUTIVE_DIVE_TIMEOUTS without surface: force surface + lockout
-    // to give GPS/Argos a TX window (biofouling safety net).
+    // and clear stuck-state corruption so the next dive can be detected.
     if (timeout_override) {
         m_consecutive_dive_timeouts++;
         uint16_t old_water = m_calib.threshold_water;
@@ -497,11 +588,27 @@ bool SWSAnalogService::detector_state() {
         }
 
         if (m_consecutive_dive_timeouts >= MAX_CONSECUTIVE_DIVE_TIMEOUTS) {
-            // Escalation: force surface after repeated timeouts (biofouling safety net)
+            // B6: also clear corruptable state — peak may have decayed/spiked,
+            // spike-reject counter may be mid-cycle, surface-readings buffer
+            // may have stale entries from before the dive. Without this, the
+            // forced surface succeeds but the next real dive is silently
+            // blocked by a stuck anti-spike peak.
             new_state = false;
             m_surface_lockout_remaining = SURFACE_LOCKOUT_DURATION_SEC;
             m_consecutive_dive_timeouts = 0;
-            DEBUG_WARN("SWSAnalog: Dive timeout escalation — forcing surface | water %u -> %u | air=%u",
+            // Re-seed peak from the just-recalibrated water baseline so
+            // update_dynamic_threshold's cap doesn't collapse threshold_high.
+            m_observed_peak_adc = m_calib.threshold_water;
+            m_consecutive_spike_rejects = 0;
+            m_observed_peak_crc = crc16_compute((const uint8_t *)&m_observed_peak_adc,
+                                                 sizeof(m_observed_peak_adc), nullptr);
+            m_surface_readings_count = 0;
+            m_surface_readings_idx = 0;
+            update_dynamic_threshold();
+            m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
+                                         sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
+            save_calibration_to_flash();
+            DEBUG_WARN("SWSAnalog: Dive timeout escalation — forcing surface | water %u -> %u | air=%u | peak reset",
                        old_water, m_calib.threshold_water, m_calib.threshold_air);
         } else {
             // Reset timer for next interval
