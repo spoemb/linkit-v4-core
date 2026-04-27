@@ -405,8 +405,9 @@ void LoRaTxService::process_gps_burst() {
 	unsigned int max_payload = get_max_payload_bytes();
 	unsigned int max_entries = LoRaPacketBuilder::max_gps_entries(max_payload);
 
-	// Retrieve GPS entries from depth pile
-	std::vector<GPSLogEntry*> v = m_depth_pile_manager.retrieve_gps((unsigned int)argos_config.depth_pile);
+	// Retrieve GPS entries from depth pile, using the LoRa-specific per-slot cap
+	// (Argos default is 3 to fit the LDA2 24-byte frame; LoRa can hold many more).
+	std::vector<GPSLogEntry*> v = m_depth_pile_manager.retrieve_gps((unsigned int)argos_config.depth_pile, max_entries);
 
 	if (v.size()) {
 		KineisPacket packet;

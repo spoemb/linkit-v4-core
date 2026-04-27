@@ -191,6 +191,12 @@ public:
 		return m_gps_depth_pile.retrieve(depth_pile);
 	}
 
+	/// @brief Retrieve GPS entries with an explicit per-slot cap. LoRa uses a higher cap
+	/// than Argos (which is fixed at 3 by the LDA2 24-byte budget).
+	std::vector<GPSLogEntry*> retrieve_gps(unsigned int depth_pile, unsigned int max_messages) {
+		return m_gps_depth_pile.retrieve(depth_pile, max_messages);
+	}
+
 	GPSLogEntry* retrieve_gps_single(unsigned int depth_pile) {
 		try {
 			return m_gps_depth_pile.retrieve(depth_pile, 1).at(0);
