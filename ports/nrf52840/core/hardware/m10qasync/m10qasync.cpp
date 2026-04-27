@@ -618,11 +618,16 @@ void M10QAsyncReceiver::react(const UBXCommsEventDebug& e) {
 }
 
 void M10QAsyncReceiver::react(const UBXCommsEventError& e) {
-    if (STATE_EQUAL(poweron)) {
-        // During power-on, UART framing errors are expected (GPS module sends
-        // NMEA by default before UBX protocol is configured). Tolerate up to 10.
+    // Framing errors (0x04) during the boot window (poweron/configure) come from
+    // the NMEA->UBX baud transition. Async event delivery can land them in
+    // poweron OR configure depending on scheduler timing — tolerate both.
+    // Real soft bugs (alloc/overrun/buffer) keep their immediate ERROR path.
+    bool is_framing = (e.error_type == 0x04);
+    bool in_boot_window = STATE_EQUAL(poweron) || STATE_EQUAL(configure);
+
+    if (is_framing && in_boot_window) {
         system_scheduler->post_task_prio([this, e]() {
-            DEBUG_WARN("UBXCommsEventError: type=%02x count=%u (power-on, expected)", e.error_type, m_uart_error_count);
+            DEBUG_WARN("UBXCommsEventError: type=%02x count=%u (boot transition, expected)", e.error_type, m_uart_error_count);
         }, "Debug");
         if (++m_uart_error_count >= 10) {
             m_uart_error_count = 0;
@@ -631,7 +636,6 @@ void M10QAsyncReceiver::react(const UBXCommsEventError& e) {
             run_state_machine();
         }
     } else {
-        // Outside power-on, comms errors are real problems
         system_scheduler->post_task_prio([this, e]() {
             DEBUG_ERROR("UBXCommsEventError: type=%02x count=%u", e.error_type, m_uart_error_count);
         }, "Debug");
