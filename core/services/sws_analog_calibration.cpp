@@ -114,7 +114,7 @@ bool SWSAnalogService::load_calibration_from_flash() {
     m_calib.is_calibrated = true;
     m_calib.last_calibration_time = PMU::get_timestamp_ms() / 1000;
     m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
-                                 sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
+                                 offsetof(SWSAnalogService::CalibrationData, crc), nullptr);
 
     if (peak > 0 && peak <= ADC_INVALID_MAX) {
         m_observed_peak_adc = (uint16_t)peak;
@@ -144,7 +144,7 @@ bool SWSAnalogService::load_calibration_from_flash() {
 /// @return true if calibration data is valid and ready for use.
 bool SWSAnalogService::validate_calibration_data() {
     uint16_t calculated_crc = crc16_compute((const uint8_t *)&m_calib,
-                                             sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
+                                             offsetof(SWSAnalogService::CalibrationData, crc), nullptr);
     if (calculated_crc != m_calib.crc) {
         DEBUG_WARN("SWSAnalog: CRC mismatch (calc=%u stored=%u)", calculated_crc, m_calib.crc);
         return false;
@@ -178,7 +178,7 @@ void SWSAnalogService::calibrate_air_baseline() {
         m_calib.is_calibrated = true;
         m_calib.last_calibration_time = PMU::get_timestamp_ms() / 1000;
         m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
-                                     sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
+                                     offsetof(SWSAnalogService::CalibrationData, crc), nullptr);
 
         DEBUG_INFO("SWSAnalog: Calib - air=%u water=%u thresh=%u (from SWS.CAL)",
                    m_calib.threshold_air, m_calib.threshold_water, m_calib.threshold_current);
@@ -261,7 +261,7 @@ void SWSAnalogService::calibrate_air_baseline() {
     m_calib.is_calibrated = true;
     m_calib.last_calibration_time = PMU::get_timestamp_ms() / 1000;
     m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
-                                 sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
+                                 offsetof(SWSAnalogService::CalibrationData, crc), nullptr);
 
     DEBUG_INFO("SWSAnalog: Calib - air=%u water=%u thresh=%u (started_in_%s)",
                m_calib.threshold_air, m_calib.threshold_water, m_calib.threshold_current,
@@ -319,7 +319,7 @@ void SWSAnalogService::calibrate_water_baseline(uint16_t value) {
         m_calib.threshold_water = new_water;
         update_dynamic_threshold();
         m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
-                                     sizeof(m_calib) - sizeof(m_calib.crc), nullptr);
+                                     offsetof(SWSAnalogService::CalibrationData, crc), nullptr);
 
         // EC-1: Track fast convergence progress
         if (water_is_estimated && m_fast_convergence_count < 5) {

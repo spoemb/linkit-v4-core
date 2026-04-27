@@ -162,7 +162,9 @@ public:
 #endif
 
 #ifdef CPPUTEST
-    // Reset static calibration data for test isolation
+    // Reset static calibration data for test isolation. Covers ALL static
+    // members so a previous test's leftovers cannot pollute the next test
+    // (FlashPersistence and CoherenceCheck regress without this).
     static void reset_noinit_data() {
         memset(&m_calib, 0, sizeof(m_calib));
         m_observed_peak_adc = 0;
@@ -171,6 +173,16 @@ public:
         s_instance = nullptr;
         m_test_mode = false;
         m_status_notify = nullptr;
+        m_on_test_stop = nullptr;
+        m_calib_phase = CalibPhase::IDLE;
+        m_calib_sum = 0;
+        m_calib_count = 0;
+        m_calib_air_result = 0;
+        m_calib_water_result = 0;
+        m_calib_stable_count = 0;
+        m_calib_prev_value = 0;
+        m_calib_timeout_ticks = 0;
+        m_calib_notify = nullptr;
     }
 #endif
 
