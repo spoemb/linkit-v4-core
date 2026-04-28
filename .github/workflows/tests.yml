@@ -1,0 +1,187 @@
+name: Tests
+
+# Runs the host (x86 Linux) test suites:
+#  - Unit tests       (TrackerTests, excluding the SWS group)
+#  - SWS tests        (TrackerTests -g SWSAnalog and -g SWSAnalogFlash)
+#  - Turtle simulation (TurtleSimulation, generates an HTML report)
+#
+# Triggers:
+#  - push to main
+#  - pull_request targeting main
+#  - workflow_dispatch (manual run from the Actions tab)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build the host test binaries once, share them with the test jobs as an
+  # artifact. Avoids rebuilding the same C++ for each test group.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build host test binaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build g++
+
+      - name: Configure
+        run: |
+          mkdir -p tests/build
+          cd tests/build
+          cmake -GNinja ..
+
+      - name: Compile TrackerTests + TurtleSimulation
+        run: ninja -C tests/build TrackerTests TurtleSimulation
+
+      - name: Upload test binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-binaries
+          path: |
+            tests/build/TrackerTests
+            tests/build/TurtleSimulation
+          retention-days: 1
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Unit tests — the fast suite, runs everything except the SWS group.
+  # `-p` runs each test in its own subprocess (defends against memory
+  # corruption between tests, see scripts/run_unit_tests.sh).
+  # `-xg SWS` excludes both SWSAnalog and SWSAnalogFlash groups (long-running).
+  # ---------------------------------------------------------------------------
+  unit-tests:
+    name: Unit tests
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download test binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: test-binaries
+          path: tests/build
+
+      - name: Make binaries executable
+        run: chmod +x tests/build/TrackerTests tests/build/TurtleSimulation
+
+      - name: Run unit tests
+        working-directory: tests
+        run: |
+          ln -sf ../data build/data
+          mkdir -p reports
+          ./build/TrackerTests -ojunit -p -xg SWS -k unit
+          # CppUTest writes cpputest_<group>.xml in the cwd
+          mkdir -p reports/unit && mv cpputest_*.xml reports/unit/ 2>/dev/null || true
+
+      - name: Upload JUnit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports
+          path: tests/reports/unit/*.xml
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # SWS tests — long-running underwater simulation tests, run separately
+  # from the main unit suite (per scripts/run_unit_tests.sh comment).
+  # Covers TEST_GROUP(SWSAnalog) and TEST_GROUP(SWSAnalogFlash).
+  # ---------------------------------------------------------------------------
+  sws-tests:
+    name: SWS tests
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download test binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: test-binaries
+          path: tests/build
+
+      - name: Make binaries executable
+        run: chmod +x tests/build/TrackerTests tests/build/TurtleSimulation
+
+      - name: Run SWS tests
+        working-directory: tests
+        run: |
+          ln -sf ../data build/data
+          mkdir -p reports/sws
+          # Run SWSAnalog and SWSAnalogFlash groups; -p isolates each test
+          ./build/TrackerTests -ojunit -p -g SWSAnalog -k sws-analog
+          ./build/TrackerTests -ojunit -p -g SWSAnalogFlash -k sws-analog-flash
+          mv cpputest_*.xml reports/sws/ 2>/dev/null || true
+
+      - name: Upload JUnit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sws-test-reports
+          path: tests/reports/sws/*.xml
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # Turtle simulation — separate executable. Produces an HTML report stored
+  # at $TURTLE_REPORT_PATH (see scripts/run_turtle_simulation.sh).
+  # ---------------------------------------------------------------------------
+  simulation:
+    name: Turtle simulation
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download test binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: test-binaries
+          path: tests/build
+
+      - name: Make binaries executable
+        run: chmod +x tests/build/TrackerTests tests/build/TurtleSimulation
+
+      - name: Run turtle simulation
+        working-directory: tests
+        env:
+          TURTLE_REPORT_PATH: ${{ github.workspace }}/tests/reports/turtle_simulation_${{ github.run_id }}.html
+        run: |
+          ln -sf ../data build/data
+          mkdir -p reports
+          ./build/TurtleSimulation -v
+          if [ -f "$TURTLE_REPORT_PATH" ]; then
+            cp "$TURTLE_REPORT_PATH" reports/turtle_simulation_latest.html
+          fi
+
+      - name: Upload simulation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: turtle-simulation-report
+          path: |
+            tests/reports/turtle_simulation_*.html
+            tests/reports/turtle_simulation_latest.html
+          if-no-files-found: warn
+          retention-days: 30

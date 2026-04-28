@@ -94,6 +94,44 @@ cmake .. && make -j$(nproc)
 cd .. && ln -sf data build/ && ./build/TrackerTests -v
 ```
 
+## Build & Test in the Cloud (GitHub Actions)
+
+Two ready-to-use workflows live in [.github/workflows/](.github/workflows/) — no local toolchain required, just a browser.
+
+### Build firmware on demand — [`build.yml`](.github/workflows/build.yml)
+
+Manual trigger (`workflow_dispatch` only). Pick board, comm module, sensors and features from the Actions UI and download the resulting firmware.
+
+1. Go to **Actions → Build Firmware → Run workflow**
+2. Configure:
+   - **Board**: `LINKIT` or `RSPB`
+   - **Comm**: `KIM` / `SMD_SPI` / `SMD_UART` / `LORA` (LORA requires LINKIT)
+   - **Sensors** (individual checkboxes): `AXL`, `PRESSURE`, `THERMISTOR` *(exclusive with `SEA_TEMP`)*, `SEA_TEMP`, `ALS`, `CDT`, `PH`, `MORTALITY` *(auto-enables AXL+THERMISTOR)*, `SWS_LOG`, `GNSS_BBR`, `CAM`
+   - **Features**: `BUZZER`, `BATTERY_MONITOR_TYPE`, `LORA_DCS`, `LORA_POWER_OFF_UNDERWATER`, `DEBUG_LEVEL`
+3. Run, then download the artifact zip from the run summary. It contains:
+   - `LinkIt_board-<TAG>.hex` — application
+   - `LinkIt_board_merged-<TAG>.hex` — full image (app + bootloader + softdevice) for `nrfjprog --program ... --chiperase`
+   - `LinkIt_board_app_settings-<TAG>.hex` — app + settings for `--sectorerase` updates
+   - `LinkIt_board_dfu-<TAG>.zip` — DFU OTA package
+   - `LinkIt_board-<TAG>.elf` — debug symbols
+   - `build_config.txt` — manifest of every flag used
+
+**Required repository secret** (otherwise only the unsigned `*.hex` / `*.elf` are produced): `NRFUTIL_PKG_KEY_PEM` = full PEM contents of `ports/nrf52840/nrfutil_pkg_key.pem`. Set it in **Settings → Secrets and variables → Actions → New repository secret**.
+
+### Tests on every push & PR — [`tests.yml`](.github/workflows/tests.yml)
+
+Runs the host (x86 Linux) test suite on `push` to main, on every pull request, or manually via `workflow_dispatch`. Three jobs run in parallel after a shared compile step:
+
+| Job | Command | Purpose |
+|-----|---------|---------|
+| **Unit tests** | `TrackerTests -p -xg SWS` | Fast suite, all groups except SWS |
+| **SWS tests** | `TrackerTests -p -g SWSAnalog` and `-g SWSAnalogFlash` | Long-running underwater simulation |
+| **Turtle simulation** | `TurtleSimulation -v` | 1-year tracker mission, produces an HTML report |
+
+JUnit XML reports and the turtle HTML report are uploaded as artifacts.
+
+See [Wiki: CI Workflows](https://github.com/arribada/linkit-v4-core/wiki/15-%E2%80%90-CI-Workflows) for details on every input, secret, and report.
+
 ## CMake Build Options
 
 ### Board Selection
