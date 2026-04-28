@@ -1,0 +1,419 @@
+name: Build Firmware
+
+# Manual-only build: the user picks board, comm module, sensors and features
+# from the GitHub Actions UI ("Run workflow"), then downloads the resulting
+# firmware artifacts (hex / merged hex / app+settings hex / DFU zip / elf).
+#
+# Required repository secret (optional but recommended for full merged hex):
+#   NRFUTIL_PKG_KEY_PEM  = full PEM contents of nrfutil_pkg_key.pem
+# If absent, only the application hex / elf / dfu zip are produced.
+
+on:
+  workflow_dispatch:
+    inputs:
+      # ---------- Build mode ----------
+      board:
+        description: "Board variant"
+        type: choice
+        required: true
+        default: LINKIT
+        options:
+          - LINKIT
+          - RSPB
+      comm:
+        description: "Communication module (mutually exclusive)"
+        type: choice
+        required: true
+        default: KIM
+        options:
+          - KIM        # Kineis KIM2 satellite (default, no extra flag)
+          - SMD_SPI    # SMD satellite via SPI
+          - SMD_UART   # SMD satellite via AT/UART
+          - LORA       # RAK3172 LoRa (LINKIT only)
+
+      # ---------- Sensors ----------
+      sensor_axl:
+        description: "AXL — BMA400 accelerometer"
+        type: boolean
+        default: true
+      sensor_pressure:
+        description: "PRESSURE — LPS28DFW"
+        type: boolean
+        default: false
+      sensor_thermistor:
+        description: "THERMISTOR (exclusive with SEA_TEMP)"
+        type: boolean
+        default: false
+      sensor_sea_temp:
+        description: "SEA_TEMP (exclusive with THERMISTOR)"
+        type: boolean
+        default: false
+      sensor_als:
+        description: "ALS — ambient light"
+        type: boolean
+        default: false
+      sensor_cdt:
+        description: "CDT — conductivity"
+        type: boolean
+        default: false
+      sensor_ph:
+        description: "PH"
+        type: boolean
+        default: false
+      sensor_mortality:
+        description: "MORTALITY (auto-enables AXL + THERMISTOR)"
+        type: boolean
+        default: false
+      sensor_sws_log:
+        description: "SWS_LOG — saltwater switch logging"
+        type: boolean
+        default: false
+      sensor_gnss_bbr:
+        description: "GNSS_BBR — GPS backup battery"
+        type: boolean
+        default: false
+      sensor_cam:
+        description: "CAM — camera"
+        type: boolean
+        default: false
+
+      # ---------- System features ----------
+      buzzer:
+        description: "BUZZER"
+        type: boolean
+        default: false
+      battery_monitor:
+        description: "Battery monitor type"
+        type: choice
+        required: true
+        default: ANALOG
+        options:
+          - ANALOG
+          - STC3117
+          - FAKE
+      lora_dcs:
+        description: "LORA_DCS — duty cycle ETSI EN 300 220 (LoRa only)"
+        type: boolean
+        default: true
+      lora_power_off_underwater:
+        description: "LORA_POWER_OFF_UNDERWATER (LoRa only)"
+        type: boolean
+        default: false
+      debug_level:
+        description: "DEBUG_LEVEL (0=OFF .. 4=verbose)"
+        type: choice
+        required: true
+        default: "3"
+        options: ["0", "1", "2", "3", "4"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # needed for git describe / tags
+
+      # ----- Validate inputs and resolve effective config -----
+      - name: Validate inputs and resolve config
+        id: cfg
+        run: |
+          set -euo pipefail
+          BOARD="${{ inputs.board }}"
+          COMM="${{ inputs.comm }}"
+
+          # LoRa is LINKIT-only
+          if [ "$COMM" = "LORA" ] && [ "$BOARD" != "LINKIT" ]; then
+            echo "::error::comm=LORA is only supported on board=LINKIT"
+            exit 1
+          fi
+
+          # Mutually exclusive sensors
+          if [ "${{ inputs.sensor_thermistor }}" = "true" ] && [ "${{ inputs.sensor_sea_temp }}" = "true" ]; then
+            echo "::error::sensor_thermistor and sensor_sea_temp are mutually exclusive"
+            exit 1
+          fi
+
+          # Mortality auto-enables AXL + THERMISTOR
+          AXL="${{ inputs.sensor_axl }}"
+          THERMISTOR="${{ inputs.sensor_thermistor }}"
+          if [ "${{ inputs.sensor_mortality }}" = "true" ]; then
+            if [ "$AXL" != "true" ]; then
+              echo "::warning::sensor_mortality=true forces sensor_axl=true"
+              AXL=true
+            fi
+            if [ "$THERMISTOR" != "true" ]; then
+              if [ "${{ inputs.sensor_sea_temp }}" = "true" ]; then
+                echo "::error::sensor_mortality requires THERMISTOR but SEA_TEMP is enabled (mutually exclusive). Disable SEA_TEMP."
+                exit 1
+              fi
+              echo "::warning::sensor_mortality=true forces sensor_thermistor=true"
+              THERMISTOR=true
+            fi
+          fi
+
+          to01() { [ "$1" = "true" ] && echo 1 || echo 0; }
+
+          # Build directory + variant tag (used for artifact naming)
+          case "$BOARD-$COMM" in
+            LINKIT-KIM)      BUILD_DIR=ports/nrf52840/build/LINKIT;          VARIANT_TAG=linkit-kim ;;
+            LINKIT-SMD_SPI)  BUILD_DIR=ports/nrf52840/build/LINKIT_SMD_SPI;  VARIANT_TAG=linkit-smd-spi ;;
+            LINKIT-SMD_UART) BUILD_DIR=ports/nrf52840/build/LINKIT_SMD_UART; VARIANT_TAG=linkit-smd-uart ;;
+            LINKIT-LORA)     BUILD_DIR=ports/nrf52840/build/LINKIT_LORA;     VARIANT_TAG=linkit-lora ;;
+            RSPB-KIM)        BUILD_DIR=ports/nrf52840/build/RSPB_KIM;        VARIANT_TAG=rspb-kim ;;
+            RSPB-SMD_SPI)    BUILD_DIR=ports/nrf52840/build/RSPB_SMD_SPI;    VARIANT_TAG=rspb-smd-spi ;;
+            RSPB-SMD_UART)   BUILD_DIR=ports/nrf52840/build/RSPB_SMD_UART;   VARIANT_TAG=rspb-smd-uart ;;
+            *) echo "::error::unsupported board/comm combination $BOARD-$COMM"; exit 1 ;;
+          esac
+
+          # Bootloader paths
+          if [ "$BOARD" = "LINKIT" ]; then
+            BL_DIR=ports/nrf52840/bootloader/secure_bootloader/linkitv4_v1.0/armgcc
+            BL_HEX=$BL_DIR/_build/cls_bootloader_v1_linkit_merged.hex
+            TARGET_NAME=LinkIt_board
+          else
+            BL_DIR=ports/nrf52840/bootloader/secure_bootloader/rspbtracker_v1.0/armgcc
+            BL_HEX=$BL_DIR/_build/rspb_bootloader_v1_linkit_merged.hex
+            TARGET_NAME=LinkIt_RSPB_board
+          fi
+
+          # Comm flags
+          ARGOS_SMD=OFF
+          SMD_UART=OFF
+          LORA_RAK3172=OFF
+          case "$COMM" in
+            KIM)      ;;
+            SMD_SPI)  ARGOS_SMD=ON ;;
+            SMD_UART) ARGOS_SMD=ON; SMD_UART=ON ;;
+            LORA)     LORA_RAK3172=ON ;;
+          esac
+
+          # Export everything for next steps
+          {
+            echo "BOARD=$BOARD"
+            echo "COMM=$COMM"
+            echo "BUILD_DIR=$BUILD_DIR"
+            echo "VARIANT_TAG=$VARIANT_TAG"
+            echo "TARGET_NAME=$TARGET_NAME"
+            echo "BL_DIR=$BL_DIR"
+            echo "BL_HEX=$BL_HEX"
+            echo "ARGOS_SMD=$ARGOS_SMD"
+            echo "SMD_UART=$SMD_UART"
+            echo "LORA_RAK3172=$LORA_RAK3172"
+            echo "ENABLE_AXL_SENSOR=$(to01 "$AXL")"
+            echo "ENABLE_PRESSURE_SENSOR=$(to01 "${{ inputs.sensor_pressure }}")"
+            echo "ENABLE_THERMISTOR_SENSOR=$(to01 "$THERMISTOR")"
+            echo "ENABLE_SEA_TEMP_SENSOR=$(to01 "${{ inputs.sensor_sea_temp }}")"
+            echo "ENABLE_ALS_SENSOR=$(to01 "${{ inputs.sensor_als }}")"
+            echo "ENABLE_CDT_SENSOR=$(to01 "${{ inputs.sensor_cdt }}")"
+            echo "ENABLE_PH_SENSOR=$(to01 "${{ inputs.sensor_ph }}")"
+            echo "ENABLE_MORTALITY_SENSOR=$(to01 "${{ inputs.sensor_mortality }}")"
+            echo "ENABLE_SWS_LOG=$(to01 "${{ inputs.sensor_sws_log }}")"
+            echo "GNSS_HAS_BACKUP_BATTERY=$(to01 "${{ inputs.sensor_gnss_bbr }}")"
+            echo "CAM_ENABLE=$(to01 "${{ inputs.sensor_cam }}")"
+            echo "BUZZER_ENABLE=$(to01 "${{ inputs.buzzer }}")"
+            echo "BATTERY_MONITOR_TYPE=${{ inputs.battery_monitor }}"
+            echo "LORA_DCS_ENABLE=$(to01 "${{ inputs.lora_dcs }}")"
+            echo "LORA_POWER_OFF_UNDERWATER=$(to01 "${{ inputs.lora_power_off_underwater }}")"
+            echo "DEBUG_LEVEL=${{ inputs.debug_level }}"
+          } >> "$GITHUB_OUTPUT"
+
+      # ----- Restore signing key from secret (optional) -----
+      - name: Write nrfutil signing key
+        id: key
+        env:
+          KEY_PEM: ${{ secrets.NRFUTIL_PKG_KEY_PEM }}
+        run: |
+          if [ -n "${KEY_PEM:-}" ]; then
+            printf '%s\n' "$KEY_PEM" > ports/nrf52840/nrfutil_pkg_key.pem
+            chmod 600 ports/nrf52840/nrfutil_pkg_key.pem
+            echo "have_key=true" >> "$GITHUB_OUTPUT"
+            echo "Signing key restored from secret."
+          else
+            echo "have_key=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::secret NRFUTIL_PKG_KEY_PEM not set — merged hex / DFU zip will not be generated."
+          fi
+
+      # ----- Build Docker image (with cache) and run build inside -----
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build toolchain image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: linkit-toolchain:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ----- Compute version tag (mirrors build_*.sh logic) -----
+      - name: Compute TAG_NAME
+        id: tag
+        run: |
+          set -euo pipefail
+          mkdir -p "${{ steps.cfg.outputs.BUILD_DIR }}"
+          (
+            cd "${{ steps.cfg.outputs.BUILD_DIR }}"
+            git show-ref --tags -d \
+              | grep "^$(git rev-parse HEAD)" \
+              | sed -e "s,.* refs/tags/,," -e "s/\\^{}//" > TAG_NAME || true
+            if [ ! -s TAG_NAME ]; then
+              git describe --dirty > TAG_NAME
+            fi
+            echo "TAG=$(cat TAG_NAME)" >> "$GITHUB_OUTPUT"
+          )
+
+      # ----- Build bootloader (only the matching one) -----
+      - name: Build bootloader
+        if: steps.key.outputs.have_key == 'true'
+        run: |
+          docker run --rm \
+            -v "$PWD:/workspace" -w /workspace \
+            linkit-toolchain:latest \
+            bash -lc "cd ${{ steps.cfg.outputs.BL_DIR }} && make mergehex"
+
+      # ----- Configure + compile firmware -----
+      - name: Configure (cmake)
+        run: |
+          docker run --rm \
+            -v "$PWD:/workspace" -w /workspace \
+            linkit-toolchain:latest \
+            bash -lc "cd ${{ steps.cfg.outputs.BUILD_DIR }} && \
+              cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
+                    -DCMAKE_BUILD_TYPE=Release \
+                    -DBOARD=${{ steps.cfg.outputs.BOARD }} \
+                    -DDEBUG_LEVEL=${{ steps.cfg.outputs.DEBUG_LEVEL }} \
+                    -DARGOS_SMD=${{ steps.cfg.outputs.ARGOS_SMD }} \
+                    -DSMD_UART=${{ steps.cfg.outputs.SMD_UART }} \
+                    -DLORA_RAK3172=${{ steps.cfg.outputs.LORA_RAK3172 }} \
+                    -DLORA_DCS_ENABLE=${{ steps.cfg.outputs.LORA_DCS_ENABLE }} \
+                    -DLORA_POWER_OFF_UNDERWATER=${{ steps.cfg.outputs.LORA_POWER_OFF_UNDERWATER }} \
+                    -DENABLE_AXL_SENSOR=${{ steps.cfg.outputs.ENABLE_AXL_SENSOR }} \
+                    -DENABLE_PRESSURE_SENSOR=${{ steps.cfg.outputs.ENABLE_PRESSURE_SENSOR }} \
+                    -DENABLE_THERMISTOR_SENSOR=${{ steps.cfg.outputs.ENABLE_THERMISTOR_SENSOR }} \
+                    -DENABLE_SEA_TEMP_SENSOR=${{ steps.cfg.outputs.ENABLE_SEA_TEMP_SENSOR }} \
+                    -DENABLE_ALS_SENSOR=${{ steps.cfg.outputs.ENABLE_ALS_SENSOR }} \
+                    -DENABLE_CDT_SENSOR=${{ steps.cfg.outputs.ENABLE_CDT_SENSOR }} \
+                    -DENABLE_PH_SENSOR=${{ steps.cfg.outputs.ENABLE_PH_SENSOR }} \
+                    -DENABLE_MORTALITY_SENSOR=${{ steps.cfg.outputs.ENABLE_MORTALITY_SENSOR }} \
+                    -DENABLE_SWS_LOG=${{ steps.cfg.outputs.ENABLE_SWS_LOG }} \
+                    -DGNSS_HAS_BACKUP_BATTERY=${{ steps.cfg.outputs.GNSS_HAS_BACKUP_BATTERY }} \
+                    -DCAM_ENABLE=${{ steps.cfg.outputs.CAM_ENABLE }} \
+                    -DBUZZER_ENABLE=${{ steps.cfg.outputs.BUZZER_ENABLE }} \
+                    -DBATTERY_MONITOR_TYPE=${{ steps.cfg.outputs.BATTERY_MONITOR_TYPE }} \
+                    ../.."
+
+      - name: Compile (make)
+        run: |
+          docker run --rm \
+            -v "$PWD:/workspace" -w /workspace \
+            linkit-toolchain:latest \
+            bash -lc "cd ${{ steps.cfg.outputs.BUILD_DIR }} && make -j $(nproc)"
+
+      # ----- Generate hex + merged hex (key-dependent) -----
+      - name: Post-process hex files
+        env:
+          BUILD_DIR: ${{ steps.cfg.outputs.BUILD_DIR }}
+          TARGET_NAME: ${{ steps.cfg.outputs.TARGET_NAME }}
+          BL_HEX: ${{ steps.cfg.outputs.BL_HEX }}
+          TAG: ${{ steps.tag.outputs.TAG }}
+          HAVE_KEY: ${{ steps.key.outputs.have_key }}
+        run: |
+          docker run --rm \
+            -e BUILD_DIR -e TARGET_NAME -e BL_HEX -e TAG -e HAVE_KEY \
+            -v "$PWD:/workspace" -w /workspace \
+            linkit-toolchain:latest \
+            bash -lc '
+              set -euo pipefail
+              cd "$BUILD_DIR"
+
+              if [ ! -f "${TARGET_NAME}.elf" ]; then
+                echo "ERROR: ${TARGET_NAME}.elf not found"
+                exit 1
+              fi
+              if [ ! -f "${TARGET_NAME}.hex" ]; then
+                arm-none-eabi-objcopy -O ihex "${TARGET_NAME}.elf" "${TARGET_NAME}.hex"
+              fi
+
+              SD_HEX=../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/hex/s140_nrf52_7.2.0_softdevice.hex
+              KEY_FILE=../../nrfutil_pkg_key.pem
+
+              if [ "$HAVE_KEY" = "true" ] && [ -f "../../../../$BL_HEX" ] && [ -f "$KEY_FILE" ]; then
+                nrfutil settings generate --family NRF52840 \
+                  --application "${TARGET_NAME}.hex" \
+                  --application-version 0 --bootloader-version 1 --bl-settings-version 2 \
+                  --app-boot-validation VALIDATE_ECDSA_P256_SHA256 \
+                  --sd-boot-validation VALIDATE_ECDSA_P256_SHA256 \
+                  --softdevice "$SD_HEX" --key-file "$KEY_FILE" \
+                  settings.hex
+                mergehex -m "../../../../$BL_HEX" "${TARGET_NAME}.hex" -o m1.hex
+                mergehex -m m1.hex settings.hex -o "${TARGET_NAME}_merged.hex"
+                mergehex -m "${TARGET_NAME}.hex" settings.hex -o "${TARGET_NAME}_app_settings.hex"
+                rm -f m1.hex settings.hex
+              else
+                echo "::warning::Skipping merged hex (signing key or bootloader not available)"
+              fi
+
+              # Tag rename (mirrors build_*.sh)
+              cp "${TARGET_NAME}.elf" "${TARGET_NAME}-${TAG}.elf"
+              mv "${TARGET_NAME}.hex" "${TARGET_NAME}-${TAG}.hex"
+              [ -f "${TARGET_NAME}.img" ]                && mv "${TARGET_NAME}.img" "${TARGET_NAME}-${TAG}.img" || true
+              [ -f "${TARGET_NAME}_dfu.zip" ]            && mv "${TARGET_NAME}_dfu.zip" "${TARGET_NAME}_dfu-${TAG}.zip" || true
+              [ -f "${TARGET_NAME}_merged.hex" ]         && mv "${TARGET_NAME}_merged.hex" "${TARGET_NAME}_merged-${TAG}.hex" || true
+              [ -f "${TARGET_NAME}_app_settings.hex" ]   && mv "${TARGET_NAME}_app_settings.hex" "${TARGET_NAME}_app_settings-${TAG}.hex" || true
+              [ -f "${TARGET_NAME}_dfu-${TAG}.zip" ]     && arm-none-eabi-objcopy -I ihex -O binary "${TARGET_NAME}-${TAG}.hex" "${TARGET_NAME}_dfu-${TAG}.bin" || true
+            '
+
+      # ----- Build manifest (so the user knows what they downloaded) -----
+      - name: Write build_config.txt
+        run: |
+          cat > "${{ steps.cfg.outputs.BUILD_DIR }}/build_config.txt" <<EOF
+          # LinkIt V4 build manifest
+          # Generated by GitHub Actions on $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          # Commit:  $(git rev-parse HEAD)
+          # Tag:     ${{ steps.tag.outputs.TAG }}
+          # Variant: ${{ steps.cfg.outputs.VARIANT_TAG }}
+          BOARD=${{ steps.cfg.outputs.BOARD }}
+          COMM=${{ steps.cfg.outputs.COMM }}
+          DEBUG_LEVEL=${{ steps.cfg.outputs.DEBUG_LEVEL }}
+          ARGOS_SMD=${{ steps.cfg.outputs.ARGOS_SMD }}
+          SMD_UART=${{ steps.cfg.outputs.SMD_UART }}
+          LORA_RAK3172=${{ steps.cfg.outputs.LORA_RAK3172 }}
+          LORA_DCS_ENABLE=${{ steps.cfg.outputs.LORA_DCS_ENABLE }}
+          LORA_POWER_OFF_UNDERWATER=${{ steps.cfg.outputs.LORA_POWER_OFF_UNDERWATER }}
+          ENABLE_AXL_SENSOR=${{ steps.cfg.outputs.ENABLE_AXL_SENSOR }}
+          ENABLE_PRESSURE_SENSOR=${{ steps.cfg.outputs.ENABLE_PRESSURE_SENSOR }}
+          ENABLE_THERMISTOR_SENSOR=${{ steps.cfg.outputs.ENABLE_THERMISTOR_SENSOR }}
+          ENABLE_SEA_TEMP_SENSOR=${{ steps.cfg.outputs.ENABLE_SEA_TEMP_SENSOR }}
+          ENABLE_ALS_SENSOR=${{ steps.cfg.outputs.ENABLE_ALS_SENSOR }}
+          ENABLE_CDT_SENSOR=${{ steps.cfg.outputs.ENABLE_CDT_SENSOR }}
+          ENABLE_PH_SENSOR=${{ steps.cfg.outputs.ENABLE_PH_SENSOR }}
+          ENABLE_MORTALITY_SENSOR=${{ steps.cfg.outputs.ENABLE_MORTALITY_SENSOR }}
+          ENABLE_SWS_LOG=${{ steps.cfg.outputs.ENABLE_SWS_LOG }}
+          GNSS_HAS_BACKUP_BATTERY=${{ steps.cfg.outputs.GNSS_HAS_BACKUP_BATTERY }}
+          CAM_ENABLE=${{ steps.cfg.outputs.CAM_ENABLE }}
+          BUZZER_ENABLE=${{ steps.cfg.outputs.BUZZER_ENABLE }}
+          BATTERY_MONITOR_TYPE=${{ steps.cfg.outputs.BATTERY_MONITOR_TYPE }}
+          EOF
+
+      # ----- Upload artifacts -----
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.cfg.outputs.VARIANT_TAG }}-${{ steps.tag.outputs.TAG }}
+          path: |
+            ${{ steps.cfg.outputs.BUILD_DIR }}/${{ steps.cfg.outputs.TARGET_NAME }}-*.hex
+            ${{ steps.cfg.outputs.BUILD_DIR }}/${{ steps.cfg.outputs.TARGET_NAME }}_merged-*.hex
+            ${{ steps.cfg.outputs.BUILD_DIR }}/${{ steps.cfg.outputs.TARGET_NAME }}_app_settings-*.hex
+            ${{ steps.cfg.outputs.BUILD_DIR }}/${{ steps.cfg.outputs.TARGET_NAME }}_dfu-*.zip
+            ${{ steps.cfg.outputs.BUILD_DIR }}/${{ steps.cfg.outputs.TARGET_NAME }}_dfu-*.bin
+            ${{ steps.cfg.outputs.BUILD_DIR }}/${{ steps.cfg.outputs.TARGET_NAME }}-*.elf
+            ${{ steps.cfg.outputs.BUILD_DIR }}/${{ steps.cfg.outputs.TARGET_NAME }}-*.img
+            ${{ steps.cfg.outputs.BUILD_DIR }}/build_config.txt
+          if-no-files-found: error
+          retention-days: 30
