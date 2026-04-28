@@ -130,7 +130,7 @@ Runs the host (x86 Linux) test suite on `push` to main, on every pull request, o
 
 JUnit XML reports and the turtle HTML report are uploaded as artifacts.
 
-See [Wiki: CI Workflows](https://github.com/arribada/linkit-v4-core/wiki/15-%E2%80%90-CI-Workflows) for details on every input, secret, and report.
+See [Wiki: CI Workflows](https://github.com/arribada/linkit-v4-core/wiki/17-%E2%80%90-CI-Workflows) for details on every input, secret, and report.
 
 ## CMake Build Options
 

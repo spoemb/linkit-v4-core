@@ -8,6 +8,11 @@ name: Build Firmware
 #   NRFUTIL_PKG_KEY_PEM  = full PEM contents of nrfutil_pkg_key.pem
 # If absent, only the application hex / elf / dfu zip are produced.
 
+env:
+  # Opt every JavaScript action into Node 24 to silence the Node 20
+  # deprecation warning (Node 20 is removed from runners in Sept 2026).
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 on:
   workflow_dispatch:
     inputs:

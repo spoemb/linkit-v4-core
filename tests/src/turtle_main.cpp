@@ -22,6 +22,7 @@
 #include "debug.hpp"
 #include "gpio_buzzer.hpp"
 #include "gps.hpp"
+#include "lora_rak3172.hpp"
 
 #include "CppUTest/CommandLineTestRunner.h"
 #include "CppUTest/TestRegistry.h"
@@ -53,6 +54,7 @@ RTC *rtc;
 BatteryMonitor *battery_monitor;
 GPSDevice *gps_device;
 KineisDevice *kineis_device_instance = nullptr;
+LoRaDevice *lora_device_instance = nullptr;
 BaseDebugMode g_debug_mode;
 Buzzer *buzzer_ctl;
 

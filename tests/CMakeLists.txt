@@ -246,6 +246,22 @@ target_compile_definitions(${TURTLE_SIM_NAME} PRIVATE
     LFS_NO_DEBUG
     DEBUG_ENABLE
     CPPUTEST
+    # Mirror TrackerTests: enables every sensor + selects the LoRa branch
+    # in dte_handler.hpp (otherwise it falls through to kim2.hpp which
+    # requires the kim2 include path that this target does not provide).
+    ENABLE_PH_SENSOR=1
+    ENABLE_SEA_TEMP_SENSOR=1
+    ENABLE_PRESSURE_SENSOR=1
+    ENABLE_ALS_SENSOR=1
+    ENABLE_CDT_SENSOR=1
+    ENABLE_AXL_SENSOR=1
+    ENABLE_THERMISTOR_SENSOR=1
+    ENABLE_MORTALITY_SENSOR=1
+    ENABLE_SWS_LOG=1
+    ENABLE_SWS_ANALOG=1
+    LORA_RAK3172=1
+    LORA_DCS_ENABLE=1
+    LORA_POWER_OFF_UNDERWATER=0
 )
 
 target_compile_options(${TURTLE_SIM_NAME} PRIVATE
@@ -304,6 +320,7 @@ target_include_directories(${TURTLE_SIM_NAME} PRIVATE
     "${ROOT_DIR}/core/util"
     "${NRF_DIR}/core/hardware"
     "${NRF_DIR}/core/hardware/m10qasync"
+    "${NRF_DIR}/core/hardware/lora_rak3172"
     "${NRF_DIR}/core/hardware/ad5933"
     "${NRF_DIR}/core/hardware/ms58xx"
     "${NRF_DIR}/core/hardware/pressure_sensor"
@@ -345,6 +362,9 @@ target_sources(${TURTLE_SIM_NAME} PRIVATE
     # nrf_battery_mon.cpp excluded: depends on nrf_delay.h (Nordic SDK, not available in test builds)
     "${NRF_DIR}/core/hardware/m10qasync/m10qasync.cpp"
     "${NRF_DIR}/core/hardware/m10qasync/ubx_comms.cpp"
+    "${NRF_DIR}/core/hardware/nrf_uart_async.cpp"
+    "${NRF_DIR}/core/hardware/lora_rak3172/lora_rak3172.cpp"
+    "${NRF_DIR}/core/hardware/lora_rak3172/lora_rak3172_comm.cpp"
     "${NRF_DIR}/core/hardware/cdt/cdt.cpp"
     "src/turtle_simulation_test.cpp"
     "src/turtle_simulation_1year.cpp"
