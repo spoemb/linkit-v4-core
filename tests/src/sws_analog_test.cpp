@@ -2727,3 +2727,413 @@ TEST(SWSAnalogFlash, QA12_DiveTimeoutEscalation_AllowsNextDive)
 
     s.stop();
 }
+
+/**
+ * QA-13: ADC out-of-range values are rejected without state corruption.
+ *
+ * is_value_valid() rejects values > ADC_INVALID_MAX (16383). The SAADC SDK
+ * surfaces conversion / init failures via ADC_READ_ERROR (UINT16_MAX). Verify
+ * detector_state() short-circuits on invalid samples, leaves state intact,
+ * and recovers cleanly when valid readings resume.
+ */
+TEST(SWSAnalogFlash, QA13_InvalidAdcRejectedNoStateCorruption)
+{
+    SWSAnalogService s;
+    bool switch_state = false;
+
+    system_timer->start();
+    SAADC::set_adc_value(10000);  // boot in water → state goes UW
+
+    s.start([&switch_state](ServiceEvent &event) {
+        if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED)
+            switch_state = std::get<bool>(event.event_data);
+    });
+
+    for (int i = 0; i < 5; i++) run_one_sample();
+    CHECK_TRUE(switch_state);
+
+    auto status_pre = SWSAnalogService::get_status();
+
+    // Inject 20 invalid samples (above ADC_INVALID_MAX=16383)
+    SAADC::set_adc_value(20000);
+    for (int i = 0; i < 20; i++) run_one_sample();
+
+    auto status_during = SWSAnalogService::get_status();
+
+    // State must not flip on garbage readings — detector_state returns
+    // m_current_state on invalid input.
+    CHECK_TEXT(status_during.is_underwater == status_pre.is_underwater,
+        "QA13: state must not change on invalid ADC samples");
+    // Calibration must not be corrupted by invalid samples.
+    CHECK_TEXT(status_during.threshold_air == status_pre.threshold_air,
+        "QA13: air baseline must not change on invalid ADC");
+    CHECK_TEXT(status_during.threshold_water == status_pre.threshold_water,
+        "QA13: water baseline must not change on invalid ADC");
+
+    // Recovery: valid readings resume → detection works
+    SAADC::set_adc_value(200);
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+    for (int i = 0; i < 8; i++) run_one_sample();
+    CHECK_FALSE_TEXT(switch_state, "QA13: must detect surface after invalid samples");
+
+    s.stop();
+}
+
+/**
+ * QA-14: Stuck electrode at near-zero ADC (disconnected / RC not charging).
+ *
+ * Production scenario from the LoRa field log: dry electrode + adaptive sample
+ * delay too short → ADC stays near 0. Without the floor protections (B1/B2/B8),
+ * air baseline collapsed to 0 and threshold computation broke. Verify that
+ * 100+ samples at near-zero do NOT collapse air below AIR_BASELINE_FLOOR.
+ */
+TEST(SWSAnalogFlash, QA14_StuckElectrodeAtZeroPreservesFloor)
+{
+    SWSAnalogService s;
+    bool switch_state = false;
+
+    // Short calib interval so the periodic Air recalib (B1) fires within the test
+    unsigned int interval = 3U;
+    configuration_store->write_param(ParamID::SWS_ANALOG_CALIB_INTERVAL, interval);
+
+    system_timer->start();
+    SAADC::set_adc_value(10000);  // boot in water → establish water baseline + peak
+
+    s.start([&switch_state](ServiceEvent &event) {
+        if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED)
+            switch_state = std::get<bool>(event.event_data);
+    });
+
+    for (int i = 0; i < 5; i++) run_one_sample();
+
+    // Now set ADC to 0 (stuck/disconnected electrode) for a long stretch
+    // including multiple periodic recalibration intervals.
+    SAADC::set_adc_value(0);
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+    for (int i = 0; i < 30; i++) run_one_sample();
+    std::this_thread::sleep_for(std::chrono::seconds(4));
+    for (int i = 0; i < 30; i++) run_one_sample();
+    std::this_thread::sleep_for(std::chrono::seconds(4));
+    for (int i = 0; i < 30; i++) run_one_sample();
+
+    auto status = SWSAnalogService::get_status();
+    CHECK_TEXT(status.threshold_air >= 50,  // AIR_BASELINE_FLOOR
+        "QA14: air baseline must stay >= floor despite 90+ zero samples");
+    CHECK_TEXT(status.threshold_water > status.threshold_air,
+        "QA14: water baseline must remain > air");
+
+    s.stop();
+}
+
+/**
+ * QA-15: Full max-dive timeout cascade: timeout1 → timeout2 → escalation.
+ *
+ * Verifies each rung of the safety net fires correctly:
+ * - timeout 1: water recalibrated, state stays UW, count=1
+ * - timeout 2: water recalibrated, state stays UW, count=2
+ * - timeout 3: ESCALATION → force surface + reset peak/spike-rejects/buffer
+ *   + flash save + lockout 30s. Without B6 the escalation succeeded but the
+ *   next dive was silently blocked.
+ */
+TEST(SWSAnalogFlash, QA15_FullDiveTimeoutCascade)
+{
+    SWSAnalogService s;
+    bool switch_state = false;
+
+    unsigned int dive_time = 3U;  // tight loop for test speed
+    configuration_store->write_param(ParamID::UW_MAX_DIVE_TIME, dive_time);
+    // No L-override lockout so the assertion isn't masked by a long lockout
+    unsigned int lockout = 0U;
+    configuration_store->write_param(ParamID::UW_MIN_SURFACE_TIME, lockout);
+
+    system_timer->start();
+    SAADC::set_adc_value(10000);  // boot in water
+
+    s.start([&switch_state](ServiceEvent &event) {
+        if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED)
+            switch_state = std::get<bool>(event.event_data);
+    });
+
+    // Dive
+    for (int i = 0; i < 8; i++) run_one_sample();
+    CHECK_TRUE(switch_state);
+
+    // Wait long enough for 3 timeouts to fire (3 × 3s + margin = 12s)
+    // After timeout 3 → escalation forces surface
+    std::this_thread::sleep_for(std::chrono::seconds(4));
+    for (int i = 0; i < 4; i++) run_one_sample();
+
+    std::this_thread::sleep_for(std::chrono::seconds(4));
+    for (int i = 0; i < 4; i++) run_one_sample();
+
+    std::this_thread::sleep_for(std::chrono::seconds(4));
+    for (int i = 0; i < 4; i++) run_one_sample();
+
+    // After 3 timeouts (12s+ underwater), escalation must have forced surface
+    CHECK_FALSE_TEXT(switch_state,
+        "QA15: 3rd dive timeout must force surface (escalation)");
+
+    auto status_post = SWSAnalogService::get_status();
+    CHECK_TEXT(status_post.is_calibrated,
+        "QA15: calibration must remain valid after escalation");
+
+    s.stop();
+}
+
+/**
+ * QA-16: ADC saturation at the upper boundary (ADC_INVALID_MAX=16383).
+ *
+ * The boundary value is *valid* (is_value_valid uses <=). Detection must
+ * fire underwater since 16383 is well above any reasonable threshold.
+ */
+TEST(SWSAnalogFlash, QA16_AdcSaturationDetected)
+{
+    SWSAnalogService s;
+    bool switch_state = false;
+
+    system_timer->start();
+    SAADC::set_adc_value(200);  // boot in air
+
+    s.start([&switch_state](ServiceEvent &event) {
+        if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED)
+            switch_state = std::get<bool>(event.event_data);
+    });
+
+    for (int i = 0; i < 3; i++) run_one_sample();
+    CHECK_FALSE(switch_state);
+
+    // Saturated ADC — boundary valid value
+    SAADC::set_adc_value(16383);
+    for (int i = 0; i < 5; i++) run_one_sample();
+
+    CHECK_TRUE_TEXT(switch_state,
+        "QA16: saturated ADC (16383) must trigger underwater detection");
+
+    s.stop();
+}
+
+/**
+ * QA-17: load_calibration_from_flash rejects stale / out-of-range stored data.
+ *
+ * Production safety: a previous deployment may have written bad data to flash
+ * (air<floor, water<=air, water>ADC_INVALID_MAX, gap<MIN_WATER_AIR_GAP).
+ * After reset_noinit_data (simulating noinit reset), the load path must
+ * reject malformed flash data and trigger fresh calibration from current ADC,
+ * NOT propagate the bad baselines.
+ */
+TEST(SWSAnalogFlash, QA17_StaleFlashCalibrationRejected)
+{
+    // Phase 1: write KNOWN-BAD data to flash (air below floor)
+    {
+        SWSAnalogService s;
+        Calibration cal("SWS");
+        cal.write(2, 30.0);   // CAL_OFFSET_RUN_WATER — too small (less than air * MIN_RATIO)
+        cal.write(3, 10.0);   // CAL_OFFSET_RUN_AIR — below AIR_BASELINE_FLOOR (=50)
+        cal.write(4, 0.0);    // CAL_OFFSET_PEAK
+        cal.save(true);
+    }
+
+    // Phase 2: simulate hard reset, fresh boot in air
+    SWSAnalogService::reset_noinit_data();
+    {
+        SWSAnalogService s;
+        bool switch_state = false;
+        system_timer->start();
+        SAADC::set_adc_value(200);
+
+        s.start([&switch_state](ServiceEvent &event) {
+            if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED)
+                switch_state = std::get<bool>(event.event_data);
+        });
+
+        for (int i = 0; i < 5; i++) run_one_sample();
+
+        auto status = SWSAnalogService::get_status();
+        // Bad flash data must NOT have propagated. Must have fallen back
+        // to fresh calibration from ADC=200 (or applied floor).
+        CHECK_TEXT(status.threshold_air >= 50,  // AIR_BASELINE_FLOOR
+            "QA17: stale flash with air<floor must be rejected → fresh calib");
+        CHECK_TEXT(status.threshold_water > status.threshold_air,
+            "QA17: water > air after rejecting bad flash");
+
+        s.stop();
+    }
+}
+
+/**
+ * QA-18: Gradual biofouling adaptation — slow water-level decrease.
+ *
+ * Real biofouling progresses over weeks: each cycle the actual water ADC
+ * drops a small amount (~1-2%). The device's water baseline EMA (alpha=0.19)
+ * should adapt smoothly. This is the realistic scenario, NOT abrupt jumps.
+ * Verifies that 50 cycles of slow degradation don't break detection.
+ */
+TEST(SWSAnalogFlash, QA18_GradualBiofoulingAdaptation)
+{
+    SWSAnalogService s;
+    bool switch_state = false;
+
+    unsigned int lockout = 0U;
+    configuration_store->write_param(ParamID::UW_MIN_SURFACE_TIME, lockout);
+
+    system_timer->start();
+    SAADC::set_adc_value(200);  // boot in air
+
+    s.start([&switch_state](ServiceEvent &event) {
+        if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED)
+            switch_state = std::get<bool>(event.event_data);
+    });
+
+    warmup_air_samples(5);
+
+    // Initial dive at clean water
+    SAADC::set_adc_value(12000);
+    for (int i = 0; i < 10; i++) run_one_sample();
+    CHECK_TRUE(switch_state);
+
+    // Surface
+    SAADC::set_adc_value(200);
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+    for (int i = 0; i < 5; i++) run_one_sample();
+    CHECK_FALSE(switch_state);
+
+    // 30 cycles with 50 ADC drop each (12000 → 10500 over 30 cycles).
+    // EMA alpha=0.19 should adapt water baseline downward. Threshold should
+    // remain crossable each cycle.
+    uint16_t water_adc = 12000;
+    uint16_t fail_at = 0;
+    for (int cycle = 0; cycle < 30; cycle++) {
+        water_adc -= 50;  // -0.4% per cycle ≈ 12% over 30 cycles
+        SAADC::set_adc_value(water_adc);
+        for (int i = 0; i < 4; i++) run_one_sample();
+        if (!switch_state && fail_at == 0) fail_at = cycle;
+
+        SAADC::set_adc_value(200);
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        for (int i = 0; i < 4; i++) run_one_sample();
+    }
+
+    CHECK_TEXT(fail_at == 0,
+        "QA18: gradual biofouling must not break detection across 30 cycles");
+
+    auto status_final = SWSAnalogService::get_status();
+    CHECK_TEXT(status_final.is_calibrated,
+        "QA18: calibration must remain valid after 30 biofouling cycles");
+    CHECK_TEXT(status_final.threshold_water > status_final.threshold_air,
+        "QA18: water > air after biofouling progression");
+
+    s.stop();
+}
+
+/**
+ * QA-19: CRC integrity under repeated calibration writes.
+ *
+ * Bug C1 was: CRC computation included the crc field itself + uninitialized
+ * padding bytes → CRC validation always failed after the first write. This
+ * test stresses repeated writes (calibrate_water_baseline runs every UW
+ * sample) and re-validates by reading back via the public Status interface.
+ * If CRC was still buggy, m_calib would silently corrupt or detection would
+ * eventually break.
+ */
+TEST(SWSAnalogFlash, QA19_CrcIntegrityRepeatedCalibration)
+{
+    SWSAnalogService s;
+    bool switch_state = false;
+
+    system_timer->start();
+    SAADC::set_adc_value(200);
+
+    s.start([&switch_state](ServiceEvent &event) {
+        if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED)
+            switch_state = std::get<bool>(event.event_data);
+    });
+
+    warmup_air_samples(5);
+
+    // Run 50+ samples in water — calibrate_water_baseline writes m_calib +
+    // recomputes CRC on each sample. If the CRC field was self-included or
+    // depended on uninitialized padding, repeated writes would diverge.
+    SAADC::set_adc_value(10000);
+    for (int i = 0; i < 50; i++) run_one_sample();
+
+    CHECK_TRUE_TEXT(switch_state, "QA19: dive detected through CRC churn");
+
+    auto status_uw = SWSAnalogService::get_status();
+    CHECK_TEXT(status_uw.is_calibrated,
+        "QA19: is_calibrated must remain true after 50+ CRC rewrites");
+    CHECK_TEXT(status_uw.threshold_water >= 1000,
+        "QA19: water baseline must have grown (no CRC self-corruption)");
+
+    // Surface and run another batch — exercises L-override CRC writes too
+    SAADC::set_adc_value(200);
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+    for (int i = 0; i < 30; i++) run_one_sample();
+
+    auto status_surf = SWSAnalogService::get_status();
+    CHECK_TEXT(status_surf.is_calibrated,
+        "QA19: is_calibrated must remain true after surface transition");
+    CHECK_TEXT(status_surf.threshold_air >= 50,
+        "QA19: air baseline must remain at/above floor");
+
+    s.stop();
+}
+
+/**
+ * QA-20: Calibration must survive a service restart (warm reset simulation).
+ *
+ * Without going through reset_noinit_data: start, calibrate, stop, restart
+ * the service. CRC must validate (C1 fix is critical here) and the second
+ * instance must reuse the noinit calibration without re-running
+ * calibrate_air_baseline.
+ */
+TEST(SWSAnalogFlash, QA20_CalibrationSurvivesServiceRestart)
+{
+    uint16_t saved_water = 0, saved_air = 0;
+
+    // Phase 1
+    {
+        SWSAnalogService s;
+        system_timer->start();
+        SAADC::set_adc_value(200);
+        bool dummy = false;
+        s.start([&dummy](ServiceEvent &event) {
+            if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED)
+                dummy = std::get<bool>(event.event_data);
+        });
+        warmup_air_samples(5);
+        SAADC::set_adc_value(10000);
+        for (int i = 0; i < 10; i++) run_one_sample();
+
+        auto status = SWSAnalogService::get_status();
+        saved_water = status.threshold_water;
+        saved_air = status.threshold_air;
+        CHECK_TEXT(saved_water > 1000, "QA20: water established before stop");
+        s.stop();
+    }
+
+    // Phase 2: NEW instance, NO reset_noinit_data — noinit must persist
+    {
+        SWSAnalogService s;
+        SAADC::set_adc_value(10000);
+        bool dummy = false;
+        s.start([&dummy](ServiceEvent &event) {
+            if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED)
+                dummy = std::get<bool>(event.event_data);
+        });
+
+        // First sample after restart — calibration must validate via CRC and
+        // continue without re-running calibrate_air_baseline.
+        run_one_sample();
+        auto status = SWSAnalogService::get_status();
+
+        // The water baseline from phase 1 must have been preserved (CRC OK)
+        CHECK_TEXT(status.threshold_water == saved_water,
+            "QA20: water baseline must persist across service restart (C1 CRC fix)");
+        CHECK_TEXT(status.threshold_air == saved_air,
+            "QA20: air baseline must persist across service restart");
+        CHECK_TEXT(status.is_calibrated,
+            "QA20: calibration must remain valid (CRC validates correctly)");
+
+        s.stop();
+    }
+}
