@@ -211,7 +211,14 @@ void LoRaTxService::service_initiate() {
 	m_is_first_tx = false;
 	m_is_tx_pending = true;
 
-	// Track status burst count in SURFACING_BURST phase 1
+	// Track status burst count in SURFACING_BURST phase 1. Incremented HERE —
+	// before process_status_burst() runs — so that after this point
+	// m_status_burst_count is the index of the *current* TX (1-based).
+	// Convention used by logs:
+	//   - service_schedule() reads the counter BEFORE this increment, so it logs
+	//     `count + 1` to refer to the upcoming TX (e.g. "status #1 (immediate)").
+	//   - process_status_burst() reads the counter AFTER this increment, so it
+	//     logs `count` directly to refer to the current TX.
 	if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing) {
 		m_status_burst_count++;
 	}
@@ -538,8 +545,11 @@ void LoRaTxService::process_status_burst() {
 	service_update_battery();
 	unsigned int size_bits;
 
-	// Progressive CloudLocate: after the first status ping, if CloudLocate is enabled
-	// and raw measurements are available, send a CloudLocate packet.
+	// Progressive CloudLocate: when running a SURFACING_BURST and raw GNSS
+	// measurements are available, replace the status payload with a CloudLocate
+	// packet. The `m_status_burst_count > 0` check gates legacy LEGACY/DOPPLER
+	// modes (where the counter is never incremented), not the first ping of
+	// a burst.
 	unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
 	if (fastloc_mode == (unsigned int)BaseFastlocMode::CLOUDLOCATE &&
 	    m_status_burst_count > 0 && gps_device && gps_device->has_raw_measurement()) {
@@ -568,7 +578,7 @@ void LoRaTxService::process_status_burst() {
 				blob, blob_size, format_id,
 				service_is_battery_level_low(), service_get_voltage(), size_bits);
 			DEBUG_INFO("LoRaTxService::process_status_burst: CLOUDLOCATE #%u fmt=%u sz=%u data=%s",
-			           m_status_burst_count + 1, format_id, blob_size,
+			           m_status_burst_count, format_id, blob_size,
 			           Binascii::hexlify(packet).c_str());
 			m_last_tx_had_gps = true;
 			m_device.send(KineisModulation::LDA2, packet, size_bits);
@@ -576,9 +586,10 @@ void LoRaTxService::process_status_burst() {
 		}
 	}
 
-	// Progressive fastloc: after the first status ping, if fastloc is enabled
-	// and the GPS has a degraded PVT available, send a fastloc sensor packet
-	// instead of status-only. Same logic as Argos process_doppler_burst().
+	// Progressive fastloc: when running a SURFACING_BURST and the GPS has a
+	// degraded PVT available, replace the status payload with a fastloc sensor
+	// packet. As above, `m_status_burst_count > 0` gates legacy modes, not the
+	// first ping of a burst. Same logic as Argos process_doppler_burst().
 	if (fastloc_mode >= (unsigned int)BaseFastlocMode::DEGRADED_PVT &&
 	    m_status_burst_count > 0 && gps_device && gps_device->has_degraded_pvt()) {
 		GNSSData degraded = gps_device->get_degraded_pvt();
@@ -617,7 +628,7 @@ void LoRaTxService::process_status_burst() {
 			false, service_is_battery_level_low(), size_bits);
 
 		DEBUG_INFO("LoRaTxService::process_status_burst: FASTLOC #%u hAcc=%um numSV=%u data=%s",
-		           m_status_burst_count + 1, degraded.hAcc, degraded.numSV,
+		           m_status_burst_count, degraded.hAcc, degraded.numSV,
 		           Binascii::hexlify(packet).c_str());
 		m_last_tx_had_gps = true;
 		m_device.send(KineisModulation::LDA2, packet, size_bits);

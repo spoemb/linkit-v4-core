@@ -327,7 +327,16 @@ void ArgosTxService::service_initiate() {
 		}
 	}
 
-	// Track Doppler burst count (before TX, for scheduling interval calculation)
+	// Track Doppler burst count for scheduling interval calculation. Incremented
+	// HERE — before process_doppler_burst() runs — so that after this point
+	// m_doppler_burst_count is the index of the *current* TX (1-based).
+	// Convention used by logs:
+	//   - service_schedule() reads the counter BEFORE this increment, so it logs
+	//     `count + 1` to refer to the upcoming TX (e.g. "Doppler #1 (immediate)").
+	//   - process_doppler_burst() reads the counter AFTER this increment, so it
+	//     logs `count` directly to refer to the current TX.
+	// Note: only incremented in SURFACING_BURST mode — in legacy DOPPLER mode the
+	// counter stays 0, which gates out CloudLocate/Fastloc payload substitution.
 	if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing) {
 		m_doppler_burst_count++;
 	}
@@ -815,8 +824,11 @@ void ArgosTxService::process_doppler_burst() {
 	ArgosConfig argos_config;
 	configuration_store->get_argos_configuration(argos_config);
 
-	// Progressive CloudLocate: after the first Doppler ping, if CloudLocate is enabled
-	// and raw measurements are available, send a CloudLocate packet instead of Doppler.
+	// Progressive CloudLocate: when running a SURFACING_BURST and raw GNSS
+	// measurements are available, replace the Doppler payload with a CloudLocate
+	// packet. The `m_doppler_burst_count > 0` check is what gates this off in
+	// legacy DOPPLER mode (where the counter is never incremented — see
+	// service_initiate()) — it does NOT protect the first ping of a burst.
 	unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
 	if (fastloc_mode == (unsigned int)BaseFastlocMode::CLOUDLOCATE &&
 	    m_doppler_burst_count > 0 && gps_device && gps_device->has_raw_measurement()) {
@@ -852,7 +864,7 @@ void ArgosTxService::process_doppler_burst() {
 			}
 
 			DEBUG_INFO("ArgosTxService::process_doppler_burst: CLOUDLOCATE #%u fmt=%u sz=%u mode=%s",
-			           m_doppler_burst_count + 1, format_id, blob_size,
+			           m_doppler_burst_count, format_id, blob_size,
 			           argos_modulation_to_string((BaseArgosModulation)tx_mode));
 			m_last_tx_had_gps = true;
 			m_kineis.send(tx_mode, packet, size_bits);
@@ -860,9 +872,11 @@ void ArgosTxService::process_doppler_burst() {
 		}
 	}
 
-	// Progressive fastloc: after the first Doppler ping, if fastloc is enabled
-	// and the GPS has a degraded PVT available, send a fastloc packet instead
-	// of Doppler. The position improves over time as the GPS refines its fix.
+	// Progressive fastloc: when running a SURFACING_BURST and the GPS has a
+	// degraded PVT available, replace the Doppler payload with a fastloc packet.
+	// The position improves over time as the GPS refines its fix. As above, the
+	// `m_doppler_burst_count > 0` check gates legacy DOPPLER mode, not the first
+	// ping of a burst.
 	if (fastloc_mode >= (unsigned int)BaseFastlocMode::DEGRADED_PVT &&
 	    m_doppler_burst_count > 0 && gps_device && gps_device->has_degraded_pvt()) {
 		GNSSData degraded = gps_device->get_degraded_pvt();
@@ -910,7 +924,7 @@ void ArgosTxService::process_doppler_burst() {
 		}
 
 		DEBUG_INFO("ArgosTxService::process_doppler_burst: FASTLOC #%u hAcc=%um numSV=%u mode=%s data=%s",
-		           m_doppler_burst_count + 1, degraded.hAcc, degraded.numSV,
+		           m_doppler_burst_count, degraded.hAcc, degraded.numSV,
 		           argos_modulation_to_string((BaseArgosModulation)tx_mode), Binascii::hexlify(packet).c_str());
 		m_last_tx_had_gps = true;
 		m_kineis.send(tx_mode, packet, size_bits);

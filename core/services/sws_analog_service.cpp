@@ -107,8 +107,10 @@ extern RGBLed *status_led;
 #define L3_MIN_CONSECUTIVE 3           // Consecutive MA3 decreases
 #define L3_DROP_PERCENT 4              // Total MA3 drop from trend start (%)
 
-// Level 4
-#define L4_DROP_PERCENT 8              // Drop from water baseline (%)
+// Level 4 (defined in sws_analog_constants.hpp; duplicate here is harmless if values match)
+#ifndef L4_DROP_PERCENT
+#define L4_DROP_PERCENT 15             // Drop from water baseline (%)
+#endif
 
 // Level 5
 #define L5_DROP_PERCENT 10             // Cumulative drop from peak (%)
@@ -393,6 +395,7 @@ void SWSAnalogService::service_init() {
     m_prev_raw = 0;
     m_drop_reference = 0;
     m_consecutive_raw_drops = 0;
+    m_l4_consecutive_below = 0;
 
     // Level 3: trend MA3
     m_trend_buffer_idx = 0;

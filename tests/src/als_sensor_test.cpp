@@ -46,6 +46,12 @@ TEST_GROUP(ALSSensor)
 		delete fake_config_store;
 		delete fake_logger;
 		delete fake_rtc;
+		// Reset globals so the next test group cannot dereference dangling
+		// pointers (DTEHandler segfaulted on the still-cached pointers).
+		system_scheduler = nullptr;
+		system_timer = nullptr;
+		rtc = nullptr;
+		configuration_store = nullptr;
 	}
 
 	void notify_gnss_active() {

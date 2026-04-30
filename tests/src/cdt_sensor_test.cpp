@@ -45,6 +45,13 @@ TEST_GROUP(CDTSensor)
 		delete fake_config_store;
 		delete fake_logger;
 		delete fake_rtc;
+		// Reset globals so the next test group cannot dereference dangling
+		// pointers (DTEHandler runs after CDTSensor alphabetically and was
+		// segfaulting on the still-cached pointers).
+		system_scheduler = nullptr;
+		system_timer = nullptr;
+		rtc = nullptr;
+		configuration_store = nullptr;
 	}
 };
 

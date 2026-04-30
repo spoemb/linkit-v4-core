@@ -65,6 +65,14 @@ TEST_GROUP(ArgosTxService)
 		delete fake_config_store;
 		delete mock_kineis;
 		delete fake_battery_monitor;
+		// Reset globals so the next test group can't dereference dangling
+		// pointers (DTEHandler dereferences them via shared static state
+		// before its own setup re-initialises everything → segfault).
+		system_scheduler = nullptr;
+		system_timer = nullptr;
+		rtc = nullptr;
+		configuration_store = nullptr;
+		battery_monitor = nullptr;
 	}
 
 	GPSLogEntry make_gps_location(bool is_valid=true, double longitude=0, double latitude=0, std::time_t t=0, bool is_3d_fix = false, int32_t hMSL=0, int32_t gSpeed=0, uint16_t batt=4200) {

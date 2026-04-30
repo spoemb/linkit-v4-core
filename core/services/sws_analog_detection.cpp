@@ -276,19 +276,38 @@ bool SWSAnalogService::detector_state() {
     if (surface_level == 0 && m_current_state &&
         m_time_in_current_state >= OVERRIDE_MIN_TIME_SEC && proximity_ok) {
 
-        // LEVEL 4: Drop relative to water baseline
+        // LEVEL 4: Drop relative to water baseline. Require:
+        //  (a) 2 consecutive filtered samples below water*(1-L4_DROP%) — filters
+        //      out single-sample noise during biofouling stage transitions
+        //      where the water baseline lags the actual water level.
+        //  (b) raw_value < threshold_high — confirms raw is in the "air zone"
+        //      (below the dive-detection threshold). Without this guard, L4
+        //      fires falsely when water_baseline is stale and raw is still
+        //      water-level (biofouling reduced actual conductivity → real
+        //      readings sit below the stale water_baseline×0.85 but well above
+        //      threshold_high).
+        const uint16_t threshold_high_local =
+            m_calib.threshold_current + m_calib.hysteresis_value;
         if (m_calib.threshold_water > 0) {
             uint16_t water_thresh = (uint16_t)(m_calib.threshold_water *
                                                (1.0f - L4_DROP_PERCENT / 100.0f));
-            if (filtered_value < water_thresh) {
-                surface_level = 4;
+            if (filtered_value < water_thresh && raw_value < threshold_high_local) {
+                m_l4_consecutive_below++;
+                if (m_l4_consecutive_below >= 2) {
+                    surface_level = 4;
+                }
+            } else {
+                m_l4_consecutive_below = 0;
             }
         }
 
-        // LEVEL 5: Cumulative drop from peak during this dive
-        // EC-6: Guard against underflow if filtered_value > peak (shouldn't happen, but defensive)
+        // LEVEL 5: Cumulative drop from peak during this dive.
+        // Same raw guard as L4: raw must be in the air zone for L5 to fire.
+        // Otherwise stale peaks (after biofouling reduction) trigger L5 falsely.
+        // EC-6: Guard against underflow if filtered_value > peak.
         if (surface_level == 0 && m_peak_adc_since_underwater > 0 &&
             filtered_value < m_peak_adc_since_underwater &&
+            raw_value < threshold_high_local &&
             m_time_in_current_state > L5_MIN_TIME_SEC) {
             uint16_t drop = (uint16_t)((uint32_t)(m_peak_adc_since_underwater - filtered_value) * 100 /
                                         m_peak_adc_since_underwater);
@@ -665,6 +684,7 @@ bool SWSAnalogService::detector_state() {
         // Reset fast drop tracking
         m_consecutive_raw_drops = 0;
         m_drop_reference = 0;
+        m_l4_consecutive_below = 0;
 
         // Reset trend tracking
         m_trend_buffer_count = 0;

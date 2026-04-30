@@ -204,6 +204,7 @@ public:
         m_prev_raw = 0;
         m_drop_reference = 0;
         m_consecutive_raw_drops = 0;
+        m_l4_consecutive_below = 0;
         m_trend_buffer_idx = 0;
         m_trend_buffer_count = 0;
         m_prev_ma3 = 0;
@@ -302,6 +303,12 @@ private:
     uint16_t m_prev_raw;               // Previous raw ADC value
     uint16_t m_drop_reference;         // Raw value when consecutive drops started
     uint16_t m_consecutive_raw_drops;  // Count of consecutive raw drops
+
+    // Level 4: require 2 consecutive samples below water * (1 - L4_DROP_PERCENT/100)
+    // before firing — protects against biofouling stage transitions where the
+    // water baseline is stale (one sample past the threshold isn't enough
+    // to claim surfacing if the baseline hasn't adapted yet).
+    uint8_t m_l4_consecutive_below;
 
     // Level 3: Trend MA3 detection
     static constexpr int TREND_MA_SIZE = 3;

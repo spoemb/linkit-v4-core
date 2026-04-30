@@ -93,7 +93,11 @@
 #define L3_DROP_PERCENT 4              // Total MA3 drop from trend start (%)
 
 // Level 4
-#define L4_DROP_PERCENT 8              // Drop from water baseline (%)
+// 15% threshold (was 8%) — gives biofouling stage transitions a wider margin
+// where the water baseline lags the actual water level. Combined with the
+// 2-consecutive-sample requirement, this avoids spurious surfacing during
+// the EMA convergence period after a salinity / biofouling change.
+#define L4_DROP_PERCENT 15             // Drop from water baseline (%)
 
 // Level 5
 #define L5_DROP_PERCENT 10             // Cumulative drop from peak (%)
