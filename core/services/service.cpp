@@ -151,8 +151,12 @@ unsigned int ServiceManager::get_cooldown_remaining_s(std::time_t now) {
 		return 0;
 	if (m_last_successful_cycle_time == 0)
 		return 0;
-	if (now <= m_last_successful_cycle_time)
-		return 0;  // RTC went backward or same — treat as cooldown expired
+	if (now < m_last_successful_cycle_time)
+		return 0;  // RTC went backward — treat as cooldown expired
+	// `now == m_last_successful_cycle_time` falls through with elapsed=0,
+	// which correctly reports the full interval as remaining. This matters
+	// for callers that do set_cycle_complete(now) then is_in_cooldown(now)
+	// in the same tick (e.g. LoRaTxService dive handler).
 	std::time_t elapsed = now - m_last_successful_cycle_time;
 	if (elapsed >= (std::time_t)interval)
 		return 0;

@@ -436,9 +436,13 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 				m_has_gnss_fix_since_surfacing = true;
 				m_awaiting_surfacing = false;
 
-				// Arm cooldown if trigger mode is END_OF_DOPPLER (Doppler phase ends on GNSS fix)
+				// Arm cooldown if trigger mode is END_OF_DOPPLER (Doppler phase
+				// ends on GNSS fix). Guard against a delayed fix arriving during
+				// an already-active cooldown (rare race: GPS in flight when
+				// cooldown started + surface bounce sets m_is_surfacing_burst).
 				unsigned int trigger = configuration_store->read_param<unsigned int>(ParamID::COOLDOWN_TRIGGER_MODE);
-				if (trigger == (unsigned int)BaseCooldownTrigger::END_OF_DOPPLER && !m_cooldown_armed) {
+				if (trigger == (unsigned int)BaseCooldownTrigger::END_OF_DOPPLER && !m_cooldown_armed &&
+				    !ServiceManager::is_in_cooldown(service_current_time())) {
 					m_cooldown_armed = true;
 					DEBUG_INFO("ArgosTxService: cooldown armed (END_OF_DOPPLER, GNSS fix)");
 				}
@@ -501,9 +505,14 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 			std::time_t earliest_schedule = service_current_time() + argos_config.dry_time_before_tx;
 			m_sched.set_earliest_schedule(earliest_schedule);
 
-			// Arm cooldown immediately if trigger mode is AT_SURFACE
+			// Arm cooldown immediately if trigger mode is AT_SURFACE.
+			// Skip arming if a cooldown is already active — otherwise a passive
+			// surface bounce during cooldown would re-arm m_cooldown_armed, and
+			// the next dive would call set_cycle_complete(now) which resets the
+			// cooldown timer, extending it indefinitely under repeated bounces.
 			unsigned int trigger = configuration_store->read_param<unsigned int>(ParamID::COOLDOWN_TRIGGER_MODE);
-			if (trigger == (unsigned int)BaseCooldownTrigger::AT_SURFACE) {
+			if (trigger == (unsigned int)BaseCooldownTrigger::AT_SURFACE &&
+			    !ServiceManager::is_in_cooldown(service_current_time())) {
 				m_cooldown_armed = true;
 				DEBUG_INFO("ArgosTxService: cooldown armed (AT_SURFACE)");
 			}
