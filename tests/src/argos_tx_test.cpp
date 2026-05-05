@@ -2106,6 +2106,106 @@ TEST(ArgosTxService, CooldownExpiresAllowsNewBurst)
 }
 
 // ============================================================================
+// COOLDOWN TRIGGER MODE — REGRESSION TESTS
+// Cover the 3 modes not exercised by CooldownBlocksSecondSurfacing /
+// CooldownExpiresAllowsNewBurst (which both use AFTER_LAST_TX = 3).
+// ============================================================================
+
+TEST(ArgosTxService, CooldownAtSurfaceDoesNotExtendOnBounce)
+{
+	// AT_SURFACE mode: surface → dive starts cooldown. If a passive surface
+	// bounce happens during cooldown, m_cooldown_armed must NOT be re-armed
+	// (otherwise the next dive would call set_cycle_complete(now) and reset
+	// the cooldown timer, extending it indefinitely under repeated bounces).
+	fake_config_store->write_param(ParamID::ARGOS_MODE, BaseArgosMode::SURFACING_BURST);
+	fake_config_store->write_param(ParamID::ARGOS_DEPTH_PILE, BaseDepthPile::DEPTH_PILE_1);
+	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, (bool)false);
+	fake_config_store->write_param(ParamID::UNDERWATER_EN, (bool)true);
+	fake_config_store->write_param(ParamID::ARGOS_TX_JITTER_EN, (bool)false);
+	fake_config_store->write_param(ParamID::DRY_TIME_BEFORE_TX, 0U);
+	fake_config_store->write_param(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S, 600U);
+	fake_config_store->write_param(ParamID::COOLDOWN_TRIGGER_MODE, 0U); // AT_SURFACE
+
+	ArgosTxService serv(*mock_kineis);
+
+	std::time_t t = 1751000000000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	serv.start();
+
+	// Cycle 1: dive → surface (arms AT_SURFACE) → dive (cooldown starts)
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
+	notify_underwater_state(true);
+	t += 60000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+	notify_underwater_state(false);  // arm AT_SURFACE
+
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
+	notify_underwater_state(true);  // cooldown_armed → set_cycle_complete(t_dive_1)
+	CHECK_TRUE(ServiceManager::is_in_cooldown(t / 1000));
+	unsigned int remaining_at_dive_1 = ServiceManager::get_cooldown_remaining_s(t / 1000);
+	CHECK_EQUAL(600U, remaining_at_dive_1);  // full interval just started
+
+	// 30s into cooldown — passive surface bounce (should NOT re-arm)
+	t += 30000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+	notify_underwater_state(false);
+
+	// Re-dive 5s later. Without the fix, m_cooldown_armed would be true here
+	// (re-armed by AT_SURFACE), triggering set_cycle_complete(t_dive_2) which
+	// would RESET the cooldown timer to 600s remaining.
+	t += 5000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 0);
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
+	mock().expectOneCall("stop_send").onObject(mock_kineis);
+	notify_underwater_state(true);
+
+	// Verify cooldown anchor is still t_dive_1, not t_dive_2.
+	// Remaining at this point should be 600 - (30 + 5) = 565s, NOT 600s.
+	unsigned int remaining = ServiceManager::get_cooldown_remaining_s(t / 1000);
+	CHECK_TRUE(remaining > 560 && remaining <= 565);
+
+	mock().checkExpectations();
+}
+
+TEST(ArgosTxService, IsInCooldownTrueWhenSetAndCheckedSameTick)
+{
+	// Regression: get_cooldown_remaining_s used to return 0 when
+	// now == m_last_successful_cycle_time (the `<=` branch). The fix
+	// (changing to `<`) ensures set_cycle_complete(now) followed by
+	// is_in_cooldown(now) in the same tick reports the cooldown as active.
+	fake_config_store->write_param(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S, 1800U);
+
+	std::time_t t = 1752000000;
+	fake_rtc->settime(t);
+
+	ServiceManager::set_cycle_complete(t);
+	CHECK_TRUE(ServiceManager::is_in_cooldown(t));
+	CHECK_EQUAL(1800U, ServiceManager::get_cooldown_remaining_s(t));
+
+	// Sanity: 1s later still in cooldown
+	CHECK_TRUE(ServiceManager::is_in_cooldown(t + 1));
+	CHECK_EQUAL(1799U, ServiceManager::get_cooldown_remaining_s(t + 1));
+
+	// And expired exactly at the interval boundary
+	CHECK_FALSE(ServiceManager::is_in_cooldown(t + 1800));
+	CHECK_EQUAL(0U, ServiceManager::get_cooldown_remaining_s(t + 1800));
+
+	// RTC backward → cooldown reported expired (graceful fallback)
+	CHECK_FALSE(ServiceManager::is_in_cooldown(t - 1));
+}
+
+// ============================================================================
 // NTRY_PER_MESSAGE (depth pile burst counter) TESTS
 // ============================================================================
 

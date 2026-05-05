@@ -389,7 +389,11 @@ void LoRaTxService::notify_peer_event(ServiceEvent& e) {
 				DEBUG_INFO("LoRaTxService: cooldown armed (AT_SURFACE)");
 			}
 
-			if (argos_config.mode == BaseArgosMode::SURFACING_BURST) {
+			// Only enter surfacing burst state if cooldown is not active —
+			// otherwise the base class will skip reschedule and no TX fires,
+			// so logging "starting status burst" would be misleading.
+			if (argos_config.mode == BaseArgosMode::SURFACING_BURST &&
+			    !ServiceManager::is_in_cooldown(service_current_time())) {
 				m_is_surfacing_burst = true;
 				m_awaiting_surfacing = false;
 				m_status_burst_count = 0;

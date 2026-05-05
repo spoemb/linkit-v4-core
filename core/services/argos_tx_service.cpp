@@ -517,8 +517,13 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 				DEBUG_INFO("ArgosTxService: cooldown armed (AT_SURFACE)");
 			}
 
-			// Activate surfacing burst mode
-			if (argos_config.mode == BaseArgosMode::SURFACING_BURST) {
+			// Activate surfacing burst mode — only when cooldown is not active.
+			// During an active cooldown the base class will skip reschedule
+			// anyway (no TX will fire), so setting burst state + logging
+			// "starting Doppler burst sequence" would be misleading and waste
+			// no-op state churn on every passive bounce.
+			if (argos_config.mode == BaseArgosMode::SURFACING_BURST &&
+			    !ServiceManager::is_in_cooldown(service_current_time())) {
 				m_is_surfacing_burst = true;
 				m_awaiting_surfacing = false;
 				m_doppler_burst_count = 0;
