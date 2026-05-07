@@ -8,23 +8,60 @@
 #include "config_store.hpp"
 #include "rgb_led.hpp"
 #include "led.hpp"
+#include "rtc.hpp"
 
 extern Led *ext_status_led;
 extern RGBLed *status_led;
 extern Timer *system_timer;
 extern ConfigurationStore *configuration_store;
+extern RTC *rtc;
+
+namespace {
+
+constexpr unsigned long long LED_HRS_24_MS = 24ULL * 3600ULL * 1000ULL;
+
+/// @brief Returns true while we are still inside the 24-hour LED window.
+///
+/// On regular boards (single boot, no hard power-cycle), `system_timer` uptime
+/// is monotonic and accurately tracks the time since deployment.
+///
+/// On EXTERNAL_WAKEUP boards (TPL5111-driven hard shutdowns), `system_timer`
+/// resets to 0 at every wake-up — so the uptime check would never expire and
+/// LEDs would stay on for the entire mission, draining the battery.
+/// We use the RTC cutoff stored in `LED_HRS24_RTC_CUTOFF` — set once by
+/// GPSService to (first valid GNSS RTC + 24h). RTC survives TPL hard shutdowns
+/// via `LAST_KNOWN_RTC` (PWP06) restored at every boot, so this gives a real
+/// 24-hours-since-deployment window.
+///
+/// Fallback (EXTERNAL_WAKEUP, no GNSS fix yet OR RTC unknown): keep LEDs on.
+/// Better visible-on-bench during early provisioning than silent-on-deployment.
+static bool led_24h_window_active() {
+#ifdef EXTERNAL_WAKEUP
+	if (rtc && rtc->is_set()) {
+		std::time_t led_cutoff = configuration_store->read_param<std::time_t>(ParamID::LED_HRS24_RTC_CUTOFF);
+		if (led_cutoff != 0) {
+			return rtc->gettime() < led_cutoff;
+		}
+	}
+	return true;  // No anchor yet — keep LEDs visible during provisioning
+#else
+	return system_timer->get_counter() < LED_HRS_24_MS;
+#endif
+}
+
+}  // namespace
 
 
 // Macro for determining LED mode state
 #define LED_MODE_GUARD \
 	if (configuration_store->read_param<BaseLEDMode>(ParamID::LED_MODE) == BaseLEDMode::ALWAYS || \
 		(configuration_store->read_param<BaseLEDMode>(ParamID::LED_MODE) == BaseLEDMode::HRS_24 && \
-		 system_timer->get_counter() < (24 * 3600 * 1000)))
+		 led_24h_window_active()))
 
 #define EXT_LED_MODE_GUARD \
 	if (configuration_store->read_param<BaseLEDMode>(ParamID::EXT_LED_MODE) == BaseLEDMode::ALWAYS || \
 		(configuration_store->read_param<BaseLEDMode>(ParamID::EXT_LED_MODE) == BaseLEDMode::HRS_24 && \
-		 system_timer->get_counter() < (24 * 3600 * 1000)))
+		 led_24h_window_active()))
 
 
 void LEDOff::entry() {

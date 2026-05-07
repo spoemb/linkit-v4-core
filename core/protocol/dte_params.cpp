@@ -37,7 +37,7 @@ const BaseMap param_map[] = {
 	{ "LAST_TX", "ART01", BaseEncoding::DATESTRING, 0, 0, {}, true, false },
 	{ "TX_COUNTER", "ART02", BaseEncoding::UINT, 0U, 0U, {}, true, false },
 	{ "BATT_SOC", "POT03", BaseEncoding::UINT, 0U, 100U, {}, true, false },
-	{ "LAST_FULL_CHARGE_DATE", "POT05", BaseEncoding::DATESTRING, 0, 0, {}, true, false },
+	{ "_RESERVED_7", "", BaseEncoding::UINT, 0, 0, {}, false, false },  // Obsolete: was LAST_FULL_CHARGE_DATE — never written by firmware, no reliable hardware "charge complete" signal on this platform; user-side bookkeeping if needed
 	{ "PROFILE_NAME", "IDP11", BaseEncoding::TEXT, "", "", {}, true, true },
 	{ "_RESERVED_9", "", BaseEncoding::UINT, 0, 0, {}, false, false },  // Reserved: AOP status is part of PASPW allcast data, not a DTE param
 	{ "ARGOS_AOP_DATE", "ART03", BaseEncoding::DATESTRING, 0, 0, {}, true, false },
@@ -324,6 +324,11 @@ const BaseMap param_map[] = {
 	{ "AXL_FIFO_ENABLE", "AXP10", BaseEncoding::BOOLEAN, {}, {}, {}, ENABLE_AXL_SENSOR, true },
 	// [221] AXL FIFO sample count per batch (1-170)
 	{ "AXL_FIFO_SAMPLE_COUNT", "AXP11", BaseEncoding::UINT, 1U, 170U, {}, ENABLE_AXL_SENSOR, true },
+	// [222] LED HRS_24 RTC cutoff — auto-set by GPSService on first valid GNSS
+	// fix to (now+24h). Used by ledsm.cpp on EXTERNAL_WAKEUP boards (RSPB) to
+	// give a true 24h-since-deployment window across TPL5111 hard shutdowns.
+	// User can override via DTE PARMW for re-deployment scenarios.
+	{ "LED_HRS24_RTC_CUTOFF", "LDP03", BaseEncoding::DATESTRING, 0, 0, {}, true, true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

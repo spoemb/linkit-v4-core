@@ -23,7 +23,6 @@ TEST_GROUP(Encoder)
 		ParamID::LAST_TX,
 		ParamID::TX_COUNTER,
 		ParamID::BATT_SOC,
-		ParamID::LAST_FULL_CHARGE_DATE,
 		ParamID::PROFILE_NAME,
 		ParamID::ARGOS_AOP_DATE,
 		ParamID::TR_NOM,
@@ -41,21 +40,21 @@ TEST(Encoder, PARML_RESP)
 {
 	std::string s;
 	s = DTEEncoder::encode(DTECommand::PARML_RESP, params);
-	STRCMP_EQUAL("$O;PARML#041;IDT06,IDP12,IDT02,IDT03,ART01,ART02,POT03,POT05,IDP11,ART03,ARP05\r", s.c_str());
+	STRCMP_EQUAL("$O;PARML#03B;IDT06,IDP12,IDT02,IDT03,ART01,ART02,POT03,IDP11,ART03,ARP05\r", s.c_str());
 }
 
 TEST(Encoder, PARMR_REQ)
 {
 	std::string s;
 	s = DTEEncoder::encode(DTECommand::PARMR_REQ, params);
-	STRCMP_EQUAL("$PARMR#041;IDT06,IDP12,IDT02,IDT03,ART01,ART02,POT03,POT05,IDP11,ART03,ARP05\r", s.c_str());
+	STRCMP_EQUAL("$PARMR#03B;IDT06,IDP12,IDT02,IDT03,ART01,ART02,POT03,IDP11,ART03,ARP05\r", s.c_str());
 }
 
 TEST(Encoder, STATR_REQ)
 {
 	std::string s;
 	s = DTEEncoder::encode(DTECommand::STATR_REQ, params);
-	STRCMP_EQUAL("$STATR#041;IDT06,IDP12,IDT02,IDT03,ART01,ART02,POT03,POT05,IDP11,ART03,ARP05\r", s.c_str());
+	STRCMP_EQUAL("$STATR#03B;IDT06,IDP12,IDT02,IDT03,ART01,ART02,POT03,IDP11,ART03,ARP05\r", s.c_str());
 }
 
 TEST(Encoder, PARMW_REQ)
@@ -324,14 +323,9 @@ TEST(Encoder, PARAM_BATT_SOC)
 	STRCMP_EQUAL("$O;PARMR#007;POT03=0\r", s.c_str());
 }
 
-TEST(Encoder, PARAM_LAST_FULL_CHARGE_DATE)
-{
-	std::string s;
-	ParamValue p = { ParamID::LAST_FULL_CHARGE_DATE, (std::time_t)0 };
-	std::vector<ParamValue> v = { p };
-	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
-	STRCMP_EQUAL("$O;PARMR#019;POT05=01/01/1970 00:00:00\r", s.c_str());
-}
+// Removed: PARAM_LAST_FULL_CHARGE_DATE — slot 7 freed (was unused dead param,
+// no reliable hardware "charge complete" signal on this platform).
+// _RESERVED_7 is now invisible to DTE (is_implemented=false).
 
 TEST(Encoder, PARAM_ARGOS_PROFILE_NAME)
 {

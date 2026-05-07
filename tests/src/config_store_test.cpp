@@ -418,15 +418,9 @@ TEST(ConfigStore, PARAM_TX_COUNTER)
 }
 
 
-TEST(ConfigStore, PARAM_LAST_FULL_CHARGE_DATE)
-{
-	store = new LFSConfigurationStore(*main_filesystem);
-	store->init();
-
-	std::time_t t = 123224U;
-	store->write_param(ParamID::LAST_FULL_CHARGE_DATE, t);
-	CHECK_EQUAL(t, store->read_param<std::time_t>(ParamID::LAST_FULL_CHARGE_DATE));
-}
+// Removed: PARAM_LAST_FULL_CHARGE_DATE — slot 7 freed (was unused dead param,
+// no reliable hardware "charge complete" signal on this platform).
+// _RESERVED_7 is now invisible to DTE (is_implemented=false).
 
 TEST(ConfigStore, PARAM_PROFILE_NAME)
 {

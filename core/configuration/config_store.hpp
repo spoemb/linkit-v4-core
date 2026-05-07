@@ -113,7 +113,7 @@ protected:
 		/* LAST_TX */ static_cast<std::time_t>(0U),
 		/* TX_COUNTER */ 0U,
 		/* BATT_SOC */ 0U,
-		/* LAST_FULL_CHARGE_DATE */ static_cast<std::time_t>(0U),
+		/* _RESERVED_7 (was LAST_FULL_CHARGE_DATE) */ static_cast<std::time_t>(0U),
 		/* PROFILE_NAME */ std::string("FACTORY"),
 		/* _RESERVED_9 */ 0U,
 		/* ARGOS_AOP_DATE */ static_cast<std::time_t>(1633646474U),
@@ -333,6 +333,7 @@ protected:
 		/* [219] GNSS_CLOUDLOCATE_FORMAT */ 0U,        // 0=MEASC12, 1=MEAS20, 2=MEAS50
 		/* [220] AXL_FIFO_ENABLE */ (bool)false,       // false=single sample, true=FIFO batch averaging
 		/* [221] AXL_FIFO_SAMPLE_COUNT */ 50U,         // 1-170 samples per batch
+		/* [222] LED_HRS24_RTC_CUTOFF */ static_cast<std::time_t>(0U),  // 0=unset, auto-set by GPSService at first valid fix to (now+24h)
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,

@@ -324,6 +324,22 @@ void GPSService::task_process_gnss_data()
     // Notify configuration store that we have a new valid GPS fix
     configuration_store->notify_gps_location(gps_entry);
 
+    // Anchor LED HRS_24 RTC cutoff on the first valid GNSS fix.
+    // The cutoff (RTC epoch at which the HRS_24 window expires) is persisted
+    // in flash so it survives TPL5111 hard shutdowns on EXTERNAL_WAKEUP boards.
+    // 0 = unset sentinel; we write it once and ledsm.cpp reads it back to
+    // gate LEDs in HRS_24 mode. RTC is set by the M10Q driver from this same
+    // fix's date/time fields, so service_current_time() is the GNSS time.
+    if (service_is_time_known()) {
+        std::time_t led_cutoff = configuration_store->read_param<std::time_t>(ParamID::LED_HRS24_RTC_CUTOFF);
+        if (led_cutoff == 0) {
+            led_cutoff = service_current_time() + 24 * 3600;
+            configuration_store->write_param(ParamID::LED_HRS24_RTC_CUTOFF, led_cutoff);
+            configuration_store->save_params();
+            DEBUG_INFO("GPSService: LED HRS_24 cutoff anchored at RTC=%u", (unsigned int)led_cutoff);
+        }
+    }
+
     ServiceEventData event_data = gps_entry;
     service_complete(&event_data, &gps_entry);
 }

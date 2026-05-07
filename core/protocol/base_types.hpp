@@ -76,7 +76,7 @@ enum class ParamID {
 	LAST_TX                                  = 4,
 	TX_COUNTER                               = 5,
 	BATT_SOC                                 = 6,
-	LAST_FULL_CHARGE_DATE                    = 7,
+	_RESERVED_7                              = 7,  // Was LAST_FULL_CHARGE_DATE — never written by firmware (no reliable charge-complete signal); freed slot
 	PROFILE_NAME                             = 8,
 	_RESERVED_9                              = 9,  // Was AOP_STATUS — status is in PASPW allcast data
 	ARGOS_AOP_DATE                           = 10,
@@ -357,8 +357,10 @@ enum class ParamID {
 	AXL_FIFO_ENABLE                          = 220,  // bool: false=single sample (default), true=FIFO batch averaging
 	AXL_FIFO_SAMPLE_COUNT                    = 221,  // uint: samples per batch, 1-170 (default 50)
 #endif
+	// === LED window cutoff (slot 222) ===
+	LED_HRS24_RTC_CUTOFF                     = 222,  // time_t: RTC epoch at which LED HRS_24 window expires; auto-set by GPSService at first valid fix to (now+24h). 0 = unset.
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 222,
+	__PARAM_SIZE                             = 223,
 	__NULL_PARAM                             = 0xFFFF
 };
 
