@@ -437,10 +437,11 @@ unsigned int SWSAnalogService::service_next_schedule_in_ms() {
     if (m_calib_phase != CalibPhase::IDLE && m_calib_phase != CalibPhase::DONE) {
         return CALIB_SAMPLE_INTERVAL_MS;
     }
-    // Normal: read configured surface/underwater period
-    unsigned int period = m_current_state ?
-        service_read_param<unsigned int>(ParamID::SAMPLING_UNDER_FREQ) * 1000 :
-        service_read_param<unsigned int>(ParamID::SAMPLING_SURF_FREQ) * 1000;
+    // Normal: read configured surface/underwater period (seconds, supports fractions ≥ 0.1)
+    double period_s = m_current_state ?
+        service_read_param<double>(ParamID::SAMPLING_UNDER_FREQ) :
+        service_read_param<double>(ParamID::SAMPLING_SURF_FREQ);
+    unsigned int period = static_cast<unsigned int>(period_s * 1000.0);
     return period > 0 ? period : 1000;
 }
 

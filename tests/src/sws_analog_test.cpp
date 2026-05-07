@@ -41,8 +41,9 @@ TEST_GROUP(SWSAnalog)
 
         configuration_store->write_param(ParamID::UNDERWATER_EN, uw_en);
         configuration_store->write_param(ParamID::UNDERWATER_DETECT_SOURCE, uw_src);
-        configuration_store->write_param(ParamID::SAMPLING_UNDER_FREQ, val_1);
-        configuration_store->write_param(ParamID::SAMPLING_SURF_FREQ, val_1);
+        double period_1s = 1.0;
+        configuration_store->write_param(ParamID::SAMPLING_UNDER_FREQ, period_1s);
+        configuration_store->write_param(ParamID::SAMPLING_SURF_FREQ, period_1s);
         configuration_store->write_param(ParamID::UW_MAX_SAMPLES, val_3);
         configuration_store->write_param(ParamID::UW_MIN_DRY_SAMPLES, val_1);
         configuration_store->write_param(ParamID::UW_SAMPLE_GAP, val_100);
@@ -1388,8 +1389,9 @@ TEST_GROUP(SWSAnalogFlash)
 
         configuration_store->write_param(ParamID::UNDERWATER_EN, uw_en);
         configuration_store->write_param(ParamID::UNDERWATER_DETECT_SOURCE, uw_src);
-        configuration_store->write_param(ParamID::SAMPLING_UNDER_FREQ, val_1);
-        configuration_store->write_param(ParamID::SAMPLING_SURF_FREQ, val_1);
+        double period_1s = 1.0;
+        configuration_store->write_param(ParamID::SAMPLING_UNDER_FREQ, period_1s);
+        configuration_store->write_param(ParamID::SAMPLING_SURF_FREQ, period_1s);
         configuration_store->write_param(ParamID::UW_MAX_SAMPLES, val_3);
         configuration_store->write_param(ParamID::UW_MIN_DRY_SAMPLES, val_1);
         configuration_store->write_param(ParamID::UW_SAMPLE_GAP, val_100);

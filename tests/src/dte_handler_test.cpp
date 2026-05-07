@@ -1318,7 +1318,7 @@ TEST(DTEHandler, PARMW_UNP04_SamplingSurfFreq)
 	req = "$PARMW#008;UNP04=30\r";
 	CHECK_TRUE(DTEAction::CONFIG_UPDATED == dte_handler->handle_dte_message(req, resp));
 	STRCMP_EQUAL("$O;PARMW#000;\r", resp.c_str());
-	CHECK_EQUAL(30U, configuration_store->read_param<unsigned int>(ParamID::SAMPLING_SURF_FREQ));
+	DOUBLES_EQUAL(30.0, configuration_store->read_param<double>(ParamID::SAMPLING_SURF_FREQ), 1e-9);
 
 	// Readback via PARMR
 	req = "$PARMR#005;UNP04\r";

@@ -654,16 +654,16 @@ TEST(ConfigStore, PARAM_SAMPLING_UNDER_FREQ)
 	store = new LFSConfigurationStore(*main_filesystem);
 	store->init();
 
-	unsigned int t = 1440U;
+	double t = 1440.0;
 	store->write_param(ParamID::SAMPLING_UNDER_FREQ, t);
 	store->save_params();
-	CHECK_EQUAL(t, store->read_param<unsigned int>(ParamID::SAMPLING_UNDER_FREQ));
+	DOUBLES_EQUAL(t, store->read_param<double>(ParamID::SAMPLING_UNDER_FREQ), 1e-9);
 
 	delete store;
 	store = new LFSConfigurationStore(*main_filesystem);
 	store->init();
 
-	CHECK_EQUAL(t, store->read_param<unsigned int>(ParamID::SAMPLING_UNDER_FREQ));
+	DOUBLES_EQUAL(t, store->read_param<double>(ParamID::SAMPLING_UNDER_FREQ), 1e-9);
 }
 
 TEST(ConfigStore, PARAM_LB_EN)

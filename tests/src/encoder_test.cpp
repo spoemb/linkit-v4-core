@@ -640,15 +640,24 @@ TEST(Encoder, PARAM_DRY_TIME_BEFORE_TX_ZeroIsValid)
 TEST(Encoder, PARAM_SAMPLING_UNDER_FREQ)
 {
 	std::string s;
-	ParamValue p = { ParamID::SAMPLING_UNDER_FREQ, 10U };
+	ParamValue p = { ParamID::SAMPLING_UNDER_FREQ, (double)10.0 };
 	std::vector<ParamValue> v = { p };
 	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
 	STRCMP_EQUAL("$O;PARMR#008;UNP03=10\r", s.c_str());
 }
 
+TEST(Encoder, PARAM_SAMPLING_UNDER_FREQ_Fractional)
+{
+	std::string s;
+	ParamValue p = { ParamID::SAMPLING_UNDER_FREQ, (double)0.1 };
+	std::vector<ParamValue> v = { p };
+	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
+	STRCMP_EQUAL("$O;PARMR#009;UNP03=0.1\r", s.c_str());
+}
+
 TEST(Encoder, PARAM_SAMPLING_UNDER_FREQ_OutOfRangeCheck)
 {
-	ParamValue p = { ParamID::SAMPLING_UNDER_FREQ, 0U };
+	ParamValue p = { ParamID::SAMPLING_UNDER_FREQ, (double)0.0 };
 	std::vector<ParamValue> v = { p };
 	CHECK_THROWS(ErrorCode, DTEEncoder::encode(DTECommand::PARMR_RESP, v));
 }
@@ -656,7 +665,7 @@ TEST(Encoder, PARAM_SAMPLING_UNDER_FREQ_OutOfRangeCheck)
 TEST(Encoder, PARAM_SAMPLING_SURF_FREQ)
 {
 	std::string s;
-	ParamValue p = { ParamID::SAMPLING_SURF_FREQ, 10U };
+	ParamValue p = { ParamID::SAMPLING_SURF_FREQ, (double)10.0 };
 	std::vector<ParamValue> v = { p };
 	s = DTEEncoder::encode(DTECommand::PARMR_RESP, v);
 	STRCMP_EQUAL("$O;PARMR#008;UNP04=10\r", s.c_str());
@@ -664,7 +673,7 @@ TEST(Encoder, PARAM_SAMPLING_SURF_FREQ)
 
 TEST(Encoder, PARAM_SAMPLING_SURF_FREQ_OutOfRangeCheck)
 {
-	ParamValue p = { ParamID::SAMPLING_SURF_FREQ, 0U };
+	ParamValue p = { ParamID::SAMPLING_SURF_FREQ, (double)0.0 };
 	std::vector<ParamValue> v = { p };
 	CHECK_THROWS(ErrorCode, DTEEncoder::encode(DTECommand::PARMR_RESP, v));
 }
