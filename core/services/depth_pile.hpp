@@ -234,9 +234,13 @@ public:
 			} else if (service == ServiceIdentifier::AXL_SENSOR) {
 				return m_axl_depth_pile.retrieve(depth_pile, 1).at(0);
 #endif
-			} else
-				throw ErrorCode::RESOURCE_NOT_AVAILABLE;
+			}
+			// Unknown sensor type — return nullptr instead of throwing an enum
+			// (ErrorCode is not derived from std::exception so it would escape
+			// any narrow catch block and reach terminate()).
+			return nullptr;
 		} catch (const std::out_of_range& e) {
+			// Empty deque: retrieve(...).at(0) throws — treat as "no data".
 			return nullptr;
 		}
 	}

@@ -26,9 +26,16 @@ void CAMService::service_init() {
 void CAMService::service_term() {
 }
 
-/// @brief Enabled if CAM_ENABLE param is set.
+/// @brief Enabled if CAM_ENABLE param is set, with low-battery override via LB_CAM_EN.
+/// @details When `LB_EN` is on and the battery is below threshold, the camera follows
+/// `LB_CAM_EN` (default false) instead of `CAM_ENABLE`. Default low-battery behavior is
+/// therefore "cam OFF in LB" — preserves the budget for satellite/LoRa TX. Set
+/// `LB_CAM_EN=true` to keep the camera running through LB.
 /// @return true if camera is enabled.
 bool CAMService::service_is_enabled() {
+	if (service_read_param<bool>(ParamID::LB_EN) && service_is_battery_level_low()) {
+		return service_read_param<bool>(ParamID::LB_CAM_EN);
+	}
 	return service_read_param<bool>(ParamID::CAM_ENABLE);
 }
 

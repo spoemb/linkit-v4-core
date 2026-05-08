@@ -108,6 +108,48 @@ TEST(DiveMode, DiveModeDisengagedIfServiceStopped)
 }
 
 
+/// Surfacing BEFORE the start timer fires must cancel the pending state and
+/// must NOT pause the reed when the timer eventually fires. Otherwise the
+/// magnet stays inert at the surface — see dive_mode_service.hpp StartPending
+/// branch.
+TEST(DiveMode, DiveModeCancelledByEarlySurfacing)
+{
+	unsigned int start_period = 10;
+	bool dive_mode_en = true;
+
+	configuration_store->write_param(ParamID::UW_DIVE_MODE_ENABLE, dive_mode_en);
+	configuration_store->write_param(ParamID::UW_DIVE_MODE_START_TIME, start_period);
+
+	DiveModeService s(fake_switch);
+	s.start();
+
+	// Dive → StartPending, timer armed for 10 s
+	notify_underwater_state(true);
+	CHECK_EQUAL(1000 * start_period, s.get_last_schedule());
+	CHECK_FALSE(fake_switch.is_paused());
+
+	// Surface BEFORE timer fires (only half the period elapsed)
+	advance_time(start_period * 1000 / 2);
+	CHECK_FALSE(fake_switch.is_paused());
+	notify_underwater_state(false);
+	CHECK_FALSE(fake_switch.is_paused());
+
+	// Let the originally-pending timer fire — must NOT engage dive mode now
+	// because we cancelled the StartPending state on early surface.
+	advance_time(start_period * 1000);
+	CHECK_FALSE(fake_switch.is_paused());
+
+	// Subsequent dives must still work normally (state machine reset to Idle)
+	notify_underwater_state(true);
+	advance_time(start_period * 1000);
+	CHECK_TRUE(fake_switch.is_paused());
+	notify_underwater_state(false);
+	CHECK_FALSE(fake_switch.is_paused());
+
+	s.stop();
+}
+
+
 TEST(DiveMode, DiveModeRunsMultipleTimes)
 {
 	unsigned int start_period = 10;

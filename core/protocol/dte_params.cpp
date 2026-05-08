@@ -167,7 +167,7 @@ const BaseMap param_map[] = {
 	// [112-116] Thermistor sensor (slots always reserved)
 	{ "THERMISTOR_SENSOR_ENABLE", "THP01", BaseEncoding::BOOLEAN, 0, 0, {}, ENABLE_THERMISTOR_SENSOR, true },
 	{ "THERMISTOR_SENSOR_PERIODIC", "THP02", BaseEncoding::UINT, 0U, 0U, {}, ENABLE_THERMISTOR_SENSOR, true },
-	{ "THERMISTOR_SENSOR_VALUE", "THP03", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, ENABLE_THERMISTOR_SENSOR, false },
+	{ "THERMISTOR_SENSOR_VALUE", "THP03", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, ENABLE_THERMISTOR_SENSOR, true },
 	{ "THERMISTOR_SENSOR_WAKEUP_THRESH", "THP04", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, ENABLE_THERMISTOR_SENSOR, true },
 	{ "THERMISTOR_SENSOR_WAKEUP_SAMPLES", "THP05", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, ENABLE_THERMISTOR_SENSOR, true },
 	// [117] External LED

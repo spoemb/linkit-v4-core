@@ -36,6 +36,16 @@ public:
 				DEBUG_INFO("DiveModeService: dive mode start pending");
 				m_dive_state = DiveState::StartPending;
 				service_reschedule();
+			} else if (!uw_state && m_dive_state == DiveState::StartPending) {
+				// Surfaced BEFORE the start timer fired — cancel pending state.
+				// Without this, the timer fires later (still at the surface) and
+				// pauses the reed, leaving the magnet inert until the next dive
+				// completes a full cycle. Reed was never paused yet, so no resume
+				// is needed; the pending scheduled task will fire harmlessly
+				// because service_initiate() only acts when state == StartPending.
+				DEBUG_INFO("DiveModeService: dive mode start cancelled — surfaced before %us start timer",
+				           service_read_param<unsigned int>(ParamID::UW_DIVE_MODE_START_TIME));
+				m_dive_state = DiveState::Idle;
 			} else if (!uw_state && m_dive_state == DiveState::Engaged) {
 				DEBUG_INFO("DiveModeService: dive mode disengaged by surfacing event");
 				m_dive_state = DiveState::Idle;

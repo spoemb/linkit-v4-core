@@ -509,6 +509,17 @@ public:
 				b_is_valid = true;
 			}
 #endif
+#if ENABLE_THERMISTOR_SENSOR
+			else if (param_id == ParamID::THERMISTOR_SENSOR_VALUE) {
+				try {
+					Sensor& s = SensorManager::find_by_name("THERMISTOR");
+					m_params.at((unsigned)param_id) = s.read();
+				} catch (...) {
+					m_params.at((unsigned)param_id) = (double)std::nan("");
+				}
+				b_is_valid = true;
+			}
+#endif
 #if ENABLE_CDT_SENSOR
 			else if (param_id == ParamID::CDT_SENSOR_CONDUCTIVITY_VALUE) {
 				try {
