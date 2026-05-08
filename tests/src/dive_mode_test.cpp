@@ -108,6 +108,37 @@ TEST(DiveMode, DiveModeDisengagedIfServiceStopped)
 }
 
 
+/// Disabling UW_DIVE_MODE_ENABLE while the state is Engaged must NOT leave
+/// the reed paused at the next surface. The previous gating on
+/// `service_is_enabled()` would silently drop surface events if the user
+/// disabled dive mode mid-engaged via DTE — leaving the magnet inert.
+TEST(DiveMode, DiveModeDisengagesEvenIfDisabledMidCycle)
+{
+	unsigned int start_period = 10;
+
+	configuration_store->write_param(ParamID::UW_DIVE_MODE_ENABLE, (bool)true);
+	configuration_store->write_param(ParamID::UW_DIVE_MODE_START_TIME, start_period);
+
+	DiveModeService s(fake_switch);
+	s.start();
+
+	// Engage normally
+	notify_underwater_state(true);
+	advance_time(s.get_last_schedule());
+	CHECK_TRUE(fake_switch.is_paused());
+
+	// User disables dive mode via DTE while Engaged
+	configuration_store->write_param(ParamID::UW_DIVE_MODE_ENABLE, (bool)false);
+
+	// Next surface must still resume the reed despite param being now false
+	notify_underwater_state(false);
+	CHECK_FALSE(fake_switch.is_paused());
+
+	s.stop();
+	CHECK_FALSE(fake_switch.is_paused());
+}
+
+
 /// Surfacing BEFORE the start timer fires must cancel the pending state and
 /// must NOT pause the reed when the timer eventually fires. Otherwise the
 /// magnet stays inert at the surface — see dive_mode_service.hpp StartPending
