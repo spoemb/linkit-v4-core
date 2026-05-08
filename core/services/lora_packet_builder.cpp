@@ -60,18 +60,17 @@ unsigned int LoRaPacketBuilder::convert_altitude(double x) {
 
 unsigned int LoRaPacketBuilder::max_gps_entries(unsigned int max_payload_bytes) {
 	unsigned int max_bits = max_payload_bytes * BITS_PER_BYTE;
-	// Header(14) + count(4) + delta(4) + first_gps(86) = 108 bits minimum
-	unsigned int overhead_bits = BITS_HEADER + BITS_GPS_COUNT + BITS_DELTA_TIME + BITS_GPS_FULL;
+	// GPS_MULTI v2 overhead: header(14) + count(4) + first_gps_full(86) = 104 bits
+	unsigned int overhead_bits = BITS_HEADER + BITS_GPS_COUNT + BITS_GPS_FULL;
 	if (max_bits < overhead_bits)
 		return 0;
-	// Each additional entry is 50 bits
+	// Each additional delta entry is 66 bits (lat + lon + speed + delta_t_min)
 	unsigned int remaining = max_bits - overhead_bits;
 	return 1 + remaining / BITS_GPS_DELTA;
 }
 
 KineisPacket LoRaPacketBuilder::build_gps_packet(std::vector<GPSLogEntry*>& v,
 		bool is_out_of_zone, bool is_low_battery,
-		BaseDeltaTimeLoc delta_time_loc,
 		unsigned int max_payload_bytes,
 		unsigned int& size_bits) {
 
@@ -80,8 +79,14 @@ KineisPacket LoRaPacketBuilder::build_gps_packet(std::vector<GPSLogEntry*>& v,
 	unsigned int max_entries = max_gps_entries(max_payload_bytes);
 	unsigned int num_entries = std::min((unsigned int)v.size(), std::min(max_entries, 15U));
 
-	// Compute packet size
-	size_bits = BITS_HEADER + BITS_GPS_COUNT + BITS_DELTA_TIME + BITS_GPS_FULL;
+	// `retrieve()` produces oldest-first; GPS_MULTI v2 emits newest-first so
+	// entry[0] carries the absolute timestamp and subsequent entries encode
+	// minutes-back deltas. Reverse only the working window we actually emit.
+	if (num_entries > 0)
+		std::reverse(v.begin(), v.begin() + num_entries);
+
+	// Compute packet size — GPS_MULTI v2 has no global delta_time field.
+	size_bits = BITS_HEADER + BITS_GPS_COUNT + BITS_GPS_FULL;
 	if (num_entries > 1)
 		size_bits += (num_entries - 1) * BITS_GPS_DELTA;
 
@@ -102,7 +107,7 @@ KineisPacket LoRaPacketBuilder::build_gps_packet(std::vector<GPSLogEntry*>& v,
 	                     ((valid ? 1U : 0U) << 1);
 	PACK_BITS(flags, packet, base_pos, BITS_FLAGS);
 
-	// Voltage from first entry (or 0)
+	// Voltage from newest entry (or 0)
 	unsigned int batt = 0;
 	if (num_entries > 0)
 		batt = convert_battery_voltage((unsigned int)v[0]->info.batt_voltage);
@@ -111,10 +116,7 @@ KineisPacket LoRaPacketBuilder::build_gps_packet(std::vector<GPSLogEntry*>& v,
 	// GPS count
 	PACK_BITS(num_entries, packet, base_pos, BITS_GPS_COUNT);
 
-	// Delta time loc
-	PACK_BITS((unsigned int)delta_time_loc, packet, base_pos, BITS_DELTA_TIME);
-
-	// First GPS entry (full with timestamp)
+	// Newest entry — full record with absolute timestamp
 	if (num_entries > 0) {
 		GPSLogEntry* gps = v[0];
 		uint16_t year;
@@ -152,7 +154,8 @@ KineisPacket LoRaPacketBuilder::build_gps_packet(std::vector<GPSLogEntry*>& v,
 		}
 	}
 
-	// Subsequent GPS entries (delta: lat + lon + speed only)
+	// Older entries — lat + lon + speed + per-entry minutes-back delta.
+	// delta is computed against the PREVIOUS entry (one step closer to "now").
 	for (unsigned int i = 1; i < num_entries; i++) {
 		GPSLogEntry* gps = v[i];
 		if (gps->info.valid) {
@@ -167,6 +170,21 @@ KineisPacket LoRaPacketBuilder::build_gps_packet(std::vector<GPSLogEntry*>& v,
 			PACK_BITS(0x3FFFFF, packet, base_pos, BITS_LONGITUDE);
 			PACK_BITS(0x7F, packet, base_pos, BITS_SPEED);
 		}
+
+		std::time_t prev_t = v[i - 1]->info.schedTime;
+		std::time_t curr_t = v[i]->info.schedTime;
+		unsigned int delta_t_min;
+		if (prev_t <= curr_t) {
+			// Out-of-order or equal timestamps — emit zero rather than a huge wraparound.
+			delta_t_min = 0;
+		} else {
+			std::time_t delta_s = prev_t - curr_t;
+			std::time_t delta_m = delta_s / 60;
+			delta_t_min = (delta_m >= (std::time_t)DELTA_T_MIN_MAX)
+			              ? DELTA_T_MIN_MAX
+			              : (unsigned int)delta_m;
+		}
+		PACK_BITS(delta_t_min, packet, base_pos, BITS_DELTA_T_MIN);
 	}
 
 	DEBUG_INFO("LoRaPacketBuilder::build_gps_packet: entries=%u data=%s sz=%u bits",

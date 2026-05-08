@@ -466,7 +466,6 @@ void LoRaTxService::process_gps_burst() {
 
 			packet = LoRaPacketBuilder::build_gps_packet(v,
 					argos_config.is_out_of_zone, argos_config.is_lb,
-					argos_config.delta_time_loc,
 					max_payload,
 					size_bits);
 		}

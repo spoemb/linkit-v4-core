@@ -50,7 +50,7 @@ public:
 	static constexpr unsigned int BITS_FLAGS       = 4;
 	static constexpr unsigned int BITS_VOLTAGE     = 7;
 	static constexpr unsigned int BITS_GPS_COUNT   = 4;
-	static constexpr unsigned int BITS_DELTA_TIME  = 4;
+	static constexpr unsigned int BITS_DELTA_T_MIN = 16;  ///< Per-entry minutes-back, GPS_MULTI v2
 	static constexpr unsigned int BITS_DAY         = 5;
 	static constexpr unsigned int BITS_HOUR        = 5;
 	static constexpr unsigned int BITS_MIN         = 6;
@@ -85,7 +85,9 @@ public:
 	static constexpr unsigned int BITS_HEADER      = BITS_PKT_TYPE + BITS_FLAGS + BITS_VOLTAGE;
 	static constexpr unsigned int BITS_FASTLOC_QUALITY = BITS_FIXTYPE + BITS_HACC + BITS_VACC + BITS_PDOP + BITS_HDOP + BITS_ONTIME;
 	static constexpr unsigned int BITS_GPS_FULL    = BITS_DAY + BITS_HOUR + BITS_MIN + BITS_LATITUDE + BITS_LONGITUDE + BITS_SPEED + BITS_HEADING + BITS_ALTITUDE + BITS_NUMSV;
-	static constexpr unsigned int BITS_GPS_DELTA   = BITS_LATITUDE + BITS_LONGITUDE + BITS_SPEED;
+	/// @brief GPS_MULTI v2 delta entry: lat + lon + speed + per-entry delta_t (minutes back).
+	static constexpr unsigned int BITS_GPS_DELTA   = BITS_LATITUDE + BITS_LONGITUDE + BITS_SPEED + BITS_DELTA_T_MIN;
+	static constexpr unsigned int DELTA_T_MIN_MAX  = 0xFFFFu;  ///< Sentinel for "≥ ~45 days"
 	static constexpr unsigned int BITS_AXL_FULL    = BITS_AXL_TEMP + (3 * BITS_AXL_AXIS) + BITS_AXL_ACT;
 	static constexpr unsigned int BITS_PRESSURE_FULL = BITS_PRESSURE + BITS_PRESS_TEMP;
 	static constexpr unsigned int BITS_PER_BYTE    = 8;
@@ -127,10 +129,16 @@ public:
 
 	// === Packet builders ===
 
-	/// @brief Build GPS packet (single or multi-fix).
+	/// @brief Build GPS packet (single or multi-fix, GPS_MULTI v2 layout).
+	///
+	/// Multi-fix layout: entry[0] is the MOST RECENT fix (full timestamp).
+	/// Subsequent entries carry their position plus a 16-bit `DELTA_T_MIN`
+	/// field giving how many minutes earlier they occurred relative to the
+	/// previous entry. The input vector `v` is expected in oldest-first order
+	/// (as produced by `DepthPile::retrieve()`); the builder reverses it
+	/// internally to emit newest-first on the wire.
 	static KineisPacket build_gps_packet(std::vector<GPSLogEntry*>& v,
 			bool is_out_of_zone, bool is_low_battery,
-			BaseDeltaTimeLoc delta_time_loc,
 			unsigned int max_payload_bytes,
 			unsigned int& size_bits);
 

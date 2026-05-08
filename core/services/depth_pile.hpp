@@ -38,6 +38,18 @@ public:
 		m_entry.clear();
 	}
 
+	/// @brief Resize the cap and evict oldest entries if currently over the new limit.
+	/// Eviction is unconditional — entries with non-zero burst_counter (pending retries)
+	/// are sacrificed in favor of fresher data. This matches the LoRa SURFACING_BURST
+	/// usage where short surfacings cannot finish a full retry burst, and keeping stale
+	/// entries in RAM has no value.
+	void set_max_size(unsigned int n) {
+		if (n == 0) n = 1;  // safety: never allow a zero-cap pile
+		m_max_size = n;
+		while (m_entry.size() > m_max_size)
+			m_entry.pop_front();
+	}
+
 	void store(T& e, unsigned int burst_count) {
 		m_entry.push_back(Entry(e, burst_count));
 		if (m_entry.size() > m_max_size)

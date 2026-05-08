@@ -161,6 +161,20 @@ void DepthPileManager::update_depth_pile() {
 		// Get the required burst counter
 		ArgosConfig argos_config;
 		configuration_store->get_argos_configuration(argos_config);
+
+		// Apply ARGOS_DEPTH_PILE as the effective cap for every pile. Older
+		// entries (pending retries included) are evicted when the cap shrinks
+		// or when a new fix arrives on a full pile — see DepthPile::set_max_size().
+		unsigned int max_size = (unsigned int)argos_config.depth_pile;
+		m_gps_depth_pile.set_max_size(max_size);
+		m_als_depth_pile.set_max_size(max_size);
+		m_ph_depth_pile.set_max_size(max_size);
+		m_pressure_depth_pile.set_max_size(max_size);
+		m_sea_temp_depth_pile.set_max_size(max_size);
+#if ENABLE_AXL_SENSOR
+		m_axl_depth_pile.set_max_size(max_size);
+#endif
+
 		unsigned int burst_counter;
 		if (argos_config.mode == BaseArgosMode::DUTY_CYCLE ||
 			argos_config.mode == BaseArgosMode::LEGACY) {
