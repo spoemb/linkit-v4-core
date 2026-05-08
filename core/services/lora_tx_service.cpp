@@ -228,6 +228,24 @@ void LoRaTxService::service_initiate() {
 		m_first_gnss_tx_sent = true;
 	}
 
+	// Defensive: if m_scheduled_task wasn't set in the current code path
+	// (e.g., reschedule(immediate=true) which bypasses service_next_schedule_in_ms),
+	// pick a sane default based on current state instead of calling an empty
+	// std::function (which throws bad_function_call).
+	if (!m_scheduled_task) {
+		DEBUG_WARN("LoRaTxService::service_initiate: m_scheduled_task empty — falling back to status burst");
+		if (m_has_gnss_fix_since_surfacing && m_depth_pile_manager.eligible()) {
+			ArgosConfig argos_config;
+			configuration_store->get_argos_configuration(argos_config);
+			if (argos_config.sensor_tx_enable) {
+				m_scheduled_task = [this]() { process_sensor_burst(); };
+			} else {
+				m_scheduled_task = [this]() { process_gps_burst(); };
+			}
+		} else {
+			m_scheduled_task = [this]() { process_status_burst(); };
+		}
+	}
 	m_scheduled_task();
 }
 
@@ -400,6 +418,13 @@ void LoRaTxService::notify_peer_event(ServiceEvent& e) {
 				m_has_gnss_fix_since_surfacing = false;
 				m_first_gnss_tx_sent = false;
 				m_is_first_tx = true;
+				// `Service::notify_peer_event` below will trigger `reschedule(true)`
+				// (immediate=true for SURFACING_BURST). When immediate=true the base
+				// class SKIPS `service_next_schedule_in_ms()` — which is where
+				// `m_scheduled_task` is normally assigned. Pre-assign here so
+				// `service_initiate()` doesn't call an empty std::function and
+				// throw `bad_function_call`.
+				m_scheduled_task = [this]() { process_status_burst(); };
 				DEBUG_INFO("LoRaTxService::SURFACING_BURST: surface detected — starting status burst");
 			}
 		}
