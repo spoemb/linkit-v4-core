@@ -156,9 +156,16 @@ extern RGBLed *status_led;
 SWSAnalogService::CalibrationData SWSAnalogService::m_calib;
 uint16_t SWSAnalogService::m_observed_peak_adc;
 uint16_t SWSAnalogService::m_observed_peak_crc;
+SWSAnalogService::Diagnostics SWSAnalogService::m_diag;
+uint16_t SWSAnalogService::m_diag_crc;
 SWSAnalogService::Status SWSAnalogService::m_status = {};
 SWSAnalogService* SWSAnalogService::s_instance = nullptr;
 bool SWSAnalogService::m_test_mode = false;
+uint64_t SWSAnalogService::m_test_mode_start_time = 0;
+uint64_t SWSAnalogService::m_test_timeout_ms = SWSAnalogService::TEST_TIMEOUT_DEFAULT_MS;
+uint32_t SWSAnalogService::m_heartbeat_warn_uw_sec = SWSAnalogService::HEARTBEAT_WARN_UW_DEFAULT_SEC;
+uint32_t SWSAnalogService::m_heartbeat_warn_surf_sec = SWSAnalogService::HEARTBEAT_WARN_SURF_DEFAULT_SEC;
+uint64_t SWSAnalogService::m_last_heartbeat_warn_time = 0;
 SWSAnalogService::CalibPhase SWSAnalogService::m_calib_phase = SWSAnalogService::CalibPhase::IDLE;
 uint32_t SWSAnalogService::m_calib_sum = 0;
 uint8_t SWSAnalogService::m_calib_count = 0;
@@ -180,9 +187,60 @@ SWSAnalogService::Status SWSAnalogService::get_status() {
     return m_status;
 }
 
+// ═══════════════════════════════════════════════════════
+//  PERSISTENT DIAGNOSTIC COUNTERS (audit 2026-05 R-MON-01)
+// ═══════════════════════════════════════════════════════
+
+/// @brief Read current persistent counters (for DTE SWSSTATS).
+SWSAnalogService::Diagnostics SWSAnalogService::get_diagnostics() {
+    return m_diag;
+}
+
+/// @brief Reset all counters to zero (DTE-callable).
+void SWSAnalogService::clear_diagnostics() {
+    memset(&m_diag, 0, sizeof(m_diag));
+    update_diagnostics_crc();
+    DEBUG_INFO("SWSAnalog: Diagnostics cleared");
+}
+
+/// @brief Validate noinit Diagnostics via CRC16. Zero on corruption.
+/// Called from service_init() after the calibration validation pass.
+void SWSAnalogService::validate_diagnostics() {
+    uint16_t calc = crc16_compute((const uint8_t *)&m_diag, sizeof(m_diag), nullptr);
+    if (calc != m_diag_crc) {
+        memset(&m_diag, 0, sizeof(m_diag));
+        update_diagnostics_crc();
+        DEBUG_INFO("SWSAnalog: Diagnostics CRC invalid — cleared");
+    } else {
+        DEBUG_INFO("SWSAnalog: Diagnostics restored from noinit "
+                   "stuck=%u coh=%u div=%u force=%u spike=%u peak=%u saadc=%u",
+                   m_diag.stuck_recovery_count, m_diag.coherence_recalib_count,
+                   m_diag.dive_timeout_count, m_diag.force_surface_count,
+                   m_diag.spike_reject_count, m_diag.peak_incoherent_count,
+                   m_diag.saadc_init_retry_count);
+    }
+}
+
+/// @brief Recompute m_diag_crc — call after any counter mutation.
+void SWSAnalogService::update_diagnostics_crc() {
+    m_diag_crc = crc16_compute((const uint8_t *)&m_diag, sizeof(m_diag), nullptr);
+}
+
+/// @brief Saturating increment of a Diagnostics counter (no wrap).
+void SWSAnalogService::inc_diag(uint16_t &counter) {
+    if (counter < UINT16_MAX) {
+        counter++;
+        update_diagnostics_crc();
+    }
+}
+
 /// @brief Start SWS test mode — force-enable service, LED feedback on state changes.
 void SWSAnalogService::start_test_mode() {
     m_test_mode = true;
+    // Capture wall-clock start so detector_state() can auto-stop after
+    // m_test_timeout_ms — protects against forgotten test mode draining
+    // battery on a deployed unit (DTE SWSTST,1 without a follow-up SWSTST,0).
+    m_test_mode_start_time = PMU::get_timestamp_ms();
     if (s_instance) {
         DEBUG_INFO("SWSAnalog: Test mode started");
         s_instance->start();
@@ -194,6 +252,19 @@ void SWSAnalogService::start_test_mode() {
                 status_led->set(RGBLedColor::YELLOW);  // SURFACE
         }
     }
+}
+
+/// @brief Configure test-mode auto-stop timeout (0 = disabled).
+void SWSAnalogService::set_test_timeout_ms(uint64_t ms) {
+    m_test_timeout_ms = ms;
+}
+
+/// @brief Configure heartbeat WARN thresholds (audit 2026-05 R-CODE-04).
+/// @param uw_sec    Seconds without state change in UW before WARN (0 = disabled)
+/// @param surf_sec  Seconds without state change in SURF before WARN (0 = disabled)
+void SWSAnalogService::set_heartbeat_thresholds_sec(uint32_t uw_sec, uint32_t surf_sec) {
+    m_heartbeat_warn_uw_sec = uw_sec;
+    m_heartbeat_warn_surf_sec = surf_sec;
 }
 
 /// @brief Stop SWS test mode — turn off LED, invoke on_test_stop callback.
@@ -329,7 +400,21 @@ void SWSAnalogService::service_init() {
 #ifndef CPPUTEST
     nrfx_saadc_init(&BSP::ADC_Inits.config, nrfx_saadc_event_handler_sws);
     nrfx_saadc_calibrate_offset();
-    while (nrfx_saadc_is_busy()) {}
+    // Audit 2026-05 R-CODE-05: timeout-guarded busy wait. Nominal calibration
+    // completes in <1ms; the 100ms ceiling catches a hung SAADC peripheral
+    // (HW failure, brown-out) without bricking the boot. We proceed anyway —
+    // a less-accurate offset is far better than a boot loop.
+    {
+        uint64_t saadc_wait_start = PMU::get_timestamp_ms();
+        constexpr uint64_t SAADC_CALIB_TIMEOUT_MS = 100;
+        while (nrfx_saadc_is_busy()) {
+            if ((PMU::get_timestamp_ms() - saadc_wait_start) >= SAADC_CALIB_TIMEOUT_MS) {
+                DEBUG_ERROR("SWSAnalog: SAADC offset calibration timeout (%llums) — continuing without precise offset",
+                            (unsigned long long)SAADC_CALIB_TIMEOUT_MS);
+                break;
+            }
+        }
+    }
     nrfx_saadc_uninit();
     nrf_peripheral_power_reset(NRF_SAADC_BASE_ADDR);  // Errata 241: prevent 400 µA idle leak
 #endif
@@ -367,6 +452,9 @@ void SWSAnalogService::service_init() {
     } else {
         DEBUG_INFO("SWSAnalog: Observed peak ADC=%u (from noinit)", m_observed_peak_adc);
     }
+
+    // Validate persistent diagnostic counters (audit 2026-05 R-MON-01)
+    validate_diagnostics();
 
     // Validate or initialize calibration from noinit RAM
     if (!validate_calibration_data()) {
@@ -447,6 +535,15 @@ unsigned int SWSAnalogService::service_next_schedule_in_ms() {
 
 /// @brief Read one ADC sample from SWS channel with configurable RC charge delay.
 /// @return Raw 14-bit ADC value (0-16383), or ADC_READ_ERROR on failure.
+///
+/// Power-rail dependency (audit 2026-05 R-DOC-01 / R-08 neutralized):
+///   The SAADC and the SWS RC charge circuit require VSENSORS to be powered.
+///   The main loop in ports/nrf52840/main.cpp:1077-1086 guarantees that
+///   PMU::restore_power_rails() is called BEFORE system_scheduler->run() any
+///   time the scheduler is about to fire a task (idle threshold 5s). Since
+///   SWSAnalogService is invoked via the scheduler, this function always runs
+///   with VSENSORS powered up — there is no risk of reading garbage from a
+///   floating analog frontend during deep idle.
 uint16_t SWSAnalogService::read_analog_sws() {
 #ifdef CPPUTEST
     // Test stub — drive the SAADC fake so SAADC::set_adc_value(NNN) is observable
@@ -471,6 +568,7 @@ uint16_t SWSAnalogService::read_analog_sws() {
 
     nrfx_err_t init_err = nrfx_saadc_init(&BSP::ADC_Inits.config, nrfx_saadc_event_handler_sws);
     if (init_err == NRFX_ERROR_INVALID_STATE) {
+        inc_diag(m_diag.saadc_init_retry_count);
         nrfx_saadc_uninit();
         nrf_peripheral_power_reset(NRF_SAADC_BASE_ADDR);
         init_err = nrfx_saadc_init(&BSP::ADC_Inits.config, nrfx_saadc_event_handler_sws);

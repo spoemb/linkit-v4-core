@@ -176,6 +176,7 @@ public:
 	static std::string SWSST_REQ(int error_code);
 	std::string SWSTST_REQ(int error_code, std::vector<BaseType>& arg_list);
 	std::string SWSCAL_REQ(int error_code, std::vector<BaseType>& arg_list);
+	static std::string SWSSTATS_REQ(int error_code, std::vector<BaseType>& arg_list);
 	std::string GNSSBR_REQ(int error_code, std::vector<BaseType>& arg_list);
 	std::string GNSSI_REQ(int error_code);
 	static std::string GNSSA_REQ(int error_code);

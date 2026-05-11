@@ -105,6 +105,29 @@ public:
     static Status get_status();
 
     /**
+     * @brief Persistent diagnostic counters — track defense-in-depth firings.
+     *
+     * Stored in noinit RAM with CRC. Survives soft reset (WDT, brown-out) but
+     * NOT cold reset / power-on. Saturate at UINT16_MAX (no wrap) so a
+     * recovered tracker exposes a true minimum count.
+     *
+     * Read via DTE SWSSTATS, reset via clear_diagnostics() (DTE-callable).
+     * Use these to assess post-deployment health (e.g. abnormally high
+     * stuck_recovery_count signals electrode degradation).
+     */
+    struct Diagnostics {
+        uint16_t stuck_recovery_count;     // Path B6: air-collapse forced recalibrations
+        uint16_t coherence_recalib_count;  // First-sample + continuous coherence recalibs
+        uint16_t dive_timeout_count;       // UW_MAX_DIVE_TIME elapsed without surface
+        uint16_t force_surface_count;      // Escalation force-surfaces (3 consec timeouts)
+        uint16_t spike_reject_count;       // Peak resets after 10 consecutive rejects
+        uint16_t peak_incoherent_count;    // Peak > water*5 coherence resets
+        uint16_t saadc_init_retry_count;   // SAADC re-init after NRFX_ERROR_INVALID_STATE
+    };
+    static Diagnostics get_diagnostics();
+    static void clear_diagnostics();
+
+    /**
      * @brief Test mode API: start/stop SWS independently of config (DTE SWSTST command)
      *
      * start_test_mode() forces the service enabled and begins sampling.
@@ -115,6 +138,40 @@ public:
     static void start_test_mode();
     static void stop_test_mode();
     static bool is_test_running();
+
+    /// Default test-mode auto-stop timeout (1h). Acts as a battery-drain
+    /// safety net if the operator forgets to send SWSTST,0 before deployment.
+    static constexpr uint64_t TEST_TIMEOUT_DEFAULT_MS = 3600UL * 1000UL;
+
+    /**
+     * @brief Configure auto-stop timeout for test mode (DTE SWSTST,1).
+     * @param ms  Timeout in milliseconds. 0 = disabled (no auto-stop).
+     *
+     * Default is TEST_TIMEOUT_DEFAULT_MS (1h). The configured timeout takes
+     * effect immediately for the current test session (the start time is
+     * captured at start_test_mode()).
+     */
+    static void set_test_timeout_ms(uint64_t ms);
+
+    /// Default heartbeat WARNING thresholds (audit 2026-05 R-CODE-04).
+    /// A turtle can legitimately stay submerged for hours and at the surface
+    /// for days, so these are generous; the WARN is observability-only.
+    static constexpr uint32_t HEARTBEAT_WARN_UW_DEFAULT_SEC   = 6UL * 3600UL;   // 6h
+    static constexpr uint32_t HEARTBEAT_WARN_SURF_DEFAULT_SEC = 48UL * 3600UL;  // 48h
+    /// Minimum interval between repeated heartbeat WARN emissions for the
+    /// same state period. Avoids log flooding.
+    static constexpr uint32_t HEARTBEAT_WARN_REPEAT_SEC       = 3600UL;         // 1h
+
+    /**
+     * @brief Configure heartbeat WARNING thresholds.
+     * @param uw_sec   Seconds without state change in UW before WARN (0 = disabled)
+     * @param surf_sec Seconds without state change in SURF before WARN (0 = disabled)
+     *
+     * Pure observability — no automatic action is taken. Emitted via
+     * DEBUG_WARN so the warning ends up in the persistent system.log for
+     * post-deployment forensics.
+     */
+    static void set_heartbeat_thresholds_sec(uint32_t uw_sec, uint32_t surf_sec);
 
     /**
      * @brief Guided calibration: LED-assisted air/water measurement
@@ -162,6 +219,20 @@ public:
 #endif
 
 #ifdef CPPUTEST
+    /// Test-only: simulate a post-reboot timestamp regression by writing
+    /// directly into m_calib.last_calibration_time. Used by R-TEST-06
+    /// (audit 2026-05 R-CODE-06 underflow guard verification).
+    /// CRC is intentionally NOT recomputed — should_recalibrate() does not
+    /// validate the CRC, and a subsequent service stop+start would invalidate
+    /// the noinit data anyway.
+    static void test_set_last_calibration_time(uint64_t t_sec) {
+        m_calib.last_calibration_time = t_sec;
+    }
+    /// Test-only: expose should_recalibrate() result.
+    static bool test_should_recalibrate() {
+        return s_instance ? s_instance->should_recalibrate() : false;
+    }
+
     // Reset static calibration data for test isolation. Covers ALL static
     // members so a previous test's leftovers cannot pollute the next test
     // (FlashPersistence and CoherenceCheck regress without this).
@@ -169,9 +240,16 @@ public:
         memset(&m_calib, 0, sizeof(m_calib));
         m_observed_peak_adc = 0;
         m_observed_peak_crc = 0;
+        memset(&m_diag, 0, sizeof(m_diag));
+        m_diag_crc = 0;
         m_status = {};
         s_instance = nullptr;
         m_test_mode = false;
+        m_test_mode_start_time = 0;
+        m_test_timeout_ms = TEST_TIMEOUT_DEFAULT_MS;
+        m_heartbeat_warn_uw_sec = HEARTBEAT_WARN_UW_DEFAULT_SEC;
+        m_heartbeat_warn_surf_sec = HEARTBEAT_WARN_SURF_DEFAULT_SEC;
+        m_last_heartbeat_warn_time = 0;
         m_status_notify = nullptr;
         m_on_test_stop = nullptr;
         m_calib_phase = CalibPhase::IDLE;
@@ -236,6 +314,12 @@ private:
     // Test mode support
     static SWSAnalogService* s_instance;
     static bool m_test_mode;
+    static uint64_t m_test_mode_start_time;  // PMU::get_timestamp_ms() at start_test_mode()
+    static uint64_t m_test_timeout_ms;       // Auto-stop after this many ms (0 = disabled)
+    // Heartbeat WARN (R-CODE-04) — pure observability, no auto-action
+    static uint32_t m_heartbeat_warn_uw_sec;
+    static uint32_t m_heartbeat_warn_surf_sec;
+    static uint64_t m_last_heartbeat_warn_time;  // PMU sec, 0 = no warn yet for this period
     static std::function<void(const Status&)> m_status_notify;
     static std::function<void()> m_on_test_stop;
 #if ENABLE_SWS_LOG
@@ -273,6 +357,18 @@ private:
     // Used to cap water baseline estimates when calibrating from air with wet electrodes
     static uint16_t m_observed_peak_adc __attribute__((section(".noinit")));
     static uint16_t m_observed_peak_crc __attribute__((section(".noinit")));
+
+    // Diagnostic counters in noinit RAM (audit 2026-05 R-MON-01).
+    // Separate from CalibrationData to avoid touching the existing CRC scheme.
+    static Diagnostics m_diag __attribute__((section(".noinit")));
+    static uint16_t m_diag_crc __attribute__((section(".noinit")));
+
+    // Validate / initialize m_diag on service init (CRC check, zero on corruption).
+    static void validate_diagnostics();
+    // Recompute and store m_diag_crc — call after every counter mutation.
+    static void update_diagnostics_crc();
+    // Saturating increment (no wrap at UINT16_MAX) + CRC refresh.
+    static void inc_diag(uint16_t &counter);
 
     // History buffer for moving average filter
     // Optimized: smaller buffer = faster response

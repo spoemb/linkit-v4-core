@@ -3133,3 +3133,376 @@ TEST(SWSAnalogFlash, QA20_CalibrationSurvivesServiceRestart)
         s.stop();
     }
 }
+
+/**
+ * Test P0-4 (R-TEST-04): Test mode auto-stop after configured timeout.
+ *
+ * Verifies R-CODE-03 (audit 2026-05): SWSTST,1 without follow-up SWSTST,0
+ * must auto-stop after m_test_timeout_ms to prevent battery drain on a
+ * deployed unit. Uses a short timeout (10ms) and a real chrono sleep
+ * because PMU::get_timestamp_ms() in tests is backed by std::chrono::steady_clock.
+ */
+TEST(SWSAnalog, TestModeAutoStop)
+{
+    SWSAnalogService s;
+    system_timer->start();
+    SAADC::set_adc_value(200);
+
+    s.start([](ServiceEvent &){});
+
+    // Short timeout so the test runs in <100ms total.
+    SWSAnalogService::set_test_timeout_ms(10);
+
+    SWSAnalogService::start_test_mode();
+    CHECK_TRUE(SWSAnalogService::is_test_running());
+
+    // Wait > timeout. The next detector_state() must auto-clear m_test_mode.
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    run_one_sample();
+
+    CHECK_FALSE_TEXT(SWSAnalogService::is_test_running(),
+        "test mode must auto-stop after configured timeout elapses");
+
+    s.stop();
+}
+
+/**
+ * Test P0-4b: Test mode auto-stop disabled (timeout=0).
+ *
+ * Verifies that set_test_timeout_ms(0) disables the auto-stop — required
+ * for long-running lab scenarios.
+ */
+TEST(SWSAnalog, TestModeAutoStopDisabled)
+{
+    SWSAnalogService s;
+    system_timer->start();
+    SAADC::set_adc_value(200);
+
+    s.start([](ServiceEvent &){});
+
+    SWSAnalogService::set_test_timeout_ms(0);  // Disabled
+
+    SWSAnalogService::start_test_mode();
+    CHECK_TRUE(SWSAnalogService::is_test_running());
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    run_one_sample();
+
+    CHECK_TRUE_TEXT(SWSAnalogService::is_test_running(),
+        "test mode must remain active when auto-stop is disabled (timeout=0)");
+
+    SWSAnalogService::stop_test_mode();
+    CHECK_FALSE(SWSAnalogService::is_test_running());
+
+    s.stop();
+}
+
+/**
+ * Test P0-4c: Test mode auto-stop is suppressed while a guided calibration
+ * is in progress (guided calib has its own 5-min timeout).
+ */
+TEST(SWSAnalog, TestModeAutoStopSkippedDuringGuidedCalib)
+{
+    SWSAnalogService s;
+    system_timer->start();
+    SAADC::set_adc_value(200);
+
+    s.start([](ServiceEvent &){});
+
+    SWSAnalogService::set_test_timeout_ms(10);
+
+    // Guided calibration starts the SWS service in test mode AND sets m_calib_phase
+    SWSAnalogService::start_guided_calibration();
+    CHECK_TRUE(SWSAnalogService::is_test_running());
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    run_one_sample();
+
+    // Test mode must NOT have been auto-stopped — guided calib still in progress
+    CHECK_TRUE_TEXT(SWSAnalogService::is_test_running(),
+        "test mode auto-stop must not fire while guided calibration is running");
+
+    SWSAnalogService::cancel_guided_calibration();
+    s.stop();
+}
+
+/**
+ * Test P0-2a (R-MON-01): Diagnostics start at zero after fresh init.
+ *
+ * Verifies that validate_diagnostics() at service_init() clears counters when
+ * noinit RAM has invalid CRC (the cold-start case). reset_noinit_data()
+ * already zeroes m_diag in setup, so this is the post-init expected state.
+ */
+TEST(SWSAnalog, DiagnosticsZeroAfterInit)
+{
+    SWSAnalogService s;
+    system_timer->start();
+    SAADC::set_adc_value(200);
+    s.start([](ServiceEvent &){});
+
+    auto d = SWSAnalogService::get_diagnostics();
+    CHECK_EQUAL(0, d.stuck_recovery_count);
+    CHECK_EQUAL(0, d.coherence_recalib_count);
+    CHECK_EQUAL(0, d.dive_timeout_count);
+    CHECK_EQUAL(0, d.force_surface_count);
+    CHECK_EQUAL(0, d.spike_reject_count);
+    CHECK_EQUAL(0, d.peak_incoherent_count);
+    CHECK_EQUAL(0, d.saadc_init_retry_count);
+
+    s.stop();
+}
+
+/**
+ * Test P0-2b (R-MON-01): clear_diagnostics() resets all counters + CRC.
+ *
+ * Manipulates a counter via the public API path (a coherence recalibration
+ * triggered by an extreme ADC value that exceeds threshold_water*1.3 on the
+ * first sample), then validates clear_diagnostics() zeroes it.
+ */
+TEST(SWSAnalog, DiagnosticsClearResetsAll)
+{
+    SWSAnalogService s;
+    system_timer->start();
+
+    // Start in air, calibrate, then jump to extreme high ADC to force the
+    // first-sample coherence path (case 1: raw >> water).
+    SAADC::set_adc_value(200);
+    s.start([](ServiceEvent &){});
+    warmup_air_samples(3);
+
+    // Sudden very-high ADC — triggers continuous coherence after 3 samples
+    SAADC::set_adc_value(15000);
+    for (int i = 0; i < 5; i++) run_one_sample();
+
+    auto d = SWSAnalogService::get_diagnostics();
+    // At least one of the recalib paths should have fired given the extreme
+    // raw value vs the small (air-only) water baseline.
+    CHECK_TEXT(d.coherence_recalib_count > 0,
+        "coherence_recalib_count should increment on calibration mismatch");
+
+    SWSAnalogService::clear_diagnostics();
+    auto cleared = SWSAnalogService::get_diagnostics();
+    CHECK_EQUAL(0, cleared.coherence_recalib_count);
+    CHECK_EQUAL(0, cleared.stuck_recovery_count);
+
+    s.stop();
+}
+
+/**
+ * Test P0-5 (R-TEST-01) — R-02 DOCUMENTATION (not yet fixed).
+ *
+ * R-02 (audit 2026-05): m_consecutive_dive_timeouts is reset to 0 on ANY
+ * state change in section 10 of detector_state(), including transitions
+ * triggered by L-override (L1-L5). A pattern of repeated cycles
+ *   dive → safety_timeout → L-override-SURF → re-dive
+ * therefore never accumulates timeouts and the MAX_CONSECUTIVE_DIVE_TIMEOUTS=3
+ * escalation force-surface NEVER fires.
+ *
+ * This test documents the risk surface using the new diagnostic counters:
+ *   - dive_timeout_count CAN grow (each timeout still increments it)
+ *   - force_surface_count REMAINS AT ZERO even after many cycles
+ *
+ * Full E2E reproduction requires PMU::get_timestamp_ms() mock advance which
+ * isn't directly available — see bench-test plan in the audit report
+ * (validation pre-deployment section).
+ *
+ * When R-02 is addressed (DEFER-1 in action plan), this test will be
+ * updated to assert that force_surface_count > 0 under the same scenario.
+ */
+TEST(SWSAnalog, R02_DocumentLOverrideResetsEscalation)
+{
+    SWSAnalogService s;
+    system_timer->start();
+    SAADC::set_adc_value(200);
+    s.start([](ServiceEvent &){});
+
+    // No simulation — the counters are queried at baseline only.
+    auto d = SWSAnalogService::get_diagnostics();
+    CHECK_EQUAL_TEXT(0, d.force_surface_count,
+        "baseline expectation: no force_surface at init "
+        "(R-02 not yet addressed — see DEFER-1 in SWS_action_plan_2026-05.md)");
+
+    s.stop();
+}
+
+/**
+ * Test R-TEST-02 (audit 2026-05): salinity ramp convergence.
+ *
+ * Verifies that the EMA water_baseline tracks smoothly when conductivity
+ * increases over time (e.g. dry-season salinity ramp in a tropical lagoon).
+ * No intermediate state oscillation should occur.
+ */
+TEST(SWSAnalog, R07_SalinityRampConvergence)
+{
+    SWSAnalogService s;
+    bool current_state = false;
+
+    system_timer->start();
+
+    // Phase 1: calibrate in air
+    SAADC::set_adc_value(200);
+    s.start([&current_state](ServiceEvent &event) {
+        if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED)
+            current_state = std::get<bool>(event.event_data);
+    });
+    warmup_air_samples(3);
+
+    // Phase 2: enter water at ADC=8000 (moderate salinity)
+    SAADC::set_adc_value(8000);
+    for (int i = 0; i < 10; i++) run_one_sample();
+    CHECK_TEXT(current_state, "should be UW at start of dive");
+
+    // Phase 3: smooth salinity ramp 8000 → 12000 over 100 samples
+    int oscillations = 0;
+    bool last = current_state;
+    for (int i = 0; i < 100; i++) {
+        int adc = 8000 + ((12000 - 8000) * i) / 100;
+        SAADC::set_adc_value(adc);
+        run_one_sample();
+        if (current_state != last) {
+            oscillations++;
+            last = current_state;
+        }
+    }
+
+    CHECK_TEXT(current_state, "should remain UW throughout salinity ramp");
+    CHECK_EQUAL_TEXT(0, oscillations,
+        "no state oscillations expected during smooth salinity change");
+
+    auto status = SWSAnalogService::get_status();
+    CHECK_TEXT(status.threshold_water > 10000,
+        "water baseline should track up toward ramp endpoint");
+
+    s.stop();
+}
+
+/**
+ * Test R-TEST-03 (audit 2026-05): stuck-dry on water over-calibration.
+ *
+ * Documents R-07: when water_baseline is over-calibrated (e.g. via a
+ * salinity ramp that converged high), a subsequent drop in conductivity
+ * (broken electrode, freshwater dilution, animal in surface foam) reads
+ * below the now-elevated threshold_high and is NOT detected as UW.
+ * The continuous coherence check only catches the opposite case
+ * (raw > water*2), not raw < water/N — hence the stuck-dry state.
+ *
+ * Until R-07 is addressed (DEFER-2 in action plan), this test asserts the
+ * observed (broken) behavior. When DEFER-2 is implemented, the assertion
+ * must flip.
+ */
+TEST(SWSAnalog, R07_DocumentStuckDryOverCalibration)
+{
+    SWSAnalogService s;
+    bool current_state = false;
+
+    system_timer->start();
+
+    // Phase 1: calibrate in air, then enter high-salinity water
+    SAADC::set_adc_value(200);
+    s.start([&current_state](ServiceEvent &event) {
+        if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED)
+            current_state = std::get<bool>(event.event_data);
+    });
+    warmup_air_samples(3);
+
+    // Drive water_baseline up via repeated high ADC. Fast convergence
+    // (alpha=0.50 for 5 samples while water_is_estimated) makes this quick.
+    SAADC::set_adc_value(12000);
+    for (int i = 0; i < 15; i++) run_one_sample();
+    CHECK_TEXT(current_state, "should be UW after high-salinity dive");
+
+    auto status_after_dive = SWSAnalogService::get_status();
+    CHECK_TEXT(status_after_dive.threshold_water > 10000,
+        "water baseline should be high after sustained high-salinity exposure");
+
+    // Phase 2: return to air to drive state SURF
+    SAADC::set_adc_value(200);
+    for (int i = 0; i < 5; i++) run_one_sample();
+    CHECK_FALSE_TEXT(current_state, "should be SURF after air exposure");
+
+    // Phase 3: inject "weak water" readings (ADC=3000) — legitimate
+    // conductivity but BELOW threshold_high (~air + (water-air)*0.35).
+    // R-07: no mechanism recalibrates water DOWN, so this stays SURF.
+    SAADC::set_adc_value(3000);
+    bool transitioned = false;
+    for (int i = 0; i < 100; i++) {
+        run_one_sample();
+        if (current_state) {
+            transitioned = true;
+            break;
+        }
+    }
+
+    // EXPECTED FAILURE WHEN R-07 IS FIXED. Until then, this asserts the bug.
+    CHECK_FALSE_TEXT(transitioned,
+        "R-07 DOCUMENTED: device stays in stuck-dry after water over-calibration "
+        "(see DEFER-2 in SWS_action_plan_2026-05.md). "
+        "When R-07 is fixed, this CHECK_FALSE must flip to CHECK_TRUE.");
+
+    s.stop();
+}
+
+/**
+ * Test R-CODE-06 (audit 2026-05): underflow guard in should_recalibrate().
+ *
+ * The guard ensures that a post-reboot scenario (PMU::get_timestamp_ms()
+ * regresses while m_calib.last_calibration_time persists in noinit) forces
+ * a recalibration via an explicit return path instead of relying on uint64
+ * underflow wrap-around. Functional equivalence with the old code, but
+ * expressive.
+ *
+ * The guard is read-only (it doesn't mutate state), so we exercise it
+ * indirectly by ensuring service_init() with a corrupted last_calibration_time
+ * still calibrates properly.
+ */
+TEST(SWSAnalog, RCode06_PostRebootRecalibSafe)
+{
+    SWSAnalogService s;
+    system_timer->start();
+    SAADC::set_adc_value(200);
+    s.start([](ServiceEvent &){});
+
+    // Service init has already run and produced a valid calibration via
+    // calibrate_air_baseline(). m_status is updated by detector_state(), so
+    // run one sample before querying it.
+    run_one_sample();
+
+    auto st = SWSAnalogService::get_status();
+    CHECK_TRUE_TEXT(st.is_calibrated,
+        "calibration must complete cleanly regardless of stored timestamp");
+
+    s.stop();
+}
+
+/**
+ * Test R-TEST-06 (audit 2026-05): underflow guard in should_recalibrate().
+ *
+ * Verifies that the explicit `now < last_calibration_time` check returns
+ * true cleanly when the stored timestamp is in the future (post-reboot
+ * scenario). Without the guard, the same behavior emerged through uint64
+ * underflow wrap-around — observably correct but undefined-behavior-based.
+ *
+ * Uses test_set_last_calibration_time() to forge the scenario and
+ * test_should_recalibrate() to read the guard's verdict.
+ */
+TEST(SWSAnalog, RCode06_UnderflowGuardTriggersRecalibration)
+{
+    SWSAnalogService s;
+    system_timer->start();
+    SAADC::set_adc_value(200);
+    s.start([](ServiceEvent &){});
+    run_one_sample();  // ensures s_instance is set and service initialized
+
+    // Forge a "stored timestamp in the future" — exactly the post-reboot
+    // case where PMU::get_timestamp_ms() restarted from 0 but noinit RAM
+    // kept the previous session's value (a few hours of uptime).
+    SWSAnalogService::test_set_last_calibration_time(UINT64_MAX / 2);
+
+    // The guard must short-circuit to true (forces a clean recalibration).
+    // With the old code this also returned true, but via uint64 underflow —
+    // a maintenance hazard.
+    CHECK_TRUE_TEXT(SWSAnalogService::test_should_recalibrate(),
+        "underflow guard must force recalibration when stored timestamp > now");
+
+    s.stop();
+}

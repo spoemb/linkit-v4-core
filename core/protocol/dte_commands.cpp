@@ -473,6 +473,29 @@ const DTECommandMap command_map[] = {
 			}
 		}
 	},
+	// SWSSTATS - SWS persistent diagnostic counters (audit 2026-05 R-MON-02)
+	// Usage: $SWSSTATS#001;0\r (read) or $SWSSTATS#001;1\r (clear + read)
+	// Response: $O;SWSSTATS#007;<stuck_rec>,<coh_recalib>,<dive_to>,<force_surf>,
+	//                          <spike_rej>,<peak_incoh>,<saadc_retry>\r
+	// Counters survive soft reset (noinit RAM) but reset on cold reset / power-on.
+	// Saturate at 65535 (no wrap) so a recovered tracker exposes a true minimum.
+	{
+		.name = "SWSSTATS",
+		.command = DTECommand::SWSSTATS_REQ,
+		.prototype =
+		{
+			{
+				.name = "action",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 1U,  // 0=read, 1=clear+read
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	},
 	// GNSSBR - GNSS UART bridge/passthrough mode (direct u-blox access via USB)
 	// Usage: $GNSSBR#001;1\r (start) — exit by typing +++
 	{
@@ -1353,6 +1376,35 @@ const DTECommandMap command_map[] = {
 				.is_implemented = false,
 				.is_writable = false
 			}
+		}
+	},
+	// SWSSTATS response - persistent diagnostic counters (audit 2026-05 R-MON-02)
+	{
+		.name = "SWSSTATS",
+		.command = DTECommand::SWSSTATS_RESP,
+		.prototype =
+		{
+			{ .name = "stuck_recovery", .key = "", .encoding = BaseEncoding::UINT,
+			  .min_value = 0U, .max_value = 65535U, .permitted_values = {},
+			  .is_implemented = false, .is_writable = false },
+			{ .name = "coherence_recalib", .key = "", .encoding = BaseEncoding::UINT,
+			  .min_value = 0U, .max_value = 65535U, .permitted_values = {},
+			  .is_implemented = false, .is_writable = false },
+			{ .name = "dive_timeout", .key = "", .encoding = BaseEncoding::UINT,
+			  .min_value = 0U, .max_value = 65535U, .permitted_values = {},
+			  .is_implemented = false, .is_writable = false },
+			{ .name = "force_surface", .key = "", .encoding = BaseEncoding::UINT,
+			  .min_value = 0U, .max_value = 65535U, .permitted_values = {},
+			  .is_implemented = false, .is_writable = false },
+			{ .name = "spike_reject", .key = "", .encoding = BaseEncoding::UINT,
+			  .min_value = 0U, .max_value = 65535U, .permitted_values = {},
+			  .is_implemented = false, .is_writable = false },
+			{ .name = "peak_incoherent", .key = "", .encoding = BaseEncoding::UINT,
+			  .min_value = 0U, .max_value = 65535U, .permitted_values = {},
+			  .is_implemented = false, .is_writable = false },
+			{ .name = "saadc_init_retry", .key = "", .encoding = BaseEncoding::UINT,
+			  .min_value = 0U, .max_value = 65535U, .permitted_values = {},
+			  .is_implemented = false, .is_writable = false }
 		}
 	},
 	// GNSSBR response - simple acknowledgement

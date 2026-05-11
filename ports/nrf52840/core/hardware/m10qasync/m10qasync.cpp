@@ -30,6 +30,16 @@ extern FileSystem *main_filesystem;
 #define DEFAULT_BAUDRATE    9600
 #define MAX_BAUDRATE        460800
 
+// Tunable parameters (named constants, see embedded-qa review C1)
+static constexpr unsigned int DEFAULT_RETRIES               = 3;     ///< Default retry budget for op_state machines
+static constexpr unsigned int BOOT_BAUD_SYNC_RETRIES        = 6;     ///< Wider retry budget on initial baud sync
+static constexpr unsigned int EARLY_ABORT_SAT_REPORTS       = 20;    ///< Sat reports w/ qualityInd==0 before aborting (~20s @ 1Hz)
+static constexpr unsigned int NAV_REPORT_WATCHDOG_MS        = 5000;  ///< Inter-NAV-message UART watchdog while in receive state
+static constexpr unsigned int RECEIVE_TIMEOUT_FLOOR_MS      = 10000; ///< Minimum initial receive timeout (cold start floor)
+static constexpr unsigned int RECEIVE_TIMEOUT_MARGIN_S      = 5;     ///< Margin added to max_nav_samples for initial receive timeout
+static constexpr unsigned int MAX_FRAMING_ERRORS_BOOT       = 10;    ///< Tolerance for NMEA→UBX framing errors during boot
+static constexpr unsigned int DBD_MAX_AGE_S                 = 12 * 3600; ///< Max age (12h) of persisted DBD navigation database
+
 // State machine helper macros
 #define STATE_CHANGE(x, y)                       \
 	do {                                             \
@@ -94,17 +104,17 @@ void M10QAsyncReceiver::power_on(const GPSNavSettings& nav_settings) {
     m_has_raw_measurement = false;
     m_raw_measurement = GNSSRawMeasurement();
 
-    // Reset observation counters of interest
-    if (nav_settings.max_nav_samples) {
-        m_num_nav_samples = 0;
-        m_nav_settings.max_nav_samples = nav_settings.max_nav_samples;
-        m_num_consecutive_fixes = m_nav_settings.num_consecutive_fixes;
-    }
+    // Always reset observation counters and apply new limits — defensive.
+    // Passing 0 explicitly disables the corresponding limit-check (acquisition
+    // then runs until fix or scheduler safety net). Previously these blocks
+    // were guarded by `if (nav_settings.max_X)` which preserved stale state
+    // when 0 was passed and could lead to silent counter mismatches.
+    m_num_nav_samples = 0;
+    m_nav_settings.max_nav_samples = nav_settings.max_nav_samples;
+    m_num_consecutive_fixes = m_nav_settings.num_consecutive_fixes;
 
-    if (nav_settings.max_sat_samples) {
-        m_num_sat_samples = 0;
-        m_nav_settings.max_sat_samples = nav_settings.max_sat_samples;
-    }
+    m_num_sat_samples = 0;
+    m_nav_settings.max_sat_samples = nav_settings.max_sat_samples;
 
     if (STATE_EQUAL(idle)) {
         // Copy navigation settings to be used for this session
@@ -377,6 +387,11 @@ void M10QAsyncReceiver::react(const UBXCommsEventCfgValget& valget) {
 
 void M10QAsyncReceiver::react(const UBXCommsEventSatReport& s) {
     if (m_nav_settings.sat_tracking) {
+    	// Note (QA review R10): m_pending_sat is the single ISR→task shuttle buffer.
+    	// If two SAT reports arrive in ISR before the scheduled task drains the
+    	// buffer, the earlier one is silently overwritten. At 1 Hz NAV-SAT this
+    	// is rare; under heavy scheduler load it may drop a report (counter
+    	// still increments correctly).
     	{ InterruptLock lock; std::memcpy(&m_pending_sat, &s, sizeof(s)); }
         system_scheduler->post_task_prio([this]() {
         	// Copy under InterruptLock to prevent ISR overwriting mid-read
@@ -401,10 +416,12 @@ void M10QAsyncReceiver::react(const UBXCommsEventSatReport& s) {
             }
             notify(e);
 
-        	// Early abort: if after 10 sat reports no satellite is even detected
-        	// (quality=0), the antenna is completely obstructed or underwater.
-        	// quality >= 1 means satellites are visible — let the timeout handle it.
-        	if (m_num_sat_samples == 20 && e.bestSignalQuality == 0) {
+        	// Early abort: if after EARLY_ABORT_SAT_REPORTS sat reports no satellite
+        	// is even detected (quality==0), the antenna is completely obstructed
+        	// or underwater. quality >= 1 means satellites are visible — let the
+        	// regular acquisition timeout handle it. Uses >= (not ==) to avoid
+        	// missing the threshold if the counter ever skips a value.
+        	if (m_num_sat_samples >= EARLY_ABORT_SAT_REPORTS && e.bestSignalQuality == 0) {
         		DEBUG_WARN("M10QAsyncReceiver: no satellite detected after %u sat reports | aborting",
         		           m_num_sat_samples);
         		notify<GPSEventMaxSatSamples>({});
@@ -432,8 +449,8 @@ void M10QAsyncReceiver::react(const UBXCommsEventNavReport& n) {
             // Increment number of nav samples received
             m_num_nav_samples++;
 
-            // Restart timeout
-            initiate_timeout(5000);
+            // Restart timeout — watchdog between NAV reports while in receive state
+            initiate_timeout(NAV_REPORT_WATCHDOG_MS);
 
             if (nav.pvt.fixType != UBX::NAV::PVT::FIXTYPE_NO &&
                 nav.pvt.valid & UBX::NAV::PVT::VALID_VALID_DATE &&
@@ -629,7 +646,7 @@ void M10QAsyncReceiver::react(const UBXCommsEventError& e) {
         system_scheduler->post_task_prio([this, e]() {
             DEBUG_WARN("UBXCommsEventError: type=%02x count=%u (boot transition, expected)", e.error_type, m_uart_error_count);
         }, "Debug");
-        if (++m_uart_error_count >= 10) {
+        if (++m_uart_error_count >= MAX_FRAMING_ERRORS_BOOT) {
             m_uart_error_count = 0;
             cancel_timeout();
             m_op_state = OpState::ERROR;
@@ -673,7 +690,7 @@ void M10QAsyncReceiver::cancel_timeout() {
 
 void M10QAsyncReceiver::state_poweron_enter() {
 	m_step = 0;
-	m_retries = 6;
+	m_retries = BOOT_BAUD_SYNC_RETRIES;
 	m_op_state = OpState::IDLE;
 	m_uart_error_count = 0;
 	m_fix_was_found = false;
@@ -705,14 +722,14 @@ void M10QAsyncReceiver::state_poweron() {
 			break;
 		} else if (m_op_state == OpState::ERROR) {
 			DEBUG_TRACE("M10QAsyncReceiver: baud rate framing error detected");
-			m_retries = 3;
+			m_retries = DEFAULT_RETRIES;
 			m_step++;
 			m_op_state = OpState::IDLE;
 			run_state_machine(100);
 			break;
 		} else {
 			if (--m_retries == 0) {
-				// m_retries = 3;
+				// m_retries = DEFAULT_RETRIES;
 				m_step++;
 			}
 			m_op_state = OpState::IDLE;
@@ -725,7 +742,7 @@ void M10QAsyncReceiver::state_poweron_exit() {
 
 void M10QAsyncReceiver::state_poweroff_enter() {
 	m_step = 0;
-	m_retries = 3;
+	m_retries = DEFAULT_RETRIES;
 	m_op_state = OpState::IDLE;
 	m_uart_error_count = 0;
 }
@@ -751,7 +768,7 @@ void M10QAsyncReceiver::state_poweroff_exit() {
 
 void M10QAsyncReceiver::state_configure_enter() {
 	m_step = 0;
-	m_retries = 3;
+	m_retries = DEFAULT_RETRIES;
 	m_op_state = OpState::IDLE;
 }
 
@@ -865,7 +882,7 @@ void M10QAsyncReceiver::state_configure() {
 			}
 		} else if (m_op_state == OpState::SUCCESS) {
 			m_step++;
-			m_retries = 3;
+			m_retries = DEFAULT_RETRIES;
 			m_op_state = OpState::IDLE;
 		} else if (m_op_state == OpState::PENDING) {
 			break;
@@ -875,7 +892,7 @@ void M10QAsyncReceiver::state_configure() {
 			if (m_step >= 100) {
 				DEBUG_WARN("M10QAsyncReceiver: fast path failed, BBR lost — full configure");
 				m_step = 0;
-				m_retries = 3;
+				m_retries = DEFAULT_RETRIES;
 				m_op_state = OpState::IDLE;
 				continue;
 			}
@@ -900,7 +917,7 @@ void M10QAsyncReceiver::state_configure_exit() {
 
 void M10QAsyncReceiver::state_startreceive_enter() {
 	m_step = 0;
-	m_retries = 3;
+	m_retries = DEFAULT_RETRIES;
 	m_op_state = OpState::IDLE;
 }
 
@@ -955,7 +972,7 @@ void M10QAsyncReceiver::state_startreceive() {
 			}
 		} else if (m_op_state == OpState::SUCCESS) {
 			m_step++;
-			m_retries = 3;
+			m_retries = DEFAULT_RETRIES;
 			m_op_state = OpState::IDLE;
 		} else if (m_op_state == OpState::PENDING) {
 			break;
@@ -966,7 +983,7 @@ void M10QAsyncReceiver::state_startreceive() {
 					DEBUG_WARN("M10QAsyncReceiver::state_start_receive: CloudLocate step %u failed, falling back to PVT-only", m_step);
 					m_nav_settings.cloudlocate_enable = false;
 					m_step = 7;  // skip remaining CloudLocate steps
-					m_retries = 3;
+					m_retries = DEFAULT_RETRIES;
 					m_op_state = OpState::IDLE;
 					continue;
 				}
@@ -989,11 +1006,12 @@ void M10QAsyncReceiver::state_startreceive_exit() {
 
 void M10QAsyncReceiver::state_receive_enter() {
     // Adaptive initial timeout: use max_nav_samples as upper bound (1 sample ≈ 1 second),
-    // plus 5s margin for UART/processing overhead. Minimum 10s for cold start scenarios.
-    unsigned int timeout_ms = std::max(10000U, (m_nav_settings.max_nav_samples + 5) * 1000U);
+    // plus RECEIVE_TIMEOUT_MARGIN_S for UART/processing overhead, with a floor for cold start.
+    unsigned int timeout_ms = std::max(RECEIVE_TIMEOUT_FLOOR_MS,
+                                       (m_nav_settings.max_nav_samples + RECEIVE_TIMEOUT_MARGIN_S) * 1000U);
     initiate_timeout(timeout_ms);
     m_op_state = OpState::IDLE;
-    m_retries = 3;
+    m_retries = DEFAULT_RETRIES;
 }
 
 void M10QAsyncReceiver::state_receive() {
@@ -1017,7 +1035,7 @@ void M10QAsyncReceiver::state_receive_exit() {
 
 void M10QAsyncReceiver::state_stopreceive_enter() {
 	m_step = 0;
-	m_retries = 3;
+	m_retries = DEFAULT_RETRIES;
 	m_op_state = OpState::IDLE;
 }
 
@@ -1059,7 +1077,7 @@ void M10QAsyncReceiver::state_stopreceive() {
 			}
 		} else if (m_op_state == OpState::SUCCESS) {
 			m_step++;
-			m_retries = 3;
+			m_retries = DEFAULT_RETRIES;
 			m_op_state = OpState::IDLE;
 		} else if (m_op_state == OpState::PENDING) {
 			break;
@@ -1122,7 +1140,7 @@ bool M10QAsyncReceiver::load_dbd_from_flash() {
 				return false;
 			}
 			uint32_t age_s = now_t - save_time;
-			if (age_s > 12 * 3600) {
+			if (age_s > DBD_MAX_AGE_S) {
 				DEBUG_TRACE("M10QAsyncReceiver::load_dbd_from_flash: stale (%u s old)", age_s);
 				return false;
 			}
@@ -1151,7 +1169,7 @@ bool M10QAsyncReceiver::load_dbd_from_flash() {
 
 void M10QAsyncReceiver::state_fetchdatabase_enter() {
 	m_step = 0;
-	m_retries = 3;
+	m_retries = DEFAULT_RETRIES;
 	m_op_state = OpState::IDLE;
 	m_ana_database_len = 0;
 	m_expected_dbd_messages = 0;

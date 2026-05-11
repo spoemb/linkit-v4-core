@@ -15,8 +15,9 @@
 extern ConfigurationStore *configuration_store;
 extern Scheduler *system_scheduler;
 
-static constexpr unsigned int MS_PER_SEC         = 1000;
-static constexpr unsigned int FIRST_AQPERIOD_SEC = 30;  ///< Accelerated first fix schedule
+static constexpr unsigned int MS_PER_SEC              = 1000;
+static constexpr unsigned int FIRST_AQPERIOD_SEC      = 30;  ///< Accelerated first fix schedule
+static constexpr unsigned int SERVICE_SAFETY_MARGIN_S = 30;  ///< Extra margin on top of acquisition_timeout for Service watchdog
 
 /// @brief Copy GNSSData fields into GPSLogEntry (avoids 30-line duplication).
 static void copy_gnss_to_log(const GNSSData& src, GPSLogEntry& dst) {
@@ -199,9 +200,19 @@ void GPSService::service_initiate() {
 	nav_settings.min_elev = gnss_config.min_elev;
 	nav_settings.ano_stale_threshold_s = gnss_config.ano_stale_days ? gnss_config.ano_stale_days * 24 * 3600 : 0;
 
-	// CloudLocate: enable MEAS message capture when fastloc mode is CLOUDLOCATE
+	// CloudLocate: enable MEAS message capture only when ALL of:
+	//   - fastloc mode is CLOUDLOCATE
+	//   - we don't already have a real fix in this surface session (once a normal
+	//     fix is obtained, subsequent acquisitions should not waste a full
+	//     cold_acq_timeout on raw measurement capture)
+	//   - ARGOS_MODE is SURFACING_BURST (LEGACY mode raw-measurement-via-TR_NOM
+	//     is not yet wired up — TODO: add a dedicated GUI behavior for LEGACY
+	//     CloudLocate timing before re-enabling)
 	unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
-	nav_settings.cloudlocate_enable = (fastloc_mode == (unsigned int)BaseFastlocMode::CLOUDLOCATE);
+	BaseArgosMode argos_mode = configuration_store->read_param<BaseArgosMode>(ParamID::ARGOS_MODE);
+	nav_settings.cloudlocate_enable = (fastloc_mode == (unsigned int)BaseFastlocMode::CLOUDLOCATE)
+	                                  && !m_is_first_fix_found
+	                                  && (argos_mode == BaseArgosMode::SURFACING_BURST);
 
 	m_next_schedule = service_current_time();
 	m_is_first_schedule = false;
@@ -236,7 +247,7 @@ unsigned int GPSService::service_next_timeout() {
 	GNSSConfig gnss_config;
 	configuration_store->get_gnss_configuration(gnss_config);
 	unsigned int timeout_s = m_is_first_fix_found ? gnss_config.acquisition_timeout : gnss_config.acquisition_timeout_cold_start;
-	return (timeout_s + 30) * 1000;  // Add 30s margin over GNSS timeout
+	return (timeout_s + SERVICE_SAFETY_MARGIN_S) * MS_PER_SEC;
 }
 
 /// @brief Trigger immediate GNSS on surfacing if configured.
@@ -273,7 +284,7 @@ GPSLogEntry GPSService::invalid_log_entry()
 
     gps_entry.header.log_type = LOG_GPS;
 
-    populate_gps_log_with_time(gps_entry, service_current_time());
+    service_set_log_header_time(gps_entry.header, service_current_time());
 
 	service_update_battery();
     gps_entry.info.batt_voltage = service_get_voltage();
@@ -296,7 +307,7 @@ void GPSService::task_process_gnss_data()
 
     GPSLogEntry gps_entry{};
     gps_entry.header.log_type = LOG_GPS;
-    populate_gps_log_with_time(gps_entry, service_current_time());
+    service_set_log_header_time(gps_entry.header, service_current_time());
 
 	service_update_battery();
     gps_entry.info.batt_voltage = service_get_voltage();
@@ -353,7 +364,7 @@ void GPSService::task_process_degraded_gnss_data()
 
     GPSLogEntry gps_entry{};
     gps_entry.header.log_type = LOG_GPS;
-    populate_gps_log_with_time(gps_entry, service_current_time());
+    service_set_log_header_time(gps_entry.header, service_current_time());
 
     service_update_battery();
     gps_entry.info.batt_voltage = service_get_voltage();
@@ -377,12 +388,18 @@ void GPSService::task_process_degraded_gnss_data()
 void GPSService::task_process_cloudlocate_data()
 {
     DEBUG_INFO("GPSService::task_process_cloudlocate_data");
+    // Note (QA review R6): CloudLocate emits raw measurements without an on-device
+    // position. Resetting m_cold_start_ntry here treats the raw capture as a
+    // "successful" cold-start outcome — chains of CloudLocate captures will
+    // therefore never trigger the NTRY back-off to dloc_arg_nom. This is
+    // intentional: CloudLocate is the deployed fallback strategy, so we should
+    // keep trying every cold_start_retry_period rather than giving up.
     DEBUG_INFO("GPSService::retry_counter: reset ntry=%u->0 (CLOUDLOCATE success)", m_cold_start_ntry);
     m_cold_start_ntry = 0;
 
     GPSLogEntry gps_entry{};
     gps_entry.header.log_type = LOG_GPS;
-    populate_gps_log_with_time(gps_entry, service_current_time());
+    service_set_log_header_time(gps_entry.header, service_current_time());
 
     service_update_battery();
     gps_entry.info.batt_voltage = service_get_voltage();
@@ -531,14 +548,6 @@ void GPSService::gnss_cloudlocate_callback(GNSSRawMeasurement data) {
     m_raw_measurement = data;
     // Don't set m_is_first_fix_found — CloudLocate does not provide on-device position
     task_process_cloudlocate_data();
-}
-
-/// @brief Fill log entry header with date/time fields from epoch.
-/// @param[out] entry  Log entry to populate.
-/// @param time        Epoch time (seconds).
-void GPSService::populate_gps_log_with_time(GPSLogEntry &entry, std::time_t time)
-{
-	service_set_log_header_time(entry.header, time);
 }
 
 /// @brief Check if an AXL wakeup event should trigger an immediate GNSS acquisition.

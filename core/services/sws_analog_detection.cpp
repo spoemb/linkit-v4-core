@@ -15,9 +15,21 @@ extern RGBLed *status_led;
 
 /// @brief Check if calibration interval has elapsed and recalibration is needed.
 /// @return true if m_calib_interval_sec has passed since last calibration.
+///
+/// Audit 2026-05 R-CODE-06: explicit underflow guard. After a reset,
+/// PMU::get_timestamp_ms() restarts at 0 while m_calib.last_calibration_time
+/// persists in noinit RAM with the value from the previous session. Without
+/// this guard, the subtraction underflows uint64 and the wrap-around result
+/// happens to be >= m_calib_interval_sec — i.e. recalibration fires
+/// "correctly" through undefined behavior. Make the intent explicit.
 bool SWSAnalogService::should_recalibrate() const {
     if (m_calib_interval_sec == 0) return false;
-    uint64_t elapsed = (PMU::get_timestamp_ms() / 1000) - m_calib.last_calibration_time;
+    uint64_t now_sec = PMU::get_timestamp_ms() / 1000;
+    if (now_sec < m_calib.last_calibration_time) {
+        // Post-reboot clock regression — force a recalibration explicitly.
+        return true;
+    }
+    uint64_t elapsed = now_sec - m_calib.last_calibration_time;
     return (elapsed >= m_calib_interval_sec);
 }
 
@@ -100,6 +112,7 @@ bool SWSAnalogService::detector_state() {
             raw_value > m_calib.threshold_water * 2) {
             m_coherence_high_count++;
             if (m_coherence_high_count >= 3) {
+                inc_diag(m_diag.coherence_recalib_count);
                 DEBUG_WARN("SWSAnalog: Continuous coherence - raw=%u >> water=%u (%u consecutive), adapting water",
                            raw_value, m_calib.threshold_water, m_coherence_high_count);
                 // Cap at observed peak only when peak is established (>= raw/2):
@@ -123,6 +136,7 @@ bool SWSAnalogService::detector_state() {
         }
 
         if (calib_incoherent) {
+            inc_diag(m_diag.coherence_recalib_count);
             memset(&m_calib, 0, sizeof(m_calib));
             if (incoherent_in_water || raw_value > 7000) {
                 // Case 1 OR raw is unambiguously water (ADC > heuristic):
@@ -164,6 +178,26 @@ bool SWSAnalogService::detector_state() {
 
     // === 2. TIME TRACKING ===
     bool timeout_override = check_safety_timeouts(m_current_state);
+
+    // === 2b. HEARTBEAT WARN (audit 2026-05 R-CODE-04) ===
+    // Log a WARNING when no state change has occurred for an unusually long
+    // time. Pure observability — no automatic action because a turtle can
+    // legitimately stay submerged or at the surface for many hours.
+    // Uses persistent system.log (DEBUG_WARN) for post-deployment forensics.
+    {
+        uint32_t threshold = m_current_state ? m_heartbeat_warn_uw_sec
+                                             : m_heartbeat_warn_surf_sec;
+        if (threshold > 0 && m_time_in_current_state >= threshold) {
+            uint64_t now_sec = PMU::get_timestamp_ms() / 1000;
+            if (m_last_heartbeat_warn_time == 0 ||
+                (now_sec - m_last_heartbeat_warn_time) >= HEARTBEAT_WARN_REPEAT_SEC) {
+                DEBUG_WARN("SWSAnalog: heartbeat — no state change for %llus (state=%s)",
+                           (unsigned long long)m_time_in_current_state,
+                           m_current_state ? "UW" : "SURF");
+                m_last_heartbeat_warn_time = now_sec;
+            }
+        }
+    }
 
     // === 3. LEVEL 1 & 2: FAST RAW DROP (uses raw, not filtered, for speed) ===
     uint8_t surface_level = 0;
@@ -416,6 +450,7 @@ bool SWSAnalogService::detector_state() {
     if (!m_current_state && m_calib.threshold_air < AIR_BASELINE_FLOOR) {
         m_air_collapse_count++;
         if (m_air_collapse_count >= AIR_COLLAPSE_RECOVERY_SAMPLES) {
+            inc_diag(m_diag.stuck_recovery_count);
             uint16_t old_air = m_calib.threshold_air;
             uint16_t old_water = m_calib.threshold_water;
             uint16_t old_peak = m_observed_peak_adc;
@@ -516,6 +551,7 @@ bool SWSAnalogService::detector_state() {
             } else {
                 m_consecutive_spike_rejects++;
                 if (m_consecutive_spike_rejects >= 10) {
+                    inc_diag(m_diag.spike_reject_count);
                     // Peak is stuck far below actual readings — force reset
                     DEBUG_WARN("SWSAnalog: Peak stuck (10 consecutive rejects) raw=%u >> peak=%u, resetting peak",
                                raw_value, m_observed_peak_adc);
@@ -558,6 +594,7 @@ bool SWSAnalogService::detector_state() {
         // a not-yet-converged water, blocking detection.
         if (m_observed_peak_adc > 0 && m_calib.threshold_water > 0 &&
             m_observed_peak_adc > (uint32_t)m_calib.threshold_water * 5) {
+            inc_diag(m_diag.peak_incoherent_count);
             DEBUG_WARN("SWSAnalog: Peak incoherent peak=%u > water×5=%u, resetting",
                        m_observed_peak_adc, m_calib.threshold_water * 5);
             m_observed_peak_adc = m_calib.threshold_water;
@@ -616,6 +653,7 @@ bool SWSAnalogService::detector_state() {
     // After MAX_CONSECUTIVE_DIVE_TIMEOUTS without surface: force surface + lockout
     // and clear stuck-state corruption so the next dive can be detected.
     if (timeout_override) {
+        inc_diag(m_diag.dive_timeout_count);
         m_consecutive_dive_timeouts++;
         uint16_t old_water = m_calib.threshold_water;
 
@@ -629,6 +667,7 @@ bool SWSAnalogService::detector_state() {
         }
 
         if (m_consecutive_dive_timeouts >= MAX_CONSECUTIVE_DIVE_TIMEOUTS) {
+            inc_diag(m_diag.force_surface_count);
             // B6: also clear corruptable state — peak may have decayed/spiked,
             // spike-reject counter may be mid-cycle, surface-readings buffer
             // may have stale entries from before the dive. Without this, the
@@ -680,6 +719,7 @@ bool SWSAnalogService::detector_state() {
         m_peak_adc_since_underwater = 0;
         m_recent_peak = 0;
         m_consecutive_dive_timeouts = 0;  // Reset escalation on any state change
+        m_last_heartbeat_warn_time = 0;   // R-CODE-04: re-arm WARN for new state period
 
         // Reset fast drop tracking
         m_consecutive_raw_drops = 0;
@@ -753,6 +793,25 @@ bool SWSAnalogService::detector_state() {
         m_sws_logger->write(&sws_entry);
     }
 #endif
+
+    // === 12b. TEST MODE AUTO-STOP ===
+    // Battery-drain safety net: SWSTST,1 without a follow-up SWSTST,0 would
+    // otherwise sample + push LED indefinitely. Skip while guided calibration
+    // is running (it manages its own 5-min timeout and clears m_test_mode at
+    // completion). Setting m_test_mode=false is sufficient — the next
+    // scheduler cycle re-evaluates service_is_enabled() (= UNDERWATER_EN).
+    // We do not call stop_test_mode() here because Service::stop() would
+    // deschedule us mid service_initiate().
+    if (m_test_mode && m_test_timeout_ms > 0 && m_calib_phase == CalibPhase::IDLE) {
+        uint64_t elapsed = PMU::get_timestamp_ms() - m_test_mode_start_time;
+        if (elapsed >= m_test_timeout_ms) {
+            DEBUG_WARN("SWSAnalog: Test mode auto-stop after %llu ms (timeout %llu ms)",
+                       (unsigned long long)elapsed,
+                       (unsigned long long)m_test_timeout_ms);
+            m_test_mode = false;
+            if (m_on_test_stop) m_on_test_stop();
+        }
+    }
 
     // === 13. GUIDED CALIBRATION STATE MACHINE ===
     if (m_calib_phase != CalibPhase::IDLE && m_calib_phase != CalibPhase::DONE) {

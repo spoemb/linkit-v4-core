@@ -95,11 +95,15 @@ fi
 # - ENABLE_AXL_SENSOR=ON: Enable BMA400 accelerometer
 ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR:-OFF}
 ENABLE_SWS_SENSOR=${ENABLE_SWS_SENSOR:-ON}
+DISABLE_LORA_DCS=${DISABLE_LORA_DCS:-OFF}
+
+
 
 echo "Building LinkIt V4 LoRa RAK3172 with configuration:"
 echo "  LORA_RAK3172=ON"
 echo "  ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR}"
 echo "  ENABLE_SWS_SENSOR=${ENABLE_SWS_SENSOR}"
+echo "  DISABLE_LORA_DCS=${DISABLE_LORA_DCS}"
 echo ""
 
 cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
@@ -109,6 +113,7 @@ cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
       -DLORA_RAK3172=ON \
       -DENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR} \
       -DENABLE_SWS_SENSOR=${ENABLE_SWS_SENSOR} \
+      -DLORA_DCS_ENABLE=${DISABLE_LORA_DCS} \
       ../..
 
 make -j 20

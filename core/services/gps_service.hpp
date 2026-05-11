@@ -112,7 +112,6 @@ private:
 	void task_process_gnss_data();
 	void task_process_degraded_gnss_data();
 	void task_process_cloudlocate_data();
-	void populate_gps_log_with_time(GPSLogEntry &entry, std::time_t time);
 	GPSLogEntry invalid_log_entry();
 	void gnss_data_callback(GNSSData data);
 	void gnss_degraded_callback(GNSSData data);

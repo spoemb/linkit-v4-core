@@ -1453,6 +1453,37 @@ std::string DTEHandler::SWSTST_REQ(int error_code, std::vector<BaseType>& arg_li
 #endif
 }
 
+std::string DTEHandler::SWSSTATS_REQ(int error_code, std::vector<BaseType>& arg_list) {
+	if (error_code) {
+		return DTEEncoder::encode(DTECommand::SWSSTATS_RESP, error_code);
+	}
+
+	if (arg_list.size() < 1) {
+		return DTEEncoder::encode(DTECommand::SWSSTATS_RESP, (int)DTEError::MISSING_ARGUMENT);
+	}
+
+	unsigned int action = std::get<unsigned int>(arg_list[0]);
+
+#if ENABLE_SWS_ANALOG
+	if (action == 1) {
+		SWSAnalogService::clear_diagnostics();
+	}
+
+	auto d = SWSAnalogService::get_diagnostics();
+	return DTEEncoder::encode(DTECommand::SWSSTATS_RESP, (int)DTEError::OK,
+		(unsigned int)d.stuck_recovery_count,
+		(unsigned int)d.coherence_recalib_count,
+		(unsigned int)d.dive_timeout_count,
+		(unsigned int)d.force_surface_count,
+		(unsigned int)d.spike_reject_count,
+		(unsigned int)d.peak_incoherent_count,
+		(unsigned int)d.saadc_init_retry_count);
+#else
+	(void)action;
+	return DTEEncoder::encode(DTECommand::SWSSTATS_RESP, (int)DTEError::PARAM_KEY_UNRECOGNISED);
+#endif
+}
+
 std::string DTEHandler::SWSCAL_REQ(int error_code, std::vector<BaseType>& arg_list) {
 	if (error_code) {
 		return DTEEncoder::encode(DTECommand::SWSCAL_RESP, error_code);
@@ -1799,6 +1830,9 @@ DTEAction DTEHandler::handle_dte_message(const std::string& req, std::string& re
 		break;
 	case DTECommand::SWSCAL_REQ:
 		resp = SWSCAL_REQ(error_code, arg_list);
+		break;
+	case DTECommand::SWSSTATS_REQ:
+		resp = SWSSTATS_REQ(error_code, arg_list);
 		break;
 	case DTECommand::GNSSBR_REQ:
 		resp = GNSSBR_REQ(error_code, arg_list);

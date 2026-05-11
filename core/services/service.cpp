@@ -508,18 +508,24 @@ void Service::reschedule(bool immediate) {
 						} catch (ErrorCode e) {
 							// Firmware-thrown enum (CONFIG_STORE_CORRUPTED, RESOURCE_NOT_AVAILABLE, etc.)
 							DEBUG_ERROR("Service::reschedule: ErrorCode=%d in service %s task — recovering", (int)e, m_name);
+							// Cancel the safety-net timeout we just armed: otherwise the service
+							// is stuck waiting for `timeout_ms` before any retry. (See QA review B2.)
+							system_scheduler->cancel_task(m_task_timeout);
 							m_is_initiated = false;
 						} catch (const std::bad_variant_access& e) {
 							// Type mismatch when reading config_store params (variant<>).
 							DEBUG_ERROR("Service::reschedule: bad_variant_access in service %s task (config type mismatch?) — recovering", m_name);
+							system_scheduler->cancel_task(m_task_timeout);
 							m_is_initiated = false;
 						} catch (const std::out_of_range& e) {
 							// Index out of range — typically from std::array::at() or vector::at().
 							DEBUG_ERROR("Service::reschedule: out_of_range in service %s task (%s) — recovering", m_name, e.what());
+							system_scheduler->cancel_task(m_task_timeout);
 							m_is_initiated = false;
 						} catch (const std::exception& e) {
 							// Any other std exception (bad_alloc, runtime_error, …)
 							DEBUG_ERROR("Service::reschedule: std::exception in service %s task: %s — recovering", m_name, e.what());
+							system_scheduler->cancel_task(m_task_timeout);
 							m_is_initiated = false;
 						} catch (...) {
 							// Last-resort barrier. Without this, the exception escapes the
@@ -527,6 +533,7 @@ void Service::reschedule(bool immediate) {
 							// __verbose_terminate_handler → abort() → fputc-hang → WDT
 							// (15 min on this board). Log and recover instead.
 							DEBUG_ERROR("Service::reschedule: unknown exception in service %s task — recovering", m_name);
+							system_scheduler->cancel_task(m_task_timeout);
 							m_is_initiated = false;
 						}
 					}, "ServicePeriod", Scheduler::DEFAULT_PRIORITY, next_schedule);

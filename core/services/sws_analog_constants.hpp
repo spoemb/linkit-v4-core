@@ -109,6 +109,10 @@
 #define MAX_CONSECUTIVE_DIVE_TIMEOUTS 3 // Force surface after N timeouts without any surface detection
 #define GUIDED_CALIB_TIMEOUT_TICKS 300  // 300 ticks × 1s = 5 minutes max for guided calibration
 
+// Test mode auto-stop timeout default lives in sws_analog_service.hpp
+// (SWSAnalogService::TEST_TIMEOUT_DEFAULT_MS) so that reset_noinit_data()
+// can use it without including this internal-only constants header.
+
 // Stuck-state recovery: when air baseline collapses below floor for N consecutive
 // samples while at surface, force a fresh calibration from current ADC readings.
 // Catches the dry-electrode death spiral where periodic Air recalib pulls air → 0
@@ -150,6 +154,28 @@
 #define CALIB_STABILITY_THRESHOLD 3    // consecutive stable readings to start sampling
 #define CALIB_STABILITY_TOLERANCE 500  // ADC counts variation allowed for "stable"
 #define CALIB_SAMPLE_INTERVAL_MS 1000  // 1s sampling during guided calibration
+
+// ═══════════════════════════════════════════════════════
+//  CRC16 — usage pattern (audit 2026-05 R-DOC-02)
+//
+//  When computing a CRC over a struct that contains its own CRC field,
+//  ALWAYS use offsetof(StructType, crc_field_name) for the `length`
+//  parameter to EXCLUDE the CRC field from the input data. Otherwise the
+//  CRC depends on its own value, which makes validation impossible.
+//
+//  Example (correct):
+//      m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
+//                                   offsetof(CalibrationData, crc), nullptr);
+//
+//  Anti-example (BUG — historically present, fixed in commit f1ea2ed4):
+//      m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
+//                                   sizeof(m_calib), nullptr);  // includes 'crc' itself
+//
+//  When the CRC is stored OUTSIDE the data (e.g. m_observed_peak_adc and
+//  m_observed_peak_crc as separate variables), `sizeof(data)` is correct
+//  because the CRC field is not part of `data`. Same for buffers like
+//  m_filtered_values where the CRC lives in a separate member.
+// ═══════════════════════════════════════════════════════
 
 // CRC16 stub for test builds
 #ifndef CPPUTEST
