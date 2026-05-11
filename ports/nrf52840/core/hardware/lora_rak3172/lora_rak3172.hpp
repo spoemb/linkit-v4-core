@@ -78,6 +78,17 @@ public:
     /// Module must be powered on. Returns empty string on failure.
     std::string get_firmware_version();
 
+    /// @brief Re-read all LORA_* params from the config store and, if any
+    /// differ from the cached `m_config`, schedule a full module reconfigure
+    /// at the next idle entry. Called on every PARMW completion (`CONFIG_UPDATED`
+    /// action) so that runtime credential / band / DR changes propagate without
+    /// requiring a device reset.
+    ///
+    /// Safety: if module is currently busy (transmit/joining/configure/power_on/error),
+    /// the flag is recorded and applied at the next idle entry — the in-flight
+    /// operation is never interrupted. Returns true if a change was detected.
+    bool reload_config_if_changed();
+
     /// @brief Start Continuous Wave transmission for RF testing / certification.
     /// @param freq_hz    Carrier frequency in Hz (must be in a licensed LoRa band).
     /// @param power_dbm  TX power in dBm (0-22 for RAK3172).
@@ -155,6 +166,12 @@ private:
     // Error retry: allow transient errors (RF interference, UART glitch) before power_off
     static constexpr uint8_t MAX_CONSECUTIVE_ERRORS = 2;
     uint8_t m_consecutive_errors;
+
+    // Set by reload_config_if_changed() / write_credentials_from_config() when
+    // the persisted LoRa config has been edited at runtime. state_idle picks it
+    // up and forces a power_off → power_on → full configure walk so the new
+    // values are pushed to the module. Cleared once acted on.
+    volatile bool m_config_reload_pending;
 
     // State machine methods
     void state_machine();

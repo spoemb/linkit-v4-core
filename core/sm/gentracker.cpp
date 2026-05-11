@@ -702,7 +702,16 @@ void ConfigurationState::process_received_data() {
 			}
 			else if (action == DTEAction::CONFIG_UPDATED)
 			{
-				// TODO: reserved for future use
+				// Propagate runtime LoRa param changes to the RAK3172 module.
+				// reload_config_if_changed() is a no-op if no LORA_* param
+				// actually changed (cheap diff against the cached LoRaConfig),
+				// so it is safe to call after every PARMW. Busy states (TX /
+				// joining) defer the apply to the next idle entry.
+#if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
+				if (lora_device_instance) {
+					lora_device_instance->reload_config_if_changed();
+				}
+#endif
 			}
 
 		} while (action == DTEAction::AGAIN);

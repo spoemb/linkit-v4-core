@@ -77,6 +77,7 @@ LoRaDevice::LoRaDevice()
     m_power_on_retry = 0;
     m_nwm_reboot_pending = false;
     m_consecutive_errors = 0;
+    m_config_reload_pending = false;
     load_config_from_store();
     LORA_STATE_CHANGE(power_off, power_on);
 }
@@ -403,10 +404,21 @@ void LoRaDevice::state_power_on_enter()
 
 void LoRaDevice::state_power_on()
 {
+    // Boot-wait + ping budget (tuned for fast first-TX in ABP):
+    //   - Initial wait 1000 ms (was 2000) — RAK3172 RUI3 boots in ~1.2-1.5 s
+    //     typical, so the first ping may fail on cold/slow boots; the retry
+    //     loop below covers that.
+    //   - AT_TEST per-attempt timeout 400 ms (was 2000) — AT_TEST is a 4-byte
+    //     command; a healthy RAK answers in <50 ms. Tight timeout makes the
+    //     retry mechanism react fast when the module isn't ready yet.
+    //   - 8 retries at 300 ms gap (was 4 at 500 ms) — total ping window is
+    //     1000 + 7*(400+300) ≈ 5.9 s, similar to the old worst case (~11 s
+    //     thanks to old 2 s timeouts) but converges in ~1.1 s in the nominal
+    //     case (saves ~1 s on every cold boot vs the old 2.1 s minimum).
     if (m_power_on_retry == 0) {
-        // First call: wait for RAK3172 boot (typically ~1.5s)
+        // First call: wait for RAK3172 boot (typically ~1.2 s)
         m_power_on_retry = 1;
-        run_state_machine(2000);  // Non-blocking 2s boot wait
+        run_state_machine(1000);
         return;
     }
 
@@ -418,17 +430,18 @@ void LoRaDevice::state_power_on()
 
     DEBUG_INFO("LoRaDevice::state_power_on retry=%u", m_power_on_retry);
 
-    // Try AT ping
-    if (send_AT(AT_TEST))
+    // Try AT ping with tight per-attempt timeout (default 2000 ms is way too
+    // generous for AT_TEST — it just blocks the FSM when the module is silent).
+    if (send_AT(AT_TEST, std::nullopt, 400))
     {
         DEBUG_TRACE("LoRaDevice: AT ping OK (attempt %u)", m_power_on_retry);
         LORA_STATE_CHANGE(power_on, configure);
         return;
     }
 
-    if (m_power_on_retry < 4) {
+    if (m_power_on_retry < 8) {
         m_power_on_retry++;
-        run_state_machine(500);  // Non-blocking 500ms retry delay
+        run_state_machine(300);  // Tighter retry gap
         return;
     }
 
@@ -640,9 +653,20 @@ void LoRaDevice::state_configure()
             break;
 
         case 14:
-            // Full config done — mark configured, jump to common path
+            // Full config done — mark configured. ABP short-circuit: no join,
+            // no NJS read needed, so transition straight to idle and skip the
+            // two no-op scheduler ticks the common path (case 100 → 101) would
+            // cost. Saves ~40 ms on the cold-boot → first-TX critical path
+            // for ABP. OTAA still takes the common path to verify join state
+            // via AT_GET_NJS / launch joining if needed.
             m_is_configured = true;
-            m_config_step = 99;  // Will be incremented to 100
+            if (m_config.njm == 0) {
+                DEBUG_INFO("LoRaDevice: ABP — configure done, going to idle");
+                m_joined = true;
+                LORA_STATE_CHANGE(configure, idle);
+                return;
+            }
+            m_config_step = 99;  // Will be incremented to 100 (OTAA path)
             break;
 
         // ==== Common path (runs every boot) ====
@@ -692,7 +716,12 @@ void LoRaDevice::state_configure()
     }
 
     m_config_step++;
-    run_state_machine(50);  // Continue configuration
+    // Inter-step delay: 20 ms (was 50 ms). Each step's send_AT() blocks ~50-100 ms
+    // already, which is plenty for the scheduler to tick other tasks. The 50 ms
+    // gap was a safety margin that costs ~390 ms over the 13 configure steps
+    // for nothing measurable. Keep some delay (not 0) so background tasks
+    // (BLE, sensors, USB) get airtime between AT round-trips.
+    run_state_machine(20);  // Continue configuration
 }
 
 void LoRaDevice::state_configure_exit() {
@@ -773,6 +802,24 @@ void LoRaDevice::state_idle_enter() {
 
 void LoRaDevice::state_idle()
 {
+    // Deferred config reload triggered by a PARMW while the FSM was busy.
+    // Drop pending packet (if any) since it may have been encoded with stale
+    // credentials/keys and re-route through power_off so the next start_device
+    // cold-boots through the full configure walk with the new values. The
+    // service layer's depth-pile keeps the data; this only sacrifices one TX
+    // dispatch to converge on the fresh config.
+    if (m_config_reload_pending) {
+        DEBUG_INFO("LoRaDevice::state_idle: applying deferred config reload");
+        m_config_reload_pending = false;
+        if (m_packet_buffer.length()) {
+            DEBUG_WARN("LoRaDevice::state_idle: dropping pending packet to apply new config");
+            m_packet_buffer.clear();
+            notify(KineisEventDeviceError({}));
+        }
+        LORA_STATE_CHANGE(idle, power_off);
+        return;
+    }
+
     if (m_packet_buffer.length()) {
         LORA_STATE_CHANGE(idle, transmit);
     } else if (m_config.lp_mode == 1) {
@@ -1024,6 +1071,63 @@ void LoRaDevice::load_config_from_store()
         DEBUG_INFO("LoRaDevice: APPEUI=%s", m_config.appeui.c_str());
 }
 
+/// @brief Re-read LoRa config from store and detect drift vs cached `m_config`.
+/// On drift: invalidate the "already configured" fast path, raise the deferred
+/// reload flag, and (if the FSM is currently parked) trigger a power_off so the
+/// next start_device walks the full configure chain with fresh values.
+///
+/// Busy states (transmit/joining/configure/power_on/error) are left alone — the
+/// flag is consumed at the next idle entry. This guarantees we never abort an
+/// in-flight TX or Join just because a PARMW was issued.
+bool LoRaDevice::reload_config_if_changed()
+{
+    LoRaConfig old_cfg = m_config;
+    load_config_from_store();
+
+    bool changed =
+        (old_cfg.deveui       != m_config.deveui)       ||
+        (old_cfg.appeui       != m_config.appeui)       ||
+        (old_cfg.appkey       != m_config.appkey)       ||
+        (old_cfg.devaddr      != m_config.devaddr)      ||
+        (old_cfg.appskey      != m_config.appskey)      ||
+        (old_cfg.nwkskey      != m_config.nwkskey)      ||
+        (old_cfg.njm          != m_config.njm)          ||
+        (old_cfg.band         != m_config.band)         ||
+        (old_cfg.dr           != m_config.dr)           ||
+        (old_cfg.adr          != m_config.adr)          ||
+        (old_cfg.txp          != m_config.txp)          ||
+        (old_cfg.cfm          != m_config.cfm)          ||
+        (old_cfg.fport        != m_config.fport)        ||
+        (old_cfg.lp_mode      != m_config.lp_mode)      ||
+        (old_cfg.device_class != m_config.device_class);
+
+    if (!changed)
+        return false;
+
+    DEBUG_INFO("LoRaDevice::reload_config_if_changed: LoRa config drift detected, scheduling reconfigure");
+    m_is_configured        = false;  // Force full configure walk on next entry
+    m_config_reload_pending = true;
+
+    // Bridge mode (LORABR=1) gives the host direct UART access to the RAK3172.
+    // Calling power_off_immediate() would deinit UARTE1 and kill the bridge
+    // mid-session — definitely not what the user wants while typing AT
+    // commands in a terminal. Defer; stop_bridge() → run_state_machine() will
+    // hit state_idle which consumes the flag cleanly.
+    if (m_bridge_active) {
+        DEBUG_INFO("LoRaDevice::reload_config_if_changed: bridge active, deferring apply");
+        return true;
+    }
+
+    // Apply immediately if FSM is parked. For busy states (transmit/joining/
+    // configure/power_on/error), state_idle will catch the flag on the way back.
+    if (m_state == State::idle || m_state == State::standby || m_state == State::power_off) {
+        DEBUG_TRACE("LoRaDevice::reload_config_if_changed: applying now (state=%u)", static_cast<unsigned>(m_state));
+        power_off_immediate();
+        m_config_reload_pending = false;  // Next start_device() cold-boots → full configure
+    }
+    return true;
+}
+
 /// @brief Read LoRa credentials from RAK3172 module via AT commands.
 /// Module must be powered on (idle/standby/configure state).
 LoRaDevice::LoRaCredentials LoRaDevice::read_lora_credentials()
@@ -1100,6 +1204,19 @@ bool LoRaDevice::write_credentials_from_config()
         return false;
     }
 
+    // Capture the module's CURRENT NJM before we overwrite it. AT+SET_NJM
+    // triggers a RAK3172 software reboot when the value actually changes;
+    // any AT writes issued in that ~2 s window are silently dropped (no
+    // response, banner printed, etc.). Detect-then-pause avoids the cascade
+    // of "DEVADDR not set / no network joined" failures previously observed
+    // when switching OTAA ↔ ABP from SATVF=1.
+    uint8_t module_njm = 0xFF;  // 0xFF = unknown / no readback
+    if (send_AT(AT_GET_NJM)) {
+        const std::string& v = m_lora_comm.m_last_value;
+        if      (v == "0") module_njm = 0;
+        else if (v == "1") module_njm = 1;
+    }
+
     // Load latest values from config store into m_config (keeps local cache coherent)
     load_config_from_store();
     DEBUG_INFO("write_credentials: njm=%u deveui='%s' (len=%u) devaddr='%s' (len=%u) "
@@ -1112,11 +1229,31 @@ bool LoRaDevice::write_credentials_from_config()
                static_cast<unsigned>(m_config.nwkskey.size()),
                static_cast<unsigned>(m_config.appskey.size()));
 
+    bool njm_changing = (module_njm != 0xFF && module_njm != m_config.njm);
+
     // Set join mode first — module may reboot if NJM changes
     DEBUG_TRACE("write_credentials: step NJM");
     if (!send_AT(AT_SET_NJM, std::to_string(m_config.njm))) {
         DEBUG_ERROR("write_credentials: AT_SET_NJM failed");
         return false;
+    }
+
+    // If NJM actually changed, the RAK3172 is rebooting right now. Wait for
+    // the boot to complete (~2 s typical, give 3 s margin), drain the boot
+    // banner so it does not pollute the next response, and re-probe with
+    // AT to confirm the module is responsive again BEFORE writing any
+    // credentials. Without this, the credential writes that follow vanish
+    // into the UART void and leave the module in a broken half-provisioned
+    // state.
+    if (njm_changing) {
+        DEBUG_INFO("write_credentials: NJM changed (%u → %u), waiting for module reboot",
+                   module_njm, m_config.njm);
+        PMU::delay_ms(3000);
+        m_lora_comm.process_rx();  // drain boot banner
+        if (!send_AT(AT_TEST)) {
+            DEBUG_ERROR("write_credentials: module not responsive after NJM-triggered reboot");
+            return false;
+        }
     }
 
     // DEVEUI: OTAA only. ABP activation uses DEVADDR + session keys; writing
@@ -1207,9 +1344,27 @@ bool LoRaDevice::write_credentials_from_config()
     }
 
     DEBUG_INFO("write_credentials: credentials written OK (njm=%u)", m_config.njm);
+
+    // Credentials just changed → the cached "module already configured"
+    // shortcut is no longer valid, and any prior OTAA session is dead.
+    // Force the FSM to walk the full configure chain on its next entry, and
+    // re-Join in OTAA. Without this, the driver would AT+SEND with stale
+    // session keys and rely on the state_error path to recover (1-2 lost
+    // dispatches per credential change).
+    m_is_configured = false;
+    if (m_config.njm == 1) {
+        m_joined = false;
+    }
+
     if (was_off) {
         DEBUG_TRACE("LoRaDevice::write_credentials_from_config: restoring power-off");
         power_off_immediate();
+        // power_off_immediate already resets the cycle; next start_device
+        // walks power_on → configure(full) → joining (OTAA) cleanly.
+    } else {
+        // Module is still on (caller had it awake). Mark the deferred reload
+        // so the next idle entry forces a power-cycle and clean reconfigure.
+        m_config_reload_pending = true;
     }
     return true;
 }
