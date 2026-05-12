@@ -361,6 +361,13 @@ void GPSService::task_process_gnss_data()
     // 0 = unset sentinel; we write it once and ledsm.cpp reads it back to
     // gate LEDs in HRS_24 mode. RTC is set by the M10Q driver from this same
     // fix's date/time fields, so service_current_time() is the GNSS time.
+    //
+    // Only relevant on EXTERNAL_WAKEUP boards (RSPB) — ledsm.cpp gates the
+    // cutoff read with the same #ifdef, so on regular boards (LINKIT) the
+    // value would never be read. Writing it anyway burns a flash erase/write
+    // cycle and a save_params() round-trip on every fresh deployment for
+    // nothing. Mirror the #ifdef here to keep the symmetry tight.
+#ifdef EXTERNAL_WAKEUP
     if (service_is_time_known()) {
         std::time_t led_cutoff = configuration_store->read_param<std::time_t>(ParamID::LED_HRS24_RTC_CUTOFF);
         if (led_cutoff == 0) {
@@ -370,6 +377,7 @@ void GPSService::task_process_gnss_data()
             DEBUG_INFO("GPSService: LED HRS_24 cutoff anchored at RTC=%u", (unsigned int)led_cutoff);
         }
     }
+#endif
 
     ServiceEventData event_data = gps_entry;
     service_complete(&event_data, &gps_entry);

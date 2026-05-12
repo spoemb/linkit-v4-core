@@ -26,10 +26,14 @@ static void apply_lda2_crc8(KineisPacket& packet) {
 }
 
 /// @brief Convert ground speed (mm/s) to 7-bit Argos encoding.
-/// @param x  Ground speed in mm/s.
-/// @return Encoded speed (0-127).
+/// @param x  Ground speed in mm/s (expected non-negative, GPS contract).
+/// @return Encoded speed (0-127). 127 = max representable (~254 km/h) AND is
+///         also the invalid-fix sentinel — decoder must use the `valid` flag
+///         from the packet header to disambiguate. Kept identical to
+///         LoRaPacketBuilder for cross-platform decoder compatibility.
 unsigned int ArgosPacketBuilder::convert_speed(double x) {
-	return static_cast<unsigned int>((SECONDS_PER_HOUR * x) / (2 * MM_PER_KM));
+	if (x < 0) return 0;
+	return std::min(127u, static_cast<unsigned int>((SECONDS_PER_HOUR * x) / (2 * MM_PER_KM)));
 }
 
 /// @brief Convert battery voltage (mV) to 7-bit encoding (20mV/unit, offset 2700mV).
@@ -60,10 +64,14 @@ unsigned int ArgosPacketBuilder::convert_longitude(double x) {
 }
 
 /// @brief Convert heading (degrees) to 8-bit Argos encoding (~0.704 deg/unit).
-/// @param x  Heading in degrees (0-360).
-/// @return Encoded heading (0-255).
+/// @param x  Heading in degrees (expected [0, 360], GPS contract).
+/// @return Encoded heading (0-254). 255 is reserved for the invalid-fix
+///         sentinel — valid headings are clamped to 254 to keep the encoding
+///         unambiguous against the sentinel. Kept identical to
+///         LoRaPacketBuilder for cross-platform decoder compatibility.
 unsigned int ArgosPacketBuilder::convert_heading(double x) {
-	return static_cast<unsigned int>(x * DEGREES_PER_UNIT);
+	if (x < 0) return 0;
+	return std::min(254u, static_cast<unsigned int>(x * DEGREES_PER_UNIT));
 }
 
 /// @brief Convert altitude (mm MSL) to 8-bit encoding (40m/unit, clamped 0-254).

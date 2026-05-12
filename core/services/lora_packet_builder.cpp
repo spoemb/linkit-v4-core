@@ -11,15 +11,33 @@
 #include <algorithm>
 
 /// @brief Convert ground speed (mm/s) to 7-bit encoding.
-/// @param x  Ground speed in mm/s.
-/// @return Encoded speed (0-127).
+/// @param x  Ground speed in mm/s (expected non-negative, GPS contract).
+/// @return Encoded speed (0-127). 127 = max representable (~254 km/h) AND is
+///         also the invalid-fix sentinel — decoder must use the `valid` flag
+///         from the packet header to disambiguate.
 unsigned int LoRaPacketBuilder::convert_speed(double x) {
-	return static_cast<unsigned int>((SECONDS_PER_HOUR * x) / (2 * MM_PER_KM));
+	if (x < 0) return 0;
+	return std::min(127u, static_cast<unsigned int>((SECONDS_PER_HOUR * x) / (2 * MM_PER_KM)));
 }
 
 /// @brief Convert battery voltage (mV) to 7-bit encoding (20mV/unit, offset 2700mV).
 /// @param battery_voltage  Voltage in mV.
-/// @return Encoded battery (0-127).
+/// @return Encoded battery (0-127). Encoding formula: max(0, mV-2700)/20.
+///         Range covered: 2700-5240 mV in 20 mV steps.
+///
+/// IMPORTANT — DEAD ZONE BELOW 2700 mV:
+///   All voltages ≤ 2700 mV encode to 0. A 2.0 V battery (dying) is
+///   indistinguishable from a 2.7 V battery (just below ref) in the encoded
+///   value. This is intentional — keeping the 2700 mV reference matches the
+///   Argos packet builder for cross-platform decoder compatibility, and the
+///   `is_low_battery` flag in the packet header provides the critical-state
+///   indication when the encoded voltage is at the floor.
+///
+/// DECODER GUIDANCE:
+///   - Decoded voltage = 2700 + (encoded * 20) mV
+///   - If `encoded == 0 && is_low_battery == 1` → display "≤ 2.7 V (CRITICAL)"
+///   - If `encoded == 127` → display "≥ 5.24 V"
+///   - Otherwise → display 2700 + (encoded * 20) mV
 unsigned int LoRaPacketBuilder::convert_battery_voltage(unsigned int battery_voltage) {
 	return std::min(127u, static_cast<unsigned int>(std::max(static_cast<int>(battery_voltage) - static_cast<int>(REF_BATT_MV), 0)) / MV_PER_UNIT);
 }
@@ -45,10 +63,13 @@ unsigned int LoRaPacketBuilder::convert_longitude(double x) {
 }
 
 /// @brief Convert heading (degrees) to 8-bit encoding (~0.704 deg/unit).
-/// @param x  Heading in degrees (0-360).
-/// @return Encoded heading (0-255).
+/// @param x  Heading in degrees (expected [0, 360], GPS contract).
+/// @return Encoded heading (0-254). 255 is reserved for the invalid-fix
+///         sentinel — valid headings are clamped to 254 to keep the encoding
+///         unambiguous against the sentinel.
 unsigned int LoRaPacketBuilder::convert_heading(double x) {
-	return static_cast<unsigned int>(x * DEGREES_PER_UNIT);
+	if (x < 0) return 0;
+	return std::min(254u, static_cast<unsigned int>(x * DEGREES_PER_UNIT));
 }
 
 /// @brief Convert altitude (mm MSL) to 8-bit encoding (40m/unit, clamped 0-254).

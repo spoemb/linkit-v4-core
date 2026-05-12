@@ -137,6 +137,11 @@ public:
 	/// previous entry. The input vector `v` is expected in oldest-first order
 	/// (as produced by `DepthPile::retrieve()`); the builder reverses it
 	/// internally to emit newest-first on the wire.
+	///
+	/// @warning **Mutates `v`** — the first `min(v.size(), max_entries, 15)`
+	///          elements are reversed in place. Caller must not rely on the
+	///          original element order after the call. Safe to discard the
+	///          vector immediately after invocation, as `LoRaTxService` does.
 	static KineisPacket build_gps_packet(std::vector<GPSLogEntry*>& v,
 			bool is_out_of_zone, bool is_low_battery,
 			unsigned int max_payload_bytes,
