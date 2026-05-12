@@ -359,8 +359,12 @@ enum class ParamID {
 #endif
 	// === LED window cutoff (slot 222) ===
 	LED_HRS24_RTC_CUTOFF                     = 222,  // time_t: RTC epoch at which LED HRS_24 window expires; auto-set by GPSService at first valid fix to (now+24h). 0 = unset.
+	// === GNSS backup-cell charge mode (slots 223-225) ===
+	GNSS_BCKP_CHARGE_INT                     = 223,  // uint seconds: period between charge sessions. 0 = disabled.
+	GNSS_BCKP_CHARGE_DUR                     = 224,  // uint seconds: duration of each charge session.
+	GNSS_BCKP_CHARGE_UW_ONLY                 = 225,  // bool: when true, charge only while submerged (saltwater switch).
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 223,
+	__PARAM_SIZE                             = 226,
 	__NULL_PARAM                             = 0xFFFF
 };
 

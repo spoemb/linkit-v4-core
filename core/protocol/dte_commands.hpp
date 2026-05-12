@@ -39,6 +39,7 @@ enum class DTECommand {
 	SWSCAL_REQ,    // SWS guided calibration (LED-assisted air/water measurement)
 	SWSSTATS_REQ,  // SWS persistent diagnostic counters read / clear (audit 2026-05 R-MON-02)
 	GNSSBR_REQ,    // GNSS UART bridge/passthrough (u-center access)
+	GNSSBCKP_REQ,  // GNSS backup-cell charge mode (rail ON, M10 in PMREQ-backup)
 	SMDDFU_REQ,    // Comm module command: VERSION (all builds), DFU actions (SMD only)
 	COMCW_REQ,     // Comm module Continuous Wave test (SMD / LoRa; KIM2 not supported)
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
@@ -81,6 +82,7 @@ enum class DTECommand {
 	SWSCAL_RESP,   // SWS guided calibration response
 	SWSSTATS_RESP, // SWS persistent diagnostic counters response
 	GNSSBR_RESP,   // GNSS UART bridge/passthrough response
+	GNSSBCKP_RESP, // GNSS backup-cell charge mode response
 	SMDDFU_RESP,   // Comm module response (VERSION: all builds, DFU: SMD only)
 	COMCW_RESP,    // Comm module Continuous Wave response
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)

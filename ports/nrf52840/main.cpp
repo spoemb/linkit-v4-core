@@ -159,6 +159,7 @@ DTEHandler *dte_handler;                  ///< DTE protocol command dispatcher (
 RTC *rtc;                                 ///< Real-time clock (NrfRTC, epoch seconds)
 BatteryMonitor *battery_monitor;          ///< Battery voltage/level monitor (variant-dependent)
 GPSDevice *gps_device;                    ///< GNSS receiver (u-blox M10Q)
+GPSService *gps_service = nullptr;        ///< GNSS service singleton (set by phase 6 if M10Q detected)
 KineisDevice *kineis_device_instance = nullptr;  ///< Satellite TX device (SMD, KIM2, or LoRa)
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 SmdSat *smd_sat_instance = nullptr;       ///< SMD satellite instance (needed for DFU OTA)
@@ -767,7 +768,8 @@ static void init_communication(LFSFileSystem& lfs_file_system)
 	try {
 		static M10QAsyncReceiver m10q_gnss;
 		gps_device = &m10q_gnss;
-		static GPSService gps_service(m10q_gnss, &fs_sensor_log);
+		static GPSService gps_service_instance(m10q_gnss, &fs_sensor_log);
+		gps_service = &gps_service_instance;
 	} catch (...) {
 		DEBUG_INFO("GPS M10Q not detected");
 	}

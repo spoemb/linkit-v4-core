@@ -389,6 +389,26 @@ const DTECommandMap command_map[] = {
 		.command = DTECommand::SWSST_REQ,
 		.prototype = {}
 	},
+	// GNSSBCKP - GNSS backup-cell charge mode (rail ON, M10 in deep sleep)
+	// Usage: $GNSSBCKP#001;<duration_s>\r   (duration_s in seconds; 0 = abort)
+	// Response: $O;GNSSBCKP#000;\r
+	{
+		.name = "GNSSBCKP",
+		.command = DTECommand::GNSSBCKP_REQ,
+		.prototype =
+		{
+			{
+				.name = "duration_s",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 86400U,
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	},
 	// SATDP - Satellite Doppler calibration (no arguments)
 	// Usage: $SATDP#000;\r
 	// Starts periodic Doppler TX at TR_NOM interval until device reset
@@ -1074,6 +1094,12 @@ const DTECommandMap command_map[] = {
 	{
 		.name = "PWRON",
 		.command = DTECommand::PWRON_RESP,
+		.prototype = {}
+	},
+	// GNSSBCKP response - simple acknowledgement
+	{
+		.name = "GNSSBCKP",
+		.command = DTECommand::GNSSBCKP_RESP,
 		.prototype = {}
 	},
 	// SWSST response - SWS calibration status values

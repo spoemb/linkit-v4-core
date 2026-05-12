@@ -61,6 +61,11 @@ void GPSService::service_init() {
     m_is_first_fix_found = false;
     m_is_first_schedule = true;
     m_num_gps_fixes = 0;
+    m_backup_active = false;
+    m_underwater = false;
+    m_backup_exit_task = {};
+    m_backup_periodic_task = {};
+    backup_charge_schedule_next();
 
     // Warn user about fastloc mode impact on sensor messages
     unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
@@ -79,6 +84,12 @@ void GPSService::service_init() {
 
 /// @brief Terminate GNSS service (no-op — device powered off by service_cancel).
 void GPSService::service_term() {
+    system_scheduler->cancel_task(m_backup_periodic_task);
+    system_scheduler->cancel_task(m_backup_exit_task);
+    if (m_backup_active) {
+        m_device.exit_backup_charge_mode();
+        m_backup_active = false;
+    }
 }
 
 /// @brief Enabled if GNSS_EN is set in config (respects LB/zone overrides).
@@ -150,6 +161,15 @@ unsigned int GPSService::service_next_schedule_in_ms() {
 
 /// @brief Start GNSS acquisition — configure nav settings, power on M10Q.
 void GPSService::service_initiate() {
+	// If a backup-cell charge session is in flight, abort it synchronously so
+	// the device returns to idle before we request a normal acquisition.
+	if (m_backup_active) {
+		DEBUG_INFO("GPSService::service_initiate: aborting backup-charge to start GNSS acquisition");
+		system_scheduler->cancel_task(m_backup_exit_task);
+		m_device.exit_backup_charge_mode();
+		m_backup_active = false;
+	}
+
 	GNSSConfig gnss_config;
 	configuration_store->get_gnss_configuration(gnss_config);
 
@@ -474,6 +494,15 @@ void GPSService::react(const GPSEventError&) {
     service_complete(&event_data, &log_entry);
 }
 
+/// @brief Device powered off — clear backup-charge flag if it was set
+/// (the M10 emits this on exit_backup_charge_mode too).
+void GPSService::react(const GPSEventPowerOff&) {
+    if (m_backup_active) {
+        m_backup_active = false;
+        system_scheduler->cancel_task(m_backup_exit_task);
+    }
+}
+
 /// @brief Valid PVT fix received — power off, process and log.
 void GPSService::react(const GPSEventPVT& e) {
 	if (!m_is_active)
@@ -579,15 +608,96 @@ bool GPSService::service_is_triggered_on_event(ServiceEvent& event, bool& immedi
 void GPSService::notify_peer_event(ServiceEvent& e) {
 	//DEBUG_TRACE("GPSService::notify_peer_event: (%u|%u)", e.event_source, e.event_type);
 	if (e.event_source == ServiceIdentifier::UW_SENSOR && e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+		bool now_underwater = std::get<bool>(e.event_data);
+		m_underwater = now_underwater;
 		// Check for surfacing condition
-		if (std::get<bool>(e.event_data) == false) {
+		if (!now_underwater) {
 			// Check if we need to trigger a cold start
 			if (service_read_param<bool>(ParamID::GNSS_TRIGGER_COLD_START_ON_SURFACED)) {
 				DEBUG_TRACE("GPSService: cold start required on surfaced");
 				m_is_first_fix_found = false;
 			}
+			// Backup charge: if UW_ONLY is enabled and we just surfaced,
+			// abort the charge so the normal surface flow can take over.
+			if (m_backup_active && service_read_param<bool>(ParamID::GNSS_BCKP_CHARGE_UW_ONLY)) {
+				DEBUG_INFO("GPSService: surfaced — aborting backup-charge (UW_ONLY)");
+				backup_charge_stop_internal();
+			}
 		}
 	}
 
 	Service::notify_peer_event(e);
+}
+
+/// @brief Public entry-point: start/stop a V_BCKP coin-cell charge session.
+void GPSService::request_backup_charge(unsigned int duration_s) {
+	if (duration_s == 0) {
+		DEBUG_INFO("GPSService::request_backup_charge: stop requested");
+		backup_charge_stop_internal();
+		return;
+	}
+
+	// Refuse if a GNSS acquisition is currently in progress — backup charge
+	// and active acquisition are mutually exclusive (M10 device state machine).
+	if (m_is_active) {
+		DEBUG_WARN("GPSService::request_backup_charge: GNSS acquisition active — refused");
+		return;
+	}
+
+	// Already active: just refresh the auto-exit timer (extend / shorten).
+	if (m_backup_active) {
+		system_scheduler->cancel_task(m_backup_exit_task);
+	} else {
+		DEBUG_INFO("GPSService::request_backup_charge: starting (duration=%us)", duration_s);
+		m_device.enter_backup_charge_mode();
+		m_backup_active = true;
+	}
+
+	m_backup_exit_task = system_scheduler->post_task_prio([this]() {
+		DEBUG_INFO("GPSService: backup-charge auto-exit (duration elapsed)");
+		backup_charge_stop_internal();
+	}, "GPSBackupChargeExit", Scheduler::DEFAULT_PRIORITY, duration_s * MS_PER_SEC);
+}
+
+/// @brief Internal: stop the charge session if active. Idempotent.
+void GPSService::backup_charge_stop_internal() {
+	system_scheduler->cancel_task(m_backup_exit_task);
+	if (m_backup_active) {
+		m_device.exit_backup_charge_mode();
+		m_backup_active = false;
+	}
+}
+
+/// @brief Schedule the next periodic backup-charge tick (or arm immediately if
+/// the interval was just enabled).  Re-reads the param each call so DTE changes
+/// take effect without restart.
+void GPSService::backup_charge_schedule_next() {
+	system_scheduler->cancel_task(m_backup_periodic_task);
+	unsigned int interval_s = configuration_store->read_param<unsigned int>(ParamID::GNSS_BCKP_CHARGE_INT);
+	if (interval_s == 0) {
+		DEBUG_TRACE("GPSService: backup-charge periodic disabled (GNSS_BCKP_CHARGE_INT=0)");
+		return;
+	}
+	m_backup_periodic_task = system_scheduler->post_task_prio([this]() {
+		backup_charge_periodic_fire();
+	}, "GPSBackupChargePeriodic", Scheduler::DEFAULT_PRIORITY, interval_s * MS_PER_SEC);
+}
+
+/// @brief Periodic tick: try to start a backup-charge session if conditions allow.
+/// Always reschedules itself (caller can disable via INT=0).
+void GPSService::backup_charge_periodic_fire() {
+	unsigned int duration_s = configuration_store->read_param<unsigned int>(ParamID::GNSS_BCKP_CHARGE_DUR);
+	bool uw_only = configuration_store->read_param<bool>(ParamID::GNSS_BCKP_CHARGE_UW_ONLY);
+
+	if (m_is_active) {
+		DEBUG_INFO("GPSService: backup-charge tick skipped — GNSS acquisition in progress");
+	} else if (uw_only && !m_underwater) {
+		DEBUG_INFO("GPSService: backup-charge tick skipped — UW_ONLY and surfaced");
+	} else if (m_backup_active) {
+		DEBUG_INFO("GPSService: backup-charge tick skipped — already charging");
+	} else {
+		request_backup_charge(duration_s);
+	}
+
+	backup_charge_schedule_next();
 }

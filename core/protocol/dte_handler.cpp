@@ -4,6 +4,7 @@
  */
 
 #include "dte_handler.hpp"
+#include "gps_service.hpp"
 #include "argos_tx_service.hpp"
 #if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
 #include "lora_tx_service.hpp"
@@ -1373,6 +1374,22 @@ std::string DTEHandler::PWRON_REQ(int error_code, std::vector<BaseType>& arg_lis
 	return DTEEncoder::encode(DTECommand::PWRON_RESP, (int)DTEError::OK);
 }
 
+std::string DTEHandler::GNSSBCKP_REQ(int error_code, std::vector<BaseType>& arg_list) {
+	if (error_code) {
+		return DTEEncoder::encode(DTECommand::GNSSBCKP_RESP, error_code);
+	}
+	if (arg_list.size() < 1) {
+		return DTEEncoder::encode(DTECommand::GNSSBCKP_RESP, (int)DTEError::MISSING_ARGUMENT);
+	}
+	if (!gps_service) {
+		return DTEEncoder::encode(DTECommand::GNSSBCKP_RESP, (int)DTEError::INCORRECT_DATA);
+	}
+	unsigned int duration_s = std::get<unsigned int>(arg_list[0]);
+	DEBUG_INFO("DTEHandler::GNSSBCKP_REQ: duration_s=%u", duration_s);
+	gps_service->request_backup_charge(duration_s);
+	return DTEEncoder::encode(DTECommand::GNSSBCKP_RESP, (int)DTEError::OK);
+}
+
 std::string DTEHandler::SWSST_REQ(int error_code) {
 	if (error_code) {
 		return DTEEncoder::encode(DTECommand::SWSST_RESP, error_code);
@@ -1821,6 +1838,9 @@ DTEAction DTEHandler::handle_dte_message(const std::string& req, std::string& re
 		break;
 	case DTECommand::PWRON_REQ:
 		resp = PWRON_REQ(error_code, arg_list);
+		break;
+	case DTECommand::GNSSBCKP_REQ:
+		resp = GNSSBCKP_REQ(error_code, arg_list);
 		break;
 	case DTECommand::SWSST_REQ:
 		resp = SWSST_REQ(error_code);

@@ -74,6 +74,11 @@ public:
 	}
 	void notify_peer_event(ServiceEvent& e) override;
 
+	/// Manual / DTE entry-point for the V_BCKP coin-cell charge mode.
+	/// duration_s > 0  → start (or extend) a charge session for the given seconds.
+	/// duration_s == 0 → abort the current charge session immediately.
+	void request_backup_charge(unsigned int duration_s);
+
 protected:
 
 	// Service interface methods
@@ -101,12 +106,23 @@ private:
 	unsigned int m_num_gps_fixes = 0;
 	bool m_is_active = false;
 
+	// Backup-cell (V_BCKP) charge mode bookkeeping (independent of m_is_active).
+	bool m_backup_active = false;
+	bool m_underwater = false;
+	Scheduler::TaskHandle m_backup_exit_task;
+	Scheduler::TaskHandle m_backup_periodic_task;
+
+	void backup_charge_schedule_next();
+	void backup_charge_periodic_fire();
+	void backup_charge_stop_internal();
+
     void react(const GPSEventMaxNavSamples&) override;
     void react(const GPSEventMaxSatSamples&) override;
     void react(const GPSEventPVT&) override;
     void react(const GPSEventPVTDegraded&) override;
     void react(const GPSEventRawMeasurement&) override;
     void react(const GPSEventError&) override;
+    void react(const GPSEventPowerOff&) override;
 
 	// Private methods for GNSS
 	void task_process_gnss_data();

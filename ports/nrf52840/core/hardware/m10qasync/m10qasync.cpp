@@ -90,6 +90,23 @@ M10QAsyncReceiver::~M10QAsyncReceiver() {
 
 void M10QAsyncReceiver::power_on(const GPSNavSettings& nav_settings) {
 	DEBUG_INFO("M10QAsyncReceiver::power_on");
+
+    // If the device is currently in a backup-charge state, tear it down
+    // synchronously so the normal poweron path sees state == idle. This
+    // resolves the race where service_initiate calls exit_backup_charge_mode()
+    // (which is async for `enterbackup`) and then power_on() right after.
+    if (STATE_EQUAL(enterbackup) || STATE_EQUAL(backupidle)) {
+        DEBUG_INFO("M10QAsyncReceiver::power_on: aborting backup-charge state synchronously");
+        if (STATE_EQUAL(enterbackup))
+            m_ubx_comms.deinit();
+        GPIOPins::clear(BSP::GPIO::GPIO_GPS_PWR_EN);
+        GPIOPins::release_to_highz(BSP::GPIO::GPIO_GPS_RST);
+        GPIOPins::release_sensors_pwr();
+        PMU::delay_ms(50); // brief rail-off gap before exit_shutdown re-energises it
+        m_state = State::idle;
+        m_num_power_on = 0;
+    }
+
     // Track number of power on requests
     m_num_power_on++;
 
@@ -170,6 +187,10 @@ void M10QAsyncReceiver::check_for_power_off() {
 		STATE_CHANGE(senddatabase, poweroff);
 	} else if (STATE_EQUAL(sendofflinedatabase)) {
 		STATE_CHANGE(sendofflinedatabase, poweroff);
+	} else if (STATE_EQUAL(backupidle)) {
+		STATE_CHANGE(backupidle, poweroff);
+	} else if (STATE_EQUAL(enterbackup)) {
+		STATE_CHANGE(enterbackup, poweroff);
 	} else {
 		STATE_CHANGE(idle, poweroff);
 	}
@@ -218,6 +239,42 @@ void M10QAsyncReceiver::power_off() {
 #else
     check_for_power_off();
 #endif
+}
+
+void M10QAsyncReceiver::enter_backup_charge_mode() {
+    DEBUG_INFO("M10QAsyncReceiver::enter_backup_charge_mode");
+    // Refuse if GPS already has active clients or is not idle — backup charge
+    // and normal acquisition are mutually exclusive. Caller (GPSService) must
+    // gate this.
+    if (m_num_power_on != 0 || !STATE_EQUAL(idle)) {
+        DEBUG_WARN("M10QAsyncReceiver: backup-charge refused (state=%d, users=%u)",
+                   (int)m_state, m_num_power_on);
+        return;
+    }
+    m_powering_off = false;
+    STATE_CHANGE(idle, enterbackup);
+}
+
+void M10QAsyncReceiver::exit_backup_charge_mode() {
+    DEBUG_INFO("M10QAsyncReceiver::exit_backup_charge_mode");
+    if (!STATE_EQUAL(backupidle) && !STATE_EQUAL(enterbackup))
+        return;
+    m_num_power_on = 0;
+    // Cancel any in-flight response timeout / scheduled state-machine task
+    cancel_timeout();
+    system_scheduler->cancel_task(m_state_machine_handle);
+    // For enterbackup, UART is still alive — deinit it (libuarte tears down
+    // pending TX cleanly). For backupidle, it's already deinit'd.
+    if (STATE_EQUAL(enterbackup)) {
+        m_ubx_comms.deinit();
+    }
+    // Kill the rail synchronously so callers can immediately request a normal
+    // power_on (state == idle on return).
+    GPIOPins::clear(BSP::GPIO::GPIO_GPS_PWR_EN);
+    GPIOPins::release_to_highz(BSP::GPIO::GPIO_GPS_RST);
+    GPIOPins::release_sensors_pwr();
+    m_state = State::idle;
+    notify(GPSEventPowerOff(false));
 }
 
 void M10QAsyncReceiver::enter_shutdown() {
@@ -279,6 +336,12 @@ void M10QAsyncReceiver::state_machine() {
 		break;
 	case State::fetchdatabase:
 		STATE_CALL(fetchdatabase);
+		break;
+	case State::enterbackup:
+		STATE_CALL(enterbackup);
+		break;
+	case State::backupidle:
+		STATE_CALL(backupidle);
 		break;
 	default:
 	case State::idle:
@@ -764,6 +827,106 @@ void M10QAsyncReceiver::state_poweroff() {
 }
 
 void M10QAsyncReceiver::state_poweroff_exit() {
+}
+
+void M10QAsyncReceiver::send_pmreq_backup() {
+    DEBUG_TRACE("M10QAsyncReceiver::send_pmreq_backup: UBX-RXM-PMREQ backup ->");
+    RXM::MSG_PMREQ pmreq = {
+        .version       = 0,
+        .reserved1     = {0, 0, 0},
+        .duration      = 0,                          // sleep until wakeup event
+        .flags         = RXM::PMREQFlags::BACKUP,    // 0x02
+        .wakeupSources = RXM::PMREQWakeupSources::UARTRX, // wake on UART RX so next power_on can recover quickly
+    };
+    m_ubx_comms.send_packet(MessageClass::MSG_CLASS_RXM, RXM::ID_PMREQ, pmreq);
+    m_ubx_comms.wait_send();
+}
+
+void M10QAsyncReceiver::state_enterbackup_enter() {
+    m_step = 0;
+    m_retries = BOOT_BAUD_SYNC_RETRIES;
+    m_op_state = OpState::IDLE;
+    m_uart_error_count = 0;
+    DEBUG_INFO("M10QAsyncReceiver::state_enterbackup_enter");
+    exit_shutdown();
+}
+
+void M10QAsyncReceiver::state_enterbackup() {
+    while (true) {
+        if (m_op_state == OpState::IDLE) {
+            DEBUG_TRACE("M10QAsyncReceiver:state_enterbackup: step:%u", m_step);
+            m_op_state = OpState::PENDING;
+            if (m_step == 0) {
+                // After a fresh cold-boot the M10 talks at 9600, but if BBR is
+                // alive (previous save_config persisted) it may have come up at
+                // MAX_BAUDRATE. Mirror the configure fast-path: try the rate we
+                // expect from cached info first.
+                unsigned int baud = m_gnss_info_valid ? MAX_BAUDRATE : DEFAULT_BAUDRATE;
+                sync_baud_rate(baud);
+                break;
+            } else if (m_step == 1) {
+                // Fallback baud — try the other one if step 0 failed
+                unsigned int baud = m_gnss_info_valid ? DEFAULT_BAUDRATE : MAX_BAUDRATE;
+                sync_baud_rate(baud);
+                break;
+            } else if (m_step == 2) {
+                send_pmreq_backup();
+                m_op_state = OpState::IDLE;
+                m_step++;
+                run_state_machine(100); // let the PMREQ propagate before tearing down UART
+                break;
+            } else {
+                // Step 3: release UART pins (rail stays powered)
+                m_ubx_comms.deinit();
+                STATE_CHANGE(enterbackup, backupidle);
+                break;
+            }
+        } else if (m_op_state == OpState::SUCCESS) {
+            // Skip the fallback baud step if the primary one succeeded
+            if (m_step == 0)
+                m_step = 2;
+            else
+                m_step++;
+            m_retries = DEFAULT_RETRIES;
+            m_op_state = OpState::IDLE;
+        } else if (m_op_state == OpState::PENDING) {
+            break;
+        } else {
+            if (--m_retries == 0) {
+                if (m_step == 0) {
+                    // Primary baud failed all retries — try the fallback
+                    DEBUG_WARN("M10QAsyncReceiver: enterbackup baud sync at %s failed, trying fallback",
+                               m_gnss_info_valid ? "MAX" : "9600");
+                    m_step = 1;
+                    m_retries = BOOT_BAUD_SYNC_RETRIES;
+                } else {
+                    DEBUG_ERROR("M10QAsyncReceiver: state_enterbackup failed (step %u) — bailing to poweroff",
+                                m_step);
+                    m_powering_off = true;
+                    m_num_power_on = 0;
+                    STATE_CHANGE(enterbackup, poweroff);
+                    break;
+                }
+            }
+            m_op_state = OpState::IDLE;
+        }
+    }
+}
+
+void M10QAsyncReceiver::state_enterbackup_exit() {
+}
+
+void M10QAsyncReceiver::state_backupidle_enter() {
+    DEBUG_INFO("M10QAsyncReceiver::state_backupidle_enter: rail ON, M10 sleeping");
+    // Nothing to do — rail is powered, UART deinit'd, M10 in backup mode.
+    // The state remains until exit_backup_charge_mode() is called.
+}
+
+void M10QAsyncReceiver::state_backupidle() {
+    // Idle: GPSService is responsible for triggering exit_backup_charge_mode().
+}
+
+void M10QAsyncReceiver::state_backupidle_exit() {
 }
 
 void M10QAsyncReceiver::state_configure_enter() {

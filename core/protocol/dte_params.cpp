@@ -329,6 +329,12 @@ const BaseMap param_map[] = {
 	// give a true 24h-since-deployment window across TPL5111 hard shutdowns.
 	// User can override via DTE PARMW for re-deployment scenarios.
 	{ "LED_HRS24_RTC_CUTOFF", "LDP03", BaseEncoding::DATESTRING, 0, 0, {}, true, true },
+	// [223] GNSS backup-cell charge: period between sessions (seconds). 0 = disabled.
+	{ "GNSS_BCKP_CHARGE_INT", "GNP47", BaseEncoding::UINT, 0U, 86400U, {}, true, true },
+	// [224] GNSS backup-cell charge: duration of each session (seconds).
+	{ "GNSS_BCKP_CHARGE_DUR", "GNP48", BaseEncoding::UINT, 60U, 3600U, {}, true, true },
+	// [225] GNSS backup-cell charge: when true, only run while submerged (saltwater switch).
+	{ "GNSS_BCKP_CHARGE_UW_ONLY", "GNP49", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

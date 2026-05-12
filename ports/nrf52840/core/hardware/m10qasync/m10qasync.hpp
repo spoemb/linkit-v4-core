@@ -16,6 +16,8 @@ public:
 	~M10QAsyncReceiver();
 	void power_on(const GPSNavSettings& nav_settings) override;
 	void power_off() override;
+	void enter_backup_charge_mode() override;
+	void exit_backup_charge_mode() override;
 
 private:
 	GPSNavSettings m_nav_settings;
@@ -72,6 +74,8 @@ private:
 		stopreceive,
 		fetchdatabase,
 		poweroff,
+		enterbackup,        ///< Powering on rail + sending UBX-RXM-PMREQ backup
+		backupidle,         ///< Rail powered, UART torn down, M10 sleeping (~15 µA from V_BCKP)
 	};
 
 	enum OpState {
@@ -117,6 +121,12 @@ private:
 	void state_poweroff_enter();
 	void state_poweroff();
 	void state_poweroff_exit();
+	void state_enterbackup_enter();
+	void state_enterbackup();
+	void state_enterbackup_exit();
+	void state_backupidle_enter();
+	void state_backupidle();
+	void state_backupidle_exit();
 	void state_machine();
 	void run_state_machine(unsigned int time_ms = 0);
 
@@ -151,6 +161,7 @@ private:
 	void query_mon_ver();
 	void query_sec_uniqid();
 	void sync_baud_rate(unsigned int baud);
+	void send_pmreq_backup();
 	void dump_navigation_database(unsigned int);
 	void save_dbd_to_flash();
 	bool load_dbd_from_flash();

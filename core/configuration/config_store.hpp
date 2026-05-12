@@ -103,7 +103,7 @@ enum class ConfigMode {
 class ConfigurationStore {
 
 protected:
-	static inline const unsigned int m_config_version_code = 0x1c07e800 | 0x1C;
+	static inline const unsigned int m_config_version_code = 0x1c07e800 | 0x1D;
 	static inline const unsigned int m_config_version_code_aop = 0x1c07e800 | 0x03;
 	static inline const std::array<BaseType,MAX_CONFIG_ITEMS> default_params { {
 		/* ARGOS_DECID */ 0U,
@@ -334,6 +334,9 @@ protected:
 		/* [220] AXL_FIFO_ENABLE */ (bool)false,       // false=single sample, true=FIFO batch averaging
 		/* [221] AXL_FIFO_SAMPLE_COUNT */ 50U,         // 1-170 samples per batch
 		/* [222] LED_HRS24_RTC_CUTOFF */ static_cast<std::time_t>(0U),  // 0=unset, auto-set by GPSService at first valid fix to (now+24h)
+		/* [223] GNSS_BCKP_CHARGE_INT */ 0U,           // 0=disabled (no periodic backup charge)
+		/* [224] GNSS_BCKP_CHARGE_DUR */ 300U,         // 5 min per session by default
+		/* [225] GNSS_BCKP_CHARGE_UW_ONLY */ (bool)false,
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,

@@ -46,6 +46,8 @@ extern KIM2Device *kim2_device_instance;
 extern BatteryMonitor *battery_monitor;
 extern GPSDevice *gps_device;
 extern RTC *rtc;
+class GPSService; // forward decl — full definition included in gps_service.hpp where needed
+extern GPSService *gps_service;
 
 // This governs the maximum number of log entries we can read out in a single request
 #define DTE_HANDLER_MAX_LOG_DUMP_ENTRIES          8U
@@ -173,6 +175,7 @@ public:
 	std::string ARGOSTX_REQ(int error_code, std::vector<BaseType>& arg_list);
 	static std::string SENSR_REQ(int error_code, std::vector<BaseType>& arg_list);
 	std::string PWRON_REQ(int error_code, std::vector<BaseType>& arg_list);
+	static std::string GNSSBCKP_REQ(int error_code, std::vector<BaseType>& arg_list);
 	static std::string SWSST_REQ(int error_code);
 	std::string SWSTST_REQ(int error_code, std::vector<BaseType>& arg_list);
 	std::string SWSCAL_REQ(int error_code, std::vector<BaseType>& arg_list);
