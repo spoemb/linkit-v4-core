@@ -327,95 +327,15 @@ struct InitContext {
  *
  * @return InitContext with references to reed switch and flash for subsequent phases.
  */
-/// @brief Very-early storage-mode bailout — re-enters System OFF if the device
-/// just woke from PSEUDO_POWER_OFF (a brief Hall switch trigger / environmental
-/// magnet) and there is no magnet held at boot. Without this, a spurious Hall
-/// trigger would cause the MCU to sit forever in the WFE wait loop of
-/// `init_power_on_check`, burning ~3-5 µA continuously even though no real
-/// user gesture happened.
-///
-/// Called BEFORE start_watchdog() — the nRF52 WDT keeps running in System OFF
-/// and would trigger a `WDT_RESET` cycle every WDT timeout, defeating the
-/// purpose. Must also run before SoftDevice is enabled, so we use the bare
-/// `NRF_POWER->SYSTEMOFF` instead of `sd_power_system_off()`.
-///
-/// Wake path from System OFF: any HIGH level on REED_SW (Hall switch fires =
-/// pin pulled high) triggers a full chip reset; we re-enter this function and
-/// either confirm a held magnet (→ proceed to normal boot) or go back to
-/// System OFF.
-#ifdef PSEUDO_POWER_OFF
-static void early_storage_off_check()
-{
-	// Read RESETREAS BEFORE PMU::initialise() touches it. PSEUDO_POWER_OFF
-	// is encoded as GPREGRET=0x80 + SREQ reset cause. Only act if BOTH match.
-	uint32_t resetreas = NRF_POWER->RESETREAS;
-	uint32_t gpregret  = NRF_POWER->GPREGRET;
-
-	bool was_pseudo_power_off =
-		(resetreas & POWER_RESETREAS_SREQ_Msk) && (gpregret == 0x80);
-
-	if (!was_pseudo_power_off) {
-		return;  // Not a wake from storage — proceed to normal init
-	}
-
-	// Configure reed pin to read its current state (no GPIOTE / no IRQ yet).
-	// LinkIt V4: GPIO_REED_SW = P1.03, PULLDOWN, ACTIVE_STATE = HIGH (Hall
-	// switch closed → REED_MCU drives reed pin HIGH).
-	const uint32_t reed_pin = BSP::GPIO_Inits[BSP::GPIO_REED_SW].pin_number;
-	nrf_gpio_cfg_input(reed_pin, NRF_GPIO_PIN_PULLDOWN);
-
-	// Tiny settle delay — pulldown needs a few µs to discharge the pin cap.
-	nrf_delay_us(50);
-
-	if (nrf_gpio_pin_read(reed_pin) == REED_SWITCH_ACTIVE_STATE) {
-		// Magnet IS present at boot — could be a real user gesture. Let the
-		// normal init flow take over (it will do the full 3 s held-check).
-		return;
-	}
-
-	// No magnet at boot — this was a spurious Hall trigger. Re-arm System OFF
-	// with SENSE wake on REED_SW going HIGH (magnet field detected), then
-	// drop into the deepest sleep available.
-
-	// Make absolutely sure no peripheral / SoftDevice is keeping us awake by
-	// re-configuring REED_SW as SENSE input. nrf_gpio_cfg_sense_input does
-	// the right magic to register a PORT event source on the pin.
-	nrf_gpio_cfg_sense_input(reed_pin,
-		NRF_GPIO_PIN_PULLDOWN,
-		(REED_SWITCH_ACTIVE_STATE != 0) ? NRF_GPIO_PIN_SENSE_HIGH
-		                                : NRF_GPIO_PIN_SENSE_LOW);
-
-	// Clear GPREGRET so the next wake doesn't re-enter this path until we
-	// actually go through powerdown() again. Without this clear, every cold
-	// boot via Hall would re-detect "PSEUDO_POWER_OFF + magnet released" and
-	// bounce right back into System OFF — fine in theory but masks real
-	// power-on resets (insertion of battery while magnet absent).
-	NRF_POWER->GPREGRET = 0;
-
-	// Belt-and-braces: latch the SREQ bit cleared so the next wake reports
-	// the true reset cause (POWER_ON for battery insertion, or GPIO).
-	NRF_POWER->RESETREAS = NRF_POWER->RESETREAS;
-
-	// Enter System OFF. CPU halts, RAM unpowered (except RAMRET if configured),
-	// only the SENSE detector watches REED_SW. Wake = full chip reset.
-	NRF_POWER->SYSTEMOFF = 1;
-
-	// Should never reach here, but per nRF52840 errata the SYSTEMOFF write
-	// can be racy if an interrupt is pending; fall through to a SystemReset
-	// so we at least don't hang in undefined state.
-	for (;;) { __WFE(); __WFI(); }
-}
-#endif
-
 static InitContext init_peripherals()
 {
-#ifdef PSEUDO_POWER_OFF
-	// Storage-mode wake filter: if we woke from PSEUDO_POWER_OFF without a
-	// magnet held, immediately re-enter System OFF (deepest sleep, ~0.4 µA
-	// chip + ~1.7 µA Hall switch = ~2 µA total). Must run BEFORE start_watchdog
-	// otherwise WDT keeps ticking in System OFF and resets us periodically.
-	early_storage_off_check();
-#endif
+	// Storage-mode wake filter: if we just woke from PSEUDO_POWER_OFF without
+	// a magnet held, the device enters System OFF mode immediately (deepest
+	// sleep ~0.4 µA + Hall switch ~1.7 µA = ~2 µA total). Must run BEFORE
+	// PMU::initialise() (which clears RESETREAS / GPREGRET) and BEFORE
+	// start_watchdog() (WDT would tick in System OFF and reset the chip).
+	// No-op on boards without PSEUDO_POWER_OFF (RSPB).
+	PMU::storage_off_check();
 
 	PMU::initialise();
 #ifndef DEBUG_NO_WATCHDOG

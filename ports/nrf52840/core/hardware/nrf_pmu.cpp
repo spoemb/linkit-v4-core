@@ -57,6 +57,86 @@ static __attribute__((section(".noinit"))) volatile uint16_t m_crc;           //
 /// @brief Spare bit in RESETREAS to distinguish pseudo power-off (via GPREGRET) from real SREQ.
 #define POWER_RESETREAS_PSEUDO_POWER_OFF  0x80000000
 
+/// @brief Storage-mode wake filter — see header for full rationale.
+/// Must be called BEFORE initialise() (which clears RESETREAS / GPREGRET)
+/// and BEFORE start_watchdog() (WDT keeps running in System OFF and would
+/// reset the chip on timeout, defeating the purpose).
+void PMU::storage_off_check() {
+#ifdef PSEUDO_POWER_OFF
+	// Read RESETREAS / GPREGRET directly — initialise() hasn't cleared them yet.
+	uint32_t resetreas = NRF_POWER->RESETREAS;
+	uint32_t gpregret  = NRF_POWER->GPREGRET;
+
+	bool was_pseudo_power_off =
+		(resetreas & POWER_RESETREAS_SREQ_Msk) && (gpregret == 0x80);
+
+	if (!was_pseudo_power_off) {
+		return;  // Not a wake from storage — proceed to normal init
+	}
+
+	// Apply BSP config for the reed pin (PULLDOWN input on LinkIt V4).
+	GPIOPins::init_pin(BSP::GPIO_REED_SW);
+
+	// Tiny settle delay — pulldown needs a few µs to discharge the pin cap.
+	nrf_delay_us(50);
+
+	if (GPIOPins::value(BSP::GPIO_REED_SW) == REED_SWITCH_ACTIVE_STATE) {
+		// Magnet held at boot — likely a real user gesture. Let the normal
+		// init_power_on_check flow take over (3 s held-check + buzzer + LED).
+		return;
+	}
+
+	// No magnet at boot. We're going to System OFF. First, drop VSYS_SEL
+	// so the TPS63901 buck-boost outputs 1.8 V instead of 3.3 V. Same trick
+	// as prepare_for_deep_idle (see this file ~L348) — saves ~8 µA of
+	// quiescent. Safe here because:
+	//   - All other peripheral rails (GPS / SAT / sensors) were cut by
+	//     powerdown() before the soft reset that brought us here.
+	//   - The nRF52840 operates from 1.7 V to 3.6 V on VDD (datasheet).
+	//   - LED is off in storage state, so the ~3 V Vf is not required.
+	GPIOPins::init_pin(BSP::GPIO_VSYS_SEL);     // apply BSP config (open-drain S0D1)
+	GPIOPins::clear(BSP::GPIO_VSYS_SEL);        // SEL low → VSYS = 1.8 V
+
+	// Configure REED_SW as a SENSE wake source (PORT event on level match).
+	// init_pin set it to GPIOTE TOGGLE in the BSP — we override with SENSE
+	// since GPIOTE peripherals stop in System OFF, only SENSE wakes.
+	nrf_gpio_cfg_sense_input(BSP::GPIO_Inits[BSP::GPIO_REED_SW].pin_number,
+		NRF_GPIO_PIN_PULLDOWN,
+		(REED_SWITCH_ACTIVE_STATE != 0) ? NRF_GPIO_PIN_SENSE_HIGH
+		                                : NRF_GPIO_PIN_SENSE_LOW);
+
+	// Clear retention registers so the next wake reports the true reset cause
+	// (POWER_ON for battery insert, or GPIO for the SENSE wake we just armed).
+	// Without this clear, every cold boot via Hall would re-detect
+	// "PSEUDO_POWER_OFF + magnet released" and bounce back into System OFF.
+	NRF_POWER->GPREGRET = 0;
+	NRF_POWER->RESETREAS = NRF_POWER->RESETREAS;  // write-1-to-clear
+
+	// Clear any latched DETECT events on both GPIO ports. Without this clear,
+	// stale latch bits from before the reset can interfere with the SENSE
+	// wake mechanism — particularly important since we just reconfigured the
+	// reed pin SENSE polarity.
+	NRF_P0->LATCH = NRF_P0->LATCH;  // w1c — clears all latched bits
+	NRF_P1->LATCH = NRF_P1->LATCH;
+
+	// Enter System OFF. The CPU is powered off — instructions after this
+	// write may still execute briefly (until the power gate cuts the CPU
+	// supply) but their side effects are lost.
+	//
+	// IMPORTANT: do NOT precede this with __WFE() — WFE would put the CPU
+	// to sleep BEFORE the SYSTEMOFF write, which means the write never
+	// happens. The chip would just sit in System ON Idle (CPU off but
+	// peripherals on, ~10 µA at 1.8 V) instead of true System OFF (~0.5 µA).
+	NRF_POWER->SYSTEMOFF = 1;
+	__DSB();  // make sure the write completes before the for-loop below
+
+	// Failsafe: if SYSTEMOFF was rejected by hardware (e.g. NFC field detect
+	// active, debug interface connected), drop into a tight WFI loop with
+	// VSYS at 1.8 V — minimises wasted current until the next reset or wake.
+	for (;;) { __WFI(); }
+#endif // PSEUDO_POWER_OFF
+}
+
 /// @brief Read reset cause, configure DCDC, power-on-failure threshold, clear retention registers.
 void PMU::initialise() {
 #ifdef POWER_CONTROL_PIN
