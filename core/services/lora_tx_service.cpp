@@ -47,6 +47,7 @@ void LoRaTxService::service_init() {
 	m_status_burst_count = 0;
 	m_last_tx_had_gps = false;
 	m_cooldown_armed = false;
+	m_cloudlocate_ready_pending = false;
 
 	DEBUG_TRACE("LoRaTxService::service_init: initialized");
 }
@@ -257,6 +258,11 @@ bool LoRaTxService::service_cancel() {
 	DEBUG_TRACE("LoRaTxService::service_cancel: pending=%u", m_is_tx_pending);
 	bool is_pending = m_is_tx_pending;
 	m_is_tx_pending = false;
+	// Cancel any pending pre-warm — service is being cancelled, no next TX coming.
+	system_scheduler->cancel_task(m_burst_prewarm_task);
+	// Drop any pending CloudLocate-ready trigger — the TX it would have fired
+	// won't happen on this cancel path.
+	m_cloudlocate_ready_pending = false;
 	m_device.stop_send();
 	return is_pending;
 }
@@ -418,6 +424,9 @@ void LoRaTxService::notify_peer_event(ServiceEvent& e) {
 				m_has_gnss_fix_since_surfacing = false;
 				m_first_gnss_tx_sent = false;
 				m_is_first_tx = true;
+				// Reset CloudLocate-ready trigger — fresh surface, GPS will
+				// re-emit GNSS_CLOUDLOCATE_READY when it captures the first raw.
+				m_cloudlocate_ready_pending = false;
 				// `Service::notify_peer_event` below will trigger `reschedule(true)`
 				// (immediate=true for SURFACING_BURST). When immediate=true the base
 				// class SKIPS `service_next_schedule_in_ms()` — which is where
@@ -427,6 +436,34 @@ void LoRaTxService::notify_peer_event(ServiceEvent& e) {
 				m_scheduled_task = [this]() { process_status_burst(); };
 				DEBUG_INFO("LoRaTxService::SURFACING_BURST: surface detected — starting status burst");
 			}
+		}
+	}
+
+	// CloudLocate-ready notification from GPS: GPS captured its first raw
+	// measurement mid-acquisition. If we're in SURFACING_BURST Phase 1 (status
+	// pings) and haven't fired a CloudLocate-quality TX yet, reschedule
+	// immediately. process_status_burst() will then take the CloudLocate
+	// branch (m_status_burst_count > 0, has_raw_measurement() true) and send
+	// the CloudLocate payload instead of a plain status. This shortcuts the
+	// "1st ping is status because raw isn't ready" fallback we'd otherwise hit.
+	//
+	// Edge case: if a TX is already in flight (`m_is_tx_pending == true`), we
+	// can't reschedule synchronously — we'd corrupt the FSM. Instead we set
+	// `m_cloudlocate_ready_pending` and let `react(KineisEventTxComplete)`
+	// trigger the immediate reschedule when the current TX finishes. This
+	// guarantees "dans la foulée" semantics even when raw arrives mid-TX.
+	if (e.event_source == ServiceIdentifier::GNSS_SENSOR &&
+	    e.event_type == ServiceEventType::GNSS_CLOUDLOCATE_READY) {
+		if (!m_is_surfacing_burst || m_has_gnss_fix_since_surfacing) {
+			DEBUG_TRACE("LoRaTxService::notify_peer_event: GNSS_CLOUDLOCATE_READY but not in burst phase 1");
+		} else if (m_is_tx_pending) {
+			DEBUG_INFO("LoRaTxService::notify_peer_event: GNSS_CLOUDLOCATE_READY during in-flight TX — deferring to TX complete");
+			m_cloudlocate_ready_pending = true;
+		} else {
+			DEBUG_INFO("LoRaTxService::notify_peer_event: GNSS_CLOUDLOCATE_READY — rescheduling early CloudLocate TX");
+			m_scheduled_task = [this]() { process_status_burst(); };
+			service_reschedule(true);
+			return;  // Skip base reschedule below — we just did it.
 		}
 	}
 
@@ -769,6 +806,27 @@ void LoRaTxService::react(KineisEventTxComplete const&) {
 			DEBUG_INFO("LoRaTxService: powering off LoRa module (post-burst, deferred)");
 			m_device.power_off_immediate();
 		}, "LoRaPostBurstOff", Scheduler::DEFAULT_PRIORITY, 500);
+		// Burst is ending — make sure no pre-warm fires after the rail is cut,
+		// and drop any pending CloudLocate-ready trigger (no next TX coming).
+		system_scheduler->cancel_task(m_burst_prewarm_task);
+		m_cloudlocate_ready_pending = false;
+	} else if (m_cloudlocate_ready_pending) {
+		// Edge case: GNSS_CLOUDLOCATE_READY arrived during the TX we just
+		// completed. service_complete() already scheduled the next TX at the
+		// normal burst interval (e.g. +5 s). Override that — fire the next
+		// TX immediately so the CloudLocate goes out "dans la foulée" as the
+		// user expects, instead of waiting for the normal timer tick.
+		DEBUG_INFO("LoRaTxService: consuming pending CloudLocate-ready trigger — rescheduling immediate");
+		m_cloudlocate_ready_pending = false;
+		m_scheduled_task = [this]() { process_status_burst(); };
+		service_reschedule(true);
+		// Skip pre-warm: we just rescheduled to fire ASAP, no time to pre-warm
+		// anyway. Module wake from standby/power_off happens inside m_kineis.send().
+	} else {
+		// Burst continues normally. In lp_mode=0, schedule a pre-warm so the
+		// next TX fires on time (otherwise the 2.5 s boot stacks on the user
+		// interval). No-op in lp_mode=1 (standby keeps the module ready).
+		schedule_burst_prewarm();
 	}
 }
 
@@ -790,6 +848,63 @@ void LoRaTxService::reschedule_cooldown_warm_up() {
 		DEBUG_INFO("LoRaTxService: cooldown expired — warming up LoRa module for next surface");
 		m_device.warm_up_for_tx();
 	}, "LoRaCooldownWarmUp", Scheduler::DEFAULT_PRIORITY, remaining_s * 1000);
+}
+
+/// @brief Arm intra-burst pre-warm task for next TX (lp_mode=0 only).
+///
+/// In lp_mode=0 (shutdown), the LoRa device's state_idle transitions to
+/// state_power_off after every TX (rail cut, 0 µA). The next TX would then
+/// pay a ~2.5 s cold-boot penalty stacked on top of the user's interval
+/// (interval becomes user_interval + 2.5 s).
+///
+/// To preserve the user-intended burst timing, we schedule a pre-warm task
+/// at (next_TX_time - BURST_PRE_WARM_DURATION_MS). The task calls
+/// warm_up_for_tx() which boots the module asynchronously; by the time
+/// service_initiate fires m_kineis.send(), the module is in standby and
+/// the wake is ~10 ms.
+///
+/// No-op when lp_mode=1 (standby is already ready), when not in
+/// SURFACING_BURST mode, when burst is ending, or when the computed
+/// pre-warm delay would be negative (next TX too soon).
+void LoRaTxService::schedule_burst_prewarm() {
+	system_scheduler->cancel_task(m_burst_prewarm_task);
+
+	// Only pre-warm in shutdown mode — standby already keeps the module ready.
+	unsigned int lp_mode = configuration_store->read_param<unsigned int>(ParamID::LORA_LP_MODE);
+	if (lp_mode != 0) return;
+
+	// Only pre-warm during active SURFACING_BURST.
+	if (!m_is_surfacing_burst || m_awaiting_surfacing) return;
+
+	ArgosConfig argos_config;
+	configuration_store->get_argos_configuration(argos_config);
+	if (argos_config.mode != BaseArgosMode::SURFACING_BURST) return;
+
+	// Compute the interval to the NEXT TX, mirroring service_next_schedule_in_ms.
+	// `m_status_burst_count` at this point has already been incremented for the
+	// TX that just completed; service_next_schedule_in_ms will use the same
+	// counter to compute (count) * step, which is the interval to TX N+1.
+	unsigned int interval_s = argos_config.surfacing_burst_init_s +
+	                          m_status_burst_count * argos_config.surfacing_burst_step_s;
+	if (interval_s > argos_config.surfacing_burst_max_s)
+		interval_s = argos_config.surfacing_burst_max_s;
+
+	unsigned int interval_ms = interval_s * 1000U;
+	if (interval_ms <= BURST_PRE_WARM_DURATION_MS) {
+		// Interval shorter than boot budget — can't compensate, next TX will
+		// just be late by ~2.5 s. Better than failing to schedule pre-warm.
+		DEBUG_TRACE("LoRaTxService: skipping pre-warm — interval %u ms < %u ms budget",
+		            interval_ms, BURST_PRE_WARM_DURATION_MS);
+		return;
+	}
+
+	unsigned int prewarm_delay_ms = interval_ms - BURST_PRE_WARM_DURATION_MS;
+	DEBUG_INFO("LoRaTxService: scheduling pre-warm in %u ms (next TX in %u s, budget %u ms)",
+	           prewarm_delay_ms, interval_s, BURST_PRE_WARM_DURATION_MS);
+	m_burst_prewarm_task = system_scheduler->post_task_prio([this]() {
+		DEBUG_INFO("LoRaTxService: pre-warm — booting LoRa module for next burst TX");
+		m_device.warm_up_for_tx();
+	}, "LoRaBurstPreWarm", Scheduler::DEFAULT_PRIORITY, prewarm_delay_ms);
 }
 
 void LoRaTxService::react(KineisEventDeviceError const&) {

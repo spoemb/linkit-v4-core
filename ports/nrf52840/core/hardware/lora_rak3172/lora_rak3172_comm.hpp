@@ -58,8 +58,10 @@ namespace LoRa {
         AT_SET_RX1DL,       // AT+RX1DL=      - RX1 delay
         AT_SET_RX2DR,       // AT+RX2DR=      - RX2 data rate
         AT_SET_PNM,         // AT+PNM=        - public network mode
-        AT_SET_LPM,         // AT+LPM=        - low power mode
-        AT_SET_SLEEP,       // AT+SLEEP=      - enter sleep
+        AT_SET_LPM,         // AT+LPM=        - low power mode (auto-sleep after AT)
+        AT_SET_LPMLVL,      // AT+LPMLVL=     - low power level (1=Stop1, 2=Stop2) — RAK3172 only
+        AT_SET_SLEEP,       // AT+SLEEP=      - enter sleep for N ms
+        AT_SLEEP_NOW,       // AT+SLEEP       - continuous sleep (no param), wakes on UART RX byte
         AT_SET_CW,          // AT+CW=         - continuous wave (RF test)
         AT_UNKNOWN
     };

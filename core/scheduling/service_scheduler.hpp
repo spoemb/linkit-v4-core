@@ -15,6 +15,10 @@ enum class ServiceEventType {
 	SERVICE_ACTIVE,       ///< Service has started (e.g., GPS power on)
 	SERVICE_INACTIVE,     ///< Service has completed (e.g., GPS power off)
 	SERVICE_LOG_UPDATED,  ///< Service has written a new log entry
+	GNSS_CLOUDLOCATE_READY, ///< GPS captured 1st raw measurement during active acquisition
+	                        ///< (GPS keeps running — this is just a heads-up so peers like
+	                        ///< LoRa can fire an early CloudLocate TX without waiting for
+	                        ///< full PVT timeout)
 	GNSS_ON,              ///< GPS acquisition started (legacy)
 	ARGOS_TX_START,       ///< Argos TX started (legacy)
 	ARGOS_TX_END,         ///< Argos TX completed (legacy)

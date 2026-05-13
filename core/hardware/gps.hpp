@@ -128,6 +128,17 @@ struct GPSEventRawMeasurement {
     GPSEventRawMeasurement(GNSSRawMeasurement& a) : data(a) {}
 };
 
+/// @brief Emitted once per acquisition the FIRST time a raw CloudLocate
+/// measurement becomes available. Unlike GPSEventRawMeasurement (which is
+/// terminal and triggers GPS power-off at timeout), this event is just a
+/// signal — GPS continues running, looking for a full PVT fix. Subscribers
+/// can use the embedded snapshot to fire an early CloudLocate transmission
+/// (e.g. LoRaTxService 1st surface ping).
+struct GPSEventCloudLocateReady {
+    GNSSRawMeasurement data;
+    GPSEventCloudLocateReady(const GNSSRawMeasurement& a) : data(a) {}
+};
+
 class GPSEventListener {
 public:
     virtual ~GPSEventListener() {}
@@ -139,6 +150,7 @@ public:
     virtual void react(const GPSEventMaxNavSamples&) {}
     virtual void react(const GPSEventPVTDegraded&) {}
     virtual void react(const GPSEventRawMeasurement&) {}
+    virtual void react(const GPSEventCloudLocateReady&) {}
     virtual void react(const GPSEventMaxSatSamples&) {}
     virtual void react(const GPSEventDeviceInfoReady&) {}
 };

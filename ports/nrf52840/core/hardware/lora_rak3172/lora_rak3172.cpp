@@ -27,6 +27,13 @@
 //   - SAT_RESET (P0.31): BSP already sets INPUT_DISCONNECT for probe flashing,
 //     which coincidentally is also the lowest-leakage config — leave as is.
 //   - SAT_PWR_EN (P1.15): THE one pin we keep actively driving (module power).
+//   - KIM_PWR_ON (P0.5): legacy KIM2 power-enable pin, never used in LoRa code.
+//     BSP leaves it as OUTPUT (default LOW after reset). If the LoRa PCB
+//     physically routes this pin to a RAK3172-SiP GPIO that has an internal
+//     pull-up enabled by RUI3 firmware, ~80 µA leaks: RAK VDD → pull-up →
+//     pin → nRF P0.5 (LOW) → GND. Parking as INPUT_DISCONNECT breaks the
+//     current path. Hypothesis to validate: standby ~130 µA → ~50 µA after
+//     this fix.
 static inline void lora_park_unused_sat_pins()
 {
     nrf_gpio_cfg(NRF_GPIO_PIN_MAP(0, 29),   // SAT_INT
@@ -36,6 +43,12 @@ static inline void lora_park_unused_sat_pins()
                  NRF_GPIO_PIN_S0S1,
                  NRF_GPIO_PIN_NOSENSE);
     nrf_gpio_cfg(NRF_GPIO_PIN_MAP(0, 30),   // SAT_EXTWAKEUP
+                 NRF_GPIO_PIN_DIR_INPUT,
+                 NRF_GPIO_PIN_INPUT_DISCONNECT,
+                 NRF_GPIO_PIN_NOPULL,
+                 NRF_GPIO_PIN_S0S1,
+                 NRF_GPIO_PIN_NOSENSE);
+    nrf_gpio_cfg(NRF_GPIO_PIN_MAP(0, 5),    // KIM_PWR_ON (unused on LoRa)
                  NRF_GPIO_PIN_DIR_INPUT,
                  NRF_GPIO_PIN_INPUT_DISCONNECT,
                  NRF_GPIO_PIN_NOPULL,
@@ -65,6 +78,42 @@ using namespace LoRa;
 extern Scheduler *system_scheduler;
 extern ConfigurationStore *configuration_store;
 
+// ============================================================================
+// TODO / WARNING — Power consumption when LoRa service is NOT used at runtime
+// ============================================================================
+// The constructor below immediately kicks the state machine from power_off →
+// power_on. This means the RAK3172 module is BOOTED, CONFIGURED, and (in OTAA)
+// JOINED **unconditionally** as soon as the LoRaDevice is instantiated, even
+// when the LoRaTxService is disabled at runtime (e.g. ARGOS_MODE = OFF or any
+// configuration where service_is_enabled() returns false and service_initiate()
+// is never called).
+//
+// Observed symptom (measured 13/05/2026, LinkIt V4 LoRa, PPK) :
+//   - LoRa service ENABLED  (Argos Doppler / surface burst running) :
+//       inter-cycle idle ~25 µA  (RAK3172 cleanly in Stop2 standby ~1.7 µA,
+//       UARTE1 deinit'd, all paths optimised)
+//   - LoRa service DISABLED (ARGOS_MODE = OFF, no service ever runs) :
+//       inter-cycle idle ~150 µA (RAK3172 sits in `idle` after configure with
+//       UARTE1 still init'd; nobody ever transitions it to standby because
+//       state_idle → standby fires only after a TX cycle. ~120 µA wasted.)
+//
+// Why it works in production : every field deployment has at least one TX mode
+// active, so the service eventually fires a TX → state_transmit → state_idle
+// → state_standby chain, and the module settles in Stop2 (1.7 µA). The wasted
+// current only shows up in bench tests with the LoRa stack disabled but the
+// module compiled in.
+//
+// Fix idea (not done — low priority, doesn't impact field deployments) :
+//   - On boot, defer the power_on transition until either:
+//       a) service_initiate() is first called (lazy init), or
+//       b) write_credentials_from_config() / read_lora_credentials() is invoked
+//          (covers the SATVF / DTE diagnostic paths)
+//   - Alternatively, post a one-shot "if no TX scheduled within 30 s, transit
+//     to power_off" task at boot.
+//
+// Until that refactor, accept that bench tests with LoRa disabled show ~120 µA
+// extra idle conso. This is a TEST-ONLY artefact, not a field issue.
+// ============================================================================
 LoRaDevice::LoRaDevice()
 {
     m_packet_buffer.clear();
@@ -644,6 +693,33 @@ void LoRaDevice::state_configure()
             break;
 
         case 13:
+            // Select the deepest sleep level compatible with our hardware.
+            //
+            // The LinkIt V4 LoRa PCB routes the AT-command UART to the RAK3172
+            // *UART1* pins (STM32 USART1 = PA9/PA10) — see bsp.cpp:360-361.
+            //
+            // Per the RUI3 AT manual: "Stop2 Mode ... will not allow you to
+            // wake up using UART1. On Stop1 Mode, both UART1 and UART2 can
+            // wake up the device." So LPMLVL=2 is incompatible with this PCB
+            // — the module enters Stop2 but cannot be woken via our UART,
+            // and RUI3's fallback (RTC-wake duty cycle) results in ~130 µA
+            // observed instead of the datasheet 1.7 µA.
+            //
+            // LPMLVL=1 (Stop1) supports UART1 wake and gives ~3 µA per
+            // STM32WLE5 datasheet — acceptable for our use case (turtle tag
+            // burst gaps of 30+ s).
+            //
+            // Tolerated as non-fatal: older RUI3 firmware versions (pre 4.0.x)
+            // don't support AT+LPMLVL at all and return ERROR. In that case
+            // AT+LPM=1 (set in step 12) is the best we can do — the module
+            // uses its default sleep level. Don't fail the whole configure
+            // walk over a missing optional optimisation.
+            if (!send_AT(AT_SET_LPMLVL, std::to_string(1))) {
+                DEBUG_WARN("LoRaDevice: AT+LPMLVL not supported by this RUI3 version — continuing with LPM=1 default");
+            }
+            break;
+
+        case 14:
             // Duty Cycle Setting — compile-time flag LORA_DCS_ENABLE.
             //   1 (default) : RAK3172 enforces EU868 1%/0.1%/10% limits (ETSI legal)
             //   0           : DCS off — test builds only, **illegal in EU deployment**
@@ -652,7 +728,7 @@ void LoRaDevice::state_configure()
             at_error = !send_AT(AT_SET_DCS, std::to_string(LORA_DCS_ENABLE));
             break;
 
-        case 14:
+        case 15:
             // Full config done — mark configured. ABP short-circuit: no join,
             // no NJS read needed, so transition straight to idle and skip the
             // two no-op scheduler ticks the common path (case 100 → 101) would
@@ -855,6 +931,16 @@ void LoRaDevice::state_standby_enter() {
     // side, but we no longer clock our peripheral while waiting for a
     // send() call from the service layer.
     DEBUG_INFO("LoRaDevice: standby (RAK Stop2 ~1.7uA + UARTE1 deinit)");
+
+    // Explicit AT+SLEEP before UART deinit — workaround for AT+LPM=1 not
+    // reliably triggering Stop2 auto-sleep on RUI 4.0.6. The continuous-sleep
+    // form (no param) wakes on any UART RX byte, which is exactly what
+    // start_device() sends to resume from standby (AT ping).
+    // Short timeout (200 ms) to avoid blocking the scheduler if the module is
+    // already asleep / unresponsive — we're transitioning to standby anyway,
+    // a missed OK isn't fatal.
+    send_AT(AT_SLEEP_NOW, std::nullopt, 200);
+
     m_lora_comm.deinit();
     // Re-assert the unused-pin park — defensive in case some other code path
     // reconfigured them between power_on and here.

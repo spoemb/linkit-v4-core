@@ -106,7 +106,9 @@ static constexpr ATCmdEntry cmd_table[] = {
     { AT_SET_RX2DR,  "AT+RX2DR=",      true  },
     { AT_SET_PNM,    "AT+PNM=",         true  },
     { AT_SET_LPM,    "AT+LPM=",         true  },
+    { AT_SET_LPMLVL, "AT+LPMLVL=",      true  },
     { AT_SET_SLEEP,  "AT+SLEEP=",       true  },
+    { AT_SLEEP_NOW,  "AT+SLEEP\r\n",    false },
     { AT_SET_CW,     "AT+CW=",          true  },
 };
 

@@ -57,6 +57,10 @@ private:
 	// CloudLocate: latest raw GNSS measurement snapshot
 	bool m_has_raw_measurement;
 	GNSSRawMeasurement m_raw_measurement;
+	/// @brief One-shot guard: set to true after we've emitted
+	/// `GPSEventCloudLocateReady` for the current acquisition. Reset at the
+	/// start of each new `power_on()`.
+	bool m_cloudlocate_ready_notified;
 
 	struct Timeout {
 		Scheduler::TaskHandle handle;

@@ -58,6 +58,15 @@ private:
 	void notify_underwater_state(bool state);
 
 protected:
+	/// @brief Emit a custom ServiceEvent on the peer-notification bus.
+	/// Used for non-standard event types that don't fit ACTIVE/INACTIVE/
+	/// LOG_UPDATED semantics (e.g. SERVICE_CLOUDLOCATE_READY = "raw
+	/// measurement available mid-acquisition, GPS still running").
+	void notify_service_event(ServiceEventType type);
+
+private:
+
+protected:
 	// === Virtual interface — subclasses must/may override ===
 
 	/// @brief Initialize service hardware/state (called once at start).

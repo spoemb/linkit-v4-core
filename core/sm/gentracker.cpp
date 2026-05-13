@@ -437,7 +437,13 @@ void OperationalState::exit() {
 	ServiceManager::stopall();
 	BaseDebugMode debug_mode = configuration_store->read_param<BaseDebugMode>(ParamID::DEBUG_OUTPUT_MODE);
 	if (debug_mode == BaseDebugMode::BLE_NUS) {
-		g_debug_mode = BaseDebugMode::USB_CDC;  // Reset to USB CDC when exiting BLE debug mode
+		// Restore the compile-time default debug channel: NONE in release
+		// builds (silent operation), USB CDC in debug builds.
+#ifdef NDEBUG
+		g_debug_mode = BaseDebugMode::NONE;
+#else
+		g_debug_mode = BaseDebugMode::USB_CDC;
+#endif
 		ble_service->stop();
 		DEBUG_TRACE("exit: OperationalState: BLE service stopped");
 		PMU::delay_ms(100);

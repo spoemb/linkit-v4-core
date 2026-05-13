@@ -177,8 +177,16 @@ Buzzer *buzzer_ctl;                       ///< Optional piezo buzzer (board-depe
 /// @}
 
 /// @brief Active debug output channel (UART, USB CDC, BLE NUS, or NONE).
-///        Defaults to UART on RSPB, USB CDC on LinkIt V4.
-#if defined(BOARD_RSPB)
+///        Defaults to UART on RSPB, USB CDC on LinkIt V4 — but ONLY in debug
+///        builds. Release builds (`NDEBUG` defined by `CMAKE_BUILD_TYPE=Release`)
+///        default to NONE so the device stays silent in the field — no USB/UART
+///        traffic underwater or in storage mode, no current drawn by the debug
+///        peripheral, and no risk of a host enumerating the CDC port when the
+///        epoxied tag is plugged into anything.
+///        Can still be overridden at runtime via DTE if needed for debugging.
+#ifdef NDEBUG
+BaseDebugMode g_debug_mode = BaseDebugMode::NONE;
+#elif defined(BOARD_RSPB)
 BaseDebugMode g_debug_mode = BaseDebugMode::UART;
 #else
 BaseDebugMode g_debug_mode = BaseDebugMode::USB_CDC;
@@ -352,22 +360,35 @@ static InitContext init_peripherals()
 	system_timer = &NrfTimer::get_instance();
 	NrfTimer::get_instance().init();
 
-	// Init debug output (UART, USB CDC, BLE, or NONE)
+	// Init debug output (UART, USB CDC, BLE, or NONE).
+	//
+	// In release builds (NDEBUG), `g_debug_mode` defaults to NONE so no logs
+	// flow over UART/USB during operational/underwater states — see the
+	// declaration of `g_debug_mode` for rationale.
+	//
+	// USB CDC peripheral, however, is ALWAYS initialised on LinkIt regardless
+	// of `g_debug_mode` because `USB_DTE_ENABLED` makes ConfigurationState
+	// rely on USB for DTE access (magnet-gesture bench configuration). The
+	// `_write()` routing checks `g_debug_mode` so no log bytes are pushed to
+	// USB when in NONE mode — the peripheral is just enumerable for DTE.
 	m_is_debug_init = true;
 	static ConsoleLog console_log;
-	if (g_debug_mode == BaseDebugMode::NONE) {
-		DebugLogger::console_log = nullptr;
-	} else {
-		DebugLogger::console_log = &console_log;
+	DebugLogger::console_log = (g_debug_mode == BaseDebugMode::NONE) ? nullptr : &console_log;
 #ifdef DEBUG_UART_TX_PIN
-		if (g_debug_mode == BaseDebugMode::UART) {
-			NrfDebugUart::init(DEBUG_UART_TX_PIN);
-		} else
-#endif
-		{
-			NrfUSB::init();
-		}
+	// RSPB: UART is the primary debug channel. Only init when actively
+	// requested (so release-mode NONE leaves UART pins inactive → no power).
+	if (g_debug_mode == BaseDebugMode::UART) {
+		NrfDebugUart::init(DEBUG_UART_TX_PIN);
+	} else if (g_debug_mode != BaseDebugMode::NONE) {
+		// Edge case: RSPB explicitly configured for USB CDC or BLE NUS debug.
+		NrfUSB::init();
 	}
+#else
+	// LinkIt: USB is shared between debug output and DTE — always init,
+	// even when g_debug_mode == NONE, so ConfigurationState (magnet-gesture
+	// DTE access) keeps working in release builds.
+	NrfUSB::init();
+#endif
 	setvbuf(stdout, NULL, _IONBF, 0);
 	nrf_log_redirect_init();
 
@@ -1061,6 +1082,7 @@ int main()
 {
 	auto [reed, flash] = init_peripherals();
 	init_power_on_check(reed);
+
 	auto& lfs = init_storage(reed, flash);
 	init_battery();
 	init_core_services(lfs, flash);
@@ -1072,7 +1094,19 @@ int main()
 	GenTracker::start();
 
 	// Power rail management: cut peripheral power rails when no task is due soon.
-	static constexpr uint64_t IDLE_POWER_SAVE_THRESHOLD_MS = 5000;
+	// Threshold tuned from the original 5000 ms → 250 ms. The lower the threshold,
+	// the more aggressively VSYS toggles 3.3V↔1.8V around short scheduler idles.
+	// Rationale per scenario:
+	//   - SWS analog detector multi-sample (UW_SAMPLE_GAP = 1000 ms) : both 1000 ms
+	//     and 250 ms thresholds let reduce_power_rails() fire between samples.
+	//   - SWS underwater fast-sample (period ~500 ms) : 1000 ms threshold blocks
+	//     bascule (500 < 1000) → VSYS stuck at 3.3V the whole dive. 250 ms lets
+	//     the ~500 ms idle window between samples trigger the bascule.
+	//   - Generic services scheduled every 300-900 ms : same story.
+	// Cost: each bascule cycle adds ~2 ms PMU::delay_ms in restore_power_rails().
+	// At a 500 ms cycle that's 0.4 % time overhead — negligible vs the ~8 µA saved
+	// while at 1.8V. The TPS63901 SEL pin supports unlimited switching.
+	static constexpr uint64_t IDLE_POWER_SAVE_THRESHOLD_MS = 250;
 	static bool power_rails_reduced = false;
 
 	// The scheduler should run forever.  Any run-time exceptions should be handled and passed to FSM.

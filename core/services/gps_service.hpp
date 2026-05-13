@@ -121,6 +121,7 @@ private:
     void react(const GPSEventPVT&) override;
     void react(const GPSEventPVTDegraded&) override;
     void react(const GPSEventRawMeasurement&) override;
+    void react(const GPSEventCloudLocateReady&) override;
     void react(const GPSEventError&) override;
     void react(const GPSEventPowerOff&) override;
 

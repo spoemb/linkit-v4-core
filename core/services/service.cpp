@@ -592,3 +592,15 @@ void Service::notify_service_inactive() {
 		m_data_notification_callback(e);
 	}
 }
+
+/// @brief Broadcast a custom ServiceEvent type to all peers (no data payload).
+/// @param type  Event type (e.g. GNSS_CLOUDLOCATE_READY).
+void Service::notify_service_event(ServiceEventType type) {
+	if (m_data_notification_callback) {
+		ServiceEvent e;
+		e.event_type = type;
+		e.event_source = m_service_id;
+		e.event_originator_unique_id = m_unique_id;
+		m_data_notification_callback(e);
+	}
+}

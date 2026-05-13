@@ -120,6 +120,8 @@ void M10QAsyncReceiver::power_on(const GPSNavSettings& nav_settings) {
     // Reset CloudLocate raw measurement tracking
     m_has_raw_measurement = false;
     m_raw_measurement = GNSSRawMeasurement();
+    // Reset the one-shot guard for the CloudLocate-ready notification.
+    m_cloudlocate_ready_notified = false;
 
     // Always reset observation counters and apply new limits — defensive.
     // Passing 0 explicitly disables the corresponding limit-check (acquisition
@@ -647,20 +649,59 @@ void M10QAsyncReceiver::react(const UBXCommsEventNavReport& n) {
 
 void M10QAsyncReceiver::react(const UBXCommsEventRawMeasurement& meas) {
     // Called from ISR context via UBX comms filter — protect shared state
-    InterruptLock lock;
-    if (meas.has_measc12) {
-        std::memcpy(m_raw_measurement.measc12, meas.measc12, sizeof(m_raw_measurement.measc12));
-        m_raw_measurement.has_measc12 = true;
+    bool emit_cloudlocate_ready = false;
+    {
+        InterruptLock lock;
+        if (meas.has_measc12) {
+            std::memcpy(m_raw_measurement.measc12, meas.measc12, sizeof(m_raw_measurement.measc12));
+            m_raw_measurement.has_measc12 = true;
+        }
+        if (meas.has_meas20) {
+            std::memcpy(m_raw_measurement.meas20, meas.meas20, sizeof(m_raw_measurement.meas20));
+            m_raw_measurement.has_meas20 = true;
+        }
+        if (meas.has_meas50) {
+            std::memcpy(m_raw_measurement.meas50, meas.meas50, sizeof(m_raw_measurement.meas50));
+            m_raw_measurement.has_meas50 = true;
+        }
+        m_has_raw_measurement = m_raw_measurement.has_measc12 || m_raw_measurement.has_meas20 || m_raw_measurement.has_meas50;
+
+        // One-shot: notify subscribers the FIRST time raw becomes available during
+        // an active acquisition, so they can fire an early CloudLocate TX without
+        // waiting for the cold-acq timeout. Flag set under lock; emit deferred
+        // to scheduler context. The snapshot is read from m_raw_measurement at
+        // task execution time (NOT captured in the lambda — keeps capture small
+        // enough for stdext::inplace_function's 12-byte budget).
+        if (m_has_raw_measurement && !m_cloudlocate_ready_notified && m_nav_settings.cloudlocate_enable) {
+            m_cloudlocate_ready_notified = true;
+            emit_cloudlocate_ready = true;
+        }
     }
-    if (meas.has_meas20) {
-        std::memcpy(m_raw_measurement.meas20, meas.meas20, sizeof(m_raw_measurement.meas20));
-        m_raw_measurement.has_meas20 = true;
+    // Defer the notify out of ISR context — emit from the scheduler. Subscribers
+    // (e.g. LoRaTxService via GPSService) react in main loop, not interrupt.
+    if (emit_cloudlocate_ready) {
+        system_scheduler->post_task_prio([this]() {
+            // Re-validate raw availability — if a power_off() reset
+            // m_raw_measurement / m_has_raw_measurement between the ISR
+            // setting the flag and this scheduler task running, suppress the
+            // emit. Without this, subscribers would receive an empty
+            // GPSEventCloudLocateReady and the downstream CloudLocate TX
+            // path would fall through to status (no harm, but spurious log).
+            GNSSRawMeasurement raw_copy;
+            bool still_valid;
+            {
+                InterruptLock lock;
+                still_valid = m_has_raw_measurement;
+                if (still_valid) raw_copy = m_raw_measurement;
+            }
+            if (!still_valid) {
+                DEBUG_TRACE("M10QAsyncReceiver: CloudLocate-ready task cancelled (raw reset between ISR and task)");
+                return;
+            }
+            DEBUG_INFO("M10QAsyncReceiver: first raw measurement available — emitting GPSEventCloudLocateReady");
+            notify(GPSEventCloudLocateReady(raw_copy));
+        }, "M10QCloudLocateReady");
     }
-    if (meas.has_meas50) {
-        std::memcpy(m_raw_measurement.meas50, meas.meas50, sizeof(m_raw_measurement.meas50));
-        m_raw_measurement.has_meas50 = true;
-    }
-    m_has_raw_measurement = m_raw_measurement.has_measc12 || m_raw_measurement.has_meas20 || m_raw_measurement.has_meas50;
 }
 
 void M10QAsyncReceiver::react(const UBXCommsEventMgaAck& ack) {

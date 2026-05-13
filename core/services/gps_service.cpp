@@ -541,6 +541,23 @@ void GPSService::react(const GPSEventPVTDegraded& e) {
 	}
 }
 
+/// @brief First raw CloudLocate measurement available mid-acquisition — broadcast
+/// to peer services so they can fire an early TX without waiting for the full
+/// PVT timeout. GPS keeps running (NOT terminated here, unlike
+/// react(GPSEventRawMeasurement)). One-shot per acquisition: the M10Q driver
+/// has its own guard so this fires once per power_on().
+void GPSService::react(const GPSEventCloudLocateReady& e) {
+	(void)e;  // payload available via gps_device->get_raw_measurement() if peer wants it
+	if (!m_is_active) return;
+	unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
+	if (fastloc_mode != (unsigned int)BaseFastlocMode::CLOUDLOCATE) {
+		DEBUG_TRACE("GPSService::react(GPSEventCloudLocateReady): CLOUDLOCATE mode disabled — ignoring");
+		return;
+	}
+	DEBUG_INFO("GPSService::react(GPSEventCloudLocateReady): broadcasting GNSS_CLOUDLOCATE_READY");
+	notify_service_event(ServiceEventType::GNSS_CLOUDLOCATE_READY);
+}
+
 /// @brief Raw GNSS measurement received (CloudLocate fallback) — emit if CLOUDLOCATE mode.
 void GPSService::react(const GPSEventRawMeasurement& e) {
 	if (!m_is_active)
