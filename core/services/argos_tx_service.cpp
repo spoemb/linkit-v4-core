@@ -540,6 +540,25 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 		}
 	}
 
+	// CloudLocate-ready notification from GPS: mirror of the LoRa path.
+	// Triggers an early Doppler-burst tick so the next TX uses CloudLocate
+	// (via the count>0 + has_raw_measurement check in process_doppler_burst)
+	// instead of waiting for the normal surfacing_burst timer. Edge case
+	// "raw arrives during in-flight TX" is NOT handled here (no pending
+	// flag — Argos keeps it simple per user request); on that path the
+	// CloudLocate just fires at the next normal timer tick, with a small
+	// timing penalty vs the LoRa "dans la foulée" guarantee.
+	if (e.event_source == ServiceIdentifier::GNSS_SENSOR &&
+	    e.event_type == ServiceEventType::GNSS_CLOUDLOCATE_READY) {
+		if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing && !m_is_tx_pending) {
+			DEBUG_INFO("ArgosTxService::notify_peer_event: GNSS_CLOUDLOCATE_READY — rescheduling early CloudLocate TX");
+			m_scheduled_task = [this]() { process_doppler_burst(); };
+			service_reschedule(true);
+			return;
+		}
+		DEBUG_TRACE("ArgosTxService::notify_peer_event: GNSS_CLOUDLOCATE_READY but not in burst phase 1 or TX in flight");
+	}
+
 	Service::notify_peer_event(e);
 }
 

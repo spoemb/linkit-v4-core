@@ -103,7 +103,7 @@ enum class ConfigMode {
 class ConfigurationStore {
 
 protected:
-	static inline const unsigned int m_config_version_code = 0x1c07e800 | 0x1D;
+	static inline const unsigned int m_config_version_code = 0x1c07e800 | 0x1E;
 	static inline const unsigned int m_config_version_code_aop = 0x1c07e800 | 0x03;
 	static inline const std::array<BaseType,MAX_CONFIG_ITEMS> default_params { {
 		/* ARGOS_DECID */ 0U,
@@ -242,7 +242,7 @@ protected:
 		/* UW_MAX_SAMPLES */ 1U,
 		/* UW_MIN_DRY_SAMPLES */ 1U,
 		/* UW_SAMPLE_GAP */ 1000U,
-		/* UW_PIN_SAMPLE_DELAY */ 1U,
+		/* UW_PIN_SAMPLE_DELAY_US */ 1000U,  // 1 ms initial RC charge — preserves pre-rename behavior (was UNP08=1 ms before rename to µs)
 		/* GNSS_CONSTELLATION_MASK */ 0x0FU,  // GPS|GAL|GLO|BDS (M10Q factory default)
 		/* GNSS_ORBMAXERR */ 300U,
 		/* SWS_ANALOG_HYSTERESIS */ 4U,

@@ -226,7 +226,7 @@ enum class ParamID {
 	UW_MAX_SAMPLES                           = 128,
 	UW_MIN_DRY_SAMPLES                      = 129,
 	UW_SAMPLE_GAP                            = 130,
-	UW_PIN_SAMPLE_DELAY                      = 131,
+	UW_PIN_SAMPLE_DELAY_US                   = 131,  // microseconds (was ms, renamed for consistency with UNP09/UNP10)
 	GNSS_CONSTELLATION_MASK                  = 132,  // bitmask: bit0=GPS, bit1=GAL, bit2=GLO, bit3=BDS, bit4=QZSS, bit5=SBAS
 	GNSS_ORBMAXERR                           = 133,  // uint: AssistNow Autonomous max orbit error [m]
 	SWS_ANALOG_HYSTERESIS                    = 134,

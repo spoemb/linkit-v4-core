@@ -438,8 +438,10 @@ void SWSAnalogService::service_init() {
     if (m_delay_min_us < 50) m_delay_min_us = 50;
     if (m_delay_max_us < m_delay_min_us) m_delay_max_us = m_delay_min_us;
 
-    // Initialize adaptive sample delay from config (value in ms → convert to µs)
-    m_sample_delay_us = m_enable_sample_delay * 1000;
+    // Initialize adaptive sample delay from config (already in µs — UNP08
+    // was renamed from UW_PIN_SAMPLE_DELAY (ms) to UW_PIN_SAMPLE_DELAY_US
+    // for consistency with UNP09/UNP10).
+    m_sample_delay_us = m_enable_sample_delay;
     if (m_sample_delay_us < m_delay_min_us) m_sample_delay_us = m_delay_min_us;
     if (m_sample_delay_us > m_delay_max_us) m_sample_delay_us = m_delay_max_us;
 

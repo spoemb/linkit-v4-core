@@ -193,7 +193,7 @@ const BaseMap param_map[] = {
 	{ "UW_MAX_SAMPLES", "UNP05", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 	{ "UW_MIN_DRY_SAMPLES", "UNP06", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
 	{ "UW_SAMPLE_GAP", "UNP07", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
-	{ "UW_PIN_SAMPLE_DELAY", "UNP08", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
+	{ "UW_PIN_SAMPLE_DELAY_US", "UNP08", BaseEncoding::UINT, 50U, 30000U, {}, true, true },
 
 	// [132] GNSS constellation bitmask, [133] AssistNow orbit max error
 	{ "GNSS_CONSTELLATION_MASK", "GNP40", BaseEncoding::UINT, 0x01U, 0x3FU, {}, true, true },

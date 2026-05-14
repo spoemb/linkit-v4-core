@@ -47,7 +47,7 @@ TEST_GROUP(SWSAnalog)
         configuration_store->write_param(ParamID::UW_MAX_SAMPLES, val_3);
         configuration_store->write_param(ParamID::UW_MIN_DRY_SAMPLES, val_1);
         configuration_store->write_param(ParamID::UW_SAMPLE_GAP, val_100);
-        configuration_store->write_param(ParamID::UW_PIN_SAMPLE_DELAY, val_1);
+        configuration_store->write_param(ParamID::UW_PIN_SAMPLE_DELAY_US, 1000U);
         configuration_store->write_param(ParamID::SWS_ANALOG_HYSTERESIS, val_6);
         configuration_store->write_param(ParamID::SWS_ANALOG_CALIB_INTERVAL, val_3600);
         configuration_store->write_param(ParamID::UW_MAX_DIVE_TIME, val_0);  // Disabled for most tests
@@ -1395,7 +1395,7 @@ TEST_GROUP(SWSAnalogFlash)
         configuration_store->write_param(ParamID::UW_MAX_SAMPLES, val_3);
         configuration_store->write_param(ParamID::UW_MIN_DRY_SAMPLES, val_1);
         configuration_store->write_param(ParamID::UW_SAMPLE_GAP, val_100);
-        configuration_store->write_param(ParamID::UW_PIN_SAMPLE_DELAY, val_1);
+        configuration_store->write_param(ParamID::UW_PIN_SAMPLE_DELAY_US, 1000U);
         configuration_store->write_param(ParamID::SWS_ANALOG_HYSTERESIS, val_6);
         configuration_store->write_param(ParamID::SWS_ANALOG_CALIB_INTERVAL, val_3600);
         configuration_store->write_param(ParamID::UW_MAX_DIVE_TIME, val_0);

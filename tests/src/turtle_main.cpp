@@ -53,6 +53,7 @@ MemoryAccess *memory_access;
 RTC *rtc;
 BatteryMonitor *battery_monitor;
 GPSDevice *gps_device;
+GPSService *gps_service = nullptr;  // Forward-declared in dte_handler.hpp; null in tests (used by GNSSBCKP DTE handler)
 KineisDevice *kineis_device_instance = nullptr;
 LoRaDevice *lora_device_instance = nullptr;
 BaseDebugMode g_debug_mode;

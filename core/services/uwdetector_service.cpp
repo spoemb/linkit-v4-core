@@ -61,7 +61,7 @@ void UWDetectorService::service_init() {
 	m_period_surface_ms = static_cast<unsigned int>(service_read_param<double>(ParamID::SAMPLING_SURF_FREQ) * 1000.0);
 	m_activation_threshold = service_read_param<double>(ParamID::UNDERWATER_DETECT_THRESH);
 	m_sample_gap = service_read_param<unsigned int>(ParamID::UW_SAMPLE_GAP);
-	m_enable_sample_delay = service_read_param<unsigned int>(ParamID::UW_PIN_SAMPLE_DELAY);
+	m_enable_sample_delay = service_read_param<unsigned int>(ParamID::UW_PIN_SAMPLE_DELAY_US);
 	m_max_samples = service_read_param<unsigned int>(ParamID::UW_MAX_SAMPLES);
 	m_min_dry_samples = service_read_param<unsigned int>(ParamID::UW_MIN_DRY_SAMPLES);
 	m_sample_iteration = 0;
