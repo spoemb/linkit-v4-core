@@ -38,17 +38,36 @@ static constexpr int     ADC_MAX_VALUE = 16384;    ///< 2^14 (14-bit resolution)
 static constexpr float   ADC_REFERENCE = 0.6f;     ///< Internal reference voltage (V)
 /// @}
 
-/// @name Battery discharge lookup tables (SOC % at 0.1 V steps from 4.2 V → 3.2 V)
+/// @name Battery discharge profiles
+/// Each chemistry defines its own voltage range and SOC LUT (11 entries, 100 mV steps,
+/// index 0 = max_mv → 100 %, index 10 = min_mv → 0 %). max_mv − min_mv must equal 1000.
 /// @{
 static constexpr unsigned int BATT_LUT_ENTRIES = 11;
-static constexpr uint16_t    BATT_LUT_MIN_V   = 3200;
-static constexpr uint16_t    BATT_LUT_MAX_V   = 4200;
 
-static constexpr uint8_t battery_voltage_lut[][BATT_LUT_ENTRIES] = {
-	{ 100, 91, 79, 62, 42, 12,  2, 0, 0, 0, 0 },  // S18650_2600
-	{ 100, 93, 84, 75, 64, 52, 22, 9, 0, 0, 0 },  // CGR18650_2250
-	{ 100, 94, 83, 59, 50, 33, 15, 6, 0, 0, 0 }   // NCR18650_3100_3400
+struct BatteryProfile {
+	uint16_t min_mv;
+	uint16_t max_mv;
+	uint8_t  soc_lut[BATT_LUT_ENTRIES];
 };
+
+static constexpr BatteryProfile battery_profiles[] = {
+	// S18650_2600              — Li-ion 3.2-4.2 V
+	{ 3200, 4200, { 100, 91, 79, 62, 42, 12,  2,  0, 0, 0, 0 } },
+	// CGR18650_2250            — Li-ion 3.2-4.2 V
+	{ 3200, 4200, { 100, 93, 84, 75, 64, 52, 22,  9, 0, 0, 0 } },
+	// NCR18650_3100_3400       — Li-ion 3.2-4.2 V
+	{ 3200, 4200, { 100, 94, 83, 59, 50, 33, 15,  6, 0, 0, 0 } },
+	// LS17500_2P (Li-SOCl2 plateau profile, 2 cells in parallel, 2.7-3.7 V).
+	// Index:        3700 3600 3500 3400 3300 3200 3100 3000 2900 2800 2700  mV
+	// Plateau 100 % until 3.55 V then progressive drop to the cliff at 3.0 V.
+	// Voltage-based SOC for Li-SOCl2 is intrinsically coarse (flat discharge);
+	// trust BATT_VOLTAGE more than BATT_SOC for fine-grained tracking.
+	{ 2700, 3700, { 100, 99, 95, 80, 50, 20,  5,  1, 0, 0, 0 } },
+};
+
+static_assert(sizeof(battery_profiles) / sizeof(battery_profiles[0]) ==
+              static_cast<unsigned>(BATT_CHEM_LS17500_2P) + 1,
+              "battery_profiles[] must have one entry per BatteryChemistry enum value");
 /// @}
 
 static void nrfx_saadc_event_handler(nrfx_saadc_evt_t const *p_event)
@@ -181,22 +200,22 @@ void NrfBatteryMonitor::internal_update()
  */
 uint8_t NrfBatteryMonitor::convert_level(uint16_t mv)
 {
-	int lut_index = (BATT_LUT_ENTRIES - 1) - ((mv / 100) - (BATT_LUT_MIN_V / 100));
-
-	// Bounds check on chemistry enum
 	unsigned int chem = static_cast<unsigned int>(m_chem);
-	if (chem >= sizeof(battery_voltage_lut) / sizeof(battery_voltage_lut[0]))
+	if (chem >= sizeof(battery_profiles) / sizeof(battery_profiles[0]))
 		chem = 0;
 
+	const BatteryProfile& profile = battery_profiles[chem];
+	int lut_index = (BATT_LUT_ENTRIES - 1) - ((mv / 100) - (profile.min_mv / 100));
+
 	if (lut_index <= 0) {
-		return battery_voltage_lut[chem][0];
+		return profile.soc_lut[0];
 	} else if (lut_index > static_cast<int>(BATT_LUT_ENTRIES - 1)) {
-		return battery_voltage_lut[chem][BATT_LUT_ENTRIES - 1];
+		return profile.soc_lut[BATT_LUT_ENTRIES - 1];
 	} else {
 		// Linear interpolation between adjacent LUT entries
-		uint8_t upper = battery_voltage_lut[chem][lut_index - 1];
-		uint8_t lower = battery_voltage_lut[chem][lut_index];
-		uint16_t upper_mv = BATT_LUT_MAX_V - ((lut_index - 1) * 100);
+		uint8_t upper = profile.soc_lut[lut_index - 1];
+		uint8_t lower = profile.soc_lut[lut_index];
+		uint16_t upper_mv = profile.max_mv - ((lut_index - 1) * 100);
 		float t = static_cast<float>(upper_mv - mv) / 100.0f;
 		float result = static_cast<float>(upper) + (t * (static_cast<float>(lower) - static_cast<float>(upper)));
 		return static_cast<uint8_t>(result);
@@ -211,7 +230,10 @@ uint8_t NrfBatteryMonitor::convert_level(uint16_t mv)
 uint16_t NrfBatteryMonitor::convert_voltage(float adc_mv)
 {
 #ifdef BATTERY_NOT_FITTED
-	return BATT_LUT_MAX_V;
+	unsigned int chem = static_cast<unsigned int>(m_chem);
+	if (chem >= sizeof(battery_profiles) / sizeof(battery_profiles[0]))
+		chem = 0;
+	return battery_profiles[chem].max_mv;
 #else
 	return static_cast<uint16_t>(adc_mv * V_DIV_GAIN);
 #endif
