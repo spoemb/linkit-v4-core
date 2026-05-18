@@ -91,23 +91,40 @@ if [ "$CLEAN" = true ]; then
     rm -rf "$BUILD_DIR"
 fi
 mkdir -p "$BUILD_DIR"
+
+# Pull remote tags so `git describe` can resolve a proper version tag.
+# Quiet + no-op if offline (graceful fallback to synthetic version below).
+git fetch --tags --quiet 2>/dev/null || echo "WARNING: git fetch --tags failed (offline?) — will use cached tags"
+
 cd "$BUILD_DIR"
 git show-ref --tags -d | grep ^`git rev-parse HEAD` | sed -e "s,.* refs/tags/,," -e "s/\\^{}//" > TAG_NAME
 if [ -z "$(cat TAG_NAME)" ]; then
-    git describe --dirty > TAG_NAME
+    git describe --dirty 2>/dev/null > TAG_NAME
 fi
+if [ -z "$(cat TAG_NAME)" ]; then
+    # No tag reachable from HEAD — synthesize git-describe-style version:
+    # <tag>-<commits_since_tag>-g<sha>[-dirty]
+    SHA="$(git rev-parse --short HEAD)"
+    COMMITS="$(git rev-list --count HEAD)"
+    SYNTH="v0.0.0-${COMMITS}-g${SHA}"
+    if [ -n "$(git status --porcelain)" ]; then
+        SYNTH="${SYNTH}-dirty"
+    fi
+    echo "$SYNTH" > TAG_NAME
+fi
+echo "Build tag: $(cat TAG_NAME)"
 
 # LinkIt V4 SMD build configuration
 # - ARGOS_SMD=ON: Use SMD satellite module
 # - ENABLE_AXL_SENSOR=ON: Enable BMA400 accelerometer
 # - BATTERY_MONITOR_TYPE=ANALOG: Use nRF SAADC for battery reading
-# - BATTERY_CHEMISTRY=LS17500: Discharge LUT for 2x Saft LS17500 LiSOCl2 in parallel @ 3.6V
-#   Override with BATTERY_CHEMISTRY={LS17500|NCR18650_3100_3400|CGR18650_2250|S18650_2600}
+# - BATTERY_CHEMISTRY=BATT_CHEM_LS17500_2P: Discharge LUT for 2x Saft LS17500 LiSOCl2 in parallel @ 3.6V
+#   Override with BATTERY_CHEMISTRY=BATT_CHEM_{S18650_2600|CGR18650_2250|NCR18650_3100_3400|LS17500_2P}
 ARGOS_SMD=${ARGOS_SMD:-ON}
 ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR:-OFF}
 ENABLE_SWS_LOG=${ENABLE_SWS_LOG:-ON}
 GNSS_HAS_BACKUP_BATTERY=${GNSS_HAS_BACKUP_BATTERY:-ON}
-BATTERY_CHEMISTRY=${BATTERY_CHEMISTRY:-LS17500}
+BATTERY_CHEMISTRY=${BATTERY_CHEMISTRY:-BATT_CHEM_LS17500_2P}
 
 echo "Building LinkIt V4 SMD with configuration:"
 echo "  ARGOS_SMD=${ARGOS_SMD}"

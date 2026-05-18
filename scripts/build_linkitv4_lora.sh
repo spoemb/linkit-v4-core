@@ -84,11 +84,28 @@ if [ "$CLEAN" = true ]; then
     rm -rf "$BUILD_DIR"
 fi
 mkdir -p "$BUILD_DIR"
+
+# Pull remote tags so `git describe` can resolve a proper version tag.
+# Quiet + no-op if offline (graceful fallback to synthetic version below).
+git fetch --tags --quiet 2>/dev/null || echo "WARNING: git fetch --tags failed (offline?) — will use cached tags"
+
 cd "$BUILD_DIR"
 git show-ref --tags -d | grep ^`git rev-parse HEAD` | sed -e "s,.* refs/tags/,," -e "s/\\^{}//" > TAG_NAME
 if [ -z "$(cat TAG_NAME)" ]; then
-    git describe --dirty > TAG_NAME
+    git describe --dirty 2>/dev/null > TAG_NAME
 fi
+if [ -z "$(cat TAG_NAME)" ]; then
+    # No tag reachable from HEAD — synthesize git-describe-style version:
+    # <tag>-<commits_since_tag>-g<sha>[-dirty]
+    SHA="$(git rev-parse --short HEAD)"
+    COMMITS="$(git rev-list --count HEAD)"
+    SYNTH="v0.0.0-${COMMITS}-g${SHA}"
+    if [ -n "$(git status --porcelain)" ]; then
+        SYNTH="${SYNTH}-dirty"
+    fi
+    echo "$SYNTH" > TAG_NAME
+fi
+echo "Build tag: $(cat TAG_NAME)"
 
 # LinkIt V4 LoRa build configuration
 # - LORA_RAK3172=ON: Use RAK3172-SiP LoRa module
@@ -96,9 +113,10 @@ fi
 ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR:-OFF}
 DISABLE_LORA_DCS=${DISABLE_LORA_DCS:-OFF}
 ENABLE_SWS_LOG=${ENABLE_SWS_LOG:-ON}
-# BATTERY_CHEMISTRY: discharge LUT (default LS17500 — 2x Saft LiSOCl2 @ 3.6V parallel)
-# Options: LS17500 | NCR18650_3100_3400 | CGR18650_2250 | S18650_2600
-BATTERY_CHEMISTRY=${BATTERY_CHEMISTRY:-LS17500}
+# BATTERY_CHEMISTRY: discharge LUT (default BATT_CHEM_LS17500_2P — 2x Saft LiSOCl2 @ 3.6V parallel)
+# Options: BATT_CHEM_{S18650_2600|CGR18650_2250|NCR18650_3100_3400|LS17500_2P}
+BATTERY_CHEMISTRY=${BATTERY_CHEMISTRY:-BATT_CHEM_LS17500_2P}
+
 
 
 echo "Building LinkIt V4 LoRa RAK3172 with configuration:"

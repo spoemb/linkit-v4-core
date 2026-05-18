@@ -105,13 +105,14 @@ if(NOT ${BATTERY_MONITOR_TYPE} MATCHES "ANALOG|FAKE|STC3117")
     message(FATAL_ERROR "BATTERY_MONITOR_TYPE must be one of {ANALOG, FAKE, STC3117}")
 endif()
 
-# Battery chemistry (for ANALOG monitor type — selects discharge LUT)
-# Options: LS17500 (Saft LiSOCl2 3.6V, default), NCR18650_3100_3400, CGR18650_2250, S18650_2600
+# Battery chemistry (ANALOG monitor only): selects discharge LUT + voltage range.
+# Allowed: BATT_CHEM_S18650_2600, BATT_CHEM_CGR18650_2250, BATT_CHEM_NCR18650_3100_3400,
+#          BATT_CHEM_LS17500_2P (2x Saft LS17500 Li-SOCl2 in parallel).
 if(NOT DEFINED BATTERY_CHEMISTRY)
-    set(BATTERY_CHEMISTRY "LS17500")
+    set(BATTERY_CHEMISTRY "BATT_CHEM_NCR18650_3100_3400")
 endif()
-if(NOT ${BATTERY_CHEMISTRY} MATCHES "LS17500|NCR18650_3100_3400|CGR18650_2250|S18650_2600")
-    message(FATAL_ERROR "BATTERY_CHEMISTRY must be one of {LS17500, NCR18650_3100_3400, CGR18650_2250, S18650_2600}")
+if(NOT ${BATTERY_CHEMISTRY} MATCHES "^BATT_CHEM_(S18650_2600|CGR18650_2250|NCR18650_3100_3400|LS17500_2P)$")
+    message(FATAL_ERROR "BATTERY_CHEMISTRY must be one of {BATT_CHEM_S18650_2600, BATT_CHEM_CGR18650_2250, BATT_CHEM_NCR18650_3100_3400, BATT_CHEM_LS17500_2P}")
 endif()
 
 message(STATUS "Battery monitor type: ${BATTERY_MONITOR_TYPE}")
@@ -202,7 +203,40 @@ execute_process(
         WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
         OUTPUT_VARIABLE FW_APP_VERSION
         OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
         )
+
+# Fallback when no tag is reachable from HEAD (`git describe` fails silently
+# above and returns empty). Synthesize a git-describe-style version using
+# v0.0.0 as a virtual tag, total commit count, and short SHA.
+if(NOT FW_APP_VERSION)
+    execute_process(
+        COMMAND git rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+        OUTPUT_VARIABLE GIT_SHA
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+        )
+    execute_process(
+        COMMAND git rev-list --count HEAD
+        WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+        OUTPUT_VARIABLE GIT_COMMITS
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+        )
+    execute_process(
+        COMMAND git status --porcelain
+        WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+        OUTPUT_VARIABLE GIT_DIRTY
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+        )
+    set(FW_APP_VERSION "v0.0.0-${GIT_COMMITS}-g${GIT_SHA}")
+    if(GIT_DIRTY)
+        set(FW_APP_VERSION "${FW_APP_VERSION}-dirty")
+    endif()
+endif()
+message(STATUS "FW_APP_VERSION: ${FW_APP_VERSION}")
 
 add_executable(${TARGET_NAME})
 set(CMAKE_EXECUTABLE_SUFFIX ".elf")
@@ -595,8 +629,8 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     $<$<STREQUAL:${BATTERY_MONITOR_TYPE},ANALOG>:BATTERY_MONITOR_ANALOG>
     $<$<STREQUAL:${BATTERY_MONITOR_TYPE},FAKE>:BATTERY_MONITOR_FAKE>
     $<$<STREQUAL:${BATTERY_MONITOR_TYPE},STC3117>:BATTERY_MONITOR_STC3117>
-    # Battery chemistry define (selects discharge LUT for ANALOG monitor)
-    BATTERY_CHEMISTRY_${BATTERY_CHEMISTRY}
+    # Battery chemistry (ANALOG only — selects discharge LUT)
+    $<$<STREQUAL:${BATTERY_MONITOR_TYPE},ANALOG>:BATTERY_CHEMISTRY=${BATTERY_CHEMISTRY}>
     # USB DTE interface (parallel with BLE)
     USB_DTE_ENABLED
     BUILD_TYPE=${CMAKE_BUILD_TYPE}

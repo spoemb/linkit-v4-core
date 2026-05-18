@@ -674,19 +674,12 @@ static void init_battery()
 
 #if defined(BATTERY_MONITOR_ANALOG)
 #ifdef BATTERY_ADC
-	// Chemistry selected at build time via -DBATTERY_CHEMISTRY=... (default LS17500).
-#if defined(BATTERY_CHEMISTRY_LS17500)
-	static constexpr BatteryChemistry kBattChem = BATT_CHEM_LS17500;
-#elif defined(BATTERY_CHEMISTRY_NCR18650_3100_3400)
-	static constexpr BatteryChemistry kBattChem = BATT_CHEM_NCR18650_3100_3400;
-#elif defined(BATTERY_CHEMISTRY_CGR18650_2250)
-	static constexpr BatteryChemistry kBattChem = BATT_CHEM_CGR18650_2250;
-#elif defined(BATTERY_CHEMISTRY_S18650_2600)
-	static constexpr BatteryChemistry kBattChem = BATT_CHEM_S18650_2600;
-#else
-	static constexpr BatteryChemistry kBattChem = BATT_CHEM_LS17500;
+	// Chemistry selected at compile time via -DBATTERY_CHEMISTRY=<enum_name>
+	// (CMake option BATTERY_CHEMISTRY). Defaults to NCR18650 Li-ion.
+#ifndef BATTERY_CHEMISTRY
+#define BATTERY_CHEMISTRY BATT_CHEM_NCR18650_3100_3400
 #endif
-	static NrfBatteryMonitor nrf_battery_monitor(BATTERY_ADC, kBattChem,
+	static NrfBatteryMonitor nrf_battery_monitor(BATTERY_ADC, BATTERY_CHEMISTRY,
 			critical_batt_level, low_batt_level);
 	battery_monitor = &nrf_battery_monitor;
 #else
