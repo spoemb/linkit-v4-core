@@ -25,6 +25,7 @@
 #include "rgb_led.hpp"
 #include "led.hpp"
 #include "gps.hpp"
+#include "gps_service.hpp"
 #include "ble_service.hpp"
 #include "gentracker.hpp"
 
@@ -85,6 +86,19 @@ void GenTracker::cancel_confirmation()
 void GenTracker::react(ReedSwitchEvent const &event)
 {
 	DEBUG_INFO("react: ReedSwitchEvent: %u", (int)event.state);
+
+	// During coin-cell backup charge: only ENGAGE stops the charge; all other
+	// reed events are ignored so nothing else happens while charging.
+	if (gps_service && gps_service->is_backup_charge_active()) {
+		if (event.state == ReedSwitchGesture::ENGAGE) {
+			DEBUG_INFO("Reed engage → stopping backup charge");
+			m_confirmation_pending = ConfirmationPending::NONE;
+			m_awaiting_re_engage = false;
+			system_scheduler->cancel_task(m_confirmation_timeout_task);
+			gps_service->request_backup_charge(0);
+		}
+		return;
+	}
 
 	// Reed switch event handling with confirmation gesture:
 	// ENGAGE -- engaged LED state (or confirm pending action if re-engaged within 2s)
@@ -460,9 +474,30 @@ void ConfigurationState::entry() {
 	led_handle::dispatch<SetLEDConfigNotConnected>({});
 	buzz_handle::dispatch<SetBuzzConfiguration>({});
 
+	m_backup_charge_mode = false;
+
 	set_ble_device_name();
 	ble_service->start([this](BLEServiceEvent& event) -> int { return on_ble_event(event); } );
 	restart_inactivity_timeout();
+
+	if (gps_service) {
+		gps_service->set_backup_charge_callbacks(
+			[this]() {
+				// Charge started: cut BLE after 200ms (lets the $O; response TX complete).
+				m_backup_charge_mode = true;
+				system_scheduler->post_task_prio([this]() {
+					ble_service->stop();
+					system_scheduler->cancel_task(m_ble_inactivity_timeout_task);
+					led_handle::dispatch<SetLEDOff>({});
+				}, "BackupChargeStopBLE", Scheduler::DEFAULT_PRIORITY, 200);
+			},
+			[this]() {
+				// Charge ended (reed, timer, or abort): resume normal operation.
+				m_backup_charge_mode = false;
+				transit<OperationalState>();
+			}
+		);
+	}
 
 #ifdef USB_DTE_ENABLED
 	// Default async writer → USB CDC. BLE overrides this on CONNECT
@@ -486,6 +521,8 @@ static void sync_bridge_log_silencing();  // Forward decl — defined near proce
 void ConfigurationState::exit() {
 	DEBUG_INFO("exit: ConfigurationState");
 	system_scheduler->cancel_task(m_ble_inactivity_timeout_task);
+	if (gps_service) gps_service->set_backup_charge_callbacks(nullptr, nullptr);
+	m_backup_charge_mode = false;
 #ifdef USB_DTE_ENABLED
 	system_scheduler->cancel_task(m_usb_poll_task);
 #endif
@@ -547,7 +584,12 @@ int ConfigurationState::on_ble_event(BLEServiceEvent& event) {
 			UsbInterface::get_instance().write(msg);
 		});
 #endif
-		led_handle::dispatch<SetLEDConfigNotConnected>({});
+		// During backup charge the device is silent — keep LED off instead of
+		// returning to the "waiting for BLE connection" blink.
+		if (m_backup_charge_mode)
+			led_handle::dispatch<SetLEDOff>({});
+		else
+			led_handle::dispatch<SetLEDConfigNotConnected>({});
 		break;
 	case BLEServiceEventType::DTE_DATA_RECEIVED:
 		DEBUG_TRACE("ConfigurationState::on_ble_event: DTE_DATA_RECEIVED");

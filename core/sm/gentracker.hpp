@@ -103,6 +103,7 @@ private:
 	static constexpr unsigned int USB_POLL_INTERVAL_MS = 50;
 	Scheduler::TaskHandle m_ble_inactivity_timeout_task;
 	Scheduler::TaskHandle m_usb_poll_task;
+	bool m_backup_charge_mode = false;
 	int on_ble_event(BLEServiceEvent&);
 	void on_ble_inactivity_timeout();
 	void restart_inactivity_timeout();

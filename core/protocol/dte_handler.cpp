@@ -1386,7 +1386,8 @@ std::string DTEHandler::GNSSBCKP_REQ(int error_code, std::vector<BaseType>& arg_
 	}
 	unsigned int duration_s = std::get<unsigned int>(arg_list[0]);
 	DEBUG_INFO("DTEHandler::GNSSBCKP_REQ: duration_s=%u", duration_s);
-	gps_service->request_backup_charge(duration_s);
+	if (!gps_service->request_backup_charge(duration_s))
+		return DTEEncoder::encode(DTECommand::GNSSBCKP_RESP, (int)DTEError::INCORRECT_DATA);
 	return DTEEncoder::encode(DTECommand::GNSSBCKP_RESP, (int)DTEError::OK);
 }
 

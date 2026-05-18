@@ -38,16 +38,25 @@ static constexpr int     ADC_MAX_VALUE = 16384;    ///< 2^14 (14-bit resolution)
 static constexpr float   ADC_REFERENCE = 0.6f;     ///< Internal reference voltage (V)
 /// @}
 
-/// @name Battery discharge lookup tables (SOC % at 0.1 V steps from 4.2 V → 3.2 V)
+/// @name Battery discharge lookup tables (SOC % at 0.1 V steps from 4.2 V → 2.0 V)
+/// Range extended down to 2.0V to support LiSOCl2 chemistries (Saft LS17500 cutoff).
+/// Li-ion entries (3.2-4.2V) simply hold 0% for all voltages below 3.2V.
 /// @{
-static constexpr unsigned int BATT_LUT_ENTRIES = 11;
-static constexpr uint16_t    BATT_LUT_MIN_V   = 3200;
+static constexpr unsigned int BATT_LUT_ENTRIES = 23;
+static constexpr uint16_t    BATT_LUT_MIN_V   = 2000;
 static constexpr uint16_t    BATT_LUT_MAX_V   = 4200;
 
+// Index 0 = 4.2V, index 22 = 2.0V (0.1V per step).
+//                                 4.2 4.1 4.0 3.9 3.8 3.7 3.6 3.5 3.4 3.3 3.2 3.1 3.0 2.9 2.8 2.7 2.6 2.5 2.4 2.3 2.2 2.1 2.0
 static constexpr uint8_t battery_voltage_lut[][BATT_LUT_ENTRIES] = {
-	{ 100, 91, 79, 62, 42, 12,  2, 0, 0, 0, 0 },  // S18650_2600
-	{ 100, 93, 84, 75, 64, 52, 22, 9, 0, 0, 0 },  // CGR18650_2250
-	{ 100, 94, 83, 59, 50, 33, 15, 6, 0, 0, 0 }   // NCR18650_3100_3400
+	{ 100, 91, 79, 62, 42, 12,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 }, // S18650_2600
+	{ 100, 93, 84, 75, 64, 52, 22,  9,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 }, // CGR18650_2250
+	{ 100, 94, 83, 59, 50, 33, 15,  6,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0 }, // NCR18650_3100_3400
+	// LS17500 LiSOCl2 (Saft) — 3.6V nominal, OCV 3.67V, cutoff 2.0V.
+	// Curve approximated from Saft datasheet discharge profiles at low current
+	// (<10 mA/cell). Flat plateau ~3.5V for most of life, sharp knee around 3.0V.
+	// Valid for 1 or 2 cells in parallel (voltage curve is identical, only capacity scales).
+	{ 100,100,100,100,100,100, 95, 80, 50, 25, 15, 10,  7,  5,  3,  2,  1,  1,  0,  0,  0,  0,  0 }  // LS17500
 };
 /// @}
 

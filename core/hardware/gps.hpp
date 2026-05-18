@@ -167,7 +167,7 @@ public:
 
     // Backup-cell charge mode: rail powered, receiver in deep sleep (UBX-RXM-PMREQ backup).
     // Default no-op so non-M10 backends keep compiling. Caller is responsible for scheduling exit.
-    virtual void enter_backup_charge_mode() {}
+    virtual bool enter_backup_charge_mode() { return false; }
     virtual void exit_backup_charge_mode() {}
     virtual GNSSDeviceInfo get_device_info() const { return {}; }
     virtual GNSSAlmanacStatus get_almanac_status(unsigned int ano_stale_threshold_s = 25 * 24 * 3600) const { (void)ano_stale_threshold_s; return {}; }

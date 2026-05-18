@@ -6,6 +6,7 @@
 #pragma once
 
 #include <atomic>
+#include <functional>
 
 #include "gps.hpp"
 #include "service.hpp"
@@ -77,7 +78,15 @@ public:
 	/// Manual / DTE entry-point for the V_BCKP coin-cell charge mode.
 	/// duration_s > 0  → start (or extend) a charge session for the given seconds.
 	/// duration_s == 0 → abort the current charge session immediately.
-	void request_backup_charge(unsigned int duration_s);
+	/// Returns false if the request was refused (GNSS active or hardware not idle).
+	bool request_backup_charge(unsigned int duration_s);
+
+	bool is_backup_charge_active() const { return m_backup_active; }
+
+	/// Set callbacks invoked on charge start and stop.
+	/// on_start fires once when a new session begins (not on timer refresh).
+	/// on_stop  fires on every stop (manual, timer, abort) and clears both callbacks.
+	void set_backup_charge_callbacks(std::function<void()> on_start, std::function<void()> on_stop);
 
 protected:
 
@@ -111,6 +120,8 @@ private:
 	bool m_underwater = false;
 	Scheduler::TaskHandle m_backup_exit_task;
 	Scheduler::TaskHandle m_backup_periodic_task;
+	std::function<void()> m_on_backup_charge_start;
+	std::function<void()> m_on_backup_charge_stop;
 
 	void backup_charge_schedule_next();
 	void backup_charge_periodic_fire();

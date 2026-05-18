@@ -16,7 +16,7 @@ public:
 	~M10QAsyncReceiver();
 	void power_on(const GPSNavSettings& nav_settings) override;
 	void power_off() override;
-	void enter_backup_charge_mode() override;
+	bool enter_backup_charge_mode() override;
 	void exit_backup_charge_mode() override;
 
 private:

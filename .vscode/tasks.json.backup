@@ -4,7 +4,7 @@
     // Build Tools Configuration
     // =========================================================================
     // IMPORTANT: Update the PATH below if your toolchain is installed elsewhere
-    // This setting must match the PATH in scripts/build_core.sh (line 16)
+    // This setting must match the PATH in scripts/build_linkitv4_kim.sh (line 16)
     //
     // Required tools:
     //   - ARM GCC Toolchain (arm-none-eabi-gcc)
@@ -12,7 +12,7 @@
     // =========================================================================
     "options": {
         "env": {
-            "PATH": "${env:ARM_TOOLCHAIN_PATH}:${env:NRFUTIL_PATH}:${env:PATH}"
+            "PATH": "/home/schade/tools/gcc-arm-none-eabi-10.3-2021.10/bin:/home/schade/.local/bin:${env:PATH}"
         }
     },
     "tasks": [
@@ -22,7 +22,7 @@
 		{
 			"type": "shell",
 			"label": "LINKIT: build",
-			"command": "./scripts/build_core.sh",
+			"command": "./scripts/build_linkitv4_kim.sh",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -38,7 +38,7 @@
 		{
 			"type": "shell",
 			"label": "LINKIT: clean build",
-			"command": "rm -rf ports/nrf52840/build/LINKIT && ./scripts/build_core.sh",
+			"command": "rm -rf ports/nrf52840/build/LINKIT && ./scripts/build_linkitv4_kim.sh",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -67,7 +67,7 @@
 		{
 			"type": "shell",
 			"label": "LinkItV4-SMD: clean build (Debug)",
-			"command": "rm -rf ports/nrf52840/build/LINKIT_SMD && mkdir -p ports/nrf52840/build/LINKIT_SMD && cd ports/nrf52840/build/LINKIT_SMD && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=LINKIT -DCMAKE_BUILD_TYPE=Debug -DARGOS_SMD=ON -DENABLE_AXL_SENSOR=ON ../.. && make -j20",
+			"command": "rm -rf ports/nrf52840/build/LINKIT_SMD && mkdir -p ports/nrf52840/build/LINKIT_SMD && cd ports/nrf52840/build/LINKIT_SMD && cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=4 -DBOARD=LINKIT -DCMAKE_BUILD_TYPE=Debug -DARGOS_SMD=ON -DENABLE_AXL_SENSOR=OFF -DENABLE_SWS_LOG=ON ../.. && make -j20",
 			"args": [],
 			"options": {
 				"cwd": "${workspaceFolder}"

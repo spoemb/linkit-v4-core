@@ -243,7 +243,7 @@ void M10QAsyncReceiver::power_off() {
 #endif
 }
 
-void M10QAsyncReceiver::enter_backup_charge_mode() {
+bool M10QAsyncReceiver::enter_backup_charge_mode() {
     DEBUG_INFO("M10QAsyncReceiver::enter_backup_charge_mode");
     // Refuse if GPS already has active clients or is not idle — backup charge
     // and normal acquisition are mutually exclusive. Caller (GPSService) must
@@ -251,10 +251,11 @@ void M10QAsyncReceiver::enter_backup_charge_mode() {
     if (m_num_power_on != 0 || !STATE_EQUAL(idle)) {
         DEBUG_WARN("M10QAsyncReceiver: backup-charge refused (state=%d, users=%u)",
                    (int)m_state, m_num_power_on);
-        return;
+        return false;
     }
     m_powering_off = false;
     STATE_CHANGE(idle, enterbackup);
+    return true;
 }
 
 void M10QAsyncReceiver::exit_backup_charge_mode() {

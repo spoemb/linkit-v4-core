@@ -503,11 +503,18 @@ void GPSService::react(const GPSEventError&) {
 }
 
 /// @brief Device powered off — clear backup-charge flag if it was set
-/// (the M10 emits this on exit_backup_charge_mode too).
+/// (the M10 emits this on exit_backup_charge_mode too, and on async failure
+/// of state_enterbackup which bails to poweroff).
 void GPSService::react(const GPSEventPowerOff&) {
     if (m_backup_active) {
         m_backup_active = false;
         system_scheduler->cancel_task(m_backup_exit_task);
+        // Fire stop callback so the FSM can recover (async hardware failure path).
+        // Move semantics make this idempotent vs. backup_charge_stop_internal.
+        auto cb = std::move(m_on_backup_charge_stop);
+        m_on_backup_charge_start = nullptr;
+        m_on_backup_charge_stop = nullptr;
+        if (cb) cb();
     }
 }
 
@@ -655,33 +662,38 @@ void GPSService::notify_peer_event(ServiceEvent& e) {
 }
 
 /// @brief Public entry-point: start/stop a V_BCKP coin-cell charge session.
-void GPSService::request_backup_charge(unsigned int duration_s) {
+bool GPSService::request_backup_charge(unsigned int duration_s) {
 	if (duration_s == 0) {
 		DEBUG_INFO("GPSService::request_backup_charge: stop requested");
 		backup_charge_stop_internal();
-		return;
+		return true;
 	}
 
 	// Refuse if a GNSS acquisition is currently in progress — backup charge
 	// and active acquisition are mutually exclusive (M10 device state machine).
 	if (m_is_active) {
 		DEBUG_WARN("GPSService::request_backup_charge: GNSS acquisition active — refused");
-		return;
+		return false;
 	}
 
 	// Already active: just refresh the auto-exit timer (extend / shorten).
 	if (m_backup_active) {
 		system_scheduler->cancel_task(m_backup_exit_task);
 	} else {
-		DEBUG_INFO("GPSService::request_backup_charge: starting (duration=%us)", duration_s);
-		m_device.enter_backup_charge_mode();
+		if (!m_device.enter_backup_charge_mode()) {
+			DEBUG_WARN("GPSService::request_backup_charge: hardware refused — device not idle");
+			return false;
+		}
 		m_backup_active = true;
+		DEBUG_INFO("GPSService::request_backup_charge: starting (duration=%us)", duration_s);
+		if (m_on_backup_charge_start) m_on_backup_charge_start();
 	}
 
 	m_backup_exit_task = system_scheduler->post_task_prio([this]() {
 		DEBUG_INFO("GPSService: backup-charge auto-exit (duration elapsed)");
 		backup_charge_stop_internal();
 	}, "GPSBackupChargeExit", Scheduler::DEFAULT_PRIORITY, duration_s * MS_PER_SEC);
+	return true;
 }
 
 /// @brief Internal: stop the charge session if active. Idempotent.
@@ -691,6 +703,16 @@ void GPSService::backup_charge_stop_internal() {
 		m_device.exit_backup_charge_mode();
 		m_backup_active = false;
 	}
+	// Fire and clear stop callback (cleared before calling to be re-entrant safe).
+	auto cb = std::move(m_on_backup_charge_stop);
+	m_on_backup_charge_start = nullptr;
+	m_on_backup_charge_stop = nullptr;
+	if (cb) cb();
+}
+
+void GPSService::set_backup_charge_callbacks(std::function<void()> on_start, std::function<void()> on_stop) {
+	m_on_backup_charge_start = std::move(on_start);
+	m_on_backup_charge_stop  = std::move(on_stop);
 }
 
 /// @brief Schedule the next periodic backup-charge tick (or arm immediately if
