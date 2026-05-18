@@ -489,6 +489,10 @@ void ConfigurationState::entry() {
 					ble_service->stop();
 					system_scheduler->cancel_task(m_ble_inactivity_timeout_task);
 					led_handle::dispatch<SetLEDOff>({});
+					// Start the visual heartbeat: yellow flash every 10 s while charging.
+					m_backup_charge_blink_task = system_scheduler->post_task_prio(
+						std::bind(&ConfigurationState::backup_charge_blink_fire, this),
+						"BackupChargeBlink", Scheduler::DEFAULT_PRIORITY, 10000);
 				}, "BackupChargeStopBLE", Scheduler::DEFAULT_PRIORITY, 200);
 			},
 			[this]() {
@@ -521,6 +525,7 @@ static void sync_bridge_log_silencing();  // Forward decl — defined near proce
 void ConfigurationState::exit() {
 	DEBUG_INFO("exit: ConfigurationState");
 	system_scheduler->cancel_task(m_ble_inactivity_timeout_task);
+	system_scheduler->cancel_task(m_backup_charge_blink_task);
 	if (gps_service) gps_service->set_backup_charge_callbacks(nullptr, nullptr);
 	m_backup_charge_mode = false;
 #ifdef USB_DTE_ENABLED
@@ -635,6 +640,22 @@ int ConfigurationState::on_ble_event(BLEServiceEvent& event) {
 void ConfigurationState::on_ble_inactivity_timeout() {
 	DEBUG_INFO("BLE Inactivity Timeout");
 	transit<OffState>();
+}
+
+/// @brief Visual heartbeat during DTE-triggered backup charge: brief YELLOW flash
+/// (~200 ms) then back to off, re-scheduled every 10 s. Lets the operator see the
+/// device is still alive in the otherwise-silent charging state. Cancelled on exit
+/// or on m_backup_charge_mode = false.
+void ConfigurationState::backup_charge_blink_fire() {
+	if (!m_backup_charge_mode) return;  // charge ended between schedule and fire
+	status_led->set(RGBLedColor::YELLOW);
+	system_scheduler->post_task_prio([this]() {
+		if (!m_backup_charge_mode) return;
+		status_led->off();
+		m_backup_charge_blink_task = system_scheduler->post_task_prio(
+			std::bind(&ConfigurationState::backup_charge_blink_fire, this),
+			"BackupChargeBlink", Scheduler::DEFAULT_PRIORITY, 10000);
+	}, "BackupChargeBlinkOff", Scheduler::DEFAULT_PRIORITY, 200);
 }
 
 /// @brief Reset the BLE inactivity timeout (called on every BLE activity).

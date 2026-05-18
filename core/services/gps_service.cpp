@@ -62,6 +62,7 @@ void GPSService::service_init() {
     m_is_first_schedule = true;
     m_num_gps_fixes = 0;
     m_backup_active = false;
+    m_pending_backup_duration_s = 0;
     m_underwater = false;
     m_backup_exit_task = {};
     m_backup_periodic_task = {};
@@ -86,6 +87,7 @@ void GPSService::service_init() {
 void GPSService::service_term() {
     system_scheduler->cancel_task(m_backup_periodic_task);
     system_scheduler->cancel_task(m_backup_exit_task);
+    m_pending_backup_duration_s = 0;
     if (m_backup_active) {
         m_device.exit_backup_charge_mode();
         m_backup_active = false;
@@ -503,8 +505,8 @@ void GPSService::react(const GPSEventError&) {
 }
 
 /// @brief Device powered off — clear backup-charge flag if it was set
-/// (the M10 emits this on exit_backup_charge_mode too, and on async failure
-/// of state_enterbackup which bails to poweroff).
+/// (the M10 emits this on exit_backup_charge_mode too, and on async failure of
+/// state_enterbackup which bails to poweroff).
 void GPSService::react(const GPSEventPowerOff&) {
     if (m_backup_active) {
         m_backup_active = false;
@@ -679,26 +681,91 @@ bool GPSService::request_backup_charge(unsigned int duration_s) {
 	// Already active: just refresh the auto-exit timer (extend / shorten).
 	if (m_backup_active) {
 		system_scheduler->cancel_task(m_backup_exit_task);
-	} else {
-		if (!m_device.enter_backup_charge_mode()) {
-			DEBUG_WARN("GPSService::request_backup_charge: hardware refused — device not idle");
-			return false;
-		}
+		m_backup_exit_task = system_scheduler->post_task_prio([this]() {
+			DEBUG_INFO("GPSService: backup-charge auto-exit (duration elapsed)");
+			backup_charge_stop_internal();
+		}, "GPSBackupChargeExit", Scheduler::DEFAULT_PRIORITY, duration_s * MS_PER_SEC);
+		return true;
+	}
+
+	if (m_device.enter_backup_charge_mode()) {
+		// Hardware happy path: M10 was in idle, switched to enterbackup straight away.
 		m_backup_active = true;
 		DEBUG_INFO("GPSService::request_backup_charge: starting (duration=%us)", duration_s);
 		if (m_on_backup_charge_start) m_on_backup_charge_start();
+		m_backup_exit_task = system_scheduler->post_task_prio([this]() {
+			DEBUG_INFO("GPSService: backup-charge auto-exit (duration elapsed)");
+			backup_charge_stop_internal();
+		}, "GPSBackupChargeExit", Scheduler::DEFAULT_PRIORITY, duration_s * MS_PER_SEC);
+		return true;
 	}
 
-	m_backup_exit_task = system_scheduler->post_task_prio([this]() {
-		DEBUG_INFO("GPSService: backup-charge auto-exit (duration elapsed)");
-		backup_charge_stop_internal();
-	}, "GPSBackupChargeExit", Scheduler::DEFAULT_PRIORITY, duration_s * MS_PER_SEC);
+	// Hardware refused. Two different recovery strategies depending on the caller:
+	//
+	// 1. DTE path (user sent GNSSBCKP via BLE — m_on_backup_charge_start is set by
+	//    ConfigurationState): the user expects the device to enter silent charging mode
+	//    NOW. We fire the start callback immediately (BLE will cut after 200 ms) and
+	//    poll enter_backup_charge_mode every 250 ms for up to 5 s. If still failing
+	//    after that, abort cleanly via the stop callback (transit OperationalState).
+	//
+	// 2. Periodic algorithm path (backup_charge_periodic_fire — no callbacks set):
+	//    just fail. The next periodic tick will try again. We MUST NOT call power_off
+	//    here because the GNSS service may still be cycling, and we'd disrupt the
+	//    acquisition schedule.
+	if (!m_on_backup_charge_start) {
+		DEBUG_INFO("GPSService::request_backup_charge: periodic path, hardware busy — skipping cycle");
+		return false;
+	}
+
+	DEBUG_INFO("GPSService::request_backup_charge: DTE path, hardware busy — start charge in 'pending' mode (duration=%us)", duration_s);
+	m_pending_backup_duration_s = duration_s;
+	m_on_backup_charge_start();  // BLE cuts now even though charge hasn't physically started
+	schedule_backup_charge_retry(0);
 	return true;
 }
 
+/// @brief Poll enter_backup_charge_mode every 250 ms until success or attempts exhausted.
+/// Called only from the DTE path of request_backup_charge. Aborts cleanly via the stop
+/// callback after MAX_ATTEMPTS (~5 s), ensuring the device never freezes — the FSM
+/// transits back to OperationalState which restarts services and BLE.
+void GPSService::schedule_backup_charge_retry(unsigned int attempt) {
+	static constexpr unsigned int MAX_ATTEMPTS    = 20;   // 20 * 250 ms = 5 s
+	static constexpr unsigned int RETRY_DELAY_MS  = 250;
+
+	if (attempt >= MAX_ATTEMPTS) {
+		DEBUG_ERROR("GPSService::backup_charge_retry: exhausted %u attempts — abandoning", attempt);
+		m_pending_backup_duration_s = 0;
+		auto cb = std::move(m_on_backup_charge_stop);
+		m_on_backup_charge_start = nullptr;
+		m_on_backup_charge_stop = nullptr;
+		if (cb) cb();
+		return;
+	}
+
+	m_backup_exit_task = system_scheduler->post_task_prio([this, attempt]() {
+		if (m_pending_backup_duration_s == 0)
+			return;  // cancelled (manual stop / reed switch / etc.)
+		unsigned int d = m_pending_backup_duration_s;
+		if (m_device.enter_backup_charge_mode()) {
+			m_pending_backup_duration_s = 0;
+			m_backup_active = true;
+			DEBUG_INFO("GPSService::backup_charge_retry: started after %u attempts (duration=%us)", attempt, d);
+			m_backup_exit_task = system_scheduler->post_task_prio([this]() {
+				DEBUG_INFO("GPSService: backup-charge auto-exit (duration elapsed)");
+				backup_charge_stop_internal();
+			}, "GPSBackupChargeExit", Scheduler::DEFAULT_PRIORITY, d * MS_PER_SEC);
+		} else {
+			schedule_backup_charge_retry(attempt + 1);
+		}
+	}, "BackupChargeRetry", Scheduler::DEFAULT_PRIORITY, RETRY_DELAY_MS);
+}
+
 /// @brief Internal: stop the charge session if active. Idempotent.
+/// Handles three states: active charge (exit_backup_charge_mode), pending retry
+/// (cancel safety timer), or neither (no-op apart from clearing callbacks).
 void GPSService::backup_charge_stop_internal() {
 	system_scheduler->cancel_task(m_backup_exit_task);
+	m_pending_backup_duration_s = 0;
 	if (m_backup_active) {
 		m_device.exit_backup_charge_mode();
 		m_backup_active = false;

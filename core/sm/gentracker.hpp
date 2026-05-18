@@ -103,7 +103,13 @@ private:
 	static constexpr unsigned int USB_POLL_INTERVAL_MS = 50;
 	Scheduler::TaskHandle m_ble_inactivity_timeout_task;
 	Scheduler::TaskHandle m_usb_poll_task;
+	Scheduler::TaskHandle m_backup_charge_blink_task;
 	bool m_backup_charge_mode = false;
+
+	/// @brief Periodic yellow LED blink (200 ms on, 10 s off) during DTE-triggered
+	/// backup-charge. Visual heartbeat so the user can see the device is still alive
+	/// in the silent charging state. Self-reschedules until m_backup_charge_mode = false.
+	void backup_charge_blink_fire();
 	int on_ble_event(BLEServiceEvent&);
 	void on_ble_inactivity_timeout();
 	void restart_inactivity_timeout();

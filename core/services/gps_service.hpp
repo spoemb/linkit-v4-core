@@ -81,7 +81,9 @@ public:
 	/// Returns false if the request was refused (GNSS active or hardware not idle).
 	bool request_backup_charge(unsigned int duration_s);
 
-	bool is_backup_charge_active() const { return m_backup_active; }
+	/// True if charge is active OR pending (M10 powering off before retry).
+	/// Used by gentracker's reed-switch handler to intercept events in both phases.
+	bool is_backup_charge_active() const { return m_backup_active || m_pending_backup_duration_s > 0; }
 
 	/// Set callbacks invoked on charge start and stop.
 	/// on_start fires once when a new session begins (not on timer refresh).
@@ -118,6 +120,7 @@ private:
 	// Backup-cell (V_BCKP) charge mode bookkeeping (independent of m_is_active).
 	bool m_backup_active = false;
 	bool m_underwater = false;
+	unsigned int m_pending_backup_duration_s = 0;  ///< Set when waiting for M10 poweroff to retry
 	Scheduler::TaskHandle m_backup_exit_task;
 	Scheduler::TaskHandle m_backup_periodic_task;
 	std::function<void()> m_on_backup_charge_start;
@@ -126,6 +129,7 @@ private:
 	void backup_charge_schedule_next();
 	void backup_charge_periodic_fire();
 	void backup_charge_stop_internal();
+	void schedule_backup_charge_retry(unsigned int attempt);
 
     void react(const GPSEventMaxNavSamples&) override;
     void react(const GPSEventMaxSatSamples&) override;
