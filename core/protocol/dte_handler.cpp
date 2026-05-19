@@ -4,6 +4,7 @@
  */
 
 #include "dte_handler.hpp"
+#include "ledsm.hpp"
 #include "gps_service.hpp"
 #include "argos_tx_service.hpp"
 #if defined(LORA_RAK3172) && (LORA_RAK3172 == 1)
@@ -1520,18 +1521,28 @@ std::string DTEHandler::SWSCAL_REQ(int error_code, std::vector<BaseType>& arg_li
 			SWSAnalogService::stop_test_mode();
 			SWSAnalogService::clear_status_notify();
 		}
-		auto write_fn = m_async_write;
-		SWSAnalogService::set_guided_calib_notify([write_fn](const SWSAnalogService::CalibResult& r) {
-			if (write_fn) {
-				write_fn(DTEEncoder::encode(DTECommand::SWSCAL_RESP, (int)DTEError::OK,
+		// Capture `this` (not a snapshot of m_async_write) so the notify uses
+		// whichever writer is current when the calibration completes (~10 s
+		// later). If BLE flaps mid-calibration, the dte_handler's async_write
+		// has already been switched to USB by the gentracker handler — using
+		// the snapshot would silently route the completion frame to the dead
+		// channel and the GUI never sees status=1.
+		SWSAnalogService::set_guided_calib_notify([this](const SWSAnalogService::CalibResult& r) {
+			if (m_async_write) {
+				m_async_write(DTEEncoder::encode(DTECommand::SWSCAL_RESP, (int)DTEError::OK,
 					(unsigned int)r.status,
 					(unsigned int)r.air,
 					(unsigned int)r.water));
 			}
 		});
 		SWSAnalogService::set_on_test_stop([]() {
-			if (status_led)
-				status_led->flash(RGBLedColor::BLUE);
+			// Hand the LED back to ledsm. SWSCAL only makes sense in
+			// ConfigurationState with BLE attached, so dispatch the
+			// connected-config event — ledsm decides the actual visual
+			// (solid BLUE, white if magnet engaged, etc.). Without this
+			// re-dispatch, ledsm has no event to react to and the LED
+			// stays on the post-calibration WHITE/RED flash forever.
+			LEDState::dispatch(SetLEDConfigConnected{});
 		});
 		SWSAnalogService::start_guided_calibration();
 	} else {

@@ -51,7 +51,10 @@ public:
 		return mock().actualCall("write").onObject(this).withParameterOfType("std::string", "str", &str).returnBoolValue();
 	}
 	std::string read_line() {
-		return *static_cast<const std::string*>(mock().actualCall("read_line").onObject(this).returnConstPointerValue());
+		// Wrap dereference in null check to satisfy g++13 -Werror=null-dereference.
+		const std::string* ptr = static_cast<const std::string*>(
+			mock().actualCall("read_line").onObject(this).returnConstPointerValue());
+		return ptr ? *ptr : std::string{};
 	}
 	void set_device_name(const std::string& name) {
 		mock().actualCall("set_device_name").onObject(this).withParameter("name", name.c_str());

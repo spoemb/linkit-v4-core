@@ -151,6 +151,55 @@ TEST(SWSAnalog, SurfaceDetection)
 }
 
 /**
+ * FastSurfaceFromRawBelowThreshold
+ *
+ * Verifies the asymmetric basic-threshold filtering (sws_analog_detection.cpp
+ * section 7): surface entry uses raw_value (not the MA2-filtered value) for
+ * the threshold_low comparison, so the 1-sample filter lag does not delay the
+ * detection. After a single ADC sample drops to air level, the next callback
+ * must report SURF on the same tick.
+ *
+ * The basic-threshold path is exercised here (rather than L1-L5 overrides)
+ * by examining the per-sample callback delivery: one run_one_sample() →
+ * one state-change notification.
+ */
+TEST(SWSAnalog, FastSurfaceFromRawBelowThreshold)
+{
+    SWSAnalogService s;
+    bool state = false;
+    unsigned int callbacks = 0;
+
+    system_timer->start();
+    SAADC::set_adc_value(200);
+
+    s.start([&state, &callbacks](ServiceEvent &event) {
+        if (event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+            state = std::get<bool>(event.event_data);
+            callbacks++;
+        }
+    });
+
+    // Establish air baseline.
+    for (unsigned int i = 0; i < 5; i++) run_one_sample();
+
+    // Drive UW to seed water baseline + transition state.
+    SAADC::set_adc_value(2500);
+    for (unsigned int i = 0; i < 10; i++) run_one_sample();
+    CHECK_TRUE_TEXT(state, "Setup: device should be UW after 10 water samples");
+
+    // Single ADC sample at air level. With the raw-based threshold path,
+    // surface must be reported in exactly one tick — no MA2 lag.
+    unsigned int cb_before = callbacks;
+    SAADC::set_adc_value(200);
+    run_one_sample();
+
+    CHECK_FALSE_TEXT(state, "Surface must be detected on the first sample below threshold_low");
+    CHECK_TEXT(callbacks > cb_before, "State-change callback must fire on the single transition sample");
+
+    s.stop();
+}
+
+/**
  * Test 3: Underwater detection (high ADC values)
  * Verifies that high ADC readings are correctly identified as underwater
  */

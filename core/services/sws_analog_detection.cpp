@@ -507,7 +507,20 @@ bool SWSAnalogService::detector_state() {
         threshold_low = m_calib.threshold_air + 1;
     }
 
-    // Basic threshold detection
+    // Basic threshold detection.
+    //
+    // Asymmetric filtering for latency:
+    //  - UW entry (going into water) uses `filtered_value` (MA2) for noise
+    //    rejection. False UW detection is costly (suppresses surface-mode
+    //    services, drains transmit budget).
+    //  - Surface entry (going out of water) uses `raw_value` to shave the
+    //    1-sample MA2 lag. False surface here is bounded by:
+    //      • DEFAULT_MIN_DRY_SAMPLES counter (1 sample minimum)
+    //      • Hysteresis (threshold_low = threshold_current - hyst)
+    //      • Downstream m_surface_lockout protecting against flapping.
+    //    On a UNP03=10s configuration this saves up to one full sampling
+    //    period (~10s) of detection latency in the slow-exit case where L1
+    //    is gated by the proximity guard.
     if (filtered_value > threshold_high) {
         new_state = true;
         m_consecutive_samples = 0;
@@ -516,7 +529,7 @@ bool SWSAnalogService::detector_state() {
         if (m_surface_lockout_remaining == 0) {
             calibrate_water_baseline(filtered_value);
         }
-    } else if (filtered_value < threshold_low) {
+    } else if (raw_value < threshold_low) {
 
         if (m_current_state) {
             m_consecutive_samples++;
@@ -952,18 +965,17 @@ bool SWSAnalogService::detector_state() {
         case CalibPhase::COMPLETION_PAUSE:
             // Non-blocking 3s pause keeps the WHITE (success) or RED (fail)
             // flash visible long enough for a bench operator to read it.
-            // We intentionally do NOT fire m_on_test_stop here: that callback
-            // (set by the DTE handler) flashes BLUE on test-mode end and
-            // would overwrite the success/failure indicator the user is
-            // still trying to read. The LED is cleared explicitly below
-            // instead, which gives unambiguous closure with no spurious
-            // BLUE blink. ledsm regains control on the next state change.
+            // Then hand the LED back to whatever set up the callback — the
+            // DTE handler dispatches the proper ledsm event there
+            // (SetLEDConfigConnected for SWSCAL), so the LED returns to
+            // its pre-calibration state instead of staying frozen on the
+            // success/failure flash or going off.
             m_calib_count++;
             if (m_calib_count >= 3) {
                 m_calib_phase = CalibPhase::DONE;
                 m_test_mode = false;
                 if (s_instance) s_instance->stop();
-                if (status_led) status_led->off();
+                if (m_on_test_stop) m_on_test_stop();
             }
             break;
 
