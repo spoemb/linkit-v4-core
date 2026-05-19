@@ -283,6 +283,12 @@ bool GPSService::service_is_triggered_on_surfaced(bool& immediate) {
 		DEBUG_INFO("GPSService::retry_counter: reset ntry=%u->0 (surfacing)", m_cold_start_ntry);
 	}
 	m_cold_start_ntry = 0;  // Reset retry counter on each surfacing
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	if (m_defer_gnss_until_argos_first_tx) {
+		DEBUG_INFO("GPSService: surfacing trigger DEFERRED — waiting for first Argos TX");
+		return false;
+	}
+#endif
 	return true;
 }
 
@@ -657,8 +663,46 @@ void GPSService::notify_peer_event(ServiceEvent& e) {
 				DEBUG_INFO("GPSService: surfaced — aborting backup-charge (UW_ONLY)");
 				backup_charge_stop_internal();
 			}
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+			// Arm the gate: GNSS power-on will wait until ArgosTxService emits
+			// SERVICE_INACTIVE (first satellite TX done) to free CPU for the burst.
+			// Safety: only arm if Argos will actually TX — otherwise SERVICE_INACTIVE
+			// is never emitted and the gate would block GNSS forever.
+			{
+				ArgosConfig argos_config;
+				configuration_store->get_argos_configuration(argos_config);
+				bool argos_will_tx = (argos_config.mode != BaseArgosMode::OFF) ||
+				                     argos_config.cert_tx_enable;
+				if (argos_will_tx) {
+					m_defer_gnss_until_argos_first_tx = true;
+					DEBUG_INFO("GPSService: surfaced — GNSS deferred until first Argos TX completes");
+				}
+			}
+#endif
+		} else {
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+			// Reset gate on submerge so a future surfacing re-arms cleanly.
+			m_defer_gnss_until_argos_first_tx = false;
+#endif
 		}
 	}
+
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	// Release the gate when Argos TX completes (any SERVICE_INACTIVE from ARGOS_TX),
+	// and manually trigger the deferred GNSS reschedule.
+	if (e.event_source == ServiceIdentifier::ARGOS_TX &&
+	    e.event_type == ServiceEventType::SERVICE_INACTIVE &&
+	    m_defer_gnss_until_argos_first_tx && !m_underwater) {
+		m_defer_gnss_until_argos_first_tx = false;
+		DEBUG_INFO("GPSService: first Argos TX done — releasing GNSS gate, rescheduling now");
+		Service::notify_peer_event(e);  // let base process the event normally
+		bool immediate;
+		if (service_is_triggered_on_surfaced(immediate)) {
+			service_reschedule(immediate);
+		}
+		return;
+	}
+#endif
 
 	Service::notify_peer_event(e);
 }

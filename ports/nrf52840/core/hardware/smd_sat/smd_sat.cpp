@@ -26,6 +26,32 @@ extern Timer *system_timer;
 #include "config_store.hpp"
 extern ConfigurationStore *configuration_store;
 
+// SMD state-machine task priority — bumped above GNSS (M10Q uses DEFAULT_PRIORITY=7)
+// so satellite TX path is not preempted by GPS init/fix work during surfacing burst.
+// Lower number = higher priority (0 = highest, 7 = default).
+static constexpr unsigned int SMD_SCHEDULER_PRIORITY = 4;
+
+// TX latency instrumentation — call sites kept across the driver to allow
+// re-enabling for future timing investigations. Currently NO-OP (commented out).
+// To re-enable: uncomment the body. The console-only path (bypassing system_log)
+// is intentional — see debug.hpp note about TRACE/timing-critical paths.
+#define TXTRACE(fmt, ...) \
+    do { \
+        (void)fmt; \
+        /* if (DebugLogger::console_log) \
+            DebugLogger::console_log->info("[TXTRACE +%u ms] " fmt, \
+                static_cast<unsigned>(m_tx_trace_start_ms ? (PMU::get_timestamp_ms() - m_tx_trace_start_ms) : 0), \
+                ##__VA_ARGS__); */ \
+    } while (0)
+
+#define MODSWITCH_LOG(delta_ms, fmt, ...) \
+    do { \
+        (void)(delta_ms); (void)fmt; \
+        /* if (DebugLogger::console_log) \
+            DebugLogger::console_log->info("[MODSWITCH +%u ms] " fmt, \
+                static_cast<unsigned>(delta_ms), ##__VA_ARGS__); */ \
+    } while (0)
+
 // ============================================================================
 // Modulation conversion helpers (used by send() and switch_modulation())
 // ============================================================================
@@ -151,13 +177,14 @@ void SmdSat::power_on() {
 
 	if (m_state != SmdSat::stopped) {
 		m_stopping = false;
-		DEBUG_TRACE("SmdSat::%s:: already running",__func__);
+		TXTRACE("power_on(): already running (state=%d) — TX rides existing session",
+		        static_cast<int>(m_state));
 		return;
 	}
 
 	m_stopping = false;
+	TXTRACE("power_on(): cold start, entering state machine");
 	SMD_STATE_CHANGE(stopped, starting);
-	DEBUG_TRACE("SmdSat::%s:: start state machine",__func__);
 	state_machine();
 }
 
@@ -227,10 +254,14 @@ void SmdSat::state_machine(bool use_scheduler) {
 	}
 
 	if (use_scheduler && !SMD_STATE_EQUAL(stopped)) {
+		if (m_next_delay > 100) {
+			TXTRACE("state_machine: rescheduling tick in %u ms (state=%d)",
+			        m_next_delay, static_cast<int>(m_state));
+		}
 		system_scheduler->cancel_task(m_task);
 		m_task = system_scheduler->post_task_prio([this]() {
 			state_machine();
-		}, "SmdReceiverStateMachine", Scheduler::DEFAULT_PRIORITY, m_next_delay);
+		}, "SmdReceiverStateMachine", SMD_SCHEDULER_PRIORITY, m_next_delay);
 	}
 }
 
@@ -313,7 +344,8 @@ void SmdSat::state_powering_on_exit() {
 }
 
 void SmdSat::state_powering_on() {
-	DEBUG_TRACE("SmdSat::%s: Starting power-on sequence", __func__);
+	TXTRACE("state_powering_on: starting power sequence (100ms discharge + %u ms VDD)",
+	        SMDSAT_DELAY_POWER_ON_MS);
 
 	GPIOPins::acquire_sensors_pwr();
 
@@ -353,6 +385,8 @@ void SmdSat::state_powering_on() {
 	GPIOPins::release_to_highz(SAT_RESET);
 	DEBUG_TRACE("SmdSat::%s: RESET released, VPA held LOW until ping OK", __func__);
 
+	TXTRACE("state_powering_on: RESET released, scheduling idle_pending in %u ms",
+	        SMDSAT_SPI_BOOT_DELAY_MS);
 	SMD_STATE_CHANGE(powering_on, idle_pending);
 }
 
@@ -365,6 +399,9 @@ void SmdSat::state_load_kmac_enter() {
 void SmdSat::state_load_kmac_exit() {}
 
 void SmdSat::state_load_kmac() {
+	TXTRACE("state_load_kmac: tick (pending_rconf=%u creds_written=%u explicit_kmac=%u poll=%u)",
+	        !m_pending_rconf.empty(), m_credentials_written, m_needs_explicit_kmac_load, m_state_counter);
+
 	// Sequence per firmware spec:
 	// 1. Write RCONF/credentials if changed (flash operations — don't need MAC_OK)
 	// 2. Load KMAC only if RCONF changed (otherwise STM32 auto-inits MAC from flash at POR)
@@ -373,6 +410,7 @@ void SmdSat::state_load_kmac() {
 
 	// Step 1a: Apply deferred RCONF from switch_modulation() while stopped.
 	if (!m_pending_rconf.empty()) {
+		TXTRACE("state_load_kmac: applying deferred RCONF (set+save+wait ~120ms)");
 		DEBUG_INFO("SmdSat::%s: applying deferred RCONF for modulation %d", __func__, static_cast<int>(m_modulation));
 		auto wait_cmd = []() { nrf_delay_ms(SMDSAT_DELAY_CMD_MS * 2); };  // 60ms (v4.0.9 timing)
 		std::string rconf_bin = Binascii::unhexlify(m_pending_rconf);
@@ -396,6 +434,7 @@ void SmdSat::state_load_kmac() {
 	if (!m_credentials_written) {
 		m_credentials_written = true;
 		if (configuration_store && configuration_store->is_credentials_dirty()) {
+			TXTRACE("state_load_kmac: credentials dirty -> write_credentials_from_config (~480ms)");
 			DEBUG_INFO("SmdSat::%s: credentials dirty, writing to SMD", __func__);
 			if (!write_credentials_from_config()) {
 				DEBUG_ERROR("SmdSat::%s: credential write failed", __func__);
@@ -411,6 +450,7 @@ void SmdSat::state_load_kmac() {
 	// When unchanged, the STM32 auto-initializes MAC from flash at POR —
 	// we just wait for MAC_OK in step 3.
 	if (m_needs_explicit_kmac_load) {
+		TXTRACE("state_load_kmac: sending explicit load_kmac_profil(1)");
 		try {
 			m_cmd.load_kmac_profil(1);
 			m_needs_explicit_kmac_load = false;
@@ -420,6 +460,8 @@ void SmdSat::state_load_kmac() {
 			SMD_STATE_CHANGE(load_kmac, error);
 			return;
 		}
+	} else {
+		TXTRACE("state_load_kmac: skip explicit KMAC (STM32 auto-inits from flash)");
 	}
 
 	// Step 3: Poll READ_SPIMAC_STATE (0x27) for MAC ready.
@@ -433,12 +475,16 @@ void SmdSat::state_load_kmac() {
 	bool mac_ready = (mac_st != MAC_UNKNOWN && mac_st != MAC_ERROR && mac_st != MAC_TX_IN_PROGRESS);
 	if (mac_ready) {
 		is_kmac_profil_loaded = true;
+		TXTRACE("state_load_kmac: MAC READY (mac=%u spi=%u) -> writing TCXO+LPM, then idle", mac_st, spi_st);
 		DEBUG_TRACE("SmdSat::%s: MAC ready (mac=%u, explicit_load=%u)", __func__, mac_st, m_needs_explicit_kmac_load);
 
 		// Step 4: Write TCXO warmup — RAM register on STM32, lost on power cycle.
+		// Force 0 on first TX after power-on: TCXO was just powered, no warmup needed.
+		// Configured value is rewritten in state_transmitting_exit after the first TX.
+		uint32_t warmup_ms = m_is_first_tx ? 0 : (m_tcxo_warmup_time * 1000);
 		try {
-			m_cmd.write_tcxo_warmup(m_tcxo_warmup_time * 1000);
-			DEBUG_TRACE("SmdSat::%s: TCXO warmup written: %u s", __func__, m_tcxo_warmup_time);
+			m_cmd.write_tcxo_warmup(warmup_ms);
+			DEBUG_TRACE("SmdSat::%s: TCXO warmup written: %u ms (first_tx=%u)", __func__, warmup_ms, m_is_first_tx);
 		} catch (...) {
 			DEBUG_WARN("SmdSat::%s: failed to write TCXO warmup", __func__);
 		}
@@ -494,12 +540,15 @@ void SmdSat::state_load_kmac() {
 			m_needs_explicit_kmac_load = true;
 			SMD_STATE_CHANGE(load_kmac, error);
 		} else {
+			TXTRACE("state_load_kmac: MAC NOT ready (mac=%u spi=%u) retry in %u ms (left=%u)",
+			        mac_st, spi_st, SMDSAT_DELAY_LOAD_KMAC_MS, m_state_counter);
 			m_next_delay = SMDSAT_DELAY_LOAD_KMAC_MS;
 		}
 	}
 }
 
 void SmdSat::state_idle_pending_enter() {
+	TXTRACE("state_idle_pending_enter: init SPI, will ping STM32");
 	// Init SPI here (after power-on + reset release) to avoid MISO backfeed.
 	// STM32WL has booted and its GPIOs are in a defined state now.
 	m_cmd.init();
@@ -513,6 +562,8 @@ void SmdSat::state_idle_pending_exit() {
 
 void SmdSat::state_idle_pending() {
 	if (m_cmd.ping()) {
+		TXTRACE("state_idle_pending: ping OK (retries_left=%u) -> %s",
+		        m_state_counter, is_kmac_profil_loaded ? "idle" : "load_kmac");
 		// Small delay after ping ACK for STM32 DMA re-arm.
 		// MAC readiness is verified in state_load_kmac (poll MAC_OK).
 		nrf_delay_ms(10);
@@ -527,6 +578,8 @@ void SmdSat::state_idle_pending() {
 			DEBUG_ERROR("SmdSat::%s: failed to enter IDLE state",__func__);
 			SMD_STATE_CHANGE(idle_pending, error);
 		} else {
+			TXTRACE("state_idle_pending: ping FAIL, retry in %u ms (counter=%u)",
+			        SMDSAT_DELAY_CMD_MS, m_state_counter);
 			m_next_delay = SMDSAT_DELAY_CMD_MS;
 		}
 	}
@@ -576,6 +629,7 @@ void SmdSat::state_idle_exit() {
 
 void SmdSat::state_idle() {
 	if (m_packet_buffer.length()) {
+		TXTRACE("state_idle: packet pending -> transmit_pending");
 		m_tx_buffer = m_packet_buffer;
 		m_packet_buffer.clear();
 		SMD_STATE_CHANGE(idle, transmit_pending);
@@ -598,15 +652,20 @@ void SmdSat::state_transmit_pending_enter() {
 }
 
 void SmdSat::state_transmit_pending_exit() {
-	// When TCXO warmup is skipped (first TX after surfacing), the STM32 starts
-	// TX in ~100ms — use a shorter first-poll delay to avoid wasting 800ms.
-	// With TCXO warmup active, keep the full delay for oscillator stabilization.
-	unsigned int base_delay = (m_tcxo_warmup_time > 0) ? SMDSAT_DELAY_CMD_TX : 200;
-	m_next_delay = base_delay + (m_tcxo_warmup_time * 1000);
+	// First TX after power-on: warmup forced to 0 (see state_load_kmac), STM32
+	// starts TX in ~100ms — use a shorter first-poll delay to avoid wasting 800ms.
+	// Subsequent TX: STM32 has the configured warmup, wait the full duration.
+	unsigned int effective_warmup = m_is_first_tx ? 0 : m_tcxo_warmup_time;
+	unsigned int base_delay = (effective_warmup > 0) ? SMDSAT_DELAY_CMD_TX : 200;
+	m_next_delay = base_delay + (effective_warmup * 1000);
+	TXTRACE("state_transmit_pending_exit: scheduling 1st TX poll in %u ms (first_tx=%u warmup=%u s)",
+	        m_next_delay, m_is_first_tx, effective_warmup);
 }
 
 void SmdSat::state_transmit_pending() {
 	if (m_tx_buffer.size()) {
+		TXTRACE("state_transmit_pending: calling initiate_tx (%u bytes)",
+		        static_cast<unsigned>(m_tx_buffer.size()));
 		// Release VPA just before TX — PA regulator needs to be enabled for RF output
 #ifdef SMD_VPA_PIN
 		GPIOPins::release_to_highz(SMD_VPA_PIN);
@@ -618,6 +677,7 @@ void SmdSat::state_transmit_pending() {
 			SMD_STATE_CHANGE(transmit_pending, error);
 			return;
 		}
+		TXTRACE("state_transmit_pending: initiate_tx OK, TX started on STM32");
 		notify(KineisEventTxStarted({}));
 		SMD_STATE_CHANGE(transmit_pending, transmitting);
 	} else if (--m_state_counter == 0) {
@@ -636,6 +696,16 @@ void SmdSat::state_transmitting_enter() {
 }
 
 void SmdSat::state_transmitting_exit() {
+	// First TX done: restore configured TCXO warmup on STM32 for subsequent TX
+	// in this session. RAM register, lost on power cycle.
+	if (m_is_first_tx && m_tcxo_warmup_time > 0) {
+		try {
+			m_cmd.write_tcxo_warmup(m_tcxo_warmup_time * 1000);
+			DEBUG_TRACE("SmdSat::%s: restored TCXO warmup: %u s", __func__, m_tcxo_warmup_time);
+		} catch (...) {
+			DEBUG_WARN("SmdSat::%s: failed to restore TCXO warmup", __func__);
+		}
+	}
 	m_is_first_tx = false;
 	// Drive VPA LOW after TX — PA regulator no longer needed
 #ifdef SMD_VPA_PIN
@@ -647,6 +717,7 @@ void SmdSat::state_transmitting_exit() {
 void SmdSat::state_transmitting() {
 	if (m_cmd.is_tx_finished()) {
 		if (m_tx_buffer.size()) {
+			TXTRACE("state_transmitting: TX FINISHED — total elapsed");
 			m_tx_buffer.clear();
 			m_error_count = 0;  // TX success — reset consecutive error counter
 			DEBUG_INFO("SmdSat::%s: notify KineisEventTxComplete", __func__);
@@ -660,6 +731,8 @@ void SmdSat::state_transmitting() {
 			DEBUG_ERROR("SmdSat::%s: TX timeout after polling",__func__);
 			SMD_STATE_CHANGE(transmitting, error);
 		} else {
+			TXTRACE("state_transmitting: not finished, poll again in %u ms (left=%u)",
+			        SMDSAT_TIMING_TX_POLL_MS, m_state_counter);
 			m_next_delay = SMDSAT_TIMING_TX_POLL_MS;
 		}
 	}
@@ -692,6 +765,10 @@ void SmdSat::set_frequency(double freq_mhz) {
 
 void SmdSat::send(const KineisModulation mode, const KineisPacket& user_payload, const unsigned int payload_length)
 {
+	m_tx_trace_start_ms = PMU::get_timestamp_ms();
+	TXTRACE("send() entered: mode=%d state=%d first_tx=%u tcxo_warmup=%u s",
+	        static_cast<int>(mode), static_cast<int>(m_state), m_is_first_tx, m_tcxo_warmup_time);
+
 	// Reject operations during error cooldown — prevents SPI spam when SMD is unresponsive
 	if (m_cooldown_until > 0 && PMU::get_timestamp_ms() < m_cooldown_until) {
 		DEBUG_WARN("SmdSat::%s: in cooldown (%u min remaining) — TX rejected",
@@ -752,6 +829,8 @@ void SmdSat::send(const KineisModulation mode, const KineisPacket& user_payload,
 
 	DEBUG_TRACE("SmdSat::%s::Packet size %u", __func__, static_cast<unsigned int>(m_packet_buffer.size()));
 
+	TXTRACE("send() calling power_on() (payload built, %u bytes)",
+	        static_cast<unsigned>(m_packet_buffer.size()));
 	power_on();
 }
 
@@ -1161,13 +1240,21 @@ void SmdSat::read_credentials(unsigned int *dec_id, unsigned int *address, std::
 // ============================================================================
 
 bool SmdSat::switch_modulation(KineisModulation mode, const std::string& rconf_hex) {
+	// modswitch_t0/elapsed used only by MODSWITCH_LOG (currently no-op) — keep
+	// the anchor in place so re-enabling the macro requires no other edits.
+	[[maybe_unused]] uint64_t modswitch_t0 = PMU::get_timestamp_ms();
+	[[maybe_unused]] auto modswitch_elapsed = [&]() -> unsigned {
+		return static_cast<unsigned>(PMU::get_timestamp_ms() - modswitch_t0);
+	};
 	SmdArgosModulation target = kineis_to_smd_mod(mode);
 	if (target == m_modulation) {
-		DEBUG_TRACE("SmdSat::%s: already in target modulation %d", __func__, static_cast<int>(target));
+		MODSWITCH_LOG(0, "already in target modulation %d — no-op",
+		              static_cast<int>(target));
 		return true;
 	}
 
-	DEBUG_INFO("SmdSat::%s: switching %d -> %d", __func__, static_cast<int>(m_modulation), static_cast<int>(target));
+	MODSWITCH_LOG(0, "switching %d -> %d (state=%d)",
+	              static_cast<int>(m_modulation), static_cast<int>(target), static_cast<int>(m_state));
 
 	if (rconf_hex.size() != 32) {
 		DEBUG_ERROR("SmdSat::%s: invalid RCONF hex length %u (expected 32)", __func__, static_cast<unsigned>(rconf_hex.size()));
@@ -1176,7 +1263,8 @@ bool SmdSat::switch_modulation(KineisModulation mode, const std::string& rconf_h
 
 	// If SMD is stopped, defer the switch — RCONF will be written on next power-on
 	if (m_state == SmdSatState::stopped) {
-		DEBUG_INFO("SmdSat::%s: SMD stopped, deferring switch to %d", __func__, static_cast<int>(target));
+		MODSWITCH_LOG(modswitch_elapsed(), "SMD stopped, DEFERRED switch to %d (no SPI)",
+		              static_cast<int>(target));
 		m_modulation = target;
 		m_pending_rconf = rconf_hex;
 		// Force state_load_kmac on next boot so the deferred RCONF gets applied.
@@ -1204,6 +1292,7 @@ bool SmdSat::switch_modulation(KineisModulation mode, const std::string& rconf_h
 		DEBUG_ERROR("SmdSat::%s: failed to write RCONF", __func__);
 		return false;
 	}
+	MODSWITCH_LOG(modswitch_elapsed(), "set_radio_conf OK, waiting 80ms");
 
 	nrf_delay_ms(80);  // STM32 RCONF processing
 
@@ -1217,6 +1306,7 @@ bool SmdSat::switch_modulation(KineisModulation mode, const std::string& rconf_h
 		DEBUG_ERROR("SmdSat::%s: save_radio_conf exception", __func__);
 		return false;
 	}
+	MODSWITCH_LOG(modswitch_elapsed(), "save_radio_conf OK (flash), waiting 120ms");
 
 	nrf_delay_ms(120);  // Flash persistence (~100ms) + margin
 
@@ -1227,6 +1317,7 @@ bool SmdSat::switch_modulation(KineisModulation mode, const std::string& rconf_h
 		DEBUG_ERROR("SmdSat::%s: failed to reload KMAC", __func__);
 		return false;
 	}
+	MODSWITCH_LOG(modswitch_elapsed(), "load_kmac_profil(1) OK, waiting 200ms");
 
 	nrf_delay_ms(200);  // MAC re-init after KMAC reload
 
@@ -1234,7 +1325,8 @@ bool SmdSat::switch_modulation(KineisModulation mode, const std::string& rconf_h
 	m_modulation = target;
 	is_kmac_profil_loaded = true;
 
-	DEBUG_INFO("SmdSat::%s: modulation switched to %d OK", __func__, static_cast<int>(target));
+	MODSWITCH_LOG(modswitch_elapsed(), "modulation switched to %d OK — TOTAL",
+	              static_cast<int>(target));
 	return true;
 }
 

@@ -120,6 +120,12 @@ private:
 	// Backup-cell (V_BCKP) charge mode bookkeeping (independent of m_is_active).
 	bool m_backup_active = false;
 	bool m_underwater = false;
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	/// Gate: after surfacing, defer GNSS power-on until ArgosTxService completes
+	/// its first satellite TX. Reduces CPU contention during the burst sequence.
+	/// Set true on surface (in notify_peer_event), cleared on first ARGOS_TX SERVICE_INACTIVE.
+	bool m_defer_gnss_until_argos_first_tx = false;
+#endif
 	unsigned int m_pending_backup_duration_s = 0;  ///< Set when waiting for M10 poweroff to retry
 	Scheduler::TaskHandle m_backup_exit_task;
 	Scheduler::TaskHandle m_backup_periodic_task;

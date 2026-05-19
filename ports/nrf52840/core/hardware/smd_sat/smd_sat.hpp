@@ -74,6 +74,7 @@ private:
 	double      m_tx_freq;
 	bool        m_is_first_tx;
 	uint32_t    m_tcxo_warmup_time;
+	uint64_t    m_tx_trace_start_ms = 0;  ///< Anchor for [TXTRACE +N ms] timing logs; reset in send()
 	uint8_t     m_lpm_mode;  // SMD LPM bitmap written at every boot
 	bool        m_wkup_lowered = false;  // True if state_idle_enter dropped WKUP (=> idle_exit must re-raise + wait for wake)
 
