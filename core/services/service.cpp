@@ -11,6 +11,7 @@
 #include "config_store.hpp"
 #include "battery.hpp"
 #include "interrupt_lock.hpp"
+#include "sws_analog_service.hpp"
 #include "../sm/error.hpp"
 #include <cstddef>
 #include <stdexcept>
@@ -189,11 +190,17 @@ void ServiceManager::enter_cooldown_sleep() {
 	}
 	DEBUG_INFO("ServiceManager: entering cooldown sleep (remaining %u s) — stopping SWS", remaining_s);
 
-	// Stop SWS (UW_SENSOR) to save power during cooldown
-	for (auto& p : m_map) {
-		if (p.second.get_service_id() == ServiceIdentifier::UW_SENSOR) {
-			p.second.pause_for_cooldown();
+	// Stop SWS (UW_SENSOR) to save power during cooldown — unless the user
+	// is actively running SWSTST,1 (bench/cable testing). Pausing SWS during
+	// test mode makes the LED freeze and confuses operator diagnostics.
+	if (!SWSAnalogService::is_test_running()) {
+		for (auto& p : m_map) {
+			if (p.second.get_service_id() == ServiceIdentifier::UW_SENSOR) {
+				p.second.pause_for_cooldown();
+			}
 		}
+	} else {
+		DEBUG_INFO("ServiceManager: SWS test mode active — skipping SWS pause for cooldown");
 	}
 
 	// Program wake timer for remaining cooldown duration

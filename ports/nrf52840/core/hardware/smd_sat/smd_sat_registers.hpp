@@ -111,14 +111,14 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 #define SMDSAT_SPI_INTER_TX_DELAY_MS    15     // STM32 DMA re-arm time between SPI transactions
 #define SMDSAT_SPI_RETRY_DELAY_MS       50     // Command retry delay
 #define SMDSAT_SPI_BUSY_WAIT_MS         100    // BUSY pattern (0xBB) = flash write in progress
-#define SMDSAT_SPI_BOOT_DELAY_MS        100    // SPI ready ~30ms after reset, 100ms = 3x margin
+#define SMDSAT_SPI_BOOT_DELAY_MS        50     // SPI ready ~30ms after reset (was 100ms = 3x margin; now ~1.7x, ping loop has 10 retries to cover edge cases)
 #define SMDSAT_SPI_DETECT_TIMEOUT_MS    10     // SPI activity detection
 #define SMDSAT_SPI_POST_TX_DELAY_MS     100    // Async processing delay
 
 // Power-on timing: STM32WL boots in ~25ms, SPI ready at ~30ms.
 // 50ms gives 10x margin for VDD stabilization (STM32WL spec: 5ms max rise time).
 #define SMDSAT_DELAY_POWER_ON_MS        (50)
-#define SMDSAT_DELAY_LOAD_KMAC_MS       (150)   // MAC init completes in <200ms, 500ms was overly conservative
+#define SMDSAT_DELAY_LOAD_KMAC_MS       (50)    // MAC poll retry interval; was 150ms (then 500ms) — MAC often ready at 1st poll, retries cover edge cases
 #define SMDSAT_DELAY_TICK_INTERRUPT_MS  (10)
 #define SMDSAT_DELAY_CMD_MS             SMDSAT_TIMING_STANDARD_MS
 #define SMDSAT_DELAY_CMD_TX             (1000)  // First poll delay after initiate_tx

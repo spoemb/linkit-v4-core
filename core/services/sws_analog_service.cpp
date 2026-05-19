@@ -117,7 +117,8 @@ extern RGBLed *status_led;
 #define L5_MIN_TIME_SEC 10             // Minimum time underwater before L5
 
 // Safety
-#define OVERRIDE_MIN_TIME_SEC 1        // Minimum underwater time before any override
+// Kept in sync with sws_analog_constants.hpp — see that header for rationale.
+#define OVERRIDE_MIN_TIME_SEC 0        // Minimum underwater time before any override
 #define SURFACE_LOCKOUT_DURATION_SEC 30
 #define MAX_CONSECUTIVE_DIVE_TIMEOUTS 3 // Force surface after N timeouts without any surface detection
 #define GUIDED_CALIB_TIMEOUT_TICKS 300  // 300 ticks × 1s = 5 minutes max for guided calibration
@@ -244,12 +245,13 @@ void SWSAnalogService::start_test_mode() {
     if (s_instance) {
         DEBUG_INFO("SWSAnalog: Test mode started");
         s_instance->start();
-        // Set initial LED to reflect current state
+        // Set initial LED to reflect current state.
+        // BLUE = underwater, GREEN = surface (convention shared with ledsm).
         if (status_led) {
             if (s_instance->m_current_state)
                 status_led->set(RGBLedColor::BLUE);    // UNDERWATER
             else
-                status_led->set(RGBLedColor::YELLOW);  // SURFACE
+                status_led->set(RGBLedColor::GREEN);   // SURFACE
         }
     }
 }
@@ -321,8 +323,12 @@ void SWSAnalogService::start_guided_calibration() {
 }
 
 /// @brief Cancel in-progress guided calibration and notify failure.
+/// No-op when IDLE (not started) or DONE (already completed) — without the
+/// DONE guard, a SWSCAL,0 sent after a successful run would emit a spurious
+/// status=3 notify that the GUI could interpret as a retroactive failure.
 void SWSAnalogService::cancel_guided_calibration() {
-    if (m_calib_phase == CalibPhase::IDLE) return;
+    if (m_calib_phase == CalibPhase::IDLE ||
+        m_calib_phase == CalibPhase::DONE) return;
 
     m_calib_phase = CalibPhase::IDLE;
     m_test_mode = false;
@@ -337,8 +343,13 @@ void SWSAnalogService::cancel_guided_calibration() {
     }
 }
 
+/// @brief True only while the state machine is actively progressing.
+/// DONE is a sticky terminal state (results stay readable via
+/// get_guided_calibration_result()), but the run is not active anymore —
+/// otherwise a GUI polling this flag would never see the run finish.
 bool SWSAnalogService::is_guided_calibration_running() {
-    return m_calib_phase != CalibPhase::IDLE;
+    return m_calib_phase != CalibPhase::IDLE &&
+           m_calib_phase != CalibPhase::DONE;
 }
 
 SWSAnalogService::CalibResult SWSAnalogService::get_guided_calibration_result() {
@@ -520,12 +531,18 @@ bool SWSAnalogService::service_is_enabled() {
     return service_read_param<bool>(ParamID::UNDERWATER_EN);
 }
 
-/// @brief Schedule: 1s during guided calibration, otherwise inherit from UWDetectorService.
+/// @brief Schedule: 1s during guided calibration, fast period in test mode, otherwise UNP03/UNP04.
 /// @return Delay in ms until next sample.
 unsigned int SWSAnalogService::service_next_schedule_in_ms() {
     // Fast 1s sampling during guided calibration for responsive user experience
     if (m_calib_phase != CalibPhase::IDLE && m_calib_phase != CalibPhase::DONE) {
         return CALIB_SAMPLE_INTERVAL_MS;
+    }
+    // SWSTST,1 (test mode): fixed fast polling, bypasses UNP03/UNP04 for bench/cable
+    // testing. Auto-stop (m_test_timeout_ms, default 1h) prevents battery drain on
+    // a deployed unit if SWSTST,0 is forgotten.
+    if (m_test_mode) {
+        return SWS_TEST_MODE_SAMPLE_MS;
     }
     // Normal: read configured surface/underwater period (seconds, supports fractions ≥ 0.1)
     double period_s = m_current_state ?

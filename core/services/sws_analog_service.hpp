@@ -69,7 +69,7 @@ public:
  * 5-level surface override (L1-L5) for fast detection even with degraded electrodes.
  * Auto-calibration of air/water baselines with noinit RAM persistence.
  *
- * Test mode (DTE SWSTST): LED BLUE=underwater, YELLOW=surface. Async status push.
+ * Test mode (DTE SWSTST): LED BLUE=underwater, GREEN=surface. Async status push.
  */
 class SWSAnalogService : public UWDetectorService, public Calibratable {
 public:
@@ -176,8 +176,8 @@ public:
     /**
      * @brief Guided calibration: LED-assisted air/water measurement
      *
-     * Phase 1: GREEN flashing → user places device in AIR → samples 10 readings → GREEN solid
-     * Phase 2: BLUE flashing  → user places device in WATER → samples 10 readings → BLUE solid
+     * Phase 1: GREEN flashing → user places device in AIR → samples CALIB_NUM_SAMPLES readings → GREEN solid
+     * Phase 2: BLUE flashing  → user places device in WATER → samples CALIB_NUM_SAMPLES readings → BLUE solid
      * Phase 3: Save to SWS.CAL + flash. WHITE flash = success, RED flash = failure.
      *
      * Runs asynchronously via detector_state() ticks. Async notify pushes completion.

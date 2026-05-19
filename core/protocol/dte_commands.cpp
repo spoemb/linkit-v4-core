@@ -224,7 +224,7 @@ const DTECommandMap command_map[] = {
 				.key = "",
 				.encoding = BaseEncoding::UINT,
 				.min_value = 0U,
-				.max_value = 7U,  // Updated: includes THERMISTOR (BaseSensorCalType)
+				.max_value = 8U,  // Updated: includes SWS (device_id=8, see m_scalx in dte_handler.hpp)
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false
@@ -314,7 +314,7 @@ const DTECommandMap command_map[] = {
 				.key = "",
 				.encoding = BaseEncoding::UINT,
 				.min_value = 0U,
-				.max_value = 7U,  // Updated: includes THERMISTOR (BaseSensorCalType)
+				.max_value = 8U,  // Updated: includes SWS (device_id=8, see m_scalx in dte_handler.hpp)
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false

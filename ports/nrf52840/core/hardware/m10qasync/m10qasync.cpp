@@ -2326,44 +2326,78 @@ GNSSAlmanacStatus M10QAsyncReceiver::get_almanac_status(unsigned int ano_stale_t
 		status.file_present = true;
 		status.file_size = (unsigned int)file.size();
 
-		// Parse UBX messages to count ANO records and check dates
-		uint8_t buffer[MAX_PACKET_LEN];
+		// Parse UBX messages to count ANO records and check dates.
+		// Only the 6-byte header and the first 8 bytes of an ANO payload
+		// (up through the date fields) are inspected, so we keep two tiny
+		// stack buffers and seek past the rest. The previous 256-byte stack
+		// buffer (MAX_PACKET_LEN) was a stack-pressure risk on large almanac
+		// files parsed synchronously from the DTE handler context.
+		uint8_t header_buf[sizeof(Header)];
+		uint8_t ano_head_buf[8];  // type, version, svId, gnssId, year, month, day, reserved1
 		unsigned int total_records = 0;
 		unsigned int valid_records = 0;
 		std::time_t deltatime = (std::time_t)0xFFFFFFFF;
 		bool rtc_available = rtc && rtc->is_set();
 		std::time_t now = rtc_available ? rtc->gettime() : 0;
 
-		while (true) {
-			lfs_ssize_t sz = file.read(buffer, sizeof(Header));
+		// Hard cap on iterations: defense in depth against a corrupted LFS file
+		// that could otherwise loop forever if every read returns sizeof(Header)
+		// without advancing. Real-world ANO files have a few hundred records;
+		// 20000 is well above any plausible legitimate count.
+		constexpr unsigned int MAX_ITERATIONS = 20000;
+		unsigned int iter = 0;
+
+		while (iter++ < MAX_ITERATIONS) {
+			// Periodic watchdog kick — parsing a multi-KB almanac file does
+			// hundreds of synchronous LFS reads from the DTE handler context.
+			if ((iter & 0x3F) == 0)  // every 64 iterations
+				PMU::kick_watchdog();
+
+			lfs_ssize_t sz = file.read(header_buf, sizeof(Header));
 			if (sz != (lfs_ssize_t)(sizeof(Header)))
 				break;
 
-			HeaderAndPayloadCRC *msg = (HeaderAndPayloadCRC *)buffer;
-			unsigned int msg_len = msg->msgLength + sizeof(Header) + 2;
-
-			if (msg_len > MAX_PACKET_LEN)
+			Header *hdr = (Header *)header_buf;
+			unsigned int payload_len = hdr->msgLength;
+			// Payload + 2-byte CRC must fit a reasonable UBX packet size;
+			// reject garbage that would seek us way past EOF or wrap LFS.
+			if (payload_len + 2 > MAX_PACKET_LEN)
 				break;
 
-			sz = file.read(&buffer[sizeof(Header)], (msg->msgLength + 2));
-			if (sz != (lfs_ssize_t)(msg->msgLength + 2))
-				break;
+			bool is_ano = (hdr->msgClass == MessageClass::MSG_CLASS_MGA && hdr->msgId == MGA::ID_ANO);
 
-			if (msg->msgClass == MessageClass::MSG_CLASS_MGA && msg->msgId == MGA::ID_ANO) {
+			if (is_ano && rtc_available && payload_len >= sizeof(ano_head_buf)) {
+				sz = file.read(ano_head_buf, sizeof(ano_head_buf));
+				if (sz != (lfs_ssize_t)sizeof(ano_head_buf))
+					break;
+				// Skip the rest of the payload (data[64] + reserved2[4]) plus the 2-byte CRC.
+				lfs_soff_t off = file.seek((lfs_soff_t)(payload_len - sizeof(ano_head_buf) + 2),
+				                            LFS_SEEK_CUR);
+				if (off < 0)
+					break;
+
 				total_records++;
 
-				if (rtc_available) {
-					MGA::MSG_ANO *ano = (MGA::MSG_ANO *)msg->payload;
-					std::time_t ano_time = convert_epochtime(2000 + ano->year, ano->month, ano->day, 12, 0, 0);
-					std::time_t timediff = std::abs(ano_time - now);
+				// ano_head_buf layout: [0]=type [1]=version [2]=svId [3]=gnssId
+				//                      [4]=year [5]=month  [6]=day [7]=reserved1
+				std::time_t ano_time = convert_epochtime(2000 + ano_head_buf[4],
+				                                         ano_head_buf[5], ano_head_buf[6],
+				                                         12, 0, 0);
+				std::time_t timediff = std::abs(ano_time - now);
 
-					if (timediff < deltatime) {
-						deltatime = timediff;
-						valid_records = 1;
-					} else if (timediff == deltatime) {
-						valid_records++;
-					}
+				if (timediff < deltatime) {
+					deltatime = timediff;
+					valid_records = 1;
+				} else if (timediff == deltatime) {
+					valid_records++;
 				}
+			} else {
+				// Non-ANO message, or ANO without RTC: skip payload + CRC entirely.
+				lfs_soff_t off = file.seek((lfs_soff_t)(payload_len + 2), LFS_SEEK_CUR);
+				if (off < 0)
+					break;
+				if (is_ano)
+					total_records++;
 			}
 		}
 

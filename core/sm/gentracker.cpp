@@ -27,6 +27,7 @@
 #include "gps.hpp"
 #include "gps_service.hpp"
 #include "ble_service.hpp"
+#include "sws_analog_service.hpp"
 #include "gentracker.hpp"
 
 // USB DTE interface (platform-specific)
@@ -417,6 +418,13 @@ void OperationalState::service_event_handler(ServiceEvent& e) {
 	}
 	else if (e.event_source == ServiceIdentifier::UW_SENSOR) {
 		if (e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+			// In SWS test mode the LED is owned by SWSAnalogService::detector_state
+			// (BLUE=underwater / GREEN=surface, steady). Skip dispatching here
+			// otherwise LEDSurfaceDetected/LEDDiveDetected overwrites it with the
+			// 100 ms flash → LEDOff sequence and the operator can't see the SWS
+			// state on the bench.
+			if (SWSAnalogService::is_test_running())
+				return;
 			bool is_underwater = std::get<bool>(e.event_data);
 			if (is_underwater)
 				led_handle::dispatch<SetLEDDiveDetected>({});

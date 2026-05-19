@@ -415,7 +415,15 @@ bool SWSAnalogService::is_value_valid(uint16_t value) const {
 
 /// @brief Adjust RC charge delay based on water/air contrast ratio.
 /// Low contrast (biofouling) → increase delay. High contrast (clean) → decrease delay.
+///
+/// Frozen during guided-calibration sampling phases so all CALIB_NUM_SAMPLES
+/// readings averaged into the air/water result use the same RC charge time.
+/// Without this guard, an EMA pull on m_calib.threshold_air mid-sampling
+/// (e.g. coherence recalib in section 1b of detector_state) would change
+/// m_sample_delay_us between samples and bias the average.
 void SWSAnalogService::adjust_sample_delay() {
+    if (m_calib_phase == CalibPhase::AIR_SAMPLING ||
+        m_calib_phase == CalibPhase::WATER_SAMPLING) return;
     if (m_calib.threshold_air == 0) return;
     uint16_t contrast = m_contrast_x10;
     uint32_t old_delay = m_sample_delay_us;
@@ -441,8 +449,8 @@ void SWSAnalogService::adjust_sample_delay() {
     }
 
     if (old_delay != m_sample_delay_us) {
-        DEBUG_INFO("SWSAnalog: Adaptive delay %uus -> %uus (contrast=%u.%u)",
-                   old_delay, m_sample_delay_us, contrast/10, contrast%10);
+        DEBUG_TRACE("SWSAnalog: Adaptive delay %uus -> %uus (contrast=%u.%u)",
+                    old_delay, m_sample_delay_us, contrast/10, contrast%10);
     }
 }
 

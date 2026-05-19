@@ -848,7 +848,7 @@ bool SmdSatCmdSpi::ping()
 		m_seq_reset_attempted = false;
 		try {
 			if (send_command_auto(SMDSAT_CMD_PING)) {
-				DEBUG_INFO("SmdSatCmdSpi::%s: ACK from SMD received", __func__);
+				DEBUG_TRACE("SmdSatCmdSpi::%s: ACK from SMD received", __func__);
 				return true;
 			}
 		} catch (...) {
@@ -882,7 +882,7 @@ bool SmdSatCmdSpi::is_tx_finished() {
 	DEBUG_TRACE("SmdSatCmdSpi::%s: spiState=%02X macStatus=%02X", __func__, rx[0], mac_status);
 
 	if (mac_status == MAC_TX_DONE) {
-		DEBUG_INFO("SmdSatCmdSpi::%s: TX completed successfully", __func__);
+		DEBUG_TRACE("SmdSatCmdSpi::%s: TX completed successfully", __func__);
 		return true;
 	}
 

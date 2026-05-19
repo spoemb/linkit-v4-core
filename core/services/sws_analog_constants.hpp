@@ -104,7 +104,13 @@
 #define L5_MIN_TIME_SEC 10             // Minimum time underwater before L5
 
 // Safety
-#define OVERRIDE_MIN_TIME_SEC 1        // Minimum underwater time before any override
+// 0 = L-overrides can fire on the very first post-dive sample (instant surface).
+// Protection against rapid state flapping is provided downstream by
+// m_surface_lockout_remaining (UNP25 UW_MIN_SURFACE_TIME, default 5s) which
+// blocks any return to UW for that duration after a L-override fires.
+// The air baseline EMA pull on L-override is bounded by AIR_RECALIB_MAX_RATIO
+// (0.70 × water) so an isolated false trigger cannot collapse the threshold.
+#define OVERRIDE_MIN_TIME_SEC 0        // Minimum underwater time before any override
 #define SURFACE_LOCKOUT_DURATION_SEC 30
 #define MAX_CONSECUTIVE_DIVE_TIMEOUTS 3 // Force surface after N timeouts without any surface detection
 #define GUIDED_CALIB_TIMEOUT_TICKS 300  // 300 ticks × 1s = 5 minutes max for guided calibration
@@ -148,6 +154,12 @@
 // Guarantees threshold_high stays below ~86% of water baseline,
 // so actual water readings (even 10-15% below baseline) still cross the threshold.
 #define AIR_RECALIB_MAX_RATIO 0.70f
+
+// Test mode (DTE SWSTST,1) fast sampling — bench/cable testing.
+// Overrides UNP03/UNP04 while m_test_mode is true; reverted at SWSTST,0 or
+// after m_test_timeout_ms (default 1h) auto-stop, so a deployed unit can
+// never drain battery at this rate.
+#define SWS_TEST_MODE_SAMPLE_MS 100
 
 // Guided calibration parameters
 #define CALIB_NUM_SAMPLES 5            // samples per phase (air/water)

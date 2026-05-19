@@ -1507,7 +1507,7 @@ public:
 		constexpr std::string_view length_deliminator("#");
 		constexpr std::string_view command_deliminator(";");
 		constexpr std::string_view payload_end_deliminator("\r");
-		constexpr size_t size_of_command_field = 6;  // Increased from 5 to support SMDDFU command
+		constexpr size_t size_of_command_field = 8;  // Max command name length. Increased from 6 to support GNSSBCKP (8 chars) and ARGOSTX (7 chars), which were silently rejected by the sanity check before reaching lookup_command().
 		constexpr size_t size_of_length_field = 3;
 
 		bool is_req = false;

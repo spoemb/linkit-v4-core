@@ -32,24 +32,22 @@ extern ConfigurationStore *configuration_store;
 static constexpr unsigned int SMD_SCHEDULER_PRIORITY = 4;
 
 // TX latency instrumentation — call sites kept across the driver to allow
-// re-enabling for future timing investigations. Currently NO-OP (commented out).
-// To re-enable: uncomment the body. The console-only path (bypassing system_log)
-// is intentional — see debug.hpp note about TRACE/timing-critical paths.
+// re-enabling for future timing investigations. Currently NO-OP.
+// To re-enable: uncomment the body and choose between console-only (fast, RTT/UART)
+// or DEBUG_INFO (visible in system_log via DTE — but inflates total TX time by LFS commits;
+// ping_ms isolated measurements remain accurate since t0 is captured after any prior log).
 #define TXTRACE(fmt, ...) \
     do { \
         (void)fmt; \
-        /* if (DebugLogger::console_log) \
-            DebugLogger::console_log->info("[TXTRACE +%u ms] " fmt, \
-                static_cast<unsigned>(m_tx_trace_start_ms ? (PMU::get_timestamp_ms() - m_tx_trace_start_ms) : 0), \
-                ##__VA_ARGS__); */ \
+        /* DEBUG_INFO("[TXTRACE +%u ms] " fmt, \
+            static_cast<unsigned>(m_tx_trace_start_ms ? (PMU::get_timestamp_ms() - m_tx_trace_start_ms) : 0), \
+            ##__VA_ARGS__); */ \
     } while (0)
 
 #define MODSWITCH_LOG(delta_ms, fmt, ...) \
     do { \
         (void)(delta_ms); (void)fmt; \
-        /* if (DebugLogger::console_log) \
-            DebugLogger::console_log->info("[MODSWITCH +%u ms] " fmt, \
-                static_cast<unsigned>(delta_ms), ##__VA_ARGS__); */ \
+        /* DEBUG_INFO("[MODSWITCH +%u ms] " fmt, static_cast<unsigned>(delta_ms), ##__VA_ARGS__); */ \
     } while (0)
 
 // ============================================================================
@@ -493,7 +491,7 @@ void SmdSat::state_load_kmac() {
 		if (m_lpm_mode != 0x01) {
 			try {
 				m_cmd.write_lpm(&m_lpm_mode);
-				DEBUG_INFO("SmdSat::%s: LPM mode written: 0x%02X", __func__, m_lpm_mode);
+				DEBUG_TRACE("SmdSat::%s: LPM mode written: 0x%02X", __func__, m_lpm_mode);
 			} catch (...) {
 				DEBUG_WARN("SmdSat::%s: failed to write LPM mode", __func__);
 			}
@@ -561,7 +559,14 @@ void SmdSat::state_idle_pending_exit() {
 }
 
 void SmdSat::state_idle_pending() {
-	if (m_cmd.ping()) {
+	TXTRACE("state_idle_pending: tick entered, calling ping() now");
+	// Capture t0 AFTER the log above so the LFS commit time isn't counted in ping_ms.
+	[[maybe_unused]] uint64_t ping_t0 = PMU::get_timestamp_ms();
+	bool ping_ok = m_cmd.ping();
+	[[maybe_unused]] unsigned int ping_ms = static_cast<unsigned>(PMU::get_timestamp_ms() - ping_t0);
+	TXTRACE("state_idle_pending: ping() returned %s after %u ms",
+	        ping_ok ? "OK" : "FAIL", ping_ms);
+	if (ping_ok) {
 		TXTRACE("state_idle_pending: ping OK (retries_left=%u) -> %s",
 		        m_state_counter, is_kmac_profil_loaded ? "idle" : "load_kmac");
 		// Small delay after ping ACK for STM32 DMA re-arm.
@@ -573,15 +578,15 @@ void SmdSat::state_idle_pending() {
 		} else {
 			SMD_STATE_CHANGE(idle_pending, idle);
 		}
+		return;
+	}
+	if (--m_state_counter == 0) {
+		DEBUG_ERROR("SmdSat::%s: failed to enter IDLE state",__func__);
+		SMD_STATE_CHANGE(idle_pending, error);
 	} else {
-		if (--m_state_counter == 0) {
-			DEBUG_ERROR("SmdSat::%s: failed to enter IDLE state",__func__);
-			SMD_STATE_CHANGE(idle_pending, error);
-		} else {
-			TXTRACE("state_idle_pending: ping FAIL, retry in %u ms (counter=%u)",
-			        SMDSAT_DELAY_CMD_MS, m_state_counter);
-			m_next_delay = SMDSAT_DELAY_CMD_MS;
-		}
+		TXTRACE("state_idle_pending: ping FAIL, retry in %u ms (counter=%u)",
+		        SMDSAT_DELAY_CMD_MS, m_state_counter);
+		m_next_delay = SMDSAT_DELAY_CMD_MS;
 	}
 }
 
@@ -720,7 +725,7 @@ void SmdSat::state_transmitting() {
 			TXTRACE("state_transmitting: TX FINISHED — total elapsed");
 			m_tx_buffer.clear();
 			m_error_count = 0;  // TX success — reset consecutive error counter
-			DEBUG_INFO("SmdSat::%s: notify KineisEventTxComplete", __func__);
+			DEBUG_TRACE("SmdSat::%s: notify KineisEventTxComplete", __func__);
 			notify(KineisEventTxComplete({}));
 		}
 		SMD_STATE_CHANGE(transmitting, stopped);

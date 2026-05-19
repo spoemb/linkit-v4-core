@@ -164,8 +164,8 @@ bool SWSAnalogService::detector_state() {
             m_calib.last_calibration_time = PMU::get_timestamp_ms() / 1000;
             m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
                                          offsetof(SWSAnalogService::CalibrationData, crc), nullptr);
-            DEBUG_INFO("SWSAnalog: Recalib from coherence - air=%u water=%u thresh=%u",
-                       m_calib.threshold_air, m_calib.threshold_water, m_calib.threshold_current);
+            DEBUG_TRACE("SWSAnalog: Recalib from coherence - air=%u water=%u thresh=%u",
+                        m_calib.threshold_air, m_calib.threshold_water, m_calib.threshold_current);
             save_calibration_to_flash();
         }
     }
@@ -211,7 +211,10 @@ bool SWSAnalogService::detector_state() {
     bool proximity_ok = (proximity_ref == 0) ||
         (filtered_value < (uint16_t)(proximity_ref * guard_pct / 100.0f));
 
-    if (m_current_state && prev_raw > 0 && m_time_in_current_state >= OVERRIDE_MIN_TIME_SEC
+    if (m_current_state && prev_raw > 0
+#if OVERRIDE_MIN_TIME_SEC > 0
+        && m_time_in_current_state >= OVERRIDE_MIN_TIME_SEC
+#endif
         && proximity_ok) {
 
         // LEVEL 1: Sudden single-sample drop from previous raw
@@ -265,7 +268,10 @@ bool SWSAnalogService::detector_state() {
 
     if (surface_level == 0 && m_current_state && m_prev_ma3 > 0 &&
         m_trend_buffer_count >= TREND_MA_SIZE &&
-        m_time_in_current_state >= OVERRIDE_MIN_TIME_SEC && proximity_ok) {
+#if OVERRIDE_MIN_TIME_SEC > 0
+        m_time_in_current_state >= OVERRIDE_MIN_TIME_SEC &&
+#endif
+        proximity_ok) {
 
         if (current_ma3 < m_prev_ma3) {
             // MA3 decreased
@@ -308,7 +314,10 @@ bool SWSAnalogService::detector_state() {
     }
 
     if (surface_level == 0 && m_current_state &&
-        m_time_in_current_state >= OVERRIDE_MIN_TIME_SEC && proximity_ok) {
+#if OVERRIDE_MIN_TIME_SEC > 0
+        m_time_in_current_state >= OVERRIDE_MIN_TIME_SEC &&
+#endif
+        proximity_ok) {
 
         // LEVEL 4: Drop relative to water baseline. Require:
         //  (a) 2 consecutive filtered samples below water*(1-L4_DROP%) — filters
@@ -375,7 +384,7 @@ bool SWSAnalogService::detector_state() {
                 // B1: clamp to AIR_BASELINE_FLOOR. Without this, dry-electrode
                 // surface readings (~0) can collapse air baseline to 0, breaking
                 // threshold computation and trapping the system at false-surface.
-                uint16_t old = m_calib.threshold_air;
+                [[maybe_unused]] uint16_t old = m_calib.threshold_air;
                 uint16_t new_air = avg;
                 if (new_air < AIR_BASELINE_FLOOR) new_air = AIR_BASELINE_FLOOR;
                 m_calib.threshold_air = new_air;
@@ -385,9 +394,9 @@ bool SWSAnalogService::detector_state() {
                                              offsetof(SWSAnalogService::CalibrationData, crc), nullptr);
                 m_surface_readings_count = 0;
                 m_surface_readings_idx = 0;
-                DEBUG_INFO("SWSAnalog: Air recalib %u -> %u%s",
-                           old, m_calib.threshold_air,
-                           (avg < AIR_BASELINE_FLOOR) ? " (floored)" : "");
+                DEBUG_TRACE("SWSAnalog: Air recalib %u -> %u%s",
+                            old, m_calib.threshold_air,
+                            (avg < AIR_BASELINE_FLOOR) ? " (floored)" : "");
                 adjust_sample_delay();
             }
             else if (avg > (uint16_t)(m_calib.threshold_air * SURFACE_ADAPT_THRESHOLD) &&
@@ -395,7 +404,7 @@ bool SWSAnalogService::detector_state() {
                 // B3: when air baseline is at/below floor, the SURFACE_ADAPT_THRESHOLD
                 // gate becomes 0 and any noise sample fires this branch — rounding
                 // back to 0. Force air to AIR_BASELINE_FLOOR first to break the loop.
-                uint16_t old = m_calib.threshold_air;
+                [[maybe_unused]] uint16_t old = m_calib.threshold_air;
                 uint16_t new_air;
                 if (m_calib.threshold_air < AIR_BASELINE_FLOOR) {
                     new_air = AIR_BASELINE_FLOOR;
@@ -407,7 +416,7 @@ bool SWSAnalogService::detector_state() {
                 update_dynamic_threshold();
                 m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
                                              offsetof(SWSAnalogService::CalibrationData, crc), nullptr);
-                DEBUG_INFO("SWSAnalog: Adaptive air UP %u -> %u", old, m_calib.threshold_air);
+                DEBUG_TRACE("SWSAnalog: Adaptive air UP %u -> %u", old, m_calib.threshold_air);
                 adjust_sample_delay();
             }
             else if (avg < (uint16_t)(m_calib.threshold_air * 0.70f)) {
@@ -423,7 +432,7 @@ bool SWSAnalogService::detector_state() {
                     DEBUG_TRACE("SWSAnalog: Adaptive air DOWN blocked (avg=%u air=%u floor=%u)",
                                 avg, m_calib.threshold_air, AIR_BASELINE_FLOOR);
                 } else {
-                    uint16_t old = m_calib.threshold_air;
+                    [[maybe_unused]] uint16_t old = m_calib.threshold_air;
                     uint16_t new_air = (uint16_t)(m_calib.threshold_air * 0.80f + avg * 0.20f);
                     if (new_air < AIR_BASELINE_FLOOR) new_air = AIR_BASELINE_FLOOR;
                     m_calib.threshold_air = new_air;
@@ -432,7 +441,7 @@ bool SWSAnalogService::detector_state() {
                                                  offsetof(SWSAnalogService::CalibrationData, crc), nullptr);
                     m_surface_readings_count = 0;
                     m_surface_readings_idx = 0;
-                    DEBUG_INFO("SWSAnalog: Adaptive air DOWN %u -> %u", old, m_calib.threshold_air);
+                    DEBUG_TRACE("SWSAnalog: Adaptive air DOWN %u -> %u", old, m_calib.threshold_air);
                     adjust_sample_delay();
                 }
             }
@@ -619,7 +628,7 @@ bool SWSAnalogService::detector_state() {
         // a few dive/surface cycles, eventually saturating at water * 0.7.
         // Hard cap at AIR_RECALIB_MAX_RATIO of water keeps threshold_high below
         // actual underwater readings.
-        uint16_t old_air = m_calib.threshold_air;
+        [[maybe_unused]] uint16_t old_air = m_calib.threshold_air;
         uint16_t new_air = (uint16_t)(m_calib.threshold_air * (1.0f - AIR_RECALIB_EMA_WEIGHT)
                                        + raw_value * AIR_RECALIB_EMA_WEIGHT);
         uint16_t hard_cap = (uint16_t)(m_calib.threshold_water * AIR_RECALIB_MAX_RATIO);
@@ -630,8 +639,8 @@ bool SWSAnalogService::detector_state() {
             update_dynamic_threshold();
             m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
                                          offsetof(SWSAnalogService::CalibrationData, crc), nullptr);
-            DEBUG_INFO("SWSAnalog: SURFACE L%u | air recalib %u -> %u | thresh=%u",
-                       surface_level, old_air, m_calib.threshold_air, m_calib.threshold_current);
+            DEBUG_TRACE("SWSAnalog: SURFACE L%u | air recalib %u -> %u | thresh=%u",
+                        surface_level, old_air, m_calib.threshold_air, m_calib.threshold_current);
 
             adjust_sample_delay();
         }
@@ -643,9 +652,9 @@ bool SWSAnalogService::detector_state() {
         // lockout is not strictly necessary for stability. Default config is 5s.
         m_surface_lockout_remaining = m_min_surface_time_sec;
 
-        DEBUG_INFO("SWSAnalog: SURFACE L%u | raw=%u filt=%u ma3=%u air=%u water=%u lockout=%us",
-                   surface_level, raw_value, filtered_value, current_ma3,
-                   m_calib.threshold_air, m_calib.threshold_water, m_surface_lockout_remaining);
+        DEBUG_TRACE("SWSAnalog: SURFACE L%u | raw=%u filt=%u ma3=%u air=%u water=%u lockout=%us",
+                    surface_level, raw_value, filtered_value, current_ma3,
+                    m_calib.threshold_air, m_calib.threshold_water, m_surface_lockout_remaining);
     }
 
     // === 8. MAX DIVE TIMEOUT — escalating response ===
@@ -733,21 +742,24 @@ bool SWSAnalogService::detector_state() {
         m_ma3_trend_start = 0;
         m_prev_ma3 = 0;
 
-        DEBUG_INFO("SWSAnalog: %s -> %s | raw=%u filt=%u thresh=%u air=%u water=%u",
-                   m_current_state ? "UW" : "SURF",
-                   new_state ? "UW" : "SURF",
-                   raw_value, filtered_value,
-                   m_calib.threshold_current, m_calib.threshold_air, m_calib.threshold_water);
+        DEBUG_TRACE("SWSAnalog: %s -> %s | raw=%u filt=%u thresh=%u air=%u water=%u",
+                    m_current_state ? "UW" : "SURF",
+                    new_state ? "UW" : "SURF",
+                    raw_value, filtered_value,
+                    m_calib.threshold_current, m_calib.threshold_air, m_calib.threshold_water);
 
         // Persist calibration to flash on state transitions — debounced to reduce flash wear
         save_calibration_to_flash_debounced();
 
-        // Test mode: override LED to show SWS state
+        // Test mode: override LED to show SWS state.
+        // Convention: BLUE = underwater, GREEN = surface (matches ledsm).
+        // The ledsm dispatcher is suppressed in test mode (see gentracker.cpp)
+        // so this set is not overwritten by LEDSurfaceDetected/LEDDiveDetected.
         if (m_test_mode && status_led) {
             if (new_state)
                 status_led->set(RGBLedColor::BLUE);    // UNDERWATER
             else
-                status_led->set(RGBLedColor::YELLOW);  // SURFACE
+                status_led->set(RGBLedColor::GREEN);   // SURFACE
         }
     }
 
@@ -938,13 +950,20 @@ bool SWSAnalogService::detector_state() {
             break;
 
         case CalibPhase::COMPLETION_PAUSE:
-            // EC-4: Non-blocking 2s pause for LED feedback (2 ticks × 1s each)
+            // Non-blocking 3s pause keeps the WHITE (success) or RED (fail)
+            // flash visible long enough for a bench operator to read it.
+            // We intentionally do NOT fire m_on_test_stop here: that callback
+            // (set by the DTE handler) flashes BLUE on test-mode end and
+            // would overwrite the success/failure indicator the user is
+            // still trying to read. The LED is cleared explicitly below
+            // instead, which gives unambiguous closure with no spurious
+            // BLUE blink. ledsm regains control on the next state change.
             m_calib_count++;
-            if (m_calib_count >= 2) {
+            if (m_calib_count >= 3) {
                 m_calib_phase = CalibPhase::DONE;
                 m_test_mode = false;
                 if (s_instance) s_instance->stop();
-                if (m_on_test_stop) m_on_test_stop();
+                if (status_led) status_led->off();
             }
             break;
 
