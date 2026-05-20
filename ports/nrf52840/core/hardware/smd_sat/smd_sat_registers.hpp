@@ -105,7 +105,7 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 #define SMDSAT_TIMING_ERASE_MS          3000   // Flash erase (critical!)
 #define SMDSAT_TIMING_RESET_MS          100    // Reset/jump commands
 #define SMDSAT_TIMING_POLL_MS           500    // General polling interval (DFU, etc.)
-#define SMDSAT_TIMING_TX_POLL_MS        200    // TX status polling — faster for Doppler latency
+// SMDSAT_TIMING_TX_POLL_MS removed — replaced by smdsat_timing_tx_poll_ms() accessor (FAST/SAFE pair below).
 
 // =====================================================================
 // FAST / SAFE timing profiles for SMD safety fallback.
@@ -126,7 +126,7 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 #define SMDSAT_SPI_INTER_TX_DELAY_SAFE_MS   15
 #define SMDSAT_SPI_RETRY_DELAY_FAST_MS      20
 #define SMDSAT_SPI_RETRY_DELAY_SAFE_MS      50
-#define SMDSAT_SPI_BOOT_DELAY_FAST_MS       50
+#define SMDSAT_SPI_BOOT_DELAY_FAST_MS       30   // 2026-05 re-test: was 50ms. STM32WL SPI ready ~30ms after reset per datasheet — 30ms = 1x margin, ping retry loop covers edge cases.
 #define SMDSAT_SPI_BOOT_DELAY_SAFE_MS       100
 #define SMDSAT_DELAY_POWER_ON_FAST_MS       20
 #define SMDSAT_DELAY_POWER_ON_SAFE_MS       50
@@ -134,6 +134,13 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 #define SMDSAT_DELAY_LOAD_KMAC_SAFE_MS      150
 #define SMDSAT_VDD_DISCHARGE_FAST_MS        50
 #define SMDSAT_VDD_DISCHARGE_SAFE_MS        100
+#define SMDSAT_TIMING_TX_POLL_FAST_MS       75   // 2026-05 re-test: was 200ms. Faster polling shaves Doppler latency.
+#define SMDSAT_TIMING_TX_POLL_SAFE_MS       200
+// First-TX TCXO settle when warmup forced to 0 (state_transmit_pending_exit).
+// 2026-05 cold-reboot bisect: 100 ms broke (STM not finished at first poll);
+// 150 ms under retest.
+#define SMDSAT_FIRST_TX_BASE_DELAY_FAST_MS  150
+#define SMDSAT_FIRST_TX_BASE_DELAY_SAFE_MS  200
 
 #ifndef SMDSAT_USE_SAFE_TIMINGS
 #define SMDSAT_USE_SAFE_TIMINGS 0
@@ -210,6 +217,26 @@ static inline unsigned int smdsat_vdd_discharge_ms() {
 	                                 : SMDSAT_VDD_DISCHARGE_FAST_MS;
 #else
 	return SMDSAT_VDD_DISCHARGE_FAST_MS;
+#endif
+}
+static inline unsigned int smdsat_timing_tx_poll_ms() {
+#if SMDSAT_USE_SAFE_TIMINGS
+	return SMDSAT_TIMING_TX_POLL_SAFE_MS;
+#elif SMDSAT_AUTOFALLBACK_ENABLED
+	return g_smdsat_use_safe_timings ? SMDSAT_TIMING_TX_POLL_SAFE_MS
+	                                 : SMDSAT_TIMING_TX_POLL_FAST_MS;
+#else
+	return SMDSAT_TIMING_TX_POLL_FAST_MS;
+#endif
+}
+static inline unsigned int smdsat_first_tx_base_delay_ms() {
+#if SMDSAT_USE_SAFE_TIMINGS
+	return SMDSAT_FIRST_TX_BASE_DELAY_SAFE_MS;
+#elif SMDSAT_AUTOFALLBACK_ENABLED
+	return g_smdsat_use_safe_timings ? SMDSAT_FIRST_TX_BASE_DELAY_SAFE_MS
+	                                 : SMDSAT_FIRST_TX_BASE_DELAY_FAST_MS;
+#else
+	return SMDSAT_FIRST_TX_BASE_DELAY_FAST_MS;
 #endif
 }
 

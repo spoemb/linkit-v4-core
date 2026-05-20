@@ -768,7 +768,7 @@ void SmdSat::state_transmit_pending_exit() {
 	// state_load_kmac so the SMD's actual warmup matches our poll horizon.
 	bool tcxo_skip = m_is_first_tx && (PMU::get_die_temperature_c() >= TCXO_SKIP_TEMP_THRESHOLD_C);
 	unsigned int effective_warmup = tcxo_skip ? 0 : m_tcxo_warmup_time;
-	unsigned int base_delay = (effective_warmup > 0) ? SMDSAT_DELAY_CMD_TX : 200;
+	unsigned int base_delay = (effective_warmup > 0) ? SMDSAT_DELAY_CMD_TX : smdsat_first_tx_base_delay_ms();
 	m_next_delay = base_delay + (effective_warmup * 1000);
 	TXTRACE("state_transmit_pending_exit: scheduling 1st TX poll in %u ms (first_tx=%u warmup=%u s)",
 	        m_next_delay, m_is_first_tx, effective_warmup);
@@ -803,7 +803,7 @@ void SmdSat::state_transmit_pending() {
 void SmdSat::state_transmitting_enter() {
 	DEBUG_TRACE("SmdSat::%s", __func__);
 	uint32_t total_timeout_ms = (m_tcxo_warmup_time * 1000) + 5000;
-	m_state_counter = (total_timeout_ms / SMDSAT_TIMING_TX_POLL_MS) + 1;
+	m_state_counter = (total_timeout_ms / smdsat_timing_tx_poll_ms()) + 1;
 	DEBUG_TRACE("SmdSat::%s: poll timeout=%ums | counter=%u", __func__, total_timeout_ms, m_state_counter);
 }
 
@@ -849,8 +849,8 @@ void SmdSat::state_transmitting() {
 			SMD_STATE_CHANGE(transmitting, error);
 		} else {
 			TXTRACE("state_transmitting: not finished, poll again in %u ms (left=%u)",
-			        SMDSAT_TIMING_TX_POLL_MS, m_state_counter);
-			m_next_delay = SMDSAT_TIMING_TX_POLL_MS;
+			        smdsat_timing_tx_poll_ms(), m_state_counter);
+			m_next_delay = smdsat_timing_tx_poll_ms();
 		}
 	}
 }
