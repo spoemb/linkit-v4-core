@@ -12,6 +12,7 @@
 #include "timeutils.hpp"
 #include "binascii.hpp"
 #include "debug.hpp"
+#include "pmu.hpp"
 extern ConfigurationStore *configuration_store;
 extern Scheduler *system_scheduler;
 extern GPSDevice *gps_device;
@@ -144,7 +145,11 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 
 				// First message is immediate (0 delay)
 				if (m_doppler_burst_count == 0) {
-					DEBUG_INFO("ArgosTxService::SURFACING_BURST: Doppler #%u (immediate)", m_doppler_burst_count + 1);
+					// Demoted to TRACE: redundant with METRIC-SURF which is emitted
+					// when the burst is armed on the surface event. This log fires
+					// on every reschedule of the immediate-Doppler scheduling path,
+					// adding LFS commit overhead just before the first send().
+					DEBUG_TRACE("ArgosTxService::SURFACING_BURST: Doppler #%u (immediate)", m_doppler_burst_count + 1);
 					m_sched.schedule_at(now);
 					return 0;
 				}
@@ -529,13 +534,16 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 				m_doppler_burst_count = 0;
 				m_has_gnss_fix_since_surfacing = false;
 				m_first_gnss_tx_sent = false;
+				// Anchor for end-to-end first-TX latency metric (logged in react KineisEventTxComplete).
+				m_surface_detected_ms = PMU::get_timestamp_ms();
 				// Keep SMD alive between burst pings — default 1s idle timeout
 				// is too short for 5-30s Doppler intervals, causing shutdown+reboot
 				// failures on the 3rd TX
 				m_kineis.set_idle_timeout((argos_config.surfacing_burst_max_s + 10) * 1000);
 				m_scheduled_task = [this]() { process_doppler_burst(); };
 				m_scheduled_mode = argos_config.adaptive_modulation ? KineisModulation::VLDA4 : KineisModulation::LDA2;
-				DEBUG_INFO("ArgosTxService::SURFACING_BURST: surface detected - starting Doppler burst sequence");
+				DEBUG_INFO("[METRIC-SURF t=%lu ms] ArgosTxService::SURFACING_BURST: surface detected - starting Doppler burst sequence",
+				           static_cast<unsigned long>(m_surface_detected_ms));
 			}
 		}
 	}
@@ -975,14 +983,17 @@ void ArgosTxService::process_doppler_burst() {
 		mort_conf = mortality_service->get_confidence();
 		activity = mortality_service->get_last_activity();
 	}
-	DEBUG_INFO("TX_RAW: DOPP soc=%u activity=%u mortality=%u",
-	           service_get_level(), activity, mort_conf);
+	// Demoted to TRACE: redundant on the surfacing-burst hot path. The
+	// "process_doppler_burst" log below already carries the data hex; battery
+	// voltage / soc visible via dedicated DTE param query.
+	DEBUG_TRACE("TX_RAW: DOPP soc=%u activity=%u mortality=%u",
+	            service_get_level(), activity, mort_conf);
 	packet = ArgosPacketBuilder::build_rspb_doppler_packet(
 		service_get_level(), activity, mort_conf, size_bits);
 #else
 	// Standard Doppler: battery voltage only
-	DEBUG_INFO("TX_RAW: DOPP batt=%umV low_batt=%u",
-	           (unsigned)service_get_voltage(), service_is_battery_level_low() ? 1U : 0U);
+	DEBUG_TRACE("TX_RAW: DOPP batt=%umV low_batt=%u",
+	            (unsigned)service_get_voltage(), service_is_battery_level_low() ? 1U : 0U);
 	packet = ArgosPacketBuilder::build_doppler_packet(
 		service_get_voltage(), service_is_battery_level_low(), size_bits);
 #endif
@@ -997,8 +1008,11 @@ void ArgosTxService::process_doppler_burst() {
 		}
 	}
 
-	DEBUG_INFO("ArgosTxService::process_doppler_burst: mode=%s data=%s sz=%u",
-	           argos_modulation_to_string((BaseArgosModulation)tx_mode), Binascii::hexlify(packet).c_str(), size_bits);
+	// Demoted to TRACE: METRIC-SURF and METRIC-FIRST-TX already mark the burst
+	// boundaries with absolute timestamps. This per-TX dump adds ~50-300 ms LFS
+	// commit on the critical surfacing path.
+	DEBUG_TRACE("ArgosTxService::process_doppler_burst: mode=%s data=%s sz=%u",
+	            argos_modulation_to_string((BaseArgosModulation)tx_mode), Binascii::hexlify(packet).c_str(), size_bits);
 	m_last_tx_had_gps = false;
 	m_kineis.send(tx_mode, packet, size_bits);
 }
@@ -1014,6 +1028,18 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 	DEBUG_TRACE("ArgosTxService::react: KineisEventTxComplete");
 	m_is_tx_pending = false;
 	m_consecutive_device_errors = 0;
+
+	// End-to-end first-TX latency metric: log how long it took from the surface
+	// detection (anchor in m_surface_detected_ms) to the first satellite TX
+	// completing. Only emitted on the FIRST Doppler of a surfacing burst, then
+	// the anchor is cleared so subsequent TXes don't re-log.
+	if (m_surface_detected_ms != 0 && m_is_surfacing_burst && m_doppler_burst_count == 1) {
+		uint64_t now_ms = PMU::get_timestamp_ms();
+		uint32_t elapsed_ms = static_cast<uint32_t>(now_ms - m_surface_detected_ms);
+		DEBUG_INFO("[METRIC-FIRST-TX t=%lu ms elapsed=%u ms] first satellite TX complete since surface detected",
+		           static_cast<unsigned long>(now_ms), elapsed_ms);
+		m_surface_detected_ms = 0;  // Consume — next surface event will re-arm
+	}
 
 	// Restore TCXO warmup after first TX post-submerge
 	if (m_tcxo_skip_on_next_tx) {

@@ -175,6 +175,7 @@ uint16_t SWSAnalogService::m_calib_water_result = 0;
 uint8_t SWSAnalogService::m_calib_stable_count = 0;
 uint16_t SWSAnalogService::m_calib_prev_value = 0;
 uint16_t SWSAnalogService::m_calib_timeout_ticks = 0;
+bool SWSAnalogService::m_calib_water_success = false;
 std::function<void(const SWSAnalogService::CalibResult&)> SWSAnalogService::m_calib_notify;
 std::function<void(const SWSAnalogService::Status&)> SWSAnalogService::m_status_notify;
 std::function<void()> SWSAnalogService::m_on_test_stop;
@@ -312,7 +313,9 @@ void SWSAnalogService::start_guided_calibration() {
     m_calib_air_result = 0;
     m_calib_water_result = 0;
     m_calib_stable_count = 0;
-    m_calib_prev_value = 0;
+    // Sentinel (outside valid 14-bit ADC range) marks "no prior sample yet"
+    // — distinguishes the first iteration from a legitimate raw=0 reading.
+    m_calib_prev_value = UINT16_MAX;
 
     // Start the SWS service if not already running
     m_test_mode = true;

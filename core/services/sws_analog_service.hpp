@@ -184,13 +184,16 @@ public:
      */
     enum class CalibPhase : uint8_t {
         IDLE = 0,
-        AIR_WAITING,       // GREEN flashing — waiting for stable air readings
-        AIR_SAMPLING,      // GREEN fast flash — sampling air
-        AIR_DONE_PAUSE,    // GREEN solid — brief pause before water phase
-        WATER_WAITING,     // BLUE flashing — waiting for stable water readings
-        WATER_SAMPLING,    // BLUE fast flash — sampling water
-        COMPLETION_PAUSE,  // LED feedback — brief pause before stopping
-        DONE,              // Calibration complete
+        AIR_WAITING,           // GREEN flashing — waiting for stable air readings
+        AIR_SAMPLING,          // GREEN fast flash — sampling air
+        AIR_DONE_PAUSE,        // GREEN solid — brief pause before water phase
+        WATER_WAITING,         // BLUE flashing — waiting for stable water readings
+        WATER_SAMPLING,        // BLUE fast flash — sampling water
+        WAIT_RESURFACE_FOR_ACK,// BLUE solid — sampling done, waiting for resurface
+                               //   before firing GUI notify (BLE is blocked by water,
+                               //   so the ACK must be deferred until raw drops back).
+        COMPLETION_PAUSE,      // WHITE/RED flash — result feedback, brief pause
+        DONE,                  // Calibration complete
     };
 
     struct CalibResult {
@@ -257,8 +260,9 @@ public:
         m_calib_count = 0;
         m_calib_air_result = 0;
         m_calib_water_result = 0;
+        m_calib_water_success = false;
         m_calib_stable_count = 0;
-        m_calib_prev_value = 0;
+        m_calib_prev_value = UINT16_MAX;
         m_calib_timeout_ticks = 0;
         m_calib_notify = nullptr;
     }
@@ -337,6 +341,9 @@ private:
     static uint8_t m_calib_stable_count;
     static uint16_t m_calib_prev_value;
     static uint16_t m_calib_timeout_ticks;  // Timeout counter for guided calibration
+    // Result captured at WATER_SAMPLING completion, used by WAIT_RESURFACE_FOR_ACK
+    // to fire the GUI notify only after the device is back in air (BLE link up).
+    static bool     m_calib_water_success;
     static std::function<void(const CalibResult&)> m_calib_notify;
 
     // Calibration data structure (stored in noinit RAM to survive resets)
@@ -382,6 +389,12 @@ private:
     uint64_t m_time_in_current_state;
     uint64_t m_last_flash_save_time = 0;
     static constexpr uint64_t FLASH_SAVE_MIN_INTERVAL_SEC = 60;
+
+    // Sample-cadence instrumentation (2026-05 investigation: real vs test-mode
+    // detection latency). m_last_sample_ms = timestamp of previous detector_state()
+    // entry. Used to log scheduler-cadence deltas so we can spot CPU contention
+    // (other tasks blocking the SWS sample) vs. nominal SAMPLING_UNDER/SURF_FREQ.
+    uint64_t m_last_sample_ms = 0;
 
     // Sample confirmation counters (for robust detection)
     uint8_t m_consecutive_samples;      // Consecutive samples in same direction

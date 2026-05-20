@@ -52,6 +52,11 @@ private:
 	bool m_last_tx_had_gps = false;
 	bool m_cooldown_armed = false;
 
+	// First-TX latency metric: PMU timestamp (ms) when surface was detected.
+	// Used to log how long it took for the first satellite TX to complete after
+	// the SWS state change. Reset on each surface event, consumed in react(KineisEventTxComplete).
+	uint64_t m_surface_detected_ms = 0;
+
 	void react(KineisEventTxStarted const &) override;
 	void react(KineisEventTxComplete const &) override;
 	void react(KineisEventDeviceError const &) override;

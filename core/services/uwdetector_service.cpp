@@ -5,15 +5,30 @@
 
 #include "uwdetector_service.hpp"
 #include "debug.hpp"
+#include "pmu.hpp"
+
+// 2026-05 latency investigation toggle. Enable by setting UW_TIMING_LOG_ENABLE=1
+// at build to add per-tick [UW-CHG]/[UW-BCAST] timing logs (with absolute
+// timestamps + detector_state() duration + broadcast latency). Disabled by
+// default — each log costs one LittleFS commit (~50-300 ms) per emit.
+#ifndef UW_TIMING_LOG_ENABLE
+#define UW_TIMING_LOG_ENABLE 0
+#endif
 
 /// @brief Sample the detector, accumulate dry/wet counts, emit state change on terminal iteration.
 void UWDetectorService::service_initiate() {
 
+#if UW_TIMING_LOG_ENABLE
+	uint64_t uw_t0_ms = PMU::get_timestamp_ms();
+#endif
 	bool new_state;
 	DEBUG_TRACE("UWDetectorService: m_sample_iteration=%u dry=%u", m_sample_iteration, m_dry_count);
 
 	// Sample the switch
 	new_state = detector_state();
+#if UW_TIMING_LOG_ENABLE
+	uint32_t detector_ms = static_cast<uint32_t>(PMU::get_timestamp_ms() - uw_t0_ms);
+#endif
 	m_sample_iteration++;
 
 	DEBUG_TRACE("UWDetectorService: state=%u", new_state);
@@ -39,11 +54,31 @@ void UWDetectorService::service_initiate() {
 		m_dry_count = 0;
 
 		if (m_pending_state != m_current_state || m_is_first_time) {
-			DEBUG_INFO("UWDetectorService: state changed: state=%u", (unsigned int)m_pending_state);
+#if UW_TIMING_LOG_ENABLE
+			DEBUG_INFO("[UW-CHG t=%lu det=%u ms] state changed: state=%u (sample_iter=%u dry=%u max=%u min_dry=%u)",
+			           static_cast<unsigned long>(uw_t0_ms), detector_ms,
+			           (unsigned int)m_pending_state, m_sample_iteration, m_dry_count,
+			           m_max_samples, m_min_dry_samples);
+#else
+			// Production: lightweight metric log with absolute ms timestamp.
+			// Used to measure latency from this event to ArgosTx [METRIC-SURF]
+			// (≈ scheduler propagation + peer service reactions).
+			DEBUG_INFO("[METRIC-STATE t=%lu ms] UWDetectorService: state changed: state=%u",
+			           static_cast<unsigned long>(PMU::get_timestamp_ms()),
+			           (unsigned int)m_pending_state);
+#endif
 			m_is_first_time = false;
 			m_current_state = m_pending_state;
 			ServiceEventData event = m_pending_state;
 			service_complete(&event);
+#if UW_TIMING_LOG_ENABLE
+			// Logs the moment broadcast completes — peer service reactions happen
+			// synchronously inside service_complete via the data_notification_callback,
+			// so this timestamp tells us when peers have finished reacting.
+			DEBUG_INFO("[UW-BCAST t=%lu spent=%lu ms] broadcast complete",
+			           static_cast<unsigned long>(PMU::get_timestamp_ms()),
+			           static_cast<unsigned long>(PMU::get_timestamp_ms() - uw_t0_ms));
+#endif
 		} else {
 			DEBUG_TRACE("UWDetectorService: state unchanged");
 			service_complete();

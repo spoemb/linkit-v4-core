@@ -61,6 +61,23 @@ bool SWSAnalogService::check_safety_timeouts(bool current_state) {
 /// @return true if underwater, false if at surface.
 bool SWSAnalogService::detector_state() {
 
+    // === 0. TIMING INSTRUMENTATION (2026-05 latency investigation) ===
+    // Measures the actual scheduler cadence between two detector_state() calls.
+    // Nominal: SAMPLING_UNDER_FREQ (default 1000 ms) under water, SAMPLING_SURF_FREQ
+    // (10000 ms) at surface, or SWS_TEST_MODE_SAMPLE_MS (100 ms) in test mode.
+    // A delta significantly larger than the nominal period indicates the scheduler
+    // was held by another task (FsLog flush, SPI burst, etc.). Disabled by default;
+    // enable by setting SWS_TIMING_LOG_ENABLE=1 at build time (see definition below).
+#ifndef SWS_TIMING_LOG_ENABLE
+#define SWS_TIMING_LOG_ENABLE 0
+#endif
+#if SWS_TIMING_LOG_ENABLE
+    uint64_t sample_t0_ms = PMU::get_timestamp_ms();
+    uint32_t sample_delta_ms = (m_last_sample_ms == 0) ? 0
+                                : static_cast<uint32_t>(sample_t0_ms - m_last_sample_ms);
+    m_last_sample_ms = sample_t0_ms;
+#endif
+
     // === 1. READ ADC ===
     uint16_t raw_value = read_analog_sws();
     if (!is_value_valid(raw_value)) {
@@ -721,6 +738,20 @@ bool SWSAnalogService::detector_state() {
         }
     }
 
+    // === 8b. PER-SAMPLE TIMING LOG (2026-05 investigation) ===
+    // Records each sample with full context: timestamp, scheduler-cadence delta,
+    // raw + filtered ADC, all thresholds, decided new_state and surface_level (L1-L5).
+    // Cost: 1 DEBUG_INFO (= 1 LittleFS commit) per sample, so ~50-300 ms added per
+    // sample. Disabled by default — flip SWS_TIMING_LOG_ENABLE in section 0 above
+    // to 1 to re-enable for bench / field debugging.
+#if SWS_TIMING_LOG_ENABLE
+    DEBUG_INFO("[SWS-T t=%lu d=%u] raw=%u filt=%u thr=%u air=%u water=%u state=%s L=%u peak=%u",
+               static_cast<unsigned long>(sample_t0_ms), sample_delta_ms,
+               raw_value, filtered_value, m_calib.threshold_current,
+               m_calib.threshold_air, m_calib.threshold_water,
+               new_state ? "UW" : "SURF", surface_level, m_observed_peak_adc);
+#endif
+
     // === 9. SURFACE LOCKOUT (time-based, not sample-count-based) ===
     // Lockout duration is in seconds; compared against actual time in surface state.
     // !m_current_state guards against premature clear on the L-override call
@@ -755,11 +786,20 @@ bool SWSAnalogService::detector_state() {
         m_ma3_trend_start = 0;
         m_prev_ma3 = 0;
 
+#if SWS_TIMING_LOG_ENABLE
+        DEBUG_INFO("[SWS-CHG t=%lu d=%u] %s -> %s | L=%u raw=%u filt=%u thresh=%u air=%u water=%u",
+                   static_cast<unsigned long>(sample_t0_ms), sample_delta_ms,
+                   m_current_state ? "UW" : "SURF",
+                   new_state ? "UW" : "SURF",
+                   surface_level, raw_value, filtered_value,
+                   m_calib.threshold_current, m_calib.threshold_air, m_calib.threshold_water);
+#else
         DEBUG_TRACE("SWSAnalog: %s -> %s | raw=%u filt=%u thresh=%u air=%u water=%u",
                     m_current_state ? "UW" : "SURF",
                     new_state ? "UW" : "SURF",
                     raw_value, filtered_value,
                     m_calib.threshold_current, m_calib.threshold_air, m_calib.threshold_water);
+#endif
 
         // Persist calibration to flash on state transitions — debounced to reduce flash wear
         save_calibration_to_flash_debounced();
@@ -854,14 +894,22 @@ bool SWSAnalogService::detector_state() {
     if (m_calib_phase != CalibPhase::IDLE) {
         switch (m_calib_phase) {
         case CalibPhase::AIR_WAITING:
-            // Waiting for stable readings in air before sampling
-            if (m_calib_prev_value > 0 &&
-                ((raw_value > m_calib_prev_value) ?
-                 (raw_value - m_calib_prev_value) : (m_calib_prev_value - raw_value))
-                < CALIB_STABILITY_TOLERANCE) {
-                m_calib_stable_count++;
-            } else {
-                m_calib_stable_count = 0;
+            // Waiting for stable readings in air before sampling.
+            // Use UINT16_MAX as "no prior sample" sentinel (outside valid
+            // 14-bit ADC range 0..16383) — the previous `prev > 0` proxy
+            // mis-classified a legitimate raw=0 reading (disconnected
+            // electrode, uncharged cap) as "no prior sample" and the
+            // stable_count could never advance → stuck until the 5 min
+            // GUIDED_CALIB_TIMEOUT_TICKS fired.
+            if (m_calib_prev_value != UINT16_MAX) {
+                uint16_t delta = (raw_value > m_calib_prev_value)
+                    ? (raw_value - m_calib_prev_value)
+                    : (m_calib_prev_value - raw_value);
+                if (delta < CALIB_STABILITY_TOLERANCE) {
+                    m_calib_stable_count++;
+                } else {
+                    m_calib_stable_count = 0;
+                }
             }
             m_calib_prev_value = raw_value;
             if (m_calib_stable_count >= CALIB_STABILITY_THRESHOLD) {
@@ -884,7 +932,7 @@ bool SWSAnalogService::detector_state() {
                 // EC-4: Non-blocking pause — transition via state machine tick
                 m_calib_phase = CalibPhase::AIR_DONE_PAUSE;
                 m_calib_stable_count = 0;
-                m_calib_prev_value = 0;
+                m_calib_prev_value = UINT16_MAX;  // sentinel: no prior sample yet
             }
             break;
 
@@ -895,15 +943,21 @@ bool SWSAnalogService::detector_state() {
             break;
 
         case CalibPhase::WATER_WAITING:
-            // Wait for readings significantly above air baseline
+            // Wait for readings significantly above air baseline.
+            // Same UINT16_MAX sentinel pattern as AIR_WAITING — needed here
+            // even though water raw is typically >0, because the phase
+            // entry resets prev to UINT16_MAX and the first sample must
+            // not be misclassified.
             if (raw_value > m_calib_air_result * 2) {
-                if (m_calib_prev_value > 0 &&
-                    ((raw_value > m_calib_prev_value) ?
-                     (raw_value - m_calib_prev_value) : (m_calib_prev_value - raw_value))
-                    < CALIB_STABILITY_TOLERANCE) {
-                    m_calib_stable_count++;
-                } else {
-                    m_calib_stable_count = 0;
+                if (m_calib_prev_value != UINT16_MAX) {
+                    uint16_t delta = (raw_value > m_calib_prev_value)
+                        ? (raw_value - m_calib_prev_value)
+                        : (m_calib_prev_value - raw_value);
+                    if (delta < CALIB_STABILITY_TOLERANCE) {
+                        m_calib_stable_count++;
+                    } else {
+                        m_calib_stable_count = 0;
+                    }
                 }
             } else {
                 m_calib_stable_count = 0;
@@ -927,6 +981,7 @@ bool SWSAnalogService::detector_state() {
 
                 // Validate: water must be significantly above air
                 bool success = (m_calib_water_result > m_calib_air_result * 2);
+                m_calib_water_success = success;
                 if (success) {
                     // Save to SWS.CAL (batch writes, single flash serialize)
                     m_manual_calib.write(CAL_OFFSET_HINT_WATER, (double)m_calib_water_result);
@@ -942,22 +997,52 @@ bool SWSAnalogService::detector_state() {
                     m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
                                                  offsetof(SWSAnalogService::CalibrationData, crc), nullptr);
                     save_calibration_to_flash();
-
-                    if (status_led) status_led->flash(RGBLedColor::WHITE, 200);
-                    DEBUG_INFO("SWSAnalog: Guided calib SUCCESS — air=%u water=%u thresh=%u",
+                    DEBUG_INFO("SWSAnalog: Guided calib SUCCESS — air=%u water=%u thresh=%u (waiting resurface for ACK)",
                                m_calib_air_result, m_calib_water_result, m_calib.threshold_current);
                 } else {
-                    if (status_led) status_led->flash(RGBLedColor::RED, 200);
-                    DEBUG_WARN("SWSAnalog: Guided calib FAILED — water=%u not >> air=%u",
+                    DEBUG_WARN("SWSAnalog: Guided calib FAILED — water=%u not >> air=%u (waiting resurface for ACK)",
                                m_calib_water_result, m_calib_air_result);
                 }
 
-                m_calib_phase = CalibPhase::COMPLETION_PAUSE;
-                m_calib_count = 0;  // Reuse as tick counter for pause
-                if (m_calib_notify) {
-                    CalibResult r = {(uint8_t)(success ? 1 : 2),
-                                     m_calib_air_result, m_calib_water_result};
-                    m_calib_notify(r);
+                // Defer the WHITE/RED result flash + GUI notify until the tag is
+                // back in air: BLE is blocked by water, so firing the notify
+                // here would silently drop the ACK and the GUI would never see
+                // the calibration outcome. Hold BLUE solid as "phase done,
+                // remove from water" cue. Global GUIDED_CALIB_TIMEOUT_TICKS
+                // (5 min) still applies via cancel_guided_calibration if the
+                // operator never resurfaces.
+                if (status_led) status_led->set(RGBLedColor::BLUE);
+                m_calib_phase = CalibPhase::WAIT_RESURFACE_FOR_ACK;
+                m_calib_count = 0;
+            }
+            break;
+
+        case CalibPhase::WAIT_RESURFACE_FOR_ACK:
+            // Wait for raw to drop back below half of the water reading — at
+            // that point the tag is clearly out of water and BLE is back up,
+            // so the GUI notify will actually reach the host.
+            // Failure case: m_calib_water_result might be 0 if validation
+            // failed because both readings were near-zero; fall back to a
+            // small absolute threshold to avoid stuck-forever.
+            {
+                uint16_t resurface_thresh = m_calib_water_result > 0
+                    ? (uint16_t)(m_calib_water_result / 2)
+                    : 1000;
+                if (raw_value < resurface_thresh) {
+                    if (status_led) {
+                        status_led->flash(m_calib_water_success
+                            ? RGBLedColor::WHITE
+                            : RGBLedColor::RED, 200);
+                    }
+                    if (m_calib_notify) {
+                        CalibResult r = {(uint8_t)(m_calib_water_success ? 1 : 2),
+                                         m_calib_air_result, m_calib_water_result};
+                        m_calib_notify(r);
+                    }
+                    DEBUG_INFO("SWSAnalog: Guided calib — resurfaced (raw=%u<%u), ACK sent",
+                               raw_value, resurface_thresh);
+                    m_calib_phase = CalibPhase::COMPLETION_PAUSE;
+                    m_calib_count = 0;  // reused as tick counter for COMPLETION_PAUSE
                 }
             }
             break;

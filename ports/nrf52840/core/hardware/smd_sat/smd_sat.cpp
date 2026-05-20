@@ -186,6 +186,7 @@ void SmdSat::power_on() {
 	state_machine();
 }
 
+
 void SmdSat::power_off_immediate()
 {
 	DEBUG_TRACE("SmdSat::%s",__func__);
@@ -836,6 +837,7 @@ void SmdSat::send(const KineisModulation mode, const KineisPacket& user_payload,
 
 	TXTRACE("send() calling power_on() (payload built, %u bytes)",
 	        static_cast<unsigned>(m_packet_buffer.size()));
+
 	power_on();
 }
 

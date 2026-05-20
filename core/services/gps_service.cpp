@@ -280,12 +280,18 @@ bool GPSService::service_is_triggered_on_surfaced(bool& immediate) {
 	configuration_store->get_gnss_configuration(gnss_config);
 	immediate = gnss_config.trigger_on_surfaced;
 	if (m_cold_start_ntry != 0) {
-		DEBUG_INFO("GPSService::retry_counter: reset ntry=%u->0 (surfacing)", m_cold_start_ntry);
+		// Demoted to TRACE: fires on every surface cycle after a NO_FIX (which is
+		// frequent). Adds ~50-300 ms LFS commit on the surfacing critical path.
+		// Counter value is visible in the "retry_counter: ntry=N limit=N..." log
+		// emitted by service_next_schedule_in_ms when the new GNSS attempt is scheduled.
+		DEBUG_TRACE("GPSService::retry_counter: reset ntry=%u->0 (surfacing)", m_cold_start_ntry);
 	}
 	m_cold_start_ntry = 0;  // Reset retry counter on each surfacing
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	if (m_defer_gnss_until_argos_first_tx) {
-		DEBUG_INFO("GPSService: surfacing trigger DEFERRED — waiting for first Argos TX");
+		// Demoted to TRACE: redundant with "GPSService: surfaced — GNSS deferred..."
+		// which already marks the gate arming.
+		DEBUG_TRACE("GPSService: surfacing trigger DEFERRED — waiting for first Argos TX");
 		return false;
 	}
 #endif

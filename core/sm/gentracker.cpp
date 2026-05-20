@@ -401,6 +401,24 @@ void OperationalState::react(BatteryMonitorEventVoltageCritical const &) {
 /// @param e  Service event from any active service.
 void OperationalState::service_event_handler(ServiceEvent& e) {
 
+	// LED dispatch FIRST for UW_SENSOR transitions (2026-05 latency fix).
+	// The peer-service broadcast below cascades several LFS-backed DEBUG_INFO
+	// writes (ArgosTxService, GPSService, etc.), each blocking ~50-500 ms.
+	// Dispatching the LED before the broadcast lets the operator see the
+	// dive/surface flash within ~10 ms of the SWS state transition instead of
+	// after the full cascade (up to 1-2 s perceived delay).
+	// Skipped in SWS test mode where the LED is owned by SWSAnalogService::detector_state
+	// (steady BLUE/GREEN) — overwriting it here would clobber the bench display.
+	if (e.event_source == ServiceIdentifier::UW_SENSOR &&
+	    e.event_type == ServiceEventType::SERVICE_LOG_UPDATED &&
+	    !SWSAnalogService::is_test_running()) {
+		bool is_underwater = std::get<bool>(e.event_data);
+		if (is_underwater)
+			led_handle::dispatch<SetLEDDiveDetected>({});
+		else
+			led_handle::dispatch<SetLEDSurfaceDetected>({});
+	}
+
 	// Notify event to all peer services
 	ServiceManager::notify_peer_event(e);
 
@@ -417,20 +435,9 @@ void OperationalState::service_event_handler(ServiceEvent& e) {
 		return;
 	}
 	else if (e.event_source == ServiceIdentifier::UW_SENSOR) {
-		if (e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
-			// In SWS test mode the LED is owned by SWSAnalogService::detector_state
-			// (BLUE=underwater / GREEN=surface, steady). Skip dispatching here
-			// otherwise LEDSurfaceDetected/LEDDiveDetected overwrites it with the
-			// 100 ms flash → LEDOff sequence and the operator can't see the SWS
-			// state on the bench.
-			if (SWSAnalogService::is_test_running())
-				return;
-			bool is_underwater = std::get<bool>(e.event_data);
-			if (is_underwater)
-				led_handle::dispatch<SetLEDDiveDetected>({});
-			else
-				led_handle::dispatch<SetLEDSurfaceDetected>({});
-		}
+		// LED for UW_SENSOR already dispatched above (pre-broadcast). Nothing more
+		// to do here, just early-return so the ARGOS_TX/LORA_TX branch below
+		// doesn't accidentally fire on this event.
 		return;
 	}
 	else if (e.event_source == ServiceIdentifier::ARGOS_TX ||

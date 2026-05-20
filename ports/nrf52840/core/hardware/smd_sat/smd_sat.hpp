@@ -127,6 +127,7 @@ public:
 	void set_tcxo_warmup_time(unsigned int time) override;
 	void set_tx_power(unsigned int power) override;
 	void set_lpm_mode(uint8_t lpm_bitmap);
+
 	void set_credentials(unsigned int dec_id, unsigned int address,
 	                     const std::string& seckey, const std::string& radioconf) override;
 	void read_credentials(unsigned int *dec_id, unsigned int *address,
