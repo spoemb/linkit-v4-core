@@ -60,8 +60,12 @@ private:
 	bool m_rconf_recovery_attempted = false;
 
 	/// @brief Consecutive error count — after MAX errors, enter long cooldown to prevent SPI spam.
+	/// Aligned with ArgosTxService::DEVICE_ERROR_MAX_CONSECUTIVE (3) so the SmdSat-level
+	/// autofallback engages at the same threshold as the ArgosTx session suspension. If
+	/// SmdSat threshold > ArgosTx threshold, ArgosTx stops calling send() and SmdSat
+	/// never reaches its own threshold, so the SAFE flag is never persisted.
 	unsigned int m_error_count = 0;
-	static constexpr unsigned int SMD_MAX_CONSECUTIVE_ERRORS = 5;
+	static constexpr unsigned int SMD_MAX_CONSECUTIVE_ERRORS = 3;
 	static constexpr unsigned int SMD_ERROR_COOLDOWN_MS = 30 * 60 * 1000;  ///< 30 min cooldown
 	uint64_t m_cooldown_until = 0;  ///< Timestamp (ms) until which SMD operations are blocked
 
@@ -88,12 +92,26 @@ private:
 	unsigned int m_safe_trust_window_hours = 1;
 	bool m_degraded_mode_loaded = false;
 
+	// Saved at state_transmitting_enter so we can quantify how much of the
+	// polling budget was consumed by SPI cascade failures before an external
+	// cancellation (dive / service_cancel) pre-empted the natural timeout.
+	unsigned int m_initial_tx_state_counter = 0;
+
 	static constexpr unsigned int SAFE_RETEST_MIN_TX = 20;
 	static constexpr unsigned int SAFE_TRUST_WINDOW_MAX_H = 24;
+	/// @brief Fraction of polling budget consumed during state_transmitting
+	/// without success that we treat as evidence of an SPI cascade failure
+	/// when the TX is cancelled externally. 25% of initial counter — with
+	/// the FAST profile counter ≈ 67, this is ~17 failed polls (~3-5 s of
+	/// WARN cascade) before counting as 1 autofallback error. Tighter than
+	/// the natural state_transmitting timeout (counter == 0, ~13-15 s).
+	static constexpr unsigned int TX_CASCADE_FAILURE_NUMERATOR = 1;
+	static constexpr unsigned int TX_CASCADE_FAILURE_DENOMINATOR = 4;
 
 	void degraded_mode_load_if_needed();
 	void degraded_mode_engage();
 	void degraded_mode_note_success();
+	void degraded_mode_note_tx_cancelled_during_cascade();
 #endif
 
 	// TX state

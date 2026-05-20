@@ -206,6 +206,14 @@ void SmdSat::power_off_immediate()
 	DEBUG_TRACE("SmdSat::%s",__func__);
 
 	if (!SMD_STATE_EQUAL(stopped)) {
+#if SMDSAT_AUTOFALLBACK_ENABLED
+		// Detect TX cascade pattern BEFORE we overwrite m_state. If state was
+		// transmitting and we burned through >25% of the polling budget without
+		// success, the dive (or other external cancellation) just masked an
+		// SPI-cascade failure that would have hit state_error timeout — count
+		// it toward the autofallback so flapping devices don't slip through.
+		degraded_mode_note_tx_cancelled_during_cascade();
+#endif
 		system_scheduler->cancel_task(m_task);
 		switch (m_state) {
 		case SmdSatState::starting:         state_starting_exit(); break;
@@ -385,6 +393,32 @@ void SmdSat::degraded_mode_note_success() {
 		configuration_store->write_param(ParamID::SMD_DEGRADED_MODE, 0U);
 		DEBUG_INFO("SmdSat: retesting FAST timings (was SAFE %lu h, %u successful TX)",
 		           static_cast<unsigned long>(hours_in_safe), m_safe_mode_tx_count);
+	}
+}
+
+/// @brief Cascade-failure detector: TX cancelled externally (dive event or
+/// service_cancel) while state_transmitting had consumed a significant
+/// fraction of its polling budget. Treats it as 1 consecutive error so the
+/// autofallback can trip without waiting for the natural ~13-15s timeout —
+/// matters because dive/surface flapping pre-empts that timeout in practice.
+/// Idempotent: marks the snapshot consumed so a repeated stop_send/power_off
+/// in the same TX cycle doesn't double-count.
+void SmdSat::degraded_mode_note_tx_cancelled_during_cascade() {
+	if (m_state != transmitting || m_initial_tx_state_counter == 0) return;
+	unsigned int consumed = m_initial_tx_state_counter - m_state_counter;
+	bool cascade = (consumed * TX_CASCADE_FAILURE_DENOMINATOR) >=
+	               (m_initial_tx_state_counter * TX_CASCADE_FAILURE_NUMERATOR);
+	m_initial_tx_state_counter = 0;  // Idempotent — consumed.
+	if (!cascade) return;
+	m_error_count++;
+	DEBUG_WARN("SmdSat: TX cancelled after %u/%u failed polls — counting toward autofallback (m_error_count=%u/%u)",
+	           consumed, consumed + m_state_counter, m_error_count, SMD_MAX_CONSECUTIVE_ERRORS);
+	if (m_error_count >= SMD_MAX_CONSECUTIVE_ERRORS) {
+		m_cooldown_until = PMU::get_timestamp_ms() + SMD_ERROR_COOLDOWN_MS;
+		DEBUG_ERROR("SmdSat: %u consecutive cascade errors — cooldown for %u min",
+		            m_error_count, SMD_ERROR_COOLDOWN_MS / 60000);
+		m_error_count = 0;
+		degraded_mode_engage();
 	}
 }
 #endif  // SMDSAT_AUTOFALLBACK_ENABLED
@@ -804,6 +838,10 @@ void SmdSat::state_transmitting_enter() {
 	DEBUG_TRACE("SmdSat::%s", __func__);
 	uint32_t total_timeout_ms = (m_tcxo_warmup_time * 1000) + 5000;
 	m_state_counter = (total_timeout_ms / smdsat_timing_tx_poll_ms()) + 1;
+#if SMDSAT_AUTOFALLBACK_ENABLED
+	// Snapshot for cascade-failure detection in stop_send / power_off_immediate.
+	m_initial_tx_state_counter = m_state_counter;
+#endif
 	DEBUG_TRACE("SmdSat::%s: poll timeout=%ums | counter=%u", __func__, total_timeout_ms, m_state_counter);
 }
 
@@ -861,6 +899,12 @@ void SmdSat::state_transmitting() {
 
 void SmdSat::stop_send() {
 	DEBUG_TRACE("SmdSat::%s",__func__);
+#if SMDSAT_AUTOFALLBACK_ENABLED
+	// Soft-cancel path (service_cancel timeout / similar) — apply the same
+	// cascade detector as power_off_immediate so cancellations during an
+	// ongoing SPI poll cascade still count toward the autofallback.
+	degraded_mode_note_tx_cancelled_during_cascade();
+#endif
 	m_packet_buffer.clear();
 	m_tx_buffer.clear();
 }

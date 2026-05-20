@@ -122,9 +122,14 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 // FAST = aggressive 2026-05 reductions; SAFE = v4.1.4 known-good baseline.
 // Raw values are listed below so diffs make the trade-off visible.
 // =====================================================================
-#define SMDSAT_SPI_INTER_TX_DELAY_FAST_MS   5
+// 2026-05 second field test: 5/20 ms triggered `parse_aplus_response: Response
+// incomplete` cascades on one device — STM couldn't serve fast SPI polls
+// during active RF emission. Bumped to mid-range values (10/30) to give the
+// SPI bus more breathing room without going all the way to SAFE (15/50).
+// Autofallback still catches any remaining cascade by flipping to SAFE.
+#define SMDSAT_SPI_INTER_TX_DELAY_FAST_MS   10
 #define SMDSAT_SPI_INTER_TX_DELAY_SAFE_MS   15
-#define SMDSAT_SPI_RETRY_DELAY_FAST_MS      20
+#define SMDSAT_SPI_RETRY_DELAY_FAST_MS      30
 #define SMDSAT_SPI_RETRY_DELAY_SAFE_MS      50
 #define SMDSAT_SPI_BOOT_DELAY_FAST_MS       30   // 2026-05 re-test: was 50ms. STM32WL SPI ready ~30ms after reset per datasheet — 30ms = 1x margin, ping retry loop covers edge cases.
 #define SMDSAT_SPI_BOOT_DELAY_SAFE_MS       100
@@ -134,7 +139,12 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 #define SMDSAT_DELAY_LOAD_KMAC_SAFE_MS      150
 #define SMDSAT_VDD_DISCHARGE_FAST_MS        50
 #define SMDSAT_VDD_DISCHARGE_SAFE_MS        100
-#define SMDSAT_TIMING_TX_POLL_FAST_MS       75   // 2026-05 re-test: was 200ms. Faster polling shaves Doppler latency.
+// 2026-05 second field test: 75 ms triggered an `is_tx_finished: Failed to
+// read SPIMAC state` cascade on at least one device (STM couldn't service
+// the SPI poll during ongoing RF). Reverted FAST to 200 ms — same as SAFE.
+// Keep the pair structure for the autofallback infrastructure and a future
+// retest under controlled conditions.
+#define SMDSAT_TIMING_TX_POLL_FAST_MS       200
 #define SMDSAT_TIMING_TX_POLL_SAFE_MS       200
 // First-TX TCXO settle when warmup forced to 0 (state_transmit_pending_exit).
 // 2026-05 cold-reboot bisect: 100 ms broke (STM not finished at first poll);
@@ -222,7 +232,8 @@ static inline unsigned int smdsat_vdd_discharge_ms() {
 static inline unsigned int smdsat_timing_tx_poll_ms() {
 #if SMDSAT_USE_SAFE_TIMINGS
 	return SMDSAT_TIMING_TX_POLL_SAFE_MS;
-#elif SMDSAT_AUTOFALLBACK_ENABLED
+#elif SMDSAT_AUTOFALLBACK_ENABLED && \
+      (SMDSAT_TIMING_TX_POLL_FAST_MS != SMDSAT_TIMING_TX_POLL_SAFE_MS)
 	return g_smdsat_use_safe_timings ? SMDSAT_TIMING_TX_POLL_SAFE_MS
 	                                 : SMDSAT_TIMING_TX_POLL_FAST_MS;
 #else

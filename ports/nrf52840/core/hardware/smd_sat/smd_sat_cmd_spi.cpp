@@ -248,6 +248,17 @@ static uint32_t get_command_delay(uint8_t cmd) {
             return SMDSAT_TIMING_WRITE_MS;
         case SMDSAT_CMD_WRITE_TX:
             return SMDSAT_SPI_POST_TX_DELAY_MS;   // 100ms async processing after TX data
+        case SMDSAT_CMD_READ_SPIMAC_STATE:
+            // Polled at every state_transmitting tick — but during active RF the
+            // STM is busy and cannot serve a fast SPI response in the standard
+            // 30 ms window. Reading a half-filled response buffer yields random
+            // IDLE bytes sometimes containing a bit-shifted 0x55 that the parser
+            // mistakes for MAGIC, then the byte at offset+3 is treated as
+            // data_len and produces "Response incomplete: got 64 | expected N"
+            // WARN cascades. 100 ms gives the STM time to finish RF housekeeping
+            // and fill the response buffer cleanly. Costs ~70 ms per is_tx_finished
+            // poll, negligible vs the seconds the TX itself takes.
+            return SMDSAT_SPI_POST_TX_DELAY_MS;   // 100 ms
         case SMDSAT_CMD_DFU_RESET:
         case SMDSAT_CMD_DFU_JUMP:
             return SMDSAT_TIMING_RESET_MS;
