@@ -1769,6 +1769,16 @@ TEST(SWSAnalogFlash, GuidedCalibration_FullCycle)
         run_one_sample();
     }
 
+    // Phase 3: RESURFACE — after water sampling, the state machine waits for
+    // the tag to come back out of water before firing the GUI notify (BLE is
+    // blocked underwater so the ACK would be lost otherwise). Simulate the
+    // operator lifting the tag out: raw drops back to air-level.
+    SAADC::set_adc_value(150);
+    for (int i = 0; i < 5; i++) {
+        if (calib_result.status != 0) break;
+        run_one_sample();
+    }
+
     // Wait for service stop (guided calib COMPLETION_PAUSE then stops)
     std::this_thread::sleep_for(std::chrono::seconds(4));
 
@@ -2498,8 +2508,18 @@ TEST(SWSAnalogFlash, QA7_GuidedCalibrationNonBlocking)
         ticks_water++;
     }
 
-    // The notify fires during WATER_SAMPLING (before COMPLETION_PAUSE).
-    // COMPLETION_PAUSE runs 2 more ticks then stops the service.
+    // Phase RESURFACE: WATER_SAMPLING now transitions to WAIT_RESURFACE_FOR_ACK
+    // and holds the notify until the tag drops back into air (raw < water/2),
+    // so that BLE has reconnected and the GUI actually receives the ACK.
+    // Simulate the operator pulling the tag out of the water bath.
+    SAADC::set_adc_value(150);
+    for (int i = 0; i < 5; i++) {
+        if (calib_result.status != 0) break;
+        run_one_sample();
+    }
+
+    // Notify fires during WAIT_RESURFACE_FOR_ACK once raw is back in air.
+    // COMPLETION_PAUSE then runs 2-3 ticks and stops the service.
     // Don't call run_one_sample() after service stops — it would hang.
 
     // Verify calibration completed via notify callback

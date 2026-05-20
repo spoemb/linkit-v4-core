@@ -389,26 +389,6 @@ const DTECommandMap command_map[] = {
 		.command = DTECommand::SWSST_REQ,
 		.prototype = {}
 	},
-	// GNSSBCKP - GNSS backup-cell charge mode (rail ON, M10 in deep sleep)
-	// Usage: $GNSSBCKP#001;<duration_s>\r   (duration_s in seconds; 0 = abort)
-	// Response: $O;GNSSBCKP#000;\r
-	{
-		.name = "GNSSBCKP",
-		.command = DTECommand::GNSSBCKP_REQ,
-		.prototype =
-		{
-			{
-				.name = "duration_s",
-				.key = "",
-				.encoding = BaseEncoding::UINT,
-				.min_value = 0U,
-				.max_value = 86400U,
-				.permitted_values = {},
-				.is_implemented = false,
-				.is_writable = false
-			}
-		}
-	},
 	// SATDP - Satellite Doppler calibration (no arguments)
 	// Usage: $SATDP#000;\r
 	// Starts periodic Doppler TX at TR_NOM interval until device reset
@@ -529,6 +509,31 @@ const DTECommandMap command_map[] = {
 				.encoding = BaseEncoding::UINT,
 				.min_value = 0U,
 				.max_value = 1U,  // 0=stop, 1=start
+				.permitted_values = {},
+				.is_implemented = false,
+				.is_writable = false
+			}
+		}
+	},
+	// GNSSBCKP - GNSS backup-cell charge mode (rail ON, M10 in deep sleep)
+	// Usage: $GNSSBCKP#001;<duration_s>\r   (duration_s in seconds; 0 = abort)
+	// Response: $O;GNSSBCKP#000;\r
+	//
+	// IMPORTANT: position in this array must match GNSSBCKP_REQ's enum index
+	// in DTECommand. DTEEncoder::encode() indexes command_map[] by enum value
+	// to look up the response name, so a misordered entry corrupts every
+	// downstream response (RTCW, SWSTST, SWSCAL, GNSSBR, ...).
+	{
+		.name = "GNSSBCKP",
+		.command = DTECommand::GNSSBCKP_REQ,
+		.prototype =
+		{
+			{
+				.name = "duration_s",
+				.key = "",
+				.encoding = BaseEncoding::UINT,
+				.min_value = 0U,
+				.max_value = 86400U,
 				.permitted_values = {},
 				.is_implemented = false,
 				.is_writable = false
@@ -1096,12 +1101,6 @@ const DTECommandMap command_map[] = {
 		.command = DTECommand::PWRON_RESP,
 		.prototype = {}
 	},
-	// GNSSBCKP response - simple acknowledgement
-	{
-		.name = "GNSSBCKP",
-		.command = DTECommand::GNSSBCKP_RESP,
-		.prototype = {}
-	},
 	// SWSST response - SWS calibration status values
 	{
 		.name = "SWSST",
@@ -1437,6 +1436,14 @@ const DTECommandMap command_map[] = {
 	{
 		.name = "GNSSBR",
 		.command = DTECommand::GNSSBR_RESP,
+		.prototype = {}
+	},
+	// GNSSBCKP response - simple acknowledgement.
+	// Position in this array must match GNSSBCKP_RESP's enum index — see the
+	// matching note on the GNSSBCKP_REQ entry above.
+	{
+		.name = "GNSSBCKP",
+		.command = DTECommand::GNSSBCKP_RESP,
 		.prototype = {}
 	},
 	// SMDDFU response — always available (VERSION action works for all builds)
