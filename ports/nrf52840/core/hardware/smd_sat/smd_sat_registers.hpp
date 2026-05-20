@@ -121,7 +121,8 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 #define SMDSAT_DELAY_POWER_ON_MS        (20)
 #define SMDSAT_DELAY_LOAD_KMAC_MS       (50)    // MAC poll retry interval; was 150ms (then 500ms) — MAC often ready at 1st poll, retries cover edge cases
 #define SMDSAT_DELAY_TICK_INTERRUPT_MS  (10)
-#define SMDSAT_DELAY_CMD_MS             SMDSAT_TIMING_STANDARD_MS
+#define SMDSAT_DELAY_CMD_MS             SMDSAT_TIMING_STANDARD_MS  // Pre-SPI-command pacing — keep aligned to STM32 cmd_delay (30 ms)
+#define SMDSAT_DELAY_STATE_TICK_MS      (15)    // State-machine reschedule delay between state ticks (pure scheduler latency, no SPI involvement). Was 30 ms (alias of SMDSAT_DELAY_CMD_MS); split 2026-05.
 #define SMDSAT_DELAY_CMD_TX             (1000)  // First poll delay after initiate_tx
 #define SMDSAT_DELAY_RST_MS             (100)
 

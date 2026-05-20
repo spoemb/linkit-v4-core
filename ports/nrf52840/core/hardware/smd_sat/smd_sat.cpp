@@ -358,7 +358,7 @@ void SmdSat::state_powering_on() {
 #ifdef SMD_VPA_PIN
 	GPIOPins::drive_low(SMD_VPA_PIN);
 #endif
-	nrf_delay_ms(100);  // VDD cap discharge — 100ms sufficient for LinkIt V4 (smaller caps than RSPB)
+	nrf_delay_ms(50);  // VDD cap discharge — was 100ms; reduced 2026-05. power_off_immediate() in the surfacing-burst flow already drives VDD low; 50 ms is enough for the LinkIt V4 cap to discharge before the next POR.
 
 	// Step 1: Assert RESET LOW before powering on — hold STM32WL in reset
 	// during VDD ramp-up to prevent undefined behavior at low voltage.
@@ -498,9 +498,22 @@ void SmdSat::state_load_kmac() {
 			}
 		}
 
-		// Go directly to idle — SPI bus already confirmed working by
-		// read_spimac_state + write_tcxo above. No need for a second ping.
-		SMD_STATE_CHANGE(load_kmac, idle);
+		// First-TX shortcut (2026-05 optim Cible #2): if a packet is already
+		// queued (typical surfacing-burst path where send() set m_packet_buffer
+		// before triggering power_on), skip state_idle entirely and go straight
+		// to transmit_pending. Saves ~40-100 ms of scheduler latency (10 ms wait
+		// after state_idle_enter + 30 ms wait after state_idle_exit + a scheduler
+		// context switch). Falls back to the regular idle transition when no
+		// packet is pending (e.g. DTE-initiated set_credentials boot).
+		if (m_packet_buffer.length() > 0) {
+			m_tx_buffer = m_packet_buffer;
+			m_packet_buffer.clear();
+			SMD_STATE_CHANGE(load_kmac, transmit_pending);
+		} else {
+			// Go directly to idle — SPI bus already confirmed working by
+			// read_spimac_state + write_tcxo above. No need for a second ping.
+			SMD_STATE_CHANGE(load_kmac, idle);
+		}
 	} else if (mac_st == MAC_ERROR && !m_rconf_recovery_attempted) {
 		// Recovery: MAC_ERROR means RCONF in STM32 flash is corrupted or missing.
 		// Force-write the master RCONF, save to flash, then re-attempt KMAC load.
@@ -522,7 +535,7 @@ void SmdSat::state_load_kmac() {
 					is_kmac_profil_loaded = false;
 					m_state_counter = 10;  // Reset poll counter for MAC_OK after recovery
 					DEBUG_INFO("SmdSat::%s: RCONF recovery written — retrying KMAC", __func__);
-					m_next_delay = SMDSAT_DELAY_CMD_MS;
+					m_next_delay = SMDSAT_DELAY_STATE_TICK_MS;
 					return;  // Re-enter state_load_kmac on next tick
 				} catch (...) {
 					DEBUG_ERROR("SmdSat::%s: RCONF recovery write failed", __func__);
@@ -551,12 +564,12 @@ void SmdSat::state_idle_pending_enter() {
 	// Init SPI here (after power-on + reset release) to avoid MISO backfeed.
 	// STM32WL has booted and its GPIOs are in a defined state now.
 	m_cmd.init();
-	m_next_delay = SMDSAT_DELAY_CMD_MS;
+	m_next_delay = SMDSAT_DELAY_STATE_TICK_MS;
 	m_state_counter = 10;
 }
 
 void SmdSat::state_idle_pending_exit() {
-	m_next_delay = SMDSAT_DELAY_CMD_MS;
+	m_next_delay = SMDSAT_DELAY_STATE_TICK_MS;
 }
 
 void SmdSat::state_idle_pending() {
@@ -586,8 +599,8 @@ void SmdSat::state_idle_pending() {
 		SMD_STATE_CHANGE(idle_pending, error);
 	} else {
 		TXTRACE("state_idle_pending: ping FAIL, retry in %u ms (counter=%u)",
-		        SMDSAT_DELAY_CMD_MS, m_state_counter);
-		m_next_delay = SMDSAT_DELAY_CMD_MS;
+		        SMDSAT_DELAY_STATE_TICK_MS, m_state_counter);
+		m_next_delay = SMDSAT_DELAY_STATE_TICK_MS;
 	}
 }
 
@@ -630,7 +643,7 @@ void SmdSat::state_idle_exit() {
 		DEBUG_TRACE("SmdSat::%s: WKUP HIGH (wakeup from LPM)", __func__);
 	}
 #endif
-	m_next_delay = SMDSAT_DELAY_CMD_MS;
+	m_next_delay = SMDSAT_DELAY_STATE_TICK_MS;
 }
 
 void SmdSat::state_idle() {
@@ -690,7 +703,7 @@ void SmdSat::state_transmit_pending() {
 		DEBUG_ERROR("SmdSat::%s: failed accept SEND command",__func__);
 		SMD_STATE_CHANGE(transmit_pending, error);
 	} else {
-		m_next_delay = SMDSAT_DELAY_CMD_MS;
+		m_next_delay = SMDSAT_DELAY_STATE_TICK_MS;
 	}
 }
 
