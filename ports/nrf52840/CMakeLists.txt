@@ -20,6 +20,13 @@ set(BOARD "LINKIT" CACHE STRING "Board to compile for")
 option(ARGOS_SMD "Use SMD satellite module" OFF)
 option(LORA_RAK3172 "Use RAK3172-SiP LoRa module instead of satellite" OFF)
 
+# SMD timing safety profile. Default 0 (FAST — aggressive 2026-05 reductions
+# for first-TX latency). Set to 1 to rebuild with the v4.1.4 conservative
+# SAFE baseline if FAST shows SPI/comm regressions in field deployment.
+if(NOT DEFINED SMDSAT_USE_SAFE_TIMINGS)
+    set(SMDSAT_USE_SAFE_TIMINGS 0)
+endif()
+
 # LoRa-specific tuning flags (only meaningful when LORA_RAK3172=ON)
 #
 # LORA_DCS_ENABLE: Duty Cycle Setting — when ON, the RAK3172 enforces EU868
@@ -622,6 +629,7 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     ENABLE_SWS_ANALOG=${ENABLE_SWS_ANALOG}
     GNSS_HAS_BACKUP_BATTERY=${GNSS_HAS_BACKUP_BATTERY}
     ARGOS_SMD=${ARGOS_SMD_ENABLED}
+    SMDSAT_USE_SAFE_TIMINGS=${SMDSAT_USE_SAFE_TIMINGS}
     $<$<BOOL:${LORA_RAK3172_ENABLED}>:LORA_RAK3172=1>
     $<$<BOOL:${LORA_RAK3172_ENABLED}>:LORA_DCS_ENABLE=${LORA_DCS_ENABLE_VAL}>
     $<$<BOOL:${LORA_RAK3172_ENABLED}>:LORA_POWER_OFF_UNDERWATER=${LORA_POWER_OFF_UNDERWATER_VAL}>

@@ -15,6 +15,7 @@
 #include "nrf_power.h"
 #include "nrf_sdh.h"
 #include "nrf_sdh_soc.h"
+#include "nrf_soc.h"
 #include "nrfx_twim.h"
 #include "cm_backtrace.h"
 #include "debug.hpp"
@@ -380,6 +381,21 @@ static const char *reset_type_to_string(PMULogType t) {
 /// @brief Milliseconds since boot via NrfTimer.
 uint64_t PMU::get_timestamp_ms() {
 	return NrfTimer::get_instance().get_counter();
+}
+
+/// @brief Read MCU die temperature in °C (whole degrees, sign-preserving).
+/// Uses sd_temp_get() — SoftDevice returns temperature in 0.25 °C steps.
+/// Returns a 25 °C sentinel on error so callers can treat the read as
+/// non-blocking ("if temp is low enough to matter we'll know; if the read
+/// fails we behave as if warm").
+int PMU::get_die_temperature_c() {
+	int32_t raw = 0;
+	uint32_t err = sd_temp_get(&raw);
+	if (err != NRF_SUCCESS)
+		return 25;
+	// raw is in 0.25 °C steps — divide rounding toward zero is fine here,
+	// since callers compare against a coarse threshold (5 °C).
+	return raw / 4;
 }
 
 /// @brief Print saved crash trace if CRC is valid, then invalidate to avoid re-printing.

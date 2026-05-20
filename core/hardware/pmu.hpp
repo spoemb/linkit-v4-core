@@ -61,6 +61,11 @@ public:
 	static uint64_t get_timestamp_ms();
 	static bool was_firmware_updated();
 
+	/// @brief Read the MCU die temperature in °C (whole degrees, sign-preserving).
+	/// Falls back to a sentinel safe value (25 °C) when the temperature
+	/// source is unavailable, so callers don't need to handle missing data.
+	static int get_die_temperature_c();
+
 	/// @brief Cut peripheral power rails when no task is due soon (> 5 s).
 	static void reduce_power_rails();
 

@@ -4,6 +4,7 @@
  */
 
 #include <climits>
+#include <cstdint>
 #include <algorithm>
 
 #include "argos_tx_service.hpp"
@@ -930,14 +931,21 @@ void ArgosTxService::process_doppler_burst() {
 	// payload built while underwater — skip the ADC read + packet build on
 	// the surface critical path. m_doppler_burst_count is post-increment from
 	// service_initiate(), so == 1 means this is the first ping. Anything else
-	// (legacy DOPPLER mode, count > 1, missing prep, mode changed since prep)
-	// falls through to the normal build below.
+	// (legacy DOPPLER mode, count > 1, missing prep, mode changed since prep,
+	// stale prep older than the refresh window) falls through to the normal
+	// build below. The freshness guard rejects any prep that survived from a
+	// previous session or aged past the underwater refresh window.
 	{
 		ArgosConfig pw_cfg;
 		configuration_store->get_argos_configuration(pw_cfg);
+		uint64_t prep_age_ms = (m_prepared_at_ms != 0)
+		                       ? (PMU::get_timestamp_ms() - m_prepared_at_ms)
+		                       : UINT64_MAX;
 		if (m_is_surfacing_burst && m_doppler_burst_count == 1 &&
 		    pw_cfg.mode == BaseArgosMode::SURFACING_BURST &&
-		    !m_prepared_doppler_packet.empty()) {
+		    !m_prepared_doppler_packet.empty() &&
+		    m_prepared_at_ms != 0 &&
+		    prep_age_ms < PREPARED_DOPPLER_REFRESH_MS) {
 			KineisModulation tx_mode = m_prepared_doppler_mode;
 			if (pw_cfg.adaptive_modulation) {
 				tx_mode = KineisModulation::VLDA4;
@@ -949,7 +957,7 @@ void ArgosTxService::process_doppler_burst() {
 			DEBUG_TRACE("ArgosTxService::process_doppler_burst: PREWARM mode=%s sz=%u age=%lu ms",
 			            argos_modulation_to_string((BaseArgosModulation)tx_mode),
 			            m_prepared_doppler_size_bits,
-			            static_cast<unsigned long>(PMU::get_timestamp_ms() - m_prepared_at_ms));
+			            static_cast<unsigned long>(prep_age_ms));
 			m_last_tx_had_gps = false;
 			KineisPacket prepared = m_prepared_doppler_packet;
 			unsigned int prepared_bits = m_prepared_doppler_size_bits;

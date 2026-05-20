@@ -125,6 +125,11 @@ ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR:-OFF}
 ENABLE_SWS_LOG=${ENABLE_SWS_LOG:-OFF}
 GNSS_HAS_BACKUP_BATTERY=${GNSS_HAS_BACKUP_BATTERY:-ON}
 BATTERY_CHEMISTRY=${BATTERY_CHEMISTRY:-BATT_CHEM_LS17500_2P}
+# SMD timing profile. Default for this script = SAFE (v4.1.4 conservative
+# baseline) — robustness-first for multi-year epoxy-potted deployments.
+# Override to 0 for a FAST build (aggressive 2026-05 reductions, ~150 ms faster
+# first TX) when running latency benchmarks: SMDSAT_USE_SAFE_TIMINGS=0 ./build...
+SMDSAT_USE_SAFE_TIMINGS=${SMDSAT_USE_SAFE_TIMINGS:-1}
 
 echo "Building LinkIt V4 SMD with configuration:"
 echo "  ARGOS_SMD=${ARGOS_SMD}"
@@ -132,6 +137,7 @@ echo "  ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR}"
 echo "  ENABLE_SWS_LOG=${ENABLE_SWS_LOG}"
 echo "  GNSS_HAS_BACKUP_BATTERY=${GNSS_HAS_BACKUP_BATTERY}"
 echo "  BATTERY_CHEMISTRY=${BATTERY_CHEMISTRY}"
+echo "  SMDSAT_USE_SAFE_TIMINGS=${SMDSAT_USE_SAFE_TIMINGS}"
 echo ""
 
 cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
@@ -143,6 +149,7 @@ cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
       -DENABLE_SWS_LOG=${ENABLE_SWS_LOG} \
       -DGNSS_HAS_BACKUP_BATTERY=${GNSS_HAS_BACKUP_BATTERY} \
       -DBATTERY_CHEMISTRY=${BATTERY_CHEMISTRY} \
+      -DSMDSAT_USE_SAFE_TIMINGS=${SMDSAT_USE_SAFE_TIMINGS} \
       ../..
 
 make -j 20

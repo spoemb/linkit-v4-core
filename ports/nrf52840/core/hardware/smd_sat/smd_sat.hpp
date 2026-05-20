@@ -65,6 +65,19 @@ private:
 	static constexpr unsigned int SMD_ERROR_COOLDOWN_MS = 30 * 60 * 1000;  ///< 30 min cooldown
 	uint64_t m_cooldown_until = 0;  ///< Timestamp (ms) until which SMD operations are blocked
 
+	/// @brief Die-temperature threshold (°C) below which we keep the configured
+	/// TCXO warmup on the first TX instead of forcing 0 ms. Deep cold dives
+	/// followed by quick surfacing can leave the TCXO too cold for instant
+	/// frequency stability — better to spend one warmup than waste an off-frequency
+	/// TX. nRF52840 die temp sensor has ±5 °C accuracy, so this is a coarse gate.
+	static constexpr int TCXO_SKIP_TEMP_THRESHOLD_C = 5;
+
+	// SMD timing profile (FAST vs SAFE) is selected at build time via the
+	// -DSMDSAT_USE_SAFE_TIMINGS=1 CMake flag (see smd_sat_registers.hpp).
+	// No runtime fallback — the choice is final per build, so a "stuck in
+	// degraded mode" state cannot survive across compile boundaries and
+	// there is no config_store persistence to drift.
+
 	// TX state
 	KineisPacket m_tx_buffer;
 	KineisPacket m_packet_buffer;

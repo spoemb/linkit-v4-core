@@ -116,7 +116,7 @@ void SmdSat::shutdown(void) {
 	// Without this, the STM32WL stays alive on residual VDD (~10-50ms) and
 	// resumes from its previous SPI sequence number, causing INVALID_CMD
 	// when the nRF restarts with seq=0 after a soft reset.
-	nrf_delay_ms(50);
+	nrf_delay_ms(SMDSAT_VDD_DISCHARGE_MS);
 }
 
 void SmdSat::power_on_blocking() {
@@ -358,7 +358,9 @@ void SmdSat::state_powering_on() {
 #ifdef SMD_VPA_PIN
 	GPIOPins::drive_low(SMD_VPA_PIN);
 #endif
-	nrf_delay_ms(50);  // VDD cap discharge — was 100ms; reduced 2026-05. power_off_immediate() in the surfacing-burst flow already drives VDD low; 50 ms is enough for the LinkIt V4 cap to discharge before the next POR.
+	nrf_delay_ms(SMDSAT_VDD_DISCHARGE_MS);  // VDD cap discharge — FAST=50ms / SAFE=100ms.
+	// power_off_immediate() in the surfacing-burst flow already drives VDD low;
+	// 50ms is enough for the LinkIt V4 cap to discharge before the next POR.
 
 	// Step 1: Assert RESET LOW before powering on — hold STM32WL in reset
 	// during VDD ramp-up to prevent undefined behavior at low voltage.
@@ -480,7 +482,17 @@ void SmdSat::state_load_kmac() {
 		// Step 4: Write TCXO warmup — RAM register on STM32, lost on power cycle.
 		// Force 0 on first TX after power-on: TCXO was just powered, no warmup needed.
 		// Configured value is rewritten in state_transmitting_exit after the first TX.
-		uint32_t warmup_ms = m_is_first_tx ? 0 : (m_tcxo_warmup_time * 1000);
+		// Safety: if die temperature is below TCXO_SKIP_TEMP_THRESHOLD_C, fall back to
+		// the configured warmup so a cold TCXO (deep dive → quick surface in cold
+		// water) doesn't TX off-frequency. Affects only the first TX of the burst;
+		// subsequent TXes already use the configured warmup.
+		int die_temp_c = PMU::get_die_temperature_c();
+		bool tcxo_skip = m_is_first_tx && (die_temp_c >= TCXO_SKIP_TEMP_THRESHOLD_C);
+		uint32_t warmup_ms = tcxo_skip ? 0 : (m_tcxo_warmup_time * 1000);
+		if (m_is_first_tx && !tcxo_skip) {
+			DEBUG_INFO("SmdSat::%s: cold die temp (%d °C < %d) — keeping TCXO warmup",
+			           __func__, die_temp_c, TCXO_SKIP_TEMP_THRESHOLD_C);
+		}
 		try {
 			m_cmd.write_tcxo_warmup(warmup_ms);
 			DEBUG_TRACE("SmdSat::%s: TCXO warmup written: %u ms (first_tx=%u)", __func__, warmup_ms, m_is_first_tx);
@@ -671,10 +683,12 @@ void SmdSat::state_transmit_pending_enter() {
 }
 
 void SmdSat::state_transmit_pending_exit() {
-	// First TX after power-on: warmup forced to 0 (see state_load_kmac), STM32
-	// starts TX in ~100ms — use a shorter first-poll delay to avoid wasting 800ms.
-	// Subsequent TX: STM32 has the configured warmup, wait the full duration.
-	unsigned int effective_warmup = m_is_first_tx ? 0 : m_tcxo_warmup_time;
+	// First TX after power-on: warmup forced to 0 ONLY if the die is warm enough.
+	// Cold die (deep cold dive then quick surface) keeps the configured warmup
+	// to avoid an off-frequency first TX. Must match the gate logic in
+	// state_load_kmac so the SMD's actual warmup matches our poll horizon.
+	bool tcxo_skip = m_is_first_tx && (PMU::get_die_temperature_c() >= TCXO_SKIP_TEMP_THRESHOLD_C);
+	unsigned int effective_warmup = tcxo_skip ? 0 : m_tcxo_warmup_time;
 	unsigned int base_delay = (effective_warmup > 0) ? SMDSAT_DELAY_CMD_TX : 200;
 	m_next_delay = base_delay + (effective_warmup * 1000);
 	TXTRACE("state_transmit_pending_exit: scheduling 1st TX poll in %u ms (first_tx=%u warmup=%u s)",

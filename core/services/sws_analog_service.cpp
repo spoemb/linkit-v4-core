@@ -118,7 +118,8 @@ extern RGBLed *status_led;
 
 // Safety
 // Kept in sync with sws_analog_constants.hpp — see that header for rationale.
-#define OVERRIDE_MIN_TIME_SEC 0        // Minimum underwater time before any override
+// OVERRIDE_MIN_TIME_SEC lives only in the header (used by sws_analog_detection.cpp)
+// to avoid silent drift between two definitions.
 #define SURFACE_LOCKOUT_DURATION_SEC 30
 #define MAX_CONSECUTIVE_DIVE_TIMEOUTS 3 // Force surface after N timeouts without any surface detection
 #define GUIDED_CALIB_TIMEOUT_TICKS 300  // 300 ticks × 1s = 5 minutes max for guided calibration

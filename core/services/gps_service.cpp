@@ -65,6 +65,7 @@ void GPSService::service_init() {
     m_pending_backup_duration_s = 0;
     m_underwater = false;
     m_backup_exit_task = {};
+    m_backup_retry_task = {};
     m_backup_periodic_task = {};
     backup_charge_schedule_next();
 
@@ -87,11 +88,15 @@ void GPSService::service_init() {
 void GPSService::service_term() {
     system_scheduler->cancel_task(m_backup_periodic_task);
     system_scheduler->cancel_task(m_backup_exit_task);
+    system_scheduler->cancel_task(m_backup_retry_task);
     m_pending_backup_duration_s = 0;
     if (m_backup_active) {
         m_device.exit_backup_charge_mode();
         m_backup_active = false;
     }
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+    m_defer_gnss_until_argos_first_tx = false;
+#endif
 }
 
 /// @brief Enabled if GNSS_EN is set in config (respects LB/zone overrides).
@@ -163,13 +168,20 @@ unsigned int GPSService::service_next_schedule_in_ms() {
 
 /// @brief Start GNSS acquisition — configure nav settings, power on M10Q.
 void GPSService::service_initiate() {
-	// If a backup-cell charge session is in flight, abort it synchronously so
-	// the device returns to idle before we request a normal acquisition.
-	if (m_backup_active) {
+	// If a backup-cell charge session is in flight (active or pending retry),
+	// abort it synchronously so the device returns to idle before we request a
+	// normal acquisition. Cancel both the auto-exit timer (active case) and the
+	// retry scheduler (pending case) — only one will be armed but cancelling a
+	// fresh handle is a no-op.
+	if (m_backup_active || m_pending_backup_duration_s > 0) {
 		DEBUG_INFO("GPSService::service_initiate: aborting backup-charge to start GNSS acquisition");
 		system_scheduler->cancel_task(m_backup_exit_task);
-		m_device.exit_backup_charge_mode();
-		m_backup_active = false;
+		system_scheduler->cancel_task(m_backup_retry_task);
+		m_pending_backup_duration_s = 0;
+		if (m_backup_active) {
+			m_device.exit_backup_charge_mode();
+			m_backup_active = false;
+		}
 	}
 
 	GNSSConfig gnss_config;
@@ -673,12 +685,16 @@ void GPSService::notify_peer_event(ServiceEvent& e) {
 			// Arm the gate: GNSS power-on will wait until ArgosTxService emits
 			// SERVICE_INACTIVE (first satellite TX done) to free CPU for the burst.
 			// Safety: only arm if Argos will actually TX — otherwise SERVICE_INACTIVE
-			// is never emitted and the gate would block GNSS forever.
+			// is never emitted and the gate would block GNSS forever. Cooldown is
+			// the second silent path: during cooldown ArgosTxService skips setting
+			// m_is_surfacing_burst so no SERVICE_INACTIVE ever fires; the gate
+			// would stay armed for the whole surface cycle and starve GPS.
 			{
 				ArgosConfig argos_config;
 				configuration_store->get_argos_configuration(argos_config);
-				bool argos_will_tx = (argos_config.mode != BaseArgosMode::OFF) ||
-				                     argos_config.cert_tx_enable;
+				bool argos_will_tx = ((argos_config.mode != BaseArgosMode::OFF) ||
+				                      argos_config.cert_tx_enable) &&
+				                     !ServiceManager::is_in_cooldown(service_current_time());
 				if (argos_will_tx) {
 					m_defer_gnss_until_argos_first_tx = true;
 					// Demoted to TRACE: gate behavior is well-tested and emits its
@@ -796,7 +812,7 @@ void GPSService::schedule_backup_charge_retry(unsigned int attempt) {
 		return;
 	}
 
-	m_backup_exit_task = system_scheduler->post_task_prio([this, attempt]() {
+	m_backup_retry_task = system_scheduler->post_task_prio([this, attempt]() {
 		if (m_pending_backup_duration_s == 0)
 			return;  // cancelled (manual stop / reed switch / etc.)
 		unsigned int d = m_pending_backup_duration_s;
@@ -819,6 +835,7 @@ void GPSService::schedule_backup_charge_retry(unsigned int attempt) {
 /// (cancel safety timer), or neither (no-op apart from clearing callbacks).
 void GPSService::backup_charge_stop_internal() {
 	system_scheduler->cancel_task(m_backup_exit_task);
+	system_scheduler->cancel_task(m_backup_retry_task);
 	m_pending_backup_duration_s = 0;
 	if (m_backup_active) {
 		m_device.exit_backup_charge_mode();

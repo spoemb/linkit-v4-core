@@ -110,7 +110,7 @@
 // blocks any return to UW for that duration after a L-override fires.
 // The air baseline EMA pull on L-override is bounded by AIR_RECALIB_MAX_RATIO
 // (0.70 × water) so an isolated false trigger cannot collapse the threshold.
-#define OVERRIDE_MIN_TIME_SEC 0        // Minimum underwater time before any override
+#define OVERRIDE_MIN_TIME_SEC 1        // Minimum underwater time before any override — 1-sample backstop independent of UNP25
 #define SURFACE_LOCKOUT_DURATION_SEC 30
 #define MAX_CONSECUTIVE_DIVE_TIMEOUTS 3 // Force surface after N timeouts without any surface detection
 #define GUIDED_CALIB_TIMEOUT_TICKS 300  // 300 ticks × 1s = 5 minutes max for guided calibration

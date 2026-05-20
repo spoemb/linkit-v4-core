@@ -107,19 +107,50 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 #define SMDSAT_TIMING_POLL_MS           500    // General polling interval (DFU, etc.)
 #define SMDSAT_TIMING_TX_POLL_MS        200    // TX status polling — faster for Doppler latency
 
-// Inter-transaction delays
-#define SMDSAT_SPI_INTER_TX_DELAY_MS    5      // STM32 DMA re-arm time between SPI transactions (was 15ms; reduced 2026-05 — minimum re-arm is microseconds, 15ms was conservative)
-#define SMDSAT_SPI_RETRY_DELAY_MS       20     // Command retry delay (was 50ms; reduced 2026-05 — typical desync recovers quickly, ping retry loop bounded by SMDSAT_SPI_MAX_RETRIES)
+// =====================================================================
+// FAST / SAFE timing profiles for SMD safety fallback.
+// Selection is at COMPILE TIME via -DSMDSAT_USE_SAFE_TIMINGS=1.
+// Default (flag unset / 0) = FAST profile (aggressive 2026-05 reductions).
+// SAFE profile = v4.1.4 known-good baseline — rebuild and reflash if the
+// FAST profile shows SPI/comm regressions in field deployment.
+// Both profiles' raw values are listed below for diff visibility.
+// =====================================================================
+#define SMDSAT_SPI_INTER_TX_DELAY_FAST_MS   5
+#define SMDSAT_SPI_INTER_TX_DELAY_SAFE_MS   15
+#define SMDSAT_SPI_RETRY_DELAY_FAST_MS      20
+#define SMDSAT_SPI_RETRY_DELAY_SAFE_MS      50
+#define SMDSAT_SPI_BOOT_DELAY_FAST_MS       50
+#define SMDSAT_SPI_BOOT_DELAY_SAFE_MS       100
+#define SMDSAT_DELAY_POWER_ON_FAST_MS       20
+#define SMDSAT_DELAY_POWER_ON_SAFE_MS       50
+#define SMDSAT_DELAY_LOAD_KMAC_FAST_MS      50
+#define SMDSAT_DELAY_LOAD_KMAC_SAFE_MS      150
+#define SMDSAT_VDD_DISCHARGE_FAST_MS        50
+#define SMDSAT_VDD_DISCHARGE_SAFE_MS        100
+
+#ifndef SMDSAT_USE_SAFE_TIMINGS
+#define SMDSAT_USE_SAFE_TIMINGS 0
+#endif
+
+#if SMDSAT_USE_SAFE_TIMINGS
+  #define SMDSAT_SPI_INTER_TX_DELAY_MS    SMDSAT_SPI_INTER_TX_DELAY_SAFE_MS
+  #define SMDSAT_SPI_RETRY_DELAY_MS       SMDSAT_SPI_RETRY_DELAY_SAFE_MS
+  #define SMDSAT_SPI_BOOT_DELAY_MS        SMDSAT_SPI_BOOT_DELAY_SAFE_MS
+  #define SMDSAT_DELAY_POWER_ON_MS        SMDSAT_DELAY_POWER_ON_SAFE_MS
+  #define SMDSAT_DELAY_LOAD_KMAC_MS       SMDSAT_DELAY_LOAD_KMAC_SAFE_MS
+  #define SMDSAT_VDD_DISCHARGE_MS         SMDSAT_VDD_DISCHARGE_SAFE_MS
+#else
+  #define SMDSAT_SPI_INTER_TX_DELAY_MS    SMDSAT_SPI_INTER_TX_DELAY_FAST_MS
+  #define SMDSAT_SPI_RETRY_DELAY_MS       SMDSAT_SPI_RETRY_DELAY_FAST_MS
+  #define SMDSAT_SPI_BOOT_DELAY_MS        SMDSAT_SPI_BOOT_DELAY_FAST_MS
+  #define SMDSAT_DELAY_POWER_ON_MS        SMDSAT_DELAY_POWER_ON_FAST_MS
+  #define SMDSAT_DELAY_LOAD_KMAC_MS       SMDSAT_DELAY_LOAD_KMAC_FAST_MS
+  #define SMDSAT_VDD_DISCHARGE_MS         SMDSAT_VDD_DISCHARGE_FAST_MS
+#endif
+
 #define SMDSAT_SPI_BUSY_WAIT_MS         100    // BUSY pattern (0xBB) = flash write in progress
-#define SMDSAT_SPI_BOOT_DELAY_MS        50     // SPI ready ~30ms after reset (was 100ms = 3x margin; now ~1.7x, ping loop has 10 retries to cover edge cases)
 #define SMDSAT_SPI_DETECT_TIMEOUT_MS    10     // SPI activity detection
 #define SMDSAT_SPI_POST_TX_DELAY_MS     100    // Async processing delay
-
-// Power-on timing: STM32WL boots in ~25ms, SPI ready at ~30ms.
-// 20ms gives 4x margin for VDD stabilization (STM32WL spec: 5ms max rise time).
-// Was 50ms (10x margin); reduced 2026-05 to shave first-TX latency.
-#define SMDSAT_DELAY_POWER_ON_MS        (20)
-#define SMDSAT_DELAY_LOAD_KMAC_MS       (50)    // MAC poll retry interval; was 150ms (then 500ms) — MAC often ready at 1st poll, retries cover edge cases
 #define SMDSAT_DELAY_TICK_INTERRUPT_MS  (10)
 #define SMDSAT_DELAY_CMD_MS             SMDSAT_TIMING_STANDARD_MS  // Pre-SPI-command pacing — keep aligned to STM32 cmd_delay (30 ms)
 #define SMDSAT_DELAY_STATE_TICK_MS      (15)    // State-machine reschedule delay between state ticks (pure scheduler latency, no SPI involvement). Was 30 ms (alias of SMDSAT_DELAY_CMD_MS); split 2026-05.
