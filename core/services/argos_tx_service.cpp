@@ -81,6 +81,12 @@ void ArgosTxService::service_init() {
 /// @brief Terminate: power off device immediately.
 void ArgosTxService::service_term() {
 	m_kineis.unsubscribe(*this);
+	// Defensive: clear pre-warm state so a hypothetical service_term-without-
+	// service_init sequence doesn't leak stale prep across the next session.
+	m_is_underwater = false;
+	m_prepared_doppler_packet.clear();
+	m_prepared_doppler_size_bits = 0;
+	m_prepared_at_ms = 0;
 }
 
 /// @brief Enabled if Argos mode is not OFF (respects cert TX override).
