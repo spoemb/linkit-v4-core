@@ -26,6 +26,13 @@ extern Timer *system_timer;
 #include "config_store.hpp"
 extern ConfigurationStore *configuration_store;
 
+// Runtime degraded-mode flag shared with smd_sat_cmd_spi.cpp via the inline
+// accessors in smd_sat_registers.hpp. Default false — the autofallback path
+// flips it when SMD_MAX_CONSECUTIVE_ERRORS is reached. Touched only by the
+// SmdSat instance, but in scope here so SPI-level delays in cmd_spi can read
+// it without needing a pointer back to SmdSat.
+bool g_smdsat_use_safe_timings = false;
+
 // SMD state-machine task priority — bumped above GNSS (M10Q uses DEFAULT_PRIORITY=7)
 // so satellite TX path is not preempted by GPS init/fix work during surfacing burst.
 // Lower number = higher priority (0 = highest, 7 = default).
@@ -116,7 +123,7 @@ void SmdSat::shutdown(void) {
 	// Without this, the STM32WL stays alive on residual VDD (~10-50ms) and
 	// resumes from its previous SPI sequence number, causing INVALID_CMD
 	// when the nRF restarts with seq=0 after a soft reset.
-	nrf_delay_ms(SMDSAT_VDD_DISCHARGE_MS);
+	nrf_delay_ms(smdsat_vdd_discharge_ms());
 }
 
 void SmdSat::power_on_blocking() {
@@ -136,12 +143,12 @@ void SmdSat::power_on_blocking() {
 	// Power ON — VPA stays LOW (driven by nRF) to prevent PA regulator spike
 	GPIOPins::set(SAT_PWR_EN);
 	PMU::kick_watchdog();
-	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
+	nrf_delay_ms(smdsat_delay_power_on_ms());
 
 	// Release RESET — STM32WL boots
 	GPIOPins::release_to_highz(SAT_RESET);
 	PMU::kick_watchdog();
-	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
+	nrf_delay_ms(smdsat_delay_power_on_ms());
 
 	// Init SPI AFTER boot (avoid MISO backfeed during power ramp)
 	m_cmd.init();
@@ -150,7 +157,7 @@ void SmdSat::power_on_blocking() {
 	bool ready = false;
 	for (uint8_t attempt = 0; attempt < 10; attempt++) {
 		PMU::kick_watchdog();
-		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS / 2);
+		nrf_delay_ms(smdsat_delay_power_on_ms() / 2);
 		if (m_cmd.ping()) {
 			ready = true;
 			break;
@@ -172,6 +179,13 @@ void SmdSat::power_off() {
 
 void SmdSat::power_on() {
 	DEBUG_TRACE("SmdSat::%s",__func__);
+
+#if SMDSAT_AUTOFALLBACK_ENABLED
+	// First power_on after boot: restore persisted SAFE/FAST choice from
+	// config_store so a watchdog reset in degraded mode keeps the SAFE
+	// timings on the next session.
+	degraded_mode_load_if_needed();
+#endif
 
 	if (m_state != SmdSat::stopped) {
 		m_stopping = false;
@@ -298,6 +312,11 @@ void SmdSat::state_error_enter() {
 		DEBUG_ERROR("SmdSat: %u consecutive errors — cooldown for %u min",
 			m_error_count, SMD_ERROR_COOLDOWN_MS / 60000);
 		m_error_count = 0;  // Reset for next attempt after cooldown
+#if SMDSAT_AUTOFALLBACK_ENABLED
+		// Autofallback: engage SAFE timings (or double the trust window if
+		// we were already in SAFE and a FAST retest just failed).
+		degraded_mode_engage();
+#endif
 	}
 
 	notify(KineisEventDeviceError({}));
@@ -309,6 +328,66 @@ void SmdSat::state_error_exit() {}
 void SmdSat::state_error() {
 	SMD_STATE_CHANGE(error, stopped);
 }
+
+#if SMDSAT_AUTOFALLBACK_ENABLED
+/// @brief Load persisted SMD_DEGRADED_MODE flag on first SmdSat tick.
+/// Reads ParamID::SMD_DEGRADED_MODE so a watchdog or power-cycle that
+/// occurred while in SAFE mode keeps the SAFE timings on the next boot.
+void SmdSat::degraded_mode_load_if_needed() {
+	if (m_degraded_mode_loaded) return;
+	m_degraded_mode_loaded = true;
+	unsigned int persisted = configuration_store->read_param<unsigned int>(ParamID::SMD_DEGRADED_MODE);
+	if (persisted != 0) {
+		g_smdsat_use_safe_timings = true;
+		m_safe_mode_since_ms = PMU::get_timestamp_ms();
+		m_safe_mode_tx_count = 0;
+		DEBUG_INFO("SmdSat: degraded mode restored from flash — SAFE timings active");
+	}
+}
+
+/// @brief Flip to SAFE timings on consecutive-error threshold.
+/// First engagement: persist the flag so a reboot keeps us safe.
+/// Re-entry while already in SAFE: a FAST retest just failed, so double the
+/// trust window (cap 24h) before the next retest attempt.
+void SmdSat::degraded_mode_engage() {
+	if (!g_smdsat_use_safe_timings) {
+		g_smdsat_use_safe_timings = true;
+		m_safe_mode_since_ms = PMU::get_timestamp_ms();
+		m_safe_mode_tx_count = 0;
+		m_safe_trust_window_hours = 1;
+		configuration_store->write_param(ParamID::SMD_DEGRADED_MODE, 1U);
+		DEBUG_ERROR("SmdSat: degraded mode ENGAGED — SAFE timings, retest in %u h",
+		            m_safe_trust_window_hours);
+	} else {
+		// We were already in SAFE and just hit the threshold again — the
+		// previous FAST retest failed, double the window.
+		if (m_safe_trust_window_hours < SAFE_TRUST_WINDOW_MAX_H) {
+			m_safe_trust_window_hours = m_safe_trust_window_hours * 2;
+			if (m_safe_trust_window_hours > SAFE_TRUST_WINDOW_MAX_H)
+				m_safe_trust_window_hours = SAFE_TRUST_WINDOW_MAX_H;
+		}
+		m_safe_mode_since_ms = PMU::get_timestamp_ms();
+		m_safe_mode_tx_count = 0;
+		DEBUG_WARN("SmdSat: FAST retest failed — next retest in %u h",
+		           m_safe_trust_window_hours);
+	}
+}
+
+/// @brief Count successful TXes while in SAFE; retest FAST once the trust
+/// window has elapsed AND enough TXes have succeeded.
+void SmdSat::degraded_mode_note_success() {
+	if (!g_smdsat_use_safe_timings) return;
+	m_safe_mode_tx_count++;
+	uint64_t hours_in_safe = (PMU::get_timestamp_ms() - m_safe_mode_since_ms) / (3600ULL * 1000ULL);
+	if (m_safe_mode_tx_count >= SAFE_RETEST_MIN_TX &&
+	    hours_in_safe >= m_safe_trust_window_hours) {
+		g_smdsat_use_safe_timings = false;
+		configuration_store->write_param(ParamID::SMD_DEGRADED_MODE, 0U);
+		DEBUG_INFO("SmdSat: retesting FAST timings (was SAFE %lu h, %u successful TX)",
+		           static_cast<unsigned long>(hours_in_safe), m_safe_mode_tx_count);
+	}
+}
+#endif  // SMDSAT_AUTOFALLBACK_ENABLED
 
 void SmdSat::state_stopped_enter() {
 	m_cmd.deinit();
@@ -339,12 +418,12 @@ void SmdSat::state_stopped() {}
 void SmdSat::state_powering_on_enter() {}
 
 void SmdSat::state_powering_on_exit() {
-	m_next_delay = SMDSAT_SPI_BOOT_DELAY_MS;
+	m_next_delay = smdsat_spi_boot_delay_ms();
 }
 
 void SmdSat::state_powering_on() {
 	TXTRACE("state_powering_on: starting power sequence (100ms discharge + %u ms VDD)",
-	        SMDSAT_DELAY_POWER_ON_MS);
+	        smdsat_delay_power_on_ms());
 
 	GPIOPins::acquire_sensors_pwr();
 
@@ -358,7 +437,7 @@ void SmdSat::state_powering_on() {
 #ifdef SMD_VPA_PIN
 	GPIOPins::drive_low(SMD_VPA_PIN);
 #endif
-	nrf_delay_ms(SMDSAT_VDD_DISCHARGE_MS);  // VDD cap discharge — FAST=50ms / SAFE=100ms.
+	nrf_delay_ms(smdsat_vdd_discharge_ms());  // VDD cap discharge — FAST=50ms / SAFE=100ms.
 	// power_off_immediate() in the surfacing-burst flow already drives VDD low;
 	// 50ms is enough for the LinkIt V4 cap to discharge before the next POR.
 
@@ -380,14 +459,14 @@ void SmdSat::state_powering_on() {
 	DEBUG_TRACE("SmdSat::%s: SAT_PWR_EN=HIGH, RESET=LOW, VPA=LOW", __func__);
 
 	// Step 4: Wait for VDD stabilization (150ms >> 5ms required)
-	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
+	nrf_delay_ms(smdsat_delay_power_on_ms());
 
 	// Step 5: Release RESET — pull-up on SMD VDD rail pulls HIGH → STM32WL boots
 	GPIOPins::release_to_highz(SAT_RESET);
 	DEBUG_TRACE("SmdSat::%s: RESET released, VPA held LOW until ping OK", __func__);
 
 	TXTRACE("state_powering_on: RESET released, scheduling idle_pending in %u ms",
-	        SMDSAT_SPI_BOOT_DELAY_MS);
+	        smdsat_spi_boot_delay_ms());
 	SMD_STATE_CHANGE(powering_on, idle_pending);
 }
 
@@ -565,8 +644,8 @@ void SmdSat::state_load_kmac() {
 			SMD_STATE_CHANGE(load_kmac, error);
 		} else {
 			TXTRACE("state_load_kmac: MAC NOT ready (mac=%u spi=%u) retry in %u ms (left=%u)",
-			        mac_st, spi_st, SMDSAT_DELAY_LOAD_KMAC_MS, m_state_counter);
-			m_next_delay = SMDSAT_DELAY_LOAD_KMAC_MS;
+			        mac_st, spi_st, smdsat_delay_load_kmac_ms(), m_state_counter);
+			m_next_delay = smdsat_delay_load_kmac_ms();
 		}
 	}
 }
@@ -753,6 +832,11 @@ void SmdSat::state_transmitting() {
 			TXTRACE("state_transmitting: TX FINISHED — total elapsed");
 			m_tx_buffer.clear();
 			m_error_count = 0;  // TX success — reset consecutive error counter
+#if SMDSAT_AUTOFALLBACK_ENABLED
+			// Autofallback: track successful TXes while in SAFE so the
+			// trust window can close and we retest FAST.
+			degraded_mode_note_success();
+#endif
 			DEBUG_TRACE("SmdSat::%s: notify KineisEventTxComplete", __func__);
 			notify(KineisEventTxComplete({}));
 		}
@@ -1058,7 +1142,7 @@ void SmdSat::set_credentials(unsigned int dec_id, unsigned int address, const st
 				DEBUG_ERROR("SmdSat::%s: Failed to set ID", __func__);
 				goto cleanup;
 			}
-			nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+			nrf_delay_ms(smdsat_spi_retry_delay_ms());
 		}
 	}
 
@@ -1082,7 +1166,7 @@ void SmdSat::set_credentials(unsigned int dec_id, unsigned int address, const st
 					DEBUG_ERROR("SmdSat::%s: Failed to set address", __func__);
 					goto cleanup;
 				}
-				nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+				nrf_delay_ms(smdsat_spi_retry_delay_ms());
 			}
 		}
 	}
@@ -1103,7 +1187,7 @@ void SmdSat::set_credentials(unsigned int dec_id, unsigned int address, const st
 					DEBUG_ERROR("SmdSat::%s: Failed to set seckey", __func__);
 					goto cleanup;
 				}
-				nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+				nrf_delay_ms(smdsat_spi_retry_delay_ms());
 			}
 		}
 	}
@@ -1124,7 +1208,7 @@ void SmdSat::set_credentials(unsigned int dec_id, unsigned int address, const st
 					DEBUG_ERROR("SmdSat::%s: Failed to set radio conf", __func__);
 					goto cleanup;
 				}
-				nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+				nrf_delay_ms(smdsat_spi_retry_delay_ms());
 			}
 		}
 	}
@@ -1149,7 +1233,7 @@ void SmdSat::set_credentials(unsigned int dec_id, unsigned int address, const st
 			break;
 		} catch (...) {
 			if (retry == SMDSAT_SPI_MAX_RETRIES - 1) goto cleanup;
-			nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+			nrf_delay_ms(smdsat_spi_retry_delay_ms());
 		}
 	}
 
@@ -1193,7 +1277,7 @@ void SmdSat::read_credentials(unsigned int *dec_id, unsigned int *address, std::
 	}
 
 	PMU::kick_watchdog();
-	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
+	nrf_delay_ms(smdsat_delay_power_on_ms());
 
 	// Write pending credentials to SMD before reading them back.
 	// PARMW saves credentials to the nRF config store but does NOT push
@@ -1205,7 +1289,7 @@ void SmdSat::read_credentials(unsigned int *dec_id, unsigned int *address, std::
 			// KMAC reload so the MAC picks up the new RCONF
 			try {
 				m_cmd.load_kmac_profil(1);
-				nrf_delay_ms(SMDSAT_DELAY_LOAD_KMAC_MS);
+				nrf_delay_ms(smdsat_delay_load_kmac_ms());
 			} catch (...) {
 				DEBUG_WARN("SmdSat::%s: KMAC reload failed after credential write", __func__);
 			}
@@ -1381,9 +1465,9 @@ bool SmdSat::dfu_enter() {
 		GPIOPins::acquire_sensors_pwr();
 		GPIOPins::set(SAT_PWR_EN);
 		PMU::kick_watchdog();
-		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
+		nrf_delay_ms(smdsat_delay_power_on_ms());
 		PMU::kick_watchdog();
-		nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS);
+		nrf_delay_ms(smdsat_delay_power_on_ms());
 #ifdef SMD_VPA_PIN
 		GPIOPins::release_to_highz(SMD_VPA_PIN);
 #endif
@@ -1394,7 +1478,7 @@ bool SmdSat::dfu_enter() {
 	// If SPI is already active (not stopped), do NOT re-init — dfu_enter() handles protocol reset
 
 	PMU::kick_watchdog();
-	nrf_delay_ms(SMDSAT_DELAY_POWER_ON_MS / 2);
+	nrf_delay_ms(smdsat_delay_power_on_ms() / 2);
 
 	bool result = m_cmd.dfu_enter();
 

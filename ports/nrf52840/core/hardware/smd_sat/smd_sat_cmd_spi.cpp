@@ -269,7 +269,7 @@ static bool is_slave_not_ready(const uint8_t *buf, uint8_t check_len) {
 bool SmdSatCmdSpi::send_command_aplus(uint8_t command, const uint8_t *tx_data, uint16_t tx_len,
                                 SpiAplusResponse *response) {
     // Inter-transaction delay: wait for STM32 DMA re-arm from previous transaction
-    nrf_delay_ms(SMDSAT_SPI_INTER_TX_DELAY_MS);
+    nrf_delay_ms(smdsat_spi_inter_tx_delay_ms());
 
     // Build the A+ CMD frame (fixed 64 bytes)
     uint8_t tx_frame[SPI_PROTOCOL_APLUS_FRAME_SIZE];
@@ -329,7 +329,7 @@ bool SmdSatCmdSpi::send_command_aplus(uint8_t command, const uint8_t *tx_data, u
             bool is_busy = (response_frame[0] == SPI_PROTOCOL_APLUS_BUSY_PATTERN);
             DEBUG_TRACE("SmdSatCmdSpi::%s: Slave %s (0x%02X) | retry %u/%u",
                         __func__, is_busy ? "BUSY" : "not ready", response_frame[0], retry + 1, max_retries);
-            nrf_delay_ms(is_busy ? SMDSAT_SPI_BUSY_WAIT_MS : SMDSAT_SPI_RETRY_DELAY_MS);
+            nrf_delay_ms(is_busy ? SMDSAT_SPI_BUSY_WAIT_MS : smdsat_spi_retry_delay_ms());
             m_sequence_number++;
             continue;
         }
@@ -379,7 +379,7 @@ bool SmdSatCmdSpi::send_command_auto(uint8_t command, const uint8_t *tx_data, ui
                            __func__, command, m_sequence_number);
                 m_seq_reset_attempted = true;
                 m_sequence_number = 0;
-                nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+                nrf_delay_ms(smdsat_spi_retry_delay_ms());
                 continue;
             }
 
@@ -392,7 +392,7 @@ bool SmdSatCmdSpi::send_command_auto(uint8_t command, const uint8_t *tx_data, ui
 
         DEBUG_TRACE("SmdSatCmdSpi::%s: Retry %u/%u for cmd 0x%02X",
                     __func__, retry + 1, SMDSAT_SPI_MAX_RETRIES, command);
-        nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+        nrf_delay_ms(smdsat_spi_retry_delay_ms());
     }
 
     return false;
@@ -854,7 +854,7 @@ bool SmdSatCmdSpi::ping()
 		} catch (...) {
 			DEBUG_WARN("SmdSatCmdSpi::%s: Ping failed | retry %u/%u", __func__, retry + 1, SMDSAT_SPI_MAX_RETRIES);
 		}
-		nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+		nrf_delay_ms(smdsat_spi_retry_delay_ms());
 	}
 
 	DEBUG_WARN("SmdSatCmdSpi::%s: Ping not received after %u retries", __func__, SMDSAT_SPI_MAX_RETRIES);
@@ -869,7 +869,7 @@ bool SmdSatCmdSpi::is_tx_finished() {
 
 	if (!send_command_auto(SMDSAT_CMD_READ_SPIMAC_STATE, nullptr, 0, rx, &rx_len)) {
 		// Immediate retry after short delay — avoids waiting a full 500ms poll cycle
-		nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+		nrf_delay_ms(smdsat_spi_retry_delay_ms());
 		rx_len = sizeof(rx);
 		if (!send_command_auto(SMDSAT_CMD_READ_SPIMAC_STATE, nullptr, 0, rx, &rx_len)) {
 			DEBUG_WARN("SmdSatCmdSpi::%s: Failed to read SPIMAC state", __func__);
@@ -1145,7 +1145,7 @@ SmdDfuResponse SmdSatCmdSpi::dfu_send_with_retry(uint8_t cmd, const uint8_t *dat
 		if (recoverable) {
 			DEBUG_WARN("SmdSatCmdSpi::%s: Recoverable error (0x%02X) | retry %d/%d",
 			           __func__, static_cast<int>(result), retry + 1, SMDSAT_DFU_MAX_RETRIES);
-			nrf_delay_ms(SMDSAT_SPI_RETRY_DELAY_MS);
+			nrf_delay_ms(smdsat_spi_retry_delay_ms());
 			continue;
 		}
 

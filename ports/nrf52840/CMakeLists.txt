@@ -20,12 +20,40 @@ set(BOARD "LINKIT" CACHE STRING "Board to compile for")
 option(ARGOS_SMD "Use SMD satellite module" OFF)
 option(LORA_RAK3172 "Use RAK3172-SiP LoRa module instead of satellite" OFF)
 
-# SMD timing safety profile. Default 0 (FAST — aggressive 2026-05 reductions
-# for first-TX latency). Set to 1 to rebuild with the v4.1.4 conservative
-# SAFE baseline if FAST shows SPI/comm regressions in field deployment.
+# SMD timing safety knobs.
+#
+#   SMDSAT_USE_SAFE_TIMINGS  — force the v4.1.4 conservative SAFE baseline at
+#                              compile time. Disables the autofallback path
+#                              since there is no FAST mode to fall back from.
+#                              ON/OFF or 1/0 accepted, default OFF (FAST).
+#
+#   SMDSAT_AUTOFALLBACK      — enable runtime auto-fallback to SAFE timings
+#                              after SMD_MAX_CONSECUTIVE_ERRORS SPI errors,
+#                              with exponential-window retest of FAST.
+#                              Only meaningful when SMDSAT_USE_SAFE_TIMINGS=0.
+#                              ON/OFF or 1/0 accepted, default ON for SMD
+#                              builds (best balance of latency + robustness).
 if(NOT DEFINED SMDSAT_USE_SAFE_TIMINGS)
-    set(SMDSAT_USE_SAFE_TIMINGS 0)
+    set(SMDSAT_USE_SAFE_TIMINGS OFF)
 endif()
+if(NOT DEFINED SMDSAT_AUTOFALLBACK)
+    set(SMDSAT_AUTOFALLBACK ON)
+endif()
+# Normalize ON/OFF/TRUE/FALSE/1/0 to a plain integer for the C preprocessor.
+if(SMDSAT_USE_SAFE_TIMINGS)
+    set(SMDSAT_USE_SAFE_TIMINGS_VAL 1)
+else()
+    set(SMDSAT_USE_SAFE_TIMINGS_VAL 0)
+endif()
+if(SMDSAT_AUTOFALLBACK AND NOT SMDSAT_USE_SAFE_TIMINGS_VAL)
+    set(SMDSAT_AUTOFALLBACK_VAL 1)
+else()
+    set(SMDSAT_AUTOFALLBACK_VAL 0)
+endif()
+if(SMDSAT_USE_SAFE_TIMINGS_VAL AND SMDSAT_AUTOFALLBACK)
+    message(STATUS "SMDSAT_USE_SAFE_TIMINGS=ON forces SAFE statically — disabling SMDSAT_AUTOFALLBACK (nothing to fall back from)")
+endif()
+message(STATUS "SMD timing profile: USE_SAFE_TIMINGS=${SMDSAT_USE_SAFE_TIMINGS_VAL} AUTOFALLBACK=${SMDSAT_AUTOFALLBACK_VAL}")
 
 # LoRa-specific tuning flags (only meaningful when LORA_RAK3172=ON)
 #
@@ -629,7 +657,8 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     ENABLE_SWS_ANALOG=${ENABLE_SWS_ANALOG}
     GNSS_HAS_BACKUP_BATTERY=${GNSS_HAS_BACKUP_BATTERY}
     ARGOS_SMD=${ARGOS_SMD_ENABLED}
-    SMDSAT_USE_SAFE_TIMINGS=${SMDSAT_USE_SAFE_TIMINGS}
+    SMDSAT_USE_SAFE_TIMINGS=${SMDSAT_USE_SAFE_TIMINGS_VAL}
+    SMDSAT_AUTOFALLBACK_ENABLED=${SMDSAT_AUTOFALLBACK_VAL}
     $<$<BOOL:${LORA_RAK3172_ENABLED}>:LORA_RAK3172=1>
     $<$<BOOL:${LORA_RAK3172_ENABLED}>:LORA_DCS_ENABLE=${LORA_DCS_ENABLE_VAL}>
     $<$<BOOL:${LORA_RAK3172_ENABLED}>:LORA_POWER_OFF_UNDERWATER=${LORA_POWER_OFF_UNDERWATER_VAL}>

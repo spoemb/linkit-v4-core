@@ -363,8 +363,10 @@ enum class ParamID {
 	GNSS_BCKP_CHARGE_INT                     = 223,  // uint seconds: period between charge sessions. 0 = disabled.
 	GNSS_BCKP_CHARGE_DUR                     = 224,  // uint seconds: duration of each charge session.
 	GNSS_BCKP_CHARGE_UW_ONLY                 = 225,  // bool: when true, charge only while submerged (saltwater switch).
+	// === SMD degraded-mode flag (slot 226) ===
+	SMD_DEGRADED_MODE                        = 226,  // uint: 0 = FAST timings (default); 1 = SAFE timings (set by SmdSat after repeated SPI errors). Persists across reboot when SMDSAT_AUTOFALLBACK is built in. Read-only via DTE.
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 226,
+	__PARAM_SIZE                             = 227,
 	__NULL_PARAM                             = 0xFFFF
 };
 

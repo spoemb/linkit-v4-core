@@ -72,11 +72,29 @@ private:
 	/// TX. nRF52840 die temp sensor has ±5 °C accuracy, so this is a coarse gate.
 	static constexpr int TCXO_SKIP_TEMP_THRESHOLD_C = 5;
 
-	// SMD timing profile (FAST vs SAFE) is selected at build time via the
-	// -DSMDSAT_USE_SAFE_TIMINGS=1 CMake flag (see smd_sat_registers.hpp).
-	// No runtime fallback — the choice is final per build, so a "stuck in
-	// degraded mode" state cannot survive across compile boundaries and
-	// there is no config_store persistence to drift.
+	// =====================================================================
+	// Degraded-mode (autofallback to SAFE timings) state.
+	// Only emitted into the binary when SMDSAT_AUTOFALLBACK_ENABLED == 1.
+	// On SMD_MAX_CONSECUTIVE_ERRORS the driver flips g_smdsat_use_safe_timings
+	// to true and persists the state via ParamID::SMD_DEGRADED_MODE. After
+	// SAFE_RETEST_MIN_TX successful TXes AND at least m_safe_trust_window_hours
+	// hours in SAFE, FAST is retested; if it re-fails the window doubles
+	// (cap 24h) so the device stops flapping under sustained marginal
+	// conditions.
+	// =====================================================================
+#if SMDSAT_AUTOFALLBACK_ENABLED
+	uint64_t m_safe_mode_since_ms = 0;
+	unsigned int m_safe_mode_tx_count = 0;
+	unsigned int m_safe_trust_window_hours = 1;
+	bool m_degraded_mode_loaded = false;
+
+	static constexpr unsigned int SAFE_RETEST_MIN_TX = 20;
+	static constexpr unsigned int SAFE_TRUST_WINDOW_MAX_H = 24;
+
+	void degraded_mode_load_if_needed();
+	void degraded_mode_engage();
+	void degraded_mode_note_success();
+#endif
 
 	// TX state
 	KineisPacket m_tx_buffer;

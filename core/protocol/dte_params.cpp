@@ -335,6 +335,11 @@ const BaseMap param_map[] = {
 	{ "GNSS_BCKP_CHARGE_DUR", "GNP48", BaseEncoding::UINT, 60U, 3600U, {}, true, true },
 	// [225] GNSS backup-cell charge: when true, only run while submerged (saltwater switch).
 	{ "GNSS_BCKP_CHARGE_UW_ONLY", "GNP49", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
+	// [226] SMD degraded-mode flag — 0 = FAST timings (default), 1 = SAFE timings (auto-engaged
+	// by SmdSat after SMD_MAX_CONSECUTIVE_ERRORS SPI errors when SMDSAT_AUTOFALLBACK is built in).
+	// Persisted across reboot so a watchdog reset in degraded mode does not lose the SAFE state.
+	// Read-only at DTE; written exclusively by SmdSat itself.
+	{ "SMD_DEGRADED_MODE", "SMP00", BaseEncoding::UINT, 0U, 1U, {}, true, false },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

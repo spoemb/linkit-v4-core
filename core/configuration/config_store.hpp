@@ -337,6 +337,7 @@ protected:
 		/* [223] GNSS_BCKP_CHARGE_INT */ 0U,           // 0=disabled (no periodic backup charge)
 		/* [224] GNSS_BCKP_CHARGE_DUR */ 300U,         // 5 min per session by default
 		/* [225] GNSS_BCKP_CHARGE_UW_ONLY */ (bool)false,
+		/* [226] SMD_DEGRADED_MODE */ 0U,              // 0 = FAST timings (default); 1 = SAFE (set by SmdSat::degraded_mode_engage)
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,

@@ -109,11 +109,18 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 
 // =====================================================================
 // FAST / SAFE timing profiles for SMD safety fallback.
-// Selection is at COMPILE TIME via -DSMDSAT_USE_SAFE_TIMINGS=1.
-// Default (flag unset / 0) = FAST profile (aggressive 2026-05 reductions).
-// SAFE profile = v4.1.4 known-good baseline — rebuild and reflash if the
-// FAST profile shows SPI/comm regressions in field deployment.
-// Both profiles' raw values are listed below for diff visibility.
+//
+// Selection layers (resolved at compile time inside SmdSat accessors):
+//   1. SMDSAT_USE_SAFE_TIMINGS=1 → SAFE forced for every accessor, no
+//      autofallback. Robustness-first deployment.
+//   2. SMDSAT_USE_SAFE_TIMINGS=0 + SMDSAT_AUTOFALLBACK_ENABLED=1 → start
+//      FAST, runtime can flip to SAFE on repeated SPI errors and persist
+//      the state in flash. Best balance — default for SMD builds.
+//   3. SMDSAT_USE_SAFE_TIMINGS=0 + SMDSAT_AUTOFALLBACK_ENABLED=0 → FAST
+//      hard-coded, no runtime branch. Pure-FAST bench mode.
+//
+// FAST = aggressive 2026-05 reductions; SAFE = v4.1.4 known-good baseline.
+// Raw values are listed below so diffs make the trade-off visible.
 // =====================================================================
 #define SMDSAT_SPI_INTER_TX_DELAY_FAST_MS   5
 #define SMDSAT_SPI_INTER_TX_DELAY_SAFE_MS   15
@@ -131,22 +138,80 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 #ifndef SMDSAT_USE_SAFE_TIMINGS
 #define SMDSAT_USE_SAFE_TIMINGS 0
 #endif
-
-#if SMDSAT_USE_SAFE_TIMINGS
-  #define SMDSAT_SPI_INTER_TX_DELAY_MS    SMDSAT_SPI_INTER_TX_DELAY_SAFE_MS
-  #define SMDSAT_SPI_RETRY_DELAY_MS       SMDSAT_SPI_RETRY_DELAY_SAFE_MS
-  #define SMDSAT_SPI_BOOT_DELAY_MS        SMDSAT_SPI_BOOT_DELAY_SAFE_MS
-  #define SMDSAT_DELAY_POWER_ON_MS        SMDSAT_DELAY_POWER_ON_SAFE_MS
-  #define SMDSAT_DELAY_LOAD_KMAC_MS       SMDSAT_DELAY_LOAD_KMAC_SAFE_MS
-  #define SMDSAT_VDD_DISCHARGE_MS         SMDSAT_VDD_DISCHARGE_SAFE_MS
-#else
-  #define SMDSAT_SPI_INTER_TX_DELAY_MS    SMDSAT_SPI_INTER_TX_DELAY_FAST_MS
-  #define SMDSAT_SPI_RETRY_DELAY_MS       SMDSAT_SPI_RETRY_DELAY_FAST_MS
-  #define SMDSAT_SPI_BOOT_DELAY_MS        SMDSAT_SPI_BOOT_DELAY_FAST_MS
-  #define SMDSAT_DELAY_POWER_ON_MS        SMDSAT_DELAY_POWER_ON_FAST_MS
-  #define SMDSAT_DELAY_LOAD_KMAC_MS       SMDSAT_DELAY_LOAD_KMAC_FAST_MS
-  #define SMDSAT_VDD_DISCHARGE_MS         SMDSAT_VDD_DISCHARGE_FAST_MS
+#ifndef SMDSAT_AUTOFALLBACK_ENABLED
+#define SMDSAT_AUTOFALLBACK_ENABLED 0
 #endif
+
+// Runtime degraded-mode flag, shared between SmdSat (mutator) and SmdSatCmdSpi
+// (reader for the SPI-level delays). Defined in smd_sat.cpp. Only meaningful
+// when SMDSAT_AUTOFALLBACK_ENABLED == 1; ignored by the inline accessors below
+// in every other build configuration.
+extern bool g_smdsat_use_safe_timings;
+
+// Inline accessors that resolve at compile time when autofallback is disabled
+// (the compiler folds away the runtime branch and the static-time choice is
+// the only path emitted). When autofallback is enabled, the accessors read
+// g_smdsat_use_safe_timings on each call — single branch, no flash trip.
+static inline unsigned int smdsat_spi_inter_tx_delay_ms() {
+#if SMDSAT_USE_SAFE_TIMINGS
+	return SMDSAT_SPI_INTER_TX_DELAY_SAFE_MS;
+#elif SMDSAT_AUTOFALLBACK_ENABLED
+	return g_smdsat_use_safe_timings ? SMDSAT_SPI_INTER_TX_DELAY_SAFE_MS
+	                                 : SMDSAT_SPI_INTER_TX_DELAY_FAST_MS;
+#else
+	return SMDSAT_SPI_INTER_TX_DELAY_FAST_MS;
+#endif
+}
+static inline unsigned int smdsat_spi_retry_delay_ms() {
+#if SMDSAT_USE_SAFE_TIMINGS
+	return SMDSAT_SPI_RETRY_DELAY_SAFE_MS;
+#elif SMDSAT_AUTOFALLBACK_ENABLED
+	return g_smdsat_use_safe_timings ? SMDSAT_SPI_RETRY_DELAY_SAFE_MS
+	                                 : SMDSAT_SPI_RETRY_DELAY_FAST_MS;
+#else
+	return SMDSAT_SPI_RETRY_DELAY_FAST_MS;
+#endif
+}
+static inline unsigned int smdsat_spi_boot_delay_ms() {
+#if SMDSAT_USE_SAFE_TIMINGS
+	return SMDSAT_SPI_BOOT_DELAY_SAFE_MS;
+#elif SMDSAT_AUTOFALLBACK_ENABLED
+	return g_smdsat_use_safe_timings ? SMDSAT_SPI_BOOT_DELAY_SAFE_MS
+	                                 : SMDSAT_SPI_BOOT_DELAY_FAST_MS;
+#else
+	return SMDSAT_SPI_BOOT_DELAY_FAST_MS;
+#endif
+}
+static inline unsigned int smdsat_delay_power_on_ms() {
+#if SMDSAT_USE_SAFE_TIMINGS
+	return SMDSAT_DELAY_POWER_ON_SAFE_MS;
+#elif SMDSAT_AUTOFALLBACK_ENABLED
+	return g_smdsat_use_safe_timings ? SMDSAT_DELAY_POWER_ON_SAFE_MS
+	                                 : SMDSAT_DELAY_POWER_ON_FAST_MS;
+#else
+	return SMDSAT_DELAY_POWER_ON_FAST_MS;
+#endif
+}
+static inline unsigned int smdsat_delay_load_kmac_ms() {
+#if SMDSAT_USE_SAFE_TIMINGS
+	return SMDSAT_DELAY_LOAD_KMAC_SAFE_MS;
+#elif SMDSAT_AUTOFALLBACK_ENABLED
+	return g_smdsat_use_safe_timings ? SMDSAT_DELAY_LOAD_KMAC_SAFE_MS
+	                                 : SMDSAT_DELAY_LOAD_KMAC_FAST_MS;
+#else
+	return SMDSAT_DELAY_LOAD_KMAC_FAST_MS;
+#endif
+}
+static inline unsigned int smdsat_vdd_discharge_ms() {
+#if SMDSAT_USE_SAFE_TIMINGS
+	return SMDSAT_VDD_DISCHARGE_SAFE_MS;
+#elif SMDSAT_AUTOFALLBACK_ENABLED
+	return g_smdsat_use_safe_timings ? SMDSAT_VDD_DISCHARGE_SAFE_MS
+	                                 : SMDSAT_VDD_DISCHARGE_FAST_MS;
+#else
+	return SMDSAT_VDD_DISCHARGE_FAST_MS;
+#endif
+}
 
 #define SMDSAT_SPI_BUSY_WAIT_MS         100    // BUSY pattern (0xBB) = flash write in progress
 #define SMDSAT_SPI_DETECT_TIMEOUT_MS    10     // SPI activity detection

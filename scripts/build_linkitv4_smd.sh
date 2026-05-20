@@ -125,11 +125,21 @@ ENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR:-OFF}
 ENABLE_SWS_LOG=${ENABLE_SWS_LOG:-OFF}
 GNSS_HAS_BACKUP_BATTERY=${GNSS_HAS_BACKUP_BATTERY:-ON}
 BATTERY_CHEMISTRY=${BATTERY_CHEMISTRY:-BATT_CHEM_LS17500_2P}
-# SMD timing profile. Default for this script = SAFE (v4.1.4 conservative
-# baseline) — robustness-first for multi-year epoxy-potted deployments.
-# Override to 0 for a FAST build (aggressive 2026-05 reductions, ~150 ms faster
-# first TX) when running latency benchmarks: SMDSAT_USE_SAFE_TIMINGS=0 ./build...
-SMDSAT_USE_SAFE_TIMINGS=${SMDSAT_USE_SAFE_TIMINGS:-1}
+# SMD timing safety knobs.
+#
+# SMDSAT_USE_SAFE_TIMINGS — Force the v4.1.4 conservative SAFE baseline at
+#   compile time. ON/OFF or 1/0 accepted. Default OFF: build uses the FAST
+#   aggressive 2026-05 reductions for first-TX latency.
+#
+# SMDSAT_AUTOFALLBACK — Enable the runtime auto-fallback to SAFE after
+#   repeated SPI errors (5 consecutive). Persists across reboot via
+#   ParamID::SMD_DEGRADED_MODE; retests FAST after 20 successful TX +
+#   exponential trust window (1h → 2h → ... → 24h cap). Only meaningful
+#   when SMDSAT_USE_SAFE_TIMINGS=OFF. Default ON: FAST latency with
+#   self-healing safety net — the recommended production profile.
+#   Set to OFF for pure-FAST bench builds (no runtime branch, no persistence).
+SMDSAT_USE_SAFE_TIMINGS=${SMDSAT_USE_SAFE_TIMINGS:-OFF}
+SMDSAT_AUTOFALLBACK=${SMDSAT_AUTOFALLBACK:-ON}
 
 echo "Building LinkIt V4 SMD with configuration:"
 echo "  ARGOS_SMD=${ARGOS_SMD}"
@@ -138,6 +148,7 @@ echo "  ENABLE_SWS_LOG=${ENABLE_SWS_LOG}"
 echo "  GNSS_HAS_BACKUP_BATTERY=${GNSS_HAS_BACKUP_BATTERY}"
 echo "  BATTERY_CHEMISTRY=${BATTERY_CHEMISTRY}"
 echo "  SMDSAT_USE_SAFE_TIMINGS=${SMDSAT_USE_SAFE_TIMINGS}"
+echo "  SMDSAT_AUTOFALLBACK=${SMDSAT_AUTOFALLBACK}"
 echo ""
 
 cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
@@ -150,6 +161,7 @@ cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
       -DGNSS_HAS_BACKUP_BATTERY=${GNSS_HAS_BACKUP_BATTERY} \
       -DBATTERY_CHEMISTRY=${BATTERY_CHEMISTRY} \
       -DSMDSAT_USE_SAFE_TIMINGS=${SMDSAT_USE_SAFE_TIMINGS} \
+      -DSMDSAT_AUTOFALLBACK=${SMDSAT_AUTOFALLBACK} \
       ../..
 
 make -j 20
