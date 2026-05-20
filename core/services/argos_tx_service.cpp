@@ -553,7 +553,12 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 				DEBUG_INFO("[METRIC-SURF t=%lu ms] ArgosTxService::SURFACING_BURST: surface detected - starting Doppler burst sequence",
 				           static_cast<unsigned long>(m_surface_detected_ms));
 #else
-				DEBUG_INFO("ArgosTxService::SURFACING_BURST: surface detected - starting Doppler burst sequence");
+				// Demoted to TRACE: the canonical state-change marker is
+				// "UWDetectorService: state changed: state=0" emitted in the same
+				// broadcast cascade. This log added ~50-300 ms LFS commit on the
+				// surfacing critical path with no actionable info beyond the state
+				// change itself.
+				DEBUG_TRACE("ArgosTxService::SURFACING_BURST: surface detected - starting Doppler burst sequence");
 #endif
 			}
 		}

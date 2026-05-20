@@ -681,7 +681,11 @@ void GPSService::notify_peer_event(ServiceEvent& e) {
 				                     argos_config.cert_tx_enable;
 				if (argos_will_tx) {
 					m_defer_gnss_until_argos_first_tx = true;
-					DEBUG_INFO("GPSService: surfaced — GNSS deferred until first Argos TX completes");
+					// Demoted to TRACE: gate behavior is well-tested and emits its
+					// release counterpart "GPSService: first Argos TX done — releasing
+					// GNSS gate" which is the actionable marker. Removing this saves
+					// ~50-300 ms LFS commit on the surfacing critical path.
+					DEBUG_TRACE("GPSService: surfaced — GNSS deferred until first Argos TX completes");
 				}
 			}
 #endif
