@@ -21,6 +21,13 @@ extern GPSDevice *gps_device;
 extern MortalityService *mortality_service;
 #endif
 
+// End-to-end first-TX latency metric. Enable by setting METRIC_LATENCY_LOG_ENABLE=1
+// at build to emit [METRIC-SURF] (here) and [METRIC-FIRST-TX] (react KineisEventTxComplete).
+// Pairs with [METRIC-STATE] in UWDetectorService. Disabled by default.
+#ifndef METRIC_LATENCY_LOG_ENABLE
+#define METRIC_LATENCY_LOG_ENABLE 0
+#endif
+
 
 /// @brief Construct Argos TX service with a KineisDevice backend (SMD/KIM2/LoRa).
 ArgosTxService::ArgosTxService(KineisDevice& device) : Service(ServiceIdentifier::ARGOS_TX, "ARGOSTX"),
@@ -542,8 +549,12 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 				m_kineis.set_idle_timeout((argos_config.surfacing_burst_max_s + 10) * 1000);
 				m_scheduled_task = [this]() { process_doppler_burst(); };
 				m_scheduled_mode = argos_config.adaptive_modulation ? KineisModulation::VLDA4 : KineisModulation::LDA2;
+#if METRIC_LATENCY_LOG_ENABLE
 				DEBUG_INFO("[METRIC-SURF t=%lu ms] ArgosTxService::SURFACING_BURST: surface detected - starting Doppler burst sequence",
 				           static_cast<unsigned long>(m_surface_detected_ms));
+#else
+				DEBUG_INFO("ArgosTxService::SURFACING_BURST: surface detected - starting Doppler burst sequence");
+#endif
 			}
 		}
 	}
@@ -1034,10 +1045,12 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 	// completing. Only emitted on the FIRST Doppler of a surfacing burst, then
 	// the anchor is cleared so subsequent TXes don't re-log.
 	if (m_surface_detected_ms != 0 && m_is_surfacing_burst && m_doppler_burst_count == 1) {
+#if METRIC_LATENCY_LOG_ENABLE
 		uint64_t now_ms = PMU::get_timestamp_ms();
 		uint32_t elapsed_ms = static_cast<uint32_t>(now_ms - m_surface_detected_ms);
 		DEBUG_INFO("[METRIC-FIRST-TX t=%lu ms elapsed=%u ms] first satellite TX complete since surface detected",
 		           static_cast<unsigned long>(now_ms), elapsed_ms);
+#endif
 		m_surface_detected_ms = 0;  // Consume — next surface event will re-arm
 	}
 

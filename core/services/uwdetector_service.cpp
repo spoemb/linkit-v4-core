@@ -15,6 +15,13 @@
 #define UW_TIMING_LOG_ENABLE 0
 #endif
 
+// End-to-end first-TX latency metric. Enable by setting METRIC_LATENCY_LOG_ENABLE=1
+// at build to emit [METRIC-STATE] / [METRIC-SURF] / [METRIC-FIRST-TX] with absolute
+// ms timestamps. Disabled by default — ~3 LFS commits per dive/surface cycle when on.
+#ifndef METRIC_LATENCY_LOG_ENABLE
+#define METRIC_LATENCY_LOG_ENABLE 0
+#endif
+
 /// @brief Sample the detector, accumulate dry/wet counts, emit state change on terminal iteration.
 void UWDetectorService::service_initiate() {
 
@@ -59,13 +66,14 @@ void UWDetectorService::service_initiate() {
 			           static_cast<unsigned long>(uw_t0_ms), detector_ms,
 			           (unsigned int)m_pending_state, m_sample_iteration, m_dry_count,
 			           m_max_samples, m_min_dry_samples);
-#else
-			// Production: lightweight metric log with absolute ms timestamp.
-			// Used to measure latency from this event to ArgosTx [METRIC-SURF]
-			// (≈ scheduler propagation + peer service reactions).
+#elif METRIC_LATENCY_LOG_ENABLE
+			// Bench/field latency measurement: enabled with -DMETRIC_LATENCY_LOG_ENABLE=1.
+			// Pairs with [METRIC-SURF] and [METRIC-FIRST-TX] in ArgosTxService.
 			DEBUG_INFO("[METRIC-STATE t=%lu ms] UWDetectorService: state changed: state=%u",
 			           static_cast<unsigned long>(PMU::get_timestamp_ms()),
 			           (unsigned int)m_pending_state);
+#else
+			DEBUG_INFO("UWDetectorService: state changed: state=%u", (unsigned int)m_pending_state);
 #endif
 			m_is_first_time = false;
 			m_current_state = m_pending_state;
