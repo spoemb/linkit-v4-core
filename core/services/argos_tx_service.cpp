@@ -21,13 +21,6 @@ extern GPSDevice *gps_device;
 extern MortalityService *mortality_service;
 #endif
 
-// End-to-end first-TX latency metric. Enable by setting METRIC_LATENCY_LOG_ENABLE=1
-// at build to emit [METRIC-SURF] (here) and [METRIC-FIRST-TX] (react KineisEventTxComplete).
-// Pairs with [METRIC-STATE] in UWDetectorService. Disabled by default.
-#ifndef METRIC_LATENCY_LOG_ENABLE
-#define METRIC_LATENCY_LOG_ENABLE 0
-#endif
-
 
 /// @brief Construct Argos TX service with a KineisDevice backend (SMD/KIM2/LoRa).
 ArgosTxService::ArgosTxService(KineisDevice& device) : Service(ServiceIdentifier::ARGOS_TX, "ARGOSTX"),
@@ -70,6 +63,10 @@ void ArgosTxService::service_init() {
 	m_last_preconfig_mod = KineisModulation::LDA2;
 	m_modulation_preconfig.reset();
 	m_consecutive_device_errors = 0;
+	m_is_underwater = false;
+	m_prepared_doppler_packet.clear();
+	m_prepared_doppler_size_bits = 0;
+	m_prepared_at_ms = 0;
 
 	// Set the idle timeout depending on the configuration settings
 	// i) In certification mode, keep powered on for 10 seconds in idle
@@ -404,6 +401,18 @@ bool ArgosTxService::service_is_triggered_on_surfaced(bool &immediate) {
 void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 	//DEBUG_TRACE("ArgosTxService::notify_peer_event: (%u|%u)", e.event_source, e.event_type);
 
+	// Background refresh of the pre-warmed Doppler packet: any peer event
+	// fired while underwater (sensor sample, GPS tick, etc.) is a chance to
+	// re-sample the battery and rebuild the payload if it has aged past 1h.
+	// Skipped if we never prepared one (boot underwater, non-SURFACING_BURST).
+	if (m_is_underwater && m_prepared_at_ms != 0) {
+		uint64_t now_ms = PMU::get_timestamp_ms();
+		if (now_ms - m_prepared_at_ms >= PREPARED_DOPPLER_REFRESH_MS) {
+			DEBUG_TRACE("ArgosTxService::notify_peer_event: refreshing pre-warmed Doppler packet (>1h underwater)");
+			prepare_doppler_packet();
+		}
+	}
+
 	// During SURFACING_BURST Doppler phase, CloudLocate/Fastloc/NO_FIX entries are already
 	// sent directly in process_doppler_burst() — skip depth pile to avoid double transmission.
 	// Only real GPS fixes should enter the depth pile for the GNSS phase.
@@ -492,6 +501,13 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 			m_doppler_burst_count = 0;
 			m_has_gnss_fix_since_surfacing = false;
 			m_first_gnss_tx_sent = false;
+			m_is_underwater = true;
+
+			// Pre-warm the first surfacing-burst Doppler packet now (SMD already
+			// off, battery & ADC available) so the surface event skips the ADC
+			// read + packet build on its critical path. No-op outside
+			// SURFACING_BURST mode. Refreshed below if we stay underwater >1h.
+			prepare_doppler_packet();
 
 			// Adaptive modulation: the modulation switch to VLDA4 should have been
 			// done at TX complete time while the SMD was still on. If for some reason
@@ -512,6 +528,7 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 			}
 		} else {
 			// Device surfaced
+			m_is_underwater = false;
 			ArgosConfig argos_config;
 			configuration_store->get_argos_configuration(argos_config);
 			std::time_t earliest_schedule = service_current_time() + argos_config.dry_time_before_tx;
@@ -541,25 +558,18 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 				m_doppler_burst_count = 0;
 				m_has_gnss_fix_since_surfacing = false;
 				m_first_gnss_tx_sent = false;
-				// Anchor for end-to-end first-TX latency metric (logged in react KineisEventTxComplete).
-				m_surface_detected_ms = PMU::get_timestamp_ms();
 				// Keep SMD alive between burst pings — default 1s idle timeout
 				// is too short for 5-30s Doppler intervals, causing shutdown+reboot
 				// failures on the 3rd TX
 				m_kineis.set_idle_timeout((argos_config.surfacing_burst_max_s + 10) * 1000);
 				m_scheduled_task = [this]() { process_doppler_burst(); };
 				m_scheduled_mode = argos_config.adaptive_modulation ? KineisModulation::VLDA4 : KineisModulation::LDA2;
-#if METRIC_LATENCY_LOG_ENABLE
-				DEBUG_INFO("[METRIC-SURF t=%lu ms] ArgosTxService::SURFACING_BURST: surface detected - starting Doppler burst sequence",
-				           static_cast<unsigned long>(m_surface_detected_ms));
-#else
 				// Demoted to TRACE: the canonical state-change marker is
 				// "UWDetectorService: state changed: state=0" emitted in the same
 				// broadcast cascade. This log added ~50-300 ms LFS commit on the
 				// surfacing critical path with no actionable info beyond the state
 				// change itself.
 				DEBUG_TRACE("ArgosTxService::SURFACING_BURST: surface detected - starting Doppler burst sequence");
-#endif
 			}
 		}
 	}
@@ -873,10 +883,84 @@ void ArgosTxService::process_gnss_burst() {
 	}
 }
 
+/// @brief Pre-build the first surfacing-burst Doppler packet while underwater.
+/// Samples the battery and builds the Doppler payload now so the first TX at
+/// surface skips the ADC read + packet build on its critical path. Only acts in
+/// SURFACING_BURST mode; on other modes the prepared state is cleared.
+void ArgosTxService::prepare_doppler_packet() {
+	ArgosConfig argos_config;
+	configuration_store->get_argos_configuration(argos_config);
+	if (argos_config.mode != BaseArgosMode::SURFACING_BURST) {
+		m_prepared_doppler_packet.clear();
+		m_prepared_doppler_size_bits = 0;
+		m_prepared_at_ms = 0;
+		return;
+	}
+
+	service_update_battery();
+	unsigned int size_bits = 0;
+	KineisPacket packet;
+#if defined(BOARD_RSPB) && ENABLE_MORTALITY_SENSOR
+	unsigned int mort_conf = 0;
+	uint8_t activity = 0;
+	if (mortality_service) {
+		mort_conf = mortality_service->get_confidence();
+		activity = mortality_service->get_last_activity();
+	}
+	packet = ArgosPacketBuilder::build_rspb_doppler_packet(
+		service_get_level(), activity, mort_conf, size_bits);
+#else
+	packet = ArgosPacketBuilder::build_doppler_packet(
+		service_get_voltage(), service_is_battery_level_low(), size_bits);
+#endif
+
+	m_prepared_doppler_packet = packet;
+	m_prepared_doppler_size_bits = size_bits;
+	m_prepared_doppler_mode = argos_config.adaptive_modulation ?
+		KineisModulation::VLDA4 : KineisModulation::LDA2;
+	m_prepared_at_ms = PMU::get_timestamp_ms();
+}
+
 /// @brief Build and send Doppler burst (24-bit, no GPS — or RSPB Doppler with mortality).
 void ArgosTxService::process_doppler_burst() {
 	DEBUG_TRACE("ArgosTxService::process_doppler_burst");
 	unsigned int size_bits;
+
+	// Pre-warm fast path: first Doppler of a surfacing burst can ship the
+	// payload built while underwater — skip the ADC read + packet build on
+	// the surface critical path. m_doppler_burst_count is post-increment from
+	// service_initiate(), so == 1 means this is the first ping. Anything else
+	// (legacy DOPPLER mode, count > 1, missing prep, mode changed since prep)
+	// falls through to the normal build below.
+	{
+		ArgosConfig pw_cfg;
+		configuration_store->get_argos_configuration(pw_cfg);
+		if (m_is_surfacing_burst && m_doppler_burst_count == 1 &&
+		    pw_cfg.mode == BaseArgosMode::SURFACING_BURST &&
+		    !m_prepared_doppler_packet.empty()) {
+			KineisModulation tx_mode = m_prepared_doppler_mode;
+			if (pw_cfg.adaptive_modulation) {
+				tx_mode = KineisModulation::VLDA4;
+				if (!ensure_modulation(tx_mode)) {
+					DEBUG_WARN("ArgosTxService::process_doppler_burst: pre-warmed modulation switch failed, using current");
+					tx_mode = m_kineis.get_current_modulation();
+				}
+			}
+			DEBUG_TRACE("ArgosTxService::process_doppler_burst: PREWARM mode=%s sz=%u age=%lu ms",
+			            argos_modulation_to_string((BaseArgosModulation)tx_mode),
+			            m_prepared_doppler_size_bits,
+			            static_cast<unsigned long>(PMU::get_timestamp_ms() - m_prepared_at_ms));
+			m_last_tx_had_gps = false;
+			KineisPacket prepared = m_prepared_doppler_packet;
+			unsigned int prepared_bits = m_prepared_doppler_size_bits;
+			m_prepared_doppler_packet.clear();
+			m_prepared_doppler_size_bits = 0;
+			m_prepared_at_ms = 0;
+			m_kineis.send(tx_mode, prepared, prepared_bits);
+			return;
+		}
+	}
+
 	service_update_battery();
 	ArgosConfig argos_config;
 	configuration_store->get_argos_configuration(argos_config);
@@ -905,8 +989,10 @@ void ArgosTxService::process_doppler_burst() {
 		}
 
 		if (blob) {
-			DEBUG_INFO("TX_RAW: CL fmt=%u sz=%u batt=%umV blob=%s",
-			           format_id, blob_size, (unsigned)service_get_voltage(), Binascii::hexlify(std::string((const char*)blob, blob_size)).c_str());
+			// Demoted to TRACE: per-ping TX_RAW dump on the surfacing-burst hot
+			// path adds ~50-300 ms of LFS commit per emit.
+			DEBUG_TRACE("TX_RAW: CL fmt=%u sz=%u batt=%umV blob=%s",
+			            format_id, blob_size, (unsigned)service_get_voltage(), Binascii::hexlify(std::string((const char*)blob, blob_size)).c_str());
 			KineisPacket packet = ArgosPacketBuilder::build_cloudlocate_packet(blob, blob_size, format_id,
 			                                                                   service_get_voltage(), argos_config.is_lb);
 			size_bits = ArgosPacketBuilder::cloudlocate_packet_bits(format_id);
@@ -920,9 +1006,9 @@ void ArgosTxService::process_doppler_burst() {
 				}
 			}
 
-			DEBUG_INFO("ArgosTxService::process_doppler_burst: CLOUDLOCATE #%u fmt=%u sz=%u mode=%s",
-			           m_doppler_burst_count, format_id, blob_size,
-			           argos_modulation_to_string((BaseArgosModulation)tx_mode));
+			DEBUG_TRACE("ArgosTxService::process_doppler_burst: CLOUDLOCATE #%u fmt=%u sz=%u mode=%s",
+			            m_doppler_burst_count, format_id, blob_size,
+			            argos_modulation_to_string((BaseArgosModulation)tx_mode));
 			m_last_tx_had_gps = true;
 			m_kineis.send(tx_mode, packet, size_bits);
 			return;
@@ -967,8 +1053,10 @@ void ArgosTxService::process_doppler_burst() {
 		fastloc_entry.info.valid = true;
 		fastloc_entry.info.event_type = GPSEventType::FASTLOC;
 
-		DEBUG_INFO("TX_RAW: FLOC lat=%.6f lon=%.6f hAcc=%u nSV=%u hDOP=%.1f batt=%umV",
-		           degraded.lat, degraded.lon, degraded.hAcc, degraded.numSV, (double)degraded.hDOP, (unsigned)service_get_voltage());
+		// Demoted to TRACE: per-ping TX_RAW dump on the surfacing-burst hot
+		// path adds ~50-300 ms of LFS commit per emit.
+		DEBUG_TRACE("TX_RAW: FLOC lat=%.6f lon=%.6f hAcc=%u nSV=%u hDOP=%.1f batt=%umV",
+		            degraded.lat, degraded.lon, degraded.hAcc, degraded.numSV, (double)degraded.hDOP, (unsigned)service_get_voltage());
 		KineisPacket packet = ArgosPacketBuilder::build_fastloc_packet(&fastloc_entry, argos_config.is_lb);
 		size_bits = ArgosPacketBuilder::FASTLOC_PACKET_BITS;
 
@@ -980,9 +1068,9 @@ void ArgosTxService::process_doppler_burst() {
 			}
 		}
 
-		DEBUG_INFO("ArgosTxService::process_doppler_burst: FASTLOC #%u hAcc=%um numSV=%u mode=%s data=%s",
-		           m_doppler_burst_count, degraded.hAcc, degraded.numSV,
-		           argos_modulation_to_string((BaseArgosModulation)tx_mode), Binascii::hexlify(packet).c_str());
+		DEBUG_TRACE("ArgosTxService::process_doppler_burst: FASTLOC #%u hAcc=%um numSV=%u mode=%s data=%s",
+		            m_doppler_burst_count, degraded.hAcc, degraded.numSV,
+		            argos_modulation_to_string((BaseArgosModulation)tx_mode), Binascii::hexlify(packet).c_str());
 		m_last_tx_had_gps = true;
 		m_kineis.send(tx_mode, packet, size_bits);
 		return;
@@ -1044,20 +1132,6 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 	DEBUG_TRACE("ArgosTxService::react: KineisEventTxComplete");
 	m_is_tx_pending = false;
 	m_consecutive_device_errors = 0;
-
-	// End-to-end first-TX latency metric: log how long it took from the surface
-	// detection (anchor in m_surface_detected_ms) to the first satellite TX
-	// completing. Only emitted on the FIRST Doppler of a surfacing burst, then
-	// the anchor is cleared so subsequent TXes don't re-log.
-	if (m_surface_detected_ms != 0 && m_is_surfacing_burst && m_doppler_burst_count == 1) {
-#if METRIC_LATENCY_LOG_ENABLE
-		uint64_t now_ms = PMU::get_timestamp_ms();
-		uint32_t elapsed_ms = static_cast<uint32_t>(now_ms - m_surface_detected_ms);
-		DEBUG_INFO("[METRIC-FIRST-TX t=%lu ms elapsed=%u ms] first satellite TX complete since surface detected",
-		           static_cast<unsigned long>(now_ms), elapsed_ms);
-#endif
-		m_surface_detected_ms = 0;  // Consume — next surface event will re-arm
-	}
 
 	// Restore TCXO warmup after first TX post-submerge
 	if (m_tcxo_skip_on_next_tx) {

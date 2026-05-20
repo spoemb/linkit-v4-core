@@ -52,10 +52,16 @@ private:
 	bool m_last_tx_had_gps = false;
 	bool m_cooldown_armed = false;
 
-	// First-TX latency metric: PMU timestamp (ms) when surface was detected.
-	// Used to log how long it took for the first satellite TX to complete after
-	// the SWS state change. Reset on each surface event, consumed in react(KineisEventTxComplete).
-	uint64_t m_surface_detected_ms = 0;
+	// Pre-warm of the first surfacing-burst Doppler packet. While underwater
+	// (only in SURFACING_BURST mode) the battery is sampled and the Doppler
+	// payload is built so the first TX at surface skips the ADC read + packet
+	// build on its critical path. Refreshed if the prep is older than 1h.
+	bool m_is_underwater = false;
+	KineisPacket m_prepared_doppler_packet;
+	unsigned int m_prepared_doppler_size_bits = 0;
+	KineisModulation m_prepared_doppler_mode = KineisModulation::LDA2;
+	uint64_t m_prepared_at_ms = 0;
+	static constexpr uint64_t PREPARED_DOPPLER_REFRESH_MS = 3600000ULL;  ///< 1 hour
 
 	void react(KineisEventTxStarted const &) override;
 	void react(KineisEventTxComplete const &) override;
@@ -66,6 +72,7 @@ private:
 	void process_gnss_burst();
 	void process_sensor_burst();
 	void process_doppler_burst();
+	void prepare_doppler_packet();
 
 	// Adaptive modulation: switch RCONF if needed before TX
 	bool ensure_modulation(KineisModulation target);
