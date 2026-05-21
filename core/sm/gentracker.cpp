@@ -28,6 +28,7 @@
 #include "gps_service.hpp"
 #include "ble_service.hpp"
 #include "sws_analog_service.hpp"
+#include "crc16.h"
 #include "gentracker.hpp"
 
 // USB DTE interface (platform-specific)
@@ -182,6 +183,94 @@ void GenTracker::react(ErrorEvent const &event) {
 void GenTracker::entry(void) { };
 void GenTracker::exit(void)  { };
 
+// =====================================================================
+// Boot-fail counter — sealed-device recovery infrastructure.
+//
+// On a sealed turtle (no physical reed access for the operator) the
+// device cannot escape OffState — it's a permanent brick. Any path that
+// transitions Boot → ErrorState → OffState (e.g. BAD_FILESYSTEM,
+// CONFIG_STORE_CORRUPTED, persistent uncaught exception in main loop)
+// would otherwise kill the deployment on the first occurrence.
+//
+// Mitigation: track consecutive boots that fail to reach Operational in
+// .noinit RAM. Each boot increments the counter; OperationalState entry
+// resets it. When the counter is positive, ErrorState performs a soft
+// reset instead of going to OffState — letting the watchdog/reboot
+// cycle exercise recovery instead of going dark. At BOOT_RETRY_BEFORE_FACTORY
+// (3) we factory-reset the config store on next boot (preserves
+// DECID/HEXID/calibration) and reset again. Only if the factory_reset
+// retry also fails do we fall through to true OffState (real HW fault).
+// =====================================================================
+
+struct BootFailNoinit {
+	uint16_t consecutive_failures;
+	uint8_t  factory_reset_attempted;
+	uint8_t  _pad;
+	uint16_t crc;
+};
+
+#ifndef CPPUTEST
+static __attribute__((section(".noinit"))) volatile BootFailNoinit s_bootfail_noinit;
+#else
+static BootFailNoinit s_bootfail_noinit;
+#endif
+
+static constexpr uint8_t BOOT_RETRY_MAX = 5;                ///< Total reset retries before OffState
+static constexpr uint8_t BOOT_RETRY_BEFORE_FACTORY = 3;     ///< Retries before attempting factory_reset
+
+static uint16_t bootfail_compute_crc() {
+	BootFailNoinit snapshot;
+	snapshot.consecutive_failures   = s_bootfail_noinit.consecutive_failures;
+	snapshot.factory_reset_attempted = s_bootfail_noinit.factory_reset_attempted;
+	snapshot._pad                    = s_bootfail_noinit._pad;
+	return crc16_compute(reinterpret_cast<const uint8_t *>(&snapshot),
+	                     offsetof(BootFailNoinit, crc), nullptr);
+}
+
+static void bootfail_save() {
+	s_bootfail_noinit.crc = bootfail_compute_crc();
+}
+
+/// @brief Load the boot-fail counter from .noinit RAM. On cold POR (battery
+/// insert) the RAM is uninitialised and the CRC will not validate — we
+/// reset to zero in that case.
+static void bootfail_load() {
+	if (s_bootfail_noinit.crc != bootfail_compute_crc()) {
+		s_bootfail_noinit.consecutive_failures   = 0;
+		s_bootfail_noinit.factory_reset_attempted = 0;
+		s_bootfail_noinit._pad                    = 0;
+		bootfail_save();
+	}
+}
+
+/// @brief Increment the consecutive-failures counter — called at every boot.
+static void bootfail_increment() {
+	bootfail_load();
+	uint16_t cur = s_bootfail_noinit.consecutive_failures;
+	if (cur < UINT16_MAX) {
+		s_bootfail_noinit.consecutive_failures = cur + 1;
+	}
+	bootfail_save();
+	DEBUG_INFO("BootFail: counter=%u factory_reset_attempted=%u",
+	           static_cast<unsigned int>(s_bootfail_noinit.consecutive_failures),
+	           static_cast<unsigned int>(s_bootfail_noinit.factory_reset_attempted));
+}
+
+/// @brief Reset the boot-fail counter — called from OperationalState::entry
+/// to mark that a successful boot has occurred.
+static void bootfail_reset() {
+	bootfail_load();
+	if (s_bootfail_noinit.consecutive_failures > 0 ||
+	    s_bootfail_noinit.factory_reset_attempted) {
+		DEBUG_INFO("BootFail: clearing (was %u failures, factory_reset=%u)",
+		           s_bootfail_noinit.consecutive_failures,
+		           s_bootfail_noinit.factory_reset_attempted);
+	}
+	s_bootfail_noinit.consecutive_failures   = 0;
+	s_bootfail_noinit.factory_reset_attempted = 0;
+	bootfail_save();
+}
+
 /// @brief Dispatch ErrorEvent with BAD_FILESYSTEM to trigger ErrorState.
 void GenTracker::notify_bad_filesystem_error() {
 	ErrorEvent event;
@@ -224,6 +313,28 @@ void GenTracker::periodic_config_flush() {
 void BootState::entry() {
 
 	DEBUG_INFO("entry: BootState");
+
+	// Sealed-device recovery: increment the boot-fail counter at every boot.
+	// Will be cleared on successful entry into OperationalState. If we never
+	// reach Operational, ErrorState consults this counter to decide between
+	// soft-reset retry, factory_reset attempt, or final OffState.
+	bootfail_increment();
+	if (s_bootfail_noinit.consecutive_failures >= BOOT_RETRY_BEFORE_FACTORY &&
+	    !s_bootfail_noinit.factory_reset_attempted) {
+		// Last-ditch recovery before giving up to OffState: wipe the config
+		// store and retry. factory_reset preserves DECID/HEXID/calibration.
+		DEBUG_ERROR("BootState: %u failed boots — attempting factory_reset before final retry",
+		            s_bootfail_noinit.consecutive_failures);
+		s_bootfail_noinit.factory_reset_attempted = 1;
+		bootfail_save();
+		try {
+			if (configuration_store) configuration_store->factory_reset();
+		} catch (...) {
+			DEBUG_ERROR("BootState: factory_reset itself threw — proceeding to reboot anyway");
+		}
+		PMU::delay_ms(100);  // Let logs flush
+		PMU::reset(false);
+	}
 
 	// Ensure the system timer is started to allow scheduling to work
 	system_timer->start();
@@ -343,8 +454,34 @@ void PreOperationalState::entry() {
 		m_preop_state_task = system_scheduler->post_task_prio([this](){
 			// If a confirmation gesture is in progress, don't transit yet —
 			// the confirmation handler or timeout will handle the transition.
-			if (m_confirmation_pending != ConfirmationPending::NONE)
+			//
+			// EXCEPT: a reed switch stuck CLOSED (manufacturing magnet residue
+			// or hardware short) would also leave m_confirmation_pending != NONE
+			// indefinitely, with no RELEASE event ever arriving to start the
+			// 2-s confirmation timeout. The previous code returned without
+			// rescheduling, wedging the device in PreOperationalState forever
+			// at full active current (~5-20 mA) — catastrophic drain for a
+			// sealed turtle. Now we re-arm the transit task and, after enough
+			// total time has elapsed, force-transit to Operational regardless.
+			if (m_confirmation_pending != ConfirmationPending::NONE) {
+				m_preop_stuck_reed_ticks++;
+				if (m_preop_stuck_reed_ticks * TRANSIT_PERIOD_MS >= PREOP_STUCK_REED_MAX_MS) {
+					DEBUG_WARN("PreOperationalState: reed appears stuck (%u ms in confirmation) — forcing Operational transit",
+					           m_preop_stuck_reed_ticks * TRANSIT_PERIOD_MS);
+					m_confirmation_pending = ConfirmationPending::NONE;
+					m_preop_stuck_reed_ticks = 0;
+					transit<OperationalState>();
+					return;
+				}
+				// Re-arm the task instead of returning without rescheduling.
+				m_preop_state_task = system_scheduler->post_task_prio([this](){
+					if (m_confirmation_pending == ConfirmationPending::NONE) {
+						transit<OperationalState>();
+					}
+				}, "GenTrackerPreOpRetransitOperationalState", Scheduler::DEFAULT_PRIORITY, TRANSIT_PERIOD_MS);
 				return;
+			}
+			m_preop_stuck_reed_ticks = 0;
 			transit<OperationalState>();
 		},
 		"GenTrackerPreOperationalStateTransitOperationalState",
@@ -368,6 +505,10 @@ void PreOperationalState::exit() {
 /// @brief Operational entry — start all services, subscribe to battery events, begin config flush.
 void OperationalState::entry() {
 	DEBUG_INFO("entry: OperationalState");
+
+	// Successful boot reached — clear the boot-fail counter. The sealed-device
+	// recovery infrastructure considers reaching this state proof of a good boot.
+	bootfail_reset();
 
 	// Start periodic config flush (counters → flash every 30 min)
 	m_config_flush_active = true;
@@ -456,15 +597,24 @@ void OperationalState::service_event_handler(ServiceEvent& e) {
 
 void OperationalState::exit() {
 	DEBUG_INFO("exit: OperationalState");
-	// Stop periodic config flush and do a final save to persist counters
+	// Stop periodic config flush and do a final save to persist counters.
+	// EVERY destructive step below is independently try/catched: a teardown
+	// exception (e.g. SMD SPI dies mid-service_term, BLE stop hits SoftDevice
+	// quirk) must NOT escape — main.cpp catches escapes as ErrorEvent which
+	// would transit to ErrorState→OffState and brick a sealed device whose
+	// only "fault" was a glitchy peripheral during a reed-magnet gesture.
 	m_config_flush_active = false;
 	if (configuration_store->is_valid()) {
 		try { configuration_store->save_params(); }
 		catch (...) { DEBUG_ERROR("OperationalState::exit: save_params failed"); }
 	}
-	led_handle::dispatch<SetLEDOff>({});
-	ServiceManager::stopall();
-	BaseDebugMode debug_mode = configuration_store->read_param<BaseDebugMode>(ParamID::DEBUG_OUTPUT_MODE);
+	try { led_handle::dispatch<SetLEDOff>({}); }
+	catch (...) { DEBUG_ERROR("OperationalState::exit: LED dispatch failed"); }
+	try { ServiceManager::stopall(); }
+	catch (...) { DEBUG_ERROR("OperationalState::exit: ServiceManager::stopall failed"); }
+	BaseDebugMode debug_mode = BaseDebugMode::NONE;
+	try { debug_mode = configuration_store->read_param<BaseDebugMode>(ParamID::DEBUG_OUTPUT_MODE); }
+	catch (...) { DEBUG_ERROR("OperationalState::exit: read DEBUG_OUTPUT_MODE failed"); }
 	if (debug_mode == BaseDebugMode::BLE_NUS) {
 		// Restore the compile-time default debug channel: NONE in release
 		// builds (silent operation), USB CDC in debug builds.
@@ -473,11 +623,13 @@ void OperationalState::exit() {
 #else
 		g_debug_mode = BaseDebugMode::USB_CDC;
 #endif
-		ble_service->stop();
+		try { ble_service->stop(); }
+		catch (...) { DEBUG_ERROR("OperationalState::exit: ble_service->stop failed"); }
 		DEBUG_TRACE("exit: OperationalState: BLE service stopped");
 		PMU::delay_ms(100);
 	}
-	battery_monitor->unsubscribe(*this);
+	try { battery_monitor->unsubscribe(*this); }
+	catch (...) { DEBUG_ERROR("OperationalState::exit: battery_monitor unsubscribe failed"); }
 }
 
 /// @brief Config entry — start BLE advertising, USB polling, DTE handler.
@@ -628,9 +780,24 @@ int ConfigurationState::on_ble_event(BLEServiceEvent& event) {
 		restart_inactivity_timeout();
 		ota_updater->complete_file_transfer();
 		led_handle::dispatch<SetLEDConfigConnected>({});
-		system_scheduler->post_task_prio(std::bind(&OTAFileUpdater::apply_file_update, ota_updater),
-				"BLEApplyOTAFileUpdate"
-				);
+		// Wrap in try/catch — apply_file_update can throw (CRC validation
+		// failure, SPI/UART comms error during SMD DFU streaming, LFS read
+		// error). Without the wrapper, a throw escapes the scheduler task
+		// runner and surfaces at the main-loop catch, which dispatches an
+		// ErrorEvent that transits to ErrorState → OffState — bricking a
+		// sealed device on a recoverable OTA glitch. Log + swallow keeps
+		// the device in Configuration state so the operator can retry.
+		system_scheduler->post_task_prio([]() {
+			try {
+				ota_updater->apply_file_update();
+			} catch (ErrorCode e) {
+				DEBUG_ERROR("ConfigurationState: apply_file_update ErrorCode=%d — staying in Config for retry", (int)e);
+			} catch (const std::exception& ex) {
+				DEBUG_ERROR("ConfigurationState: apply_file_update std::exception: %s — staying in Config for retry", ex.what());
+			} catch (...) {
+				DEBUG_ERROR("ConfigurationState: apply_file_update unknown exception — staying in Config for retry");
+			}
+		}, "BLEApplyOTAFileUpdate");
 		break;
 	case BLEServiceEventType::OTA_ABORT:
 		DEBUG_INFO("ConfigurationState::on_ble_event: OTA_ABORT");
@@ -1040,11 +1207,34 @@ void ErrorState::entry() {
 	PMU::kick_watchdog();
 	led_handle::dispatch<SetLEDError>({});
 	buzz_handle::dispatch<SetBuzzOff>({});
-	m_shutdown_task = system_scheduler->post_task_prio([this](){
-		transit<OffState>();
-	},
-	"GenTrackerErrorStateTransitOffState",
-	Scheduler::DEFAULT_PRIORITY, 5000);
+
+	// Sealed-device recovery: while the boot-fail counter is below MAX_BOOT_RETRIES,
+	// do a soft reset instead of transiting to OffState (which would require a
+	// reed magnet to wake — unrecoverable on a potted turtle). The reset
+	// causes a fresh boot, BootState increments the counter, and if the same
+	// fault recurs eventually we either factory_reset (at BOOT_RETRY_BEFORE_FACTORY)
+	// or, only if everything else has failed, fall through to OffState as a
+	// last resort.
+	bootfail_load();
+	bool soft_reset_retry = (s_bootfail_noinit.consecutive_failures < BOOT_RETRY_MAX);
+	if (soft_reset_retry) {
+		DEBUG_WARN("ErrorState: boot-fail counter %u/%u — scheduling soft reset retry",
+		           s_bootfail_noinit.consecutive_failures, BOOT_RETRY_MAX);
+		m_shutdown_task = system_scheduler->post_task_prio([](){
+			PMU::reset(false);
+		},
+		"GenTrackerErrorStateRebootRetry",
+		Scheduler::DEFAULT_PRIORITY, 5000);
+	} else {
+		DEBUG_ERROR("ErrorState: %u consecutive boot failures (max %u reached, factory_reset_attempted=%u) — falling through to OffState (real HW fault)",
+		            s_bootfail_noinit.consecutive_failures, BOOT_RETRY_MAX,
+		            s_bootfail_noinit.factory_reset_attempted);
+		m_shutdown_task = system_scheduler->post_task_prio([this](){
+			transit<OffState>();
+		},
+		"GenTrackerErrorStateTransitOffState",
+		Scheduler::DEFAULT_PRIORITY, 5000);
+	}
 }
 
 void ErrorState::exit() {

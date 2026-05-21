@@ -360,16 +360,23 @@ static InitContext init_peripherals()
 	// expects, producing INVALID_CMD / "Response incomplete" cascades on the
 	// first session. POR + cap discharge here forces a clean STM32WL boot.
 	// Skipped on POWER_ON resets where the STM was off anyway.
+	//
+	// Use drive_low() (= cfg_output then clear) for SAT_RESET — the BSP entry
+	// is DIR_INPUT (commented "for probe flashing"), so init_pin+clear would
+	// NOT actively drive the line. drive_low overrides to OUTPUT and forces
+	// the pin LOW, holding the STM32WL in reset while VDD discharges.
 	if (PMU::reset_cause() != ResetCause::POWER_ON) {
-		GPIOPins::clear(SAT_PWR_EN);     // Cut STM32WL VDD
+		GPIOPins::clear(SAT_PWR_EN);     // Cut STM32WL VDD (BSP=OUTPUT)
 #ifdef SAT_RESET
-		GPIOPins::init_pin(SAT_RESET);
-		GPIOPins::clear(SAT_RESET);       // Hold STM32WL in reset during discharge
+		GPIOPins::drive_low(SAT_RESET);  // Force STM32WL into reset (overrides BSP=INPUT)
 #endif
 #ifdef SMD_VPA_PIN
 		GPIOPins::drive_low(SMD_VPA_PIN);
 #endif
 		PMU::delay_ms(500);               // Drain VDD caps — STM32WL needs ~50-200ms typically; 500ms is safe margin
+#ifdef SAT_RESET
+		GPIOPins::release_to_highz(SAT_RESET);  // Restore high-Z so SmdSat::power_on can manage normally
+#endif
 	}
 #endif
 
@@ -1171,6 +1178,24 @@ int main()
 		} catch (ErrorCode e) {
 			ErrorEvent event;
 			event.error_code = e;
+			GenTracker::dispatch(event);
+		} catch (const std::exception& ex) {
+			// std::bad_alloc, std::bad_function_call, std::out_of_range, etc.
+			// Without this catch, the exception would reach std::terminate ->
+			// __verbose_terminate_handler -> abort() -> hang in fputc until
+			// the 15-min watchdog reset cycle. Convert to ErrorEvent so the
+			// FSM can react cleanly (and now, via the boot-fail counter,
+			// trigger factory_reset retry if these become persistent).
+			DEBUG_ERROR("main loop: unhandled std::exception: %s", ex.what());
+			ErrorEvent event;
+			event.error_code = ErrorCode::RESOURCE_NOT_AVAILABLE;
+			GenTracker::dispatch(event);
+		} catch (...) {
+			// Last-resort catch for SoftDevice asserts, mid-throw exceptions,
+			// or non-derived thrown types. Same rationale as above.
+			DEBUG_ERROR("main loop: unhandled unknown exception");
+			ErrorEvent event;
+			event.error_code = ErrorCode::RESOURCE_NOT_AVAILABLE;
 			GenTracker::dispatch(event);
 		}
 	}

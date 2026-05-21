@@ -78,6 +78,14 @@ private:
 #endif
 	Scheduler::TaskHandle m_preop_state_task;
 
+	// Stuck-reed escape: if a confirmation gesture is pending but the magnet
+	// never RELEASEs (manufacturing residue / shorted switch / hardware
+	// short), the device would otherwise stay in PreOp forever drawing
+	// ~5-20 mA — catastrophic for a sealed turtle. We re-arm the transit
+	// task and force Operational after PREOP_STUCK_REED_MAX_MS elapsed.
+	unsigned int m_preop_stuck_reed_ticks = 0;
+	static constexpr unsigned int PREOP_STUCK_REED_MAX_MS = 20000;  // 20 s
+
 public:
 	void entry() override;
 	void exit() override;
