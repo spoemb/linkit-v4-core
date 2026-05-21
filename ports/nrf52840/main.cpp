@@ -353,6 +353,26 @@ static InitContext init_peripherals()
 	GPIOPins::initialise();
 	etl::error_handler::set_callback<etl_error_handler>();
 
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	// Encapsulated-device safety: a soft reset (OTA, watchdog, nrfjprog --reset,
+	// PMU::reset) leaves the STM32WL co-processor running with state on its VDD
+	// caps — its SPI sequence number doesn't match what the freshly-booted nRF
+	// expects, producing INVALID_CMD / "Response incomplete" cascades on the
+	// first session. POR + cap discharge here forces a clean STM32WL boot.
+	// Skipped on POWER_ON resets where the STM was off anyway.
+	if (PMU::reset_cause() != ResetCause::POWER_ON) {
+		GPIOPins::clear(SAT_PWR_EN);     // Cut STM32WL VDD
+#ifdef SAT_RESET
+		GPIOPins::init_pin(SAT_RESET);
+		GPIOPins::clear(SAT_RESET);       // Hold STM32WL in reset during discharge
+#endif
+#ifdef SMD_VPA_PIN
+		GPIOPins::drive_low(SMD_VPA_PIN);
+#endif
+		PMU::delay_ms(500);               // Drain VDD caps — STM32WL needs ~50-200ms typically; 500ms is safe margin
+	}
+#endif
+
 	rtc = &NrfRTC::get_instance();
 	NrfRTC::get_instance().init();
 

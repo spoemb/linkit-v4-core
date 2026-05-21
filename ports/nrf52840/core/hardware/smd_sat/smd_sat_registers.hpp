@@ -124,12 +124,13 @@ static inline uint32_t spi_crc32_mpeg2(const uint8_t *data, size_t len) {
 // =====================================================================
 // 2026-05 second field test: 5/20 ms triggered `parse_aplus_response: Response
 // incomplete` cascades on one device — STM couldn't serve fast SPI polls
-// during active RF emission. Bumped to mid-range values (10/30) to give the
-// SPI bus more breathing room without going all the way to SAFE (15/50).
-// Autofallback still catches any remaining cascade by flipping to SAFE.
-#define SMDSAT_SPI_INTER_TX_DELAY_FAST_MS   10
+// during active RF emission. After a second bump request from field testing,
+// FAST is now equal to SAFE for these two delays — primary first-TX latency
+// gains come from POWER_ON / LOAD_KMAC / BOOT_DELAY / VDD_DISCHARGE which
+// remain reduced. Autofallback still in place if these are still too aggressive.
+#define SMDSAT_SPI_INTER_TX_DELAY_FAST_MS   15
 #define SMDSAT_SPI_INTER_TX_DELAY_SAFE_MS   15
-#define SMDSAT_SPI_RETRY_DELAY_FAST_MS      30
+#define SMDSAT_SPI_RETRY_DELAY_FAST_MS      50
 #define SMDSAT_SPI_RETRY_DELAY_SAFE_MS      50
 #define SMDSAT_SPI_BOOT_DELAY_FAST_MS       30   // 2026-05 re-test: was 50ms. STM32WL SPI ready ~30ms after reset per datasheet — 30ms = 1x margin, ping retry loop covers edge cases.
 #define SMDSAT_SPI_BOOT_DELAY_SAFE_MS       100
@@ -172,7 +173,8 @@ extern bool g_smdsat_use_safe_timings;
 static inline unsigned int smdsat_spi_inter_tx_delay_ms() {
 #if SMDSAT_USE_SAFE_TIMINGS
 	return SMDSAT_SPI_INTER_TX_DELAY_SAFE_MS;
-#elif SMDSAT_AUTOFALLBACK_ENABLED
+#elif SMDSAT_AUTOFALLBACK_ENABLED && \
+      (SMDSAT_SPI_INTER_TX_DELAY_FAST_MS != SMDSAT_SPI_INTER_TX_DELAY_SAFE_MS)
 	return g_smdsat_use_safe_timings ? SMDSAT_SPI_INTER_TX_DELAY_SAFE_MS
 	                                 : SMDSAT_SPI_INTER_TX_DELAY_FAST_MS;
 #else
@@ -182,7 +184,8 @@ static inline unsigned int smdsat_spi_inter_tx_delay_ms() {
 static inline unsigned int smdsat_spi_retry_delay_ms() {
 #if SMDSAT_USE_SAFE_TIMINGS
 	return SMDSAT_SPI_RETRY_DELAY_SAFE_MS;
-#elif SMDSAT_AUTOFALLBACK_ENABLED
+#elif SMDSAT_AUTOFALLBACK_ENABLED && \
+      (SMDSAT_SPI_RETRY_DELAY_FAST_MS != SMDSAT_SPI_RETRY_DELAY_SAFE_MS)
 	return g_smdsat_use_safe_timings ? SMDSAT_SPI_RETRY_DELAY_SAFE_MS
 	                                 : SMDSAT_SPI_RETRY_DELAY_FAST_MS;
 #else
@@ -192,7 +195,8 @@ static inline unsigned int smdsat_spi_retry_delay_ms() {
 static inline unsigned int smdsat_spi_boot_delay_ms() {
 #if SMDSAT_USE_SAFE_TIMINGS
 	return SMDSAT_SPI_BOOT_DELAY_SAFE_MS;
-#elif SMDSAT_AUTOFALLBACK_ENABLED
+#elif SMDSAT_AUTOFALLBACK_ENABLED && \
+      (SMDSAT_SPI_BOOT_DELAY_FAST_MS != SMDSAT_SPI_BOOT_DELAY_SAFE_MS)
 	return g_smdsat_use_safe_timings ? SMDSAT_SPI_BOOT_DELAY_SAFE_MS
 	                                 : SMDSAT_SPI_BOOT_DELAY_FAST_MS;
 #else
@@ -202,7 +206,8 @@ static inline unsigned int smdsat_spi_boot_delay_ms() {
 static inline unsigned int smdsat_delay_power_on_ms() {
 #if SMDSAT_USE_SAFE_TIMINGS
 	return SMDSAT_DELAY_POWER_ON_SAFE_MS;
-#elif SMDSAT_AUTOFALLBACK_ENABLED
+#elif SMDSAT_AUTOFALLBACK_ENABLED && \
+      (SMDSAT_DELAY_POWER_ON_FAST_MS != SMDSAT_DELAY_POWER_ON_SAFE_MS)
 	return g_smdsat_use_safe_timings ? SMDSAT_DELAY_POWER_ON_SAFE_MS
 	                                 : SMDSAT_DELAY_POWER_ON_FAST_MS;
 #else
@@ -212,7 +217,8 @@ static inline unsigned int smdsat_delay_power_on_ms() {
 static inline unsigned int smdsat_delay_load_kmac_ms() {
 #if SMDSAT_USE_SAFE_TIMINGS
 	return SMDSAT_DELAY_LOAD_KMAC_SAFE_MS;
-#elif SMDSAT_AUTOFALLBACK_ENABLED
+#elif SMDSAT_AUTOFALLBACK_ENABLED && \
+      (SMDSAT_DELAY_LOAD_KMAC_FAST_MS != SMDSAT_DELAY_LOAD_KMAC_SAFE_MS)
 	return g_smdsat_use_safe_timings ? SMDSAT_DELAY_LOAD_KMAC_SAFE_MS
 	                                 : SMDSAT_DELAY_LOAD_KMAC_FAST_MS;
 #else
@@ -222,7 +228,8 @@ static inline unsigned int smdsat_delay_load_kmac_ms() {
 static inline unsigned int smdsat_vdd_discharge_ms() {
 #if SMDSAT_USE_SAFE_TIMINGS
 	return SMDSAT_VDD_DISCHARGE_SAFE_MS;
-#elif SMDSAT_AUTOFALLBACK_ENABLED
+#elif SMDSAT_AUTOFALLBACK_ENABLED && \
+      (SMDSAT_VDD_DISCHARGE_FAST_MS != SMDSAT_VDD_DISCHARGE_SAFE_MS)
 	return g_smdsat_use_safe_timings ? SMDSAT_VDD_DISCHARGE_SAFE_MS
 	                                 : SMDSAT_VDD_DISCHARGE_FAST_MS;
 #else
@@ -243,7 +250,8 @@ static inline unsigned int smdsat_timing_tx_poll_ms() {
 static inline unsigned int smdsat_first_tx_base_delay_ms() {
 #if SMDSAT_USE_SAFE_TIMINGS
 	return SMDSAT_FIRST_TX_BASE_DELAY_SAFE_MS;
-#elif SMDSAT_AUTOFALLBACK_ENABLED
+#elif SMDSAT_AUTOFALLBACK_ENABLED && \
+      (SMDSAT_FIRST_TX_BASE_DELAY_FAST_MS != SMDSAT_FIRST_TX_BASE_DELAY_SAFE_MS)
 	return g_smdsat_use_safe_timings ? SMDSAT_FIRST_TX_BASE_DELAY_SAFE_MS
 	                                 : SMDSAT_FIRST_TX_BASE_DELAY_FAST_MS;
 #else

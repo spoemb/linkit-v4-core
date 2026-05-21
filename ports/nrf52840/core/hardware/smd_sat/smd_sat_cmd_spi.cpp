@@ -255,10 +255,11 @@ static uint32_t get_command_delay(uint8_t cmd) {
             // IDLE bytes sometimes containing a bit-shifted 0x55 that the parser
             // mistakes for MAGIC, then the byte at offset+3 is treated as
             // data_len and produces "Response incomplete: got 64 | expected N"
-            // WARN cascades. 100 ms gives the STM time to finish RF housekeeping
-            // and fill the response buffer cleanly. Costs ~70 ms per is_tx_finished
-            // poll, negligible vs the seconds the TX itself takes.
-            return SMDSAT_SPI_POST_TX_DELAY_MS;   // 100 ms
+            // WARN cascades. 150 ms (2026-05 second field-test bump) gives the
+            // STM ample time to finish RF housekeeping and fill the response
+            // buffer cleanly. Costs ~120 ms per is_tx_finished poll, negligible
+            // vs the seconds the TX itself takes.
+            return 150;
         case SMDSAT_CMD_DFU_RESET:
         case SMDSAT_CMD_DFU_JUMP:
             return SMDSAT_TIMING_RESET_MS;
