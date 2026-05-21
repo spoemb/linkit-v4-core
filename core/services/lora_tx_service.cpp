@@ -778,26 +778,33 @@ void LoRaTxService::react(KineisEventTxComplete const&) {
 
 	// Cooldown arming based on trigger mode — parity with ArgosTxService.
 	// The cooldown timer actually starts on the next UW event (dive), not here.
+	// Cooldown guard: skip re-arming if a cooldown is already active — a TX
+	// firing during cooldown (only possible in DUTY_CYCLE / LEGACY modes;
+	// SURFACING_BURST is already gated) would re-set m_cooldown_armed, and
+	// the next dive's set_cycle_complete(now) would reset the cooldown timer,
+	// creeping it forward by one full interval per cycle. Parity with the
+	// AT_SURFACE / END_OF_DOPPLER branches handled in notify_peer_event.
 	{
 		unsigned int trigger = configuration_store->read_param<unsigned int>(ParamID::COOLDOWN_TRIGGER_MODE);
+		bool cooldown_active = ServiceManager::is_in_cooldown(service_current_time());
 		if (trigger == (unsigned int)BaseCooldownTrigger::AFTER_LAST_TX) {
 			// Mode 3: arm on every GNSS or Doppler (status-burst) TX.
 			// Bool arming is idempotent — the effective anchor is the dive event.
 			// Log only on first transition per cycle to avoid spam on long bursts.
 			bool qualifies_gnss   = m_last_tx_had_gps;
 			bool qualifies_dopper = m_is_surfacing_burst && !m_last_tx_had_gps;
-			if ((qualifies_gnss || qualifies_dopper) && !m_cooldown_armed) {
+			if ((qualifies_gnss || qualifies_dopper) && !m_cooldown_armed && !cooldown_active) {
 				m_cooldown_armed = true;
 				DEBUG_INFO("LoRaTxService: cooldown armed (AFTER_LAST_TX, reason=%s)",
 				           qualifies_gnss ? "GNSS" : "DOPPLER");
-			} else if (qualifies_gnss || qualifies_dopper) {
+			} else if ((qualifies_gnss || qualifies_dopper) && !cooldown_active) {
 				// Subsequent qualifying TX — keep armed, refresh effective arm reason at TRACE.
 				DEBUG_TRACE("LoRaTxService: cooldown re-armed (AFTER_LAST_TX, reason=%s)",
 				            qualifies_gnss ? "GNSS" : "DOPPLER");
 			}
 		} else if (trigger == (unsigned int)BaseCooldownTrigger::AFTER_FIRST_GNSS) {
 			// Mode 2: arm after first GNSS TX only
-			if (m_last_tx_had_gps && !m_cooldown_armed) {
+			if (m_last_tx_had_gps && !m_cooldown_armed && !cooldown_active) {
 				m_cooldown_armed = true;
 				DEBUG_INFO("LoRaTxService: cooldown armed (AFTER_FIRST_GNSS)");
 			}

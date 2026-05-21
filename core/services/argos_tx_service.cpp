@@ -1228,16 +1228,23 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 
 	// Cooldown arming based on trigger mode.
 	// The cooldown timer actually starts on the next UW event (dive), not here.
+	// Cooldown guard: skip re-arming if a cooldown is already active — otherwise
+	// a TX that fires during cooldown (only possible in DUTY_CYCLE / LEGACY /
+	// PASS_PREDICTION; SURFACING_BURST is already gated) would re-set
+	// m_cooldown_armed, and the next dive's set_cycle_complete(now) would
+	// reset the cooldown timer — creeping it forward by one full interval on
+	// each cycle. Parity with the AT_SURFACE / END_OF_DOPPLER branches.
 	{
 		unsigned int trigger = configuration_store->read_param<unsigned int>(ParamID::COOLDOWN_TRIGGER_MODE);
+		bool cooldown_active = ServiceManager::is_in_cooldown(service_current_time());
 		if (trigger == (unsigned int)BaseCooldownTrigger::AFTER_LAST_TX) {
 			// Mode 3: arm on every TX complete (timer restarts each time)
-			if (m_last_tx_had_gps || m_is_surfacing_burst) {
+			if ((m_last_tx_had_gps || m_is_surfacing_burst) && !cooldown_active) {
 				m_cooldown_armed = true;
 			}
 		} else if (trigger == (unsigned int)BaseCooldownTrigger::AFTER_FIRST_GNSS) {
 			// Mode 2: arm after first GNSS TX only
-			if (m_last_tx_had_gps && !m_cooldown_armed) {
+			if (m_last_tx_had_gps && !m_cooldown_armed && !cooldown_active) {
 				m_cooldown_armed = true;
 				DEBUG_INFO("ArgosTxService: cooldown armed (AFTER_FIRST_GNSS)");
 			}

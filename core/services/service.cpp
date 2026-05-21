@@ -52,6 +52,10 @@ void ServiceManager::startall(std::function<void(ServiceEvent&)> data_notificati
 
 /// @brief Stop all registered services (called on FSM transition out of Operational).
 void ServiceManager::stopall() {
+	// Cancel any pending cooldown-wake task. Otherwise a stale wake lambda
+	// queued during an active cooldown could fire after we transition back
+	// into Operational and undo a fresh cooldown's SWS pause.
+	system_scheduler->cancel_task(m_cooldown_wake_task);
 	for (auto const& p : m_map)
 		p.second.stop();
 }
