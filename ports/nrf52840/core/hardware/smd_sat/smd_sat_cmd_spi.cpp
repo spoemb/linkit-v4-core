@@ -671,10 +671,21 @@ void SmdSatCmdSpi::read_radio_conf(SmdArgosModulation *modulation) {
 	uint32_t min_frequency = (static_cast<uint32_t>(rx[3]) << 24) | (static_cast<uint32_t>(rx[2]) << 16) | (static_cast<uint32_t>(rx[1]) << 8) | rx[0];
 	uint32_t max_frequency = (static_cast<uint32_t>(rx[7]) << 24) | (static_cast<uint32_t>(rx[6]) << 16) | (static_cast<uint32_t>(rx[5]) << 8) | rx[4];
 	int8_t rf_level = rx[8];
-	*modulation = static_cast<SmdArgosModulation>(rx[9]);
+	// rx[9] is the STM32 KNS_tx_mod_t enum (LDA2=2, LDA2L=3, VLDA4=4, HDA4=5,
+	// LDK=6) — NOT the SmdArgosModulation enum (LDA2=0, LDK=1, VLDA4=2).
+	// A direct cast would silently produce wrong values (e.g. KNS LDA2=2 cast
+	// gives ARGOS_MOD_VLDA4=2). Same mapping as init_and_get_mod() in
+	// smd_spi_test().
+	uint8_t kineis_mod = rx[9];
+	switch (kineis_mod) {
+		case 2: case 3: *modulation = ARGOS_MOD_LDA2; break;   // KNS_TX_MOD_LDA2 / LDA2L
+		case 4:         *modulation = ARGOS_MOD_VLDA4; break;  // KNS_TX_MOD_VLDA4
+		case 6:         *modulation = ARGOS_MOD_LDK; break;    // KNS_TX_MOD_LDK
+		default:        *modulation = ARGOS_MOD_LDA2; break;   // safe fallback
+	}
 
-	DEBUG_INFO("SmdSatCmdSpi::%s: Modulation: %u | Min Freq: %u | Max Freq: %u | RF Level %d", __func__,
-		*modulation, min_frequency, max_frequency, rf_level);
+	DEBUG_INFO("SmdSatCmdSpi::%s: KineisMod=%u (-> enum=%d) | Min Freq: %u | Max Freq: %u | RF Level %d", __func__,
+		kineis_mod, static_cast<int>(*modulation), min_frequency, max_frequency, rf_level);
 }
 
 bool SmdSatCmdSpi::save_radio_conf() {
@@ -927,16 +938,19 @@ bool SmdSatCmdSpi::is_tx_finished() {
 
 	if (mac_status == MAC_TX_DONE) {
 		DEBUG_TRACE("SmdSatCmdSpi::%s: TX completed successfully", __func__);
+		m_last_tx_status = mac_status;
 		return true;
 	}
 
 	if (mac_status == MAC_TX_TIMEOUT) {
 		DEBUG_WARN("SmdSatCmdSpi::%s: TX timeout (no satellite)", __func__);
+		m_last_tx_status = mac_status;
 		return true;
 	}
 
 	if (mac_status == MAC_ERROR) {
 		DEBUG_ERROR("SmdSatCmdSpi::%s: TX error", __func__);
+		m_last_tx_status = mac_status;
 		return true;
 	}
 

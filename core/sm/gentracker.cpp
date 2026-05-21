@@ -28,7 +28,23 @@
 #include "gps_service.hpp"
 #include "ble_service.hpp"
 #include "sws_analog_service.hpp"
+// CRC16-CCITT: nRF SDK header in firmware build, inline stub in CppUTest build.
+// Mirrors the conditional in sws_analog_constants.hpp so tests can build this
+// file (the SDK header is not on the test include path).
+#ifndef CPPUTEST
 #include "crc16.h"
+#else
+#include <cstdint>
+static inline uint16_t crc16_compute(const uint8_t *data, uint16_t length, const uint16_t *) {
+	uint16_t crc = 0xFFFF;
+	for (uint16_t i = 0; i < length; i++) {
+		crc ^= static_cast<uint16_t>(data[i]) << 8;
+		for (uint8_t j = 0; j < 8; j++)
+			crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : crc << 1;
+	}
+	return crc;
+}
+#endif
 #include "gentracker.hpp"
 
 // USB DTE interface (platform-specific)
@@ -326,12 +342,26 @@ void BootState::entry() {
 		DEBUG_ERROR("BootState: %u failed boots — attempting factory_reset before final retry",
 		            s_bootfail_noinit.consecutive_failures);
 		s_bootfail_noinit.factory_reset_attempted = 1;
+		// Reset the consecutive-failure counter after factory_reset so the next
+		// boot starts fresh — otherwise the counter keeps climbing past
+		// BOOT_RETRY_MAX and we fall through to OffState anyway, bricking the
+		// sealed device even though factory_reset gave us a clean slate to try.
+		// factory_reset_attempted stays at 1 so we don't loop the factory_reset
+		// itself; only the soft-reset retry budget is replenished.
+		s_bootfail_noinit.consecutive_failures = 0;
 		bootfail_save();
+		// factory_reset() writes the full default param block + RTC to LFS.
+		// On a degraded flash that's the slowest operation in BootState; kick
+		// the WDT first so the 15-min budget restarts cleanly, otherwise a
+		// flash erase retry chain could exhaust it mid-reset and brick the
+		// sealed device on the very recovery path that's supposed to save it.
+		PMU::kick_watchdog();
 		try {
 			if (configuration_store) configuration_store->factory_reset();
 		} catch (...) {
 			DEBUG_ERROR("BootState: factory_reset itself threw — proceeding to reboot anyway");
 		}
+		PMU::kick_watchdog();
 		PMU::delay_ms(100);  // Let logs flush
 		PMU::reset(false);
 	}
@@ -344,10 +374,20 @@ void BootState::entry() {
 	led_handle::dispatch<SetLEDBoot>({});
 	buzz_handle::start();
 
+	// WDT kick before LFS mount/format. On a sealed deployment, a marginal
+	// flash block (wear, ECC retry) can stretch mount() into multiple seconds;
+	// the 15-min WDT budget shouldn't be partly consumed by the boot path
+	// before we even reach the scheduler. Kicks here, after mount, and before
+	// configuration_store->init() bracket the 3 longest LFS operations in
+	// BootState — without them, a slow flash plus the post-task 1 s delay
+	// before line 401 leaves no margin in cascade scenarios.
+	PMU::kick_watchdog();
+
 	// If we can't mount the filesystem then try to format it first and retry
 	if (!main_filesystem->is_mounted() && main_filesystem->mount() < 0)
 	{
 		DEBUG_TRACE("format filesystem");
+		PMU::kick_watchdog();  // format() is the longest LFS op — fresh budget
 		if (main_filesystem->format() < 0 || main_filesystem->mount() < 0)
 		{
 			// We can't mount a formatted filesystem, something bad has happened
@@ -355,6 +395,7 @@ void BootState::entry() {
 			return;
 		}
 	}
+	PMU::kick_watchdog();  // post-mount: fresh budget before configuration_store->init
 
 	// Start reed switch monitoring and dispatch events to state machine
 	reed_switch->start([](ReedSwitchGesture s) { ReedSwitchEvent e; e.state = s; dispatch(e); });

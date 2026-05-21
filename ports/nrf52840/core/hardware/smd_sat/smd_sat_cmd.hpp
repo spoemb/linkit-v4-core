@@ -78,6 +78,13 @@ public:
 	virtual bool initiate_tx(const KineisPacket& payload) = 0;
 	virtual bool is_tx_finished() = 0;
 	virtual bool is_tx_in_progress() = 0;
+	/// @brief After is_tx_finished() returns true, returns whether the TX
+	/// actually succeeded (MAC_TX_DONE) vs. failed (MAC_TX_TIMEOUT/MAC_ERROR).
+	/// Lets the upper layer distinguish "TX hardware completed" from
+	/// "TX hardware completed AND was actually transmitted." Critical for
+	/// AFTER_LAST_TX cooldown arming — without this distinction, a failed TX
+	/// erroneously arms cooldown the same as a successful one.
+	virtual bool is_tx_successful() = 0;
 
 	// ========================================================================
 	// Status

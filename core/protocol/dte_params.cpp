@@ -340,6 +340,12 @@ const BaseMap param_map[] = {
 	// Persisted across reboot so a watchdog reset in degraded mode does not lose the SAFE state.
 	// Read-only at DTE; written exclusively by SmdSat itself.
 	{ "SMD_DEGRADED_MODE", "SMP00", BaseEncoding::UINT, 0U, 1U, {}, true, false },
+	// [227] Cached SMD modulation (0=LDA2, 1=LDK, 2=VLDA4) — mirrors what's actually
+	// programmed in STM32WL flash. Written by SmdSat after the credentials-dirty path
+	// reads back the master RCONF. On boot, SmdSat loads this so the FIRST surface-burst
+	// TX uses the correct modulation without needing a runtime SPI READ_RCONF.
+	// Read-only at DTE; written exclusively by SmdSat itself.
+	{ "ARGOS_CACHED_MODULATION", "SMP01", BaseEncoding::UINT, 0U, 2U, {}, true, false },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

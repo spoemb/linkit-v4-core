@@ -77,6 +77,26 @@ private:
 	// Adaptive modulation: switch RCONF if needed before TX
 	bool ensure_modulation(KineisModulation target);
 	std::string get_rconf_for_modulation(KineisModulation mode);
+
+	// @brief Modulation to use when adaptive is OFF. The user's master RCONF
+	// (ARGOS_RADIOCONF) is encrypted hex — we can't tell locally which
+	// modulation it encodes. The device layer (KIM2) reads back AT+RCONF=? at
+	// init and caches the actual modulation, exposed via get_current_modulation().
+	// SMD doesn't auto-detect (m_modulation stays at LDA2 default), so SMD
+	// users keep today's behavior. Falls back to LDA2 on first cold boot
+	// before init has run.
+	KineisModulation resolve_non_adaptive_modulation();
+
+	// @brief Bitmask of modulations whose per-mod RCONF is present (32-char hex)
+	// in the config store. Used by burst processors to skip a TX cleanly when
+	// the would-be fallback modulation can't hold the payload (instead of
+	// hitting KIM2's silent payload-too-long drop + 30 s service timeout).
+	// Computed at service_init() and on every scheduling cycle so runtime
+	// PARMW edits are reflected. Bits: 0=LDK, 1=LDA2, 2=VLDA4.
+	uint8_t m_modulation_avail_mask = 0;
+	void refresh_modulation_availability();
+	bool is_modulation_provisioned(KineisModulation mode) const;
+	static bool size_fits_modulation(unsigned int payload_bits, KineisModulation mode);
 	KineisModulation m_last_preconfig_mod = KineisModulation::LDA2;
 	std::optional<KineisModulation> m_modulation_preconfig;
 

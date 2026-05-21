@@ -83,8 +83,12 @@ KIM2Device::KIM2Device()
     m_tx_buffer.clear();
     m_packet_buffer.clear();
     m_state = KIM2ManagerState::power_off;
-    m_tx_mode = KineisModulation::LDK;
-    m_current_rconf_mode = KineisModulation::LDK;
+    m_tx_mode = KineisModulation::LDA2;
+    // Default to LDA2 — the canonical Argos modulation and what the service
+    // assumes when adaptive modulation is OFF. The actual modulation is
+    // re-discovered from AT+RCONF=? readback during state_init, so this only
+    // matters for the very first scheduling cycle on a cold boot.
+    m_current_rconf_mode = KineisModulation::LDA2;
     m_timeout = {};
     m_stopping = false;
     m_cmd_is_ok = false;
@@ -731,7 +735,8 @@ void KIM2Device::state_init()
 
     // Program + validate. Returns false on AT error OR on VLDA4-not-27dBm
     // rejection (in which case m_vlda4_allowed is now false).
-    if (!write_and_validate_rconf(rconf, target_mode)) {
+    KIM2::RConfDecoded init_decoded;
+    if (!write_and_validate_rconf(rconf, target_mode, &init_decoded)) {
         // Try to recover before giving up: if the user configured a compliant
         // non-VLDA4 fallback (LDK or LDA2, in that order), program it instead
         // and red-blink so the failure is visible. Applies to both adaptive
@@ -752,7 +757,7 @@ void KIM2Device::state_init()
                 DEBUG_WARN("KIM2Device::state_init: no stored RCONF for fallback mode %d", static_cast<int>(fb));
                 continue;
             }
-            if (write_and_validate_rconf(fb_rconf, fb)) {
+            if (write_and_validate_rconf(fb_rconf, fb, &init_decoded)) {
                 target_mode = fb;
                 rconf = fb_rconf;
                 m_current_rconf_mode = fb;
@@ -766,6 +771,21 @@ void KIM2Device::state_init()
             DEBUG_ERROR("KIM2Device::state_init: no compliant RCONF available — entering error");
             KIM2_STATE_CHANGE(init, error);
             return;
+        }
+    }
+
+    // Non-adaptive mode: the master RCONF (ARGOS_RADIOCONF) is opaque/encrypted
+    // hex — we can't tell locally which modulation it encodes. The module's
+    // AT+RCONF=? readback reports the actual modulation, so we cache it here so
+    // that the service (via get_current_modulation()) builds the next packet
+    // at the correct size. Client bug otherwise: master encodes LDK but the
+    // service hardcodes LDA2 → AT+TX 24 B to LDK module → +ERROR=5.
+    if (!adaptive && init_decoded.valid) {
+        auto actual = mod_from_name(init_decoded.modulation);
+        if (actual.has_value() && actual.value() != m_current_rconf_mode) {
+            DEBUG_INFO("KIM2Device::state_init: non-adaptive master RCONF encodes %s (was tracking %d) — aligning",
+                       init_decoded.modulation.c_str(), static_cast<int>(m_current_rconf_mode));
+            m_current_rconf_mode = actual.value();
         }
     }
 
@@ -870,6 +890,27 @@ void KIM2Device::state_transmit_enter()
     if (m_tx_mode != m_current_rconf_mode) {
         DEBUG_WARN("KIM2Device::state_transmit_enter: TX mode %u != RCONF mode %u, realigning",
             static_cast<unsigned int>(m_tx_mode), static_cast<unsigned int>(m_current_rconf_mode));
+
+        // Non-adaptive guard: master RCONF dictates the actual modulation
+        // (load_rconf_for_mode() returns the master regardless of m_tx_mode in
+        // non-adaptive). Realignment is futile — rewriting the same RCONF
+        // doesn't change the modulation on the air, but ALSO the existing code
+        // below clobbers m_current_rconf_mode = m_tx_mode (line ~927),
+        // overwriting the truth that state_init read back. With the wrong
+        // modulation tag cached, get_current_modulation() lies on the next
+        // scheduling cycle and the service keeps building wrong-size packets.
+        // Abort cleanly: service.react(DeviceError) reschedules, and at the
+        // next cycle get_current_modulation() returns the value state_init set
+        // (LDK, etc.) so the rebuilt packet matches the master modulation.
+        bool adaptive = configuration_store->read_param<bool>(ParamID::ARGOS_ADAPTIVE_MODULATION);
+        if (!adaptive) {
+            DEBUG_ERROR("KIM2Device::state_transmit_enter: non-adaptive — service requested mode %u but module is configured for mode %u — aborting TX (next cycle will rebuild at correct mode via get_current_modulation())",
+                static_cast<unsigned int>(m_tx_mode),
+                static_cast<unsigned int>(m_current_rconf_mode));
+            m_tx_buffer.clear();
+            KIM2_STATE_CHANGE(transmit, error);
+            return;
+        }
 
         // Regulatory gate: VLDA4 already probed off on this boot — never
         // reprogram it even if a caller slipped through.
@@ -991,6 +1032,16 @@ void KIM2Device::state_error_exit()
 // ============================================================================
 // Internal helpers
 // ============================================================================
+
+std::optional<KineisModulation> KIM2Device::mod_from_name(const std::string& name)
+{
+    if (name == "LDK")   return KineisModulation::LDK;
+    if (name == "LDA2")  return KineisModulation::LDA2;
+    if (name == "VLDA4") return KineisModulation::VLDA4;
+    // LDA2L / HDA4 / UNKNOWN are not in KineisModulation — caller keeps the
+    // previous value rather than guessing.
+    return std::nullopt;
+}
 
 std::string KIM2Device::load_rconf_for_mode(KineisModulation mode)
 {

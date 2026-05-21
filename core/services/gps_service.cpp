@@ -113,6 +113,20 @@ unsigned int GPSService::service_next_schedule_in_ms() {
 	GNSSConfig gnss_config;
 	configuration_store->get_gnss_configuration(gnss_config);
 
+#if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
+	// Gate: while waiting for the first Argos TX to complete, no GPS
+	// scheduling at all. The gate-arming code in notify_peer_event UW=0
+	// calls service_reschedule(false), which routes through here — and
+	// returning SCHEDULE_DISABLED here is what actually cancels the
+	// UTC-aligned boot-time schedule. The ArgosTx SERVICE_INACTIVE
+	// handler clears the gate then calls service_reschedule(immediate)
+	// which routes back here and now returns a real delay.
+	if (m_defer_gnss_until_argos_first_tx) {
+		DEBUG_TRACE("GPSService::service_next_schedule_in_ms: gate armed — SCHEDULE_DISABLED");
+		return Service::SCHEDULE_DISABLED;
+	}
+#endif
+
     // Single fix mode: don't reschedule GNSS after first successful fix
     if (m_is_first_fix_found && configuration_store->read_param<bool>(ParamID::GNSS_SESSION_SINGLE_FIX)) {
         DEBUG_INFO("GPSService: GNSS_SESSION_SINGLE_FIX enabled | not rescheduling after first fix");
@@ -697,10 +711,21 @@ void GPSService::notify_peer_event(ServiceEvent& e) {
 				                     !ServiceManager::is_in_cooldown(service_current_time());
 				if (argos_will_tx) {
 					m_defer_gnss_until_argos_first_tx = true;
-					// Demoted to TRACE: gate behavior is well-tested and emits its
-					// release counterpart "GPSService: first Argos TX done — releasing
-					// GNSS gate" which is the actionable marker. Removing this saves
-					// ~50-300 ms LFS commit on the surfacing critical path.
+					// Cancel any pending GPS schedule so the gate actually defers
+					// the next power_on. WITHOUT this, a UTC-boundary schedule
+					// that was queued at boot (gps_service.cpp:157 aligns the
+					// next_schedule on the next aq_period UTC boundary, which
+					// can be 0-30 s away) fires BEFORE ArgosTx completes the
+					// first surfacing-burst TX — exactly the contention the
+					// gate is meant to avoid. service_is_triggered_on_surfaced
+					// returns false (gate armed) so the base class doesn't
+					// re-schedule, but it also doesn't cancel the existing
+					// task. Force a reschedule here; service_next_schedule_in_ms
+					// returns SCHEDULE_DISABLED while the gate is armed, so the
+					// reschedule cancels the pending task without arming a new
+					// one. The ArgosTx SERVICE_INACTIVE handler below
+					// reschedules properly once TX is done (or has errored out).
+					service_reschedule(false);
 					DEBUG_TRACE("GPSService: surfaced — GNSS deferred until first Argos TX completes");
 				}
 			}

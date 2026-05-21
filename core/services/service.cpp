@@ -13,10 +13,28 @@
 #include "interrupt_lock.hpp"
 #include "sws_analog_service.hpp"
 #include "../sm/error.hpp"
-#include "crc16.h"
+#include "pmu.hpp"
 #include <cstddef>
 #include <stdexcept>
 #include <variant>
+
+// CRC16-CCITT: nRF SDK header in firmware build, inline stub in CppUTest build.
+// Mirrors the conditional in sws_analog_constants.hpp so tests can build this
+// file (the SDK header is not on the test include path).
+#ifndef CPPUTEST
+#include "crc16.h"
+#else
+#include <cstdint>
+static inline uint16_t crc16_compute(const uint8_t *data, uint16_t length, const uint16_t *) {
+	uint16_t crc = 0xFFFF;
+	for (uint16_t i = 0; i < length; i++) {
+		crc ^= static_cast<uint16_t>(data[i]) << 8;
+		for (uint8_t j = 0; j < 8; j++)
+			crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : crc << 1;
+	}
+	return crc;
+}
+#endif
 
 extern Timer *system_timer;
 extern Scheduler *system_scheduler;
@@ -51,13 +69,46 @@ void ServiceManager::startall(std::function<void(ServiceEvent&)> data_notificati
 }
 
 /// @brief Stop all registered services (called on FSM transition out of Operational).
+///
+/// Per-service hardening for the sealed-deployment case: each Service::stop()
+/// can call deschedule(), service_cancel(), notify_service_inactive() and
+/// service_term() — any of which can throw (variant access, scheduler queue)
+/// OR hang (I2C device unresponsive during sensor term, BLE SoftDevice quirk,
+/// SMD SPI cascade). Without protection here, the *first* misbehaving service
+/// aborts the whole stop sequence, leaving services N+1..K still scheduled.
+/// Result: stale tasks fire after the FSM has already transited to e.g.
+/// ConfigurationState or OffState, mutating shared state from a context where
+/// they shouldn't run.
+///
+/// Defense in depth:
+/// 1. WDT kick before every service stop — a 15-min budget per service rather
+///    than per stopall. On a sealed turtle, a single hung service must not
+///    consume the budget the *next* service needs to clean up.
+/// 2. try/catch per service — exception in one stop() doesn't abort the loop.
+///
+/// We can't protect against true hangs (no preemption), but the WDT kick
+/// pattern means a hang reaches the 15-min cap at the offending service, not
+/// after partial-stop of N-1 services. A WDT reset then puts the device back
+/// in BootState with a fresh start, which is recoverable; half-stopped
+/// services persisting into the next FSM state are not.
 void ServiceManager::stopall() {
 	// Cancel any pending cooldown-wake task. Otherwise a stale wake lambda
 	// queued during an active cooldown could fire after we transition back
 	// into Operational and undo a fresh cooldown's SWS pause.
 	system_scheduler->cancel_task(m_cooldown_wake_task);
-	for (auto const& p : m_map)
-		p.second.stop();
+	for (auto const& p : m_map) {
+		PMU::kick_watchdog();
+		try {
+			p.second.stop();
+		} catch (const std::exception& e) {
+			DEBUG_ERROR("ServiceManager::stopall: %s stop() threw std::exception: %s",
+			            p.second.get_name(), e.what());
+		} catch (...) {
+			DEBUG_ERROR("ServiceManager::stopall: %s stop() threw unknown — continuing",
+			            p.second.get_name());
+		}
+	}
+	PMU::kick_watchdog();
 }
 
 /// @brief Broadcast a peer event to all services except the originator.

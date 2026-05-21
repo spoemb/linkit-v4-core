@@ -62,6 +62,7 @@ public:
 	bool initiate_tx(const KineisPacket& payload) override;
 	bool is_tx_finished() override;
 	bool is_tx_in_progress() override;
+	bool is_tx_successful() override { return m_tx_complete && m_tx_status == 0; }
 
 	// Status
 	void get_status(uint8_t *status) override;

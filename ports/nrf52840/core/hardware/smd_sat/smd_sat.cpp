@@ -89,7 +89,22 @@ SmdSat::SmdSat(SmdSatCmd& cmd, unsigned int idle_shutdown_ms)
 	DEBUG_TRACE("SmdSat::%s",__func__);
 	set_idle_timeout(idle_shutdown_ms);
 	m_packet_buffer.clear();
+	// Load cached modulation from config — set by the credentials-dirty path
+	// after the last master RCONF write. Avoids defaulting to LDA2 every boot
+	// (which would silently desync m_modulation from the actual programmed
+	// RCONF when the user's master encodes LDK or VLDA4). Default 0 = LDA2.
 	m_modulation = ARGOS_MOD_LDA2;
+	if (configuration_store) {
+		unsigned int cached = configuration_store->read_param<unsigned int>(ParamID::ARGOS_CACHED_MODULATION);
+		switch (cached) {
+			case 0:  m_modulation = ARGOS_MOD_LDA2;  break;
+			case 1:  m_modulation = ARGOS_MOD_LDK;   break;
+			case 2:  m_modulation = ARGOS_MOD_VLDA4; break;
+			default: m_modulation = ARGOS_MOD_LDA2;  break;
+		}
+		DEBUG_INFO("SmdSat::ctor: loaded cached modulation=%u (-> enum=%d)",
+		           cached, static_cast<int>(m_modulation));
+	}
 	m_state = SmdSatState::stopped;
 	m_stopping = false;
 	m_state_counter = 0;
@@ -124,6 +139,8 @@ void SmdSat::shutdown(void) {
 	// resumes from its previous SPI sequence number, causing INVALID_CMD
 	// when the nRF restarts with seq=0 after a soft reset.
 	nrf_delay_ms(smdsat_vdd_discharge_ms());
+	// NOTE: this is a static method — cannot stamp m_last_power_off_ms here.
+	// The instance-level timestamp is set in power_off_immediate() instead.
 }
 
 void SmdSat::power_on_blocking() {
@@ -333,7 +350,15 @@ void SmdSat::state_error_enter() {
 
 void SmdSat::state_error_exit() {}
 
+/// @brief Defensive no-op: in normal flow this body never executes because
+/// state_error_enter() always calls SMD_STATE_CHANGE(error, stopped) before
+/// returning, so m_state is already 'stopped' by the time state_machine()
+/// dispatches its next tick. Kept as a safety net: if state_error_enter()
+/// is ever modified to return without transitioning (e.g. mid-refactor that
+/// adds an async path), we still drop to 'stopped' here instead of looping
+/// in error forever. The WARN log will surface the bug in field traces.
 void SmdSat::state_error() {
+	DEBUG_WARN("SmdSat::state_error: body reached — state_error_enter did not transit (regression?)");
 	SMD_STATE_CHANGE(error, stopped);
 }
 
@@ -341,6 +366,27 @@ void SmdSat::state_error() {
 /// @brief Load persisted SMD_DEGRADED_MODE flag on first SmdSat tick.
 /// Reads ParamID::SMD_DEGRADED_MODE so a watchdog or power-cycle that
 /// occurred while in SAFE mode keeps the SAFE timings on the next boot.
+///
+/// KNOWN LIMITATION (audit 2026-05 F1): only the SAFE/FAST flag is persisted —
+/// m_safe_trust_window_hours always resets to 1 on boot. Consequence on a
+/// sealed 1-year deployment: every WDT/POR reset while in SAFE mode triggers
+/// a FAST retest 1 h post-boot regardless of where the doubling chain had
+/// reached before (could have been 8 h, 16 h, 24 h). Cost ≈ 3 wasted TXes per
+/// failed FAST retest. If reboots are rare (annual deployment, well-tested
+/// firmware) the impact is bounded; if reboots become frequent the FAST/SAFE
+/// chain effectively collapses to "always retest at 1 h", which is the
+/// same behavior as a fresh device entering SAFE for the first time.
+/// Fix path if needed: encode the window in SMD_DEGRADED_MODE itself
+/// (0=FAST, N>0=SAFE/N-hours) and persist on every doubling.
+///
+/// KNOWN LIMITATION (audit 2026-05 F2): m_safe_mode_since_ms is reset to
+/// PMU::get_timestamp_ms() at load time, i.e. boot timestamp — not the real
+/// UTC moment when SAFE was engaged. degraded_mode_note_success() therefore
+/// measures "hours in SAFE since this boot" rather than "hours since SAFE
+/// was actually engaged". A boot that happens 23 h into SAFE waits a full
+/// new trust window (24 h potentially) instead of retesting promptly.
+/// Fix path if needed: persist RTC UTC timestamp at engage time, compare
+/// against RTC on load.
 void SmdSat::degraded_mode_load_if_needed() {
 	if (m_degraded_mode_loaded) return;
 	m_degraded_mode_loaded = true;
@@ -436,6 +482,12 @@ void SmdSat::state_stopped_enter() {
 	GPIOPins::release_sensors_pwr();
 	nrf_gpio_cfg_default(BSP::GPIO_Inits[SAT_RESET].pin_number);
 
+	// Stamp power-off timestamp so the next state_powering_on can skip the
+	// redundant VDD discharge wait if the dive was long enough for natural
+	// decay. Saves 50 ms (FAST) / 100 ms (SAFE) on the first Doppler at
+	// surface for the sealed turtle case (dive duration minutes).
+	m_last_power_off_ms = PMU::get_timestamp_ms();
+
 	// Force entry to state_load_kmac on next boot for TCXO/LPM writes (RAM registers).
 	// The explicit load_kmac_profil SPI command is only sent when RCONF changed
 	// (m_needs_explicit_kmac_load) — otherwise STM32 auto-inits MAC from flash at POR.
@@ -471,7 +523,21 @@ void SmdSat::state_powering_on() {
 #ifdef SMD_VPA_PIN
 	GPIOPins::drive_low(SMD_VPA_PIN);
 #endif
-	nrf_delay_ms(smdsat_vdd_discharge_ms());  // VDD cap discharge — FAST=50ms / SAFE=100ms.
+	// Skip the redundant VDD discharge wait if the previous power-off already
+	// allowed enough time for natural decay. The sealed turtle case (dive
+	// duration minutes) always satisfies this, saving 50 ms (FAST) / 100 ms
+	// (SAFE) on the FIRST Doppler at surface — the most latency-sensitive TX
+	// of the burst. m_last_power_off_ms==0 means we've never powered off
+	// (first cold boot), so keep the discharge to be safe.
+	uint64_t now = PMU::get_timestamp_ms();
+	bool vdd_already_decayed = (m_last_power_off_ms != 0) &&
+	                           ((now - m_last_power_off_ms) >= VDD_NATURAL_DISCHARGE_MS);
+	if (!vdd_already_decayed) {
+		nrf_delay_ms(smdsat_vdd_discharge_ms());  // VDD cap discharge — FAST=50ms / SAFE=100ms.
+	} else {
+		TXTRACE("state_powering_on: VDD discharge skipped (%llu ms since last off)",
+		        now - m_last_power_off_ms);
+	}
 	// power_off_immediate() in the surfacing-burst flow already drives VDD low;
 	// 50ms is enough for the LinkIt V4 cap to discharge before the next POR.
 
@@ -731,7 +797,15 @@ void SmdSat::state_idle_pending() {
 
 void SmdSat::state_idle_enter() {
 	m_next_delay = SMDSAT_DELAY_TICK_INTERRUPT_MS;
+	// Clamp ≥1: integer division of m_idle_timeout_ms / TICK_MS gives 0 when
+	// idle_timeout < TICK_MS (10 ms). 0 then underflows on the first
+	// --m_state_counter to UINT_MAX → idle effectively never times out, so
+	// state_idle keeps re-scheduling until something external (packet arrival
+	// or m_stopping) breaks the loop. Real callers pass 1 s default or
+	// 35 s burst, so this is defense-in-depth against a future caller
+	// passing a small or zero value.
 	m_state_counter = m_idle_timeout_ms / SMDSAT_DELAY_TICK_INTERRUPT_MS;
+	if (m_state_counter == 0) m_state_counter = 1;
 
 	// If LPM allows STANDBY/SHUTDOWN, release wakeup pin LOW so SMD can
 	// enter deep sleep while waiting for next TX in this session.
@@ -788,7 +862,10 @@ void SmdSat::state_idle() {
 		return;
 	}
 
+	// Mirror the clamp from state_idle_enter — same UINT_MAX underflow risk
+	// when transitioning back to idle from a TX with a small idle_timeout.
 	m_state_counter = m_idle_timeout_ms / SMDSAT_DELAY_TICK_INTERRUPT_MS;
+	if (m_state_counter == 0) m_state_counter = 1;
 }
 
 void SmdSat::state_transmit_pending_enter() {
@@ -869,6 +946,18 @@ void SmdSat::state_transmitting() {
 		if (m_tx_buffer.size()) {
 			TXTRACE("state_transmitting: TX FINISHED — total elapsed");
 			m_tx_buffer.clear();
+			// is_tx_finished() returns true for MAC_TX_DONE (real success),
+			// MAC_TX_TIMEOUT (no satellite reception), AND MAC_ERROR (hard
+			// failure). Only MAC_TX_DONE should fire KineisEventTxComplete —
+			// otherwise AFTER_LAST_TX cooldown arms on a failed TX and locks
+			// out the whole surface cycle even though no packet was sent.
+			bool tx_success = m_cmd.is_tx_successful();
+			if (!tx_success) {
+				TXTRACE("state_transmitting: TX FAILED (timeout/error) — notifying DeviceError");
+				notify(KineisEventDeviceError({}));
+				SMD_STATE_CHANGE(transmitting, stopped);
+				return;
+			}
 			m_error_count = 0;  // TX success — reset consecutive error counter
 #if SMDSAT_AUTOFALLBACK_ENABLED
 			// Autofallback: track successful TXes while in SAFE so the
@@ -1026,6 +1115,13 @@ bool SmdSat::write_credentials_from_config() {
 
 	// Flash write operations need ~100ms for persistence.
 	// Previous delay (SMDSAT_DELAY_CMD_MS*2 = 60ms) was insufficient.
+	//
+	// KNOWN LIMITATION (audit 2026-05 F5): no PMU::kick_watchdog() between the
+	// per-cmd wait_cmd() calls. Total worst case here is ~7 SPI writes × ~150ms
+	// = ~1.1 s blocking. The 15-min WDT budget swallows this comfortably, but
+	// if a future SPI cmd grows internal retries (e.g. cascade backoff) the
+	// margin shrinks. Add a kick mid-routine if you ever extend this sequence
+	// past ~5 s of blocking work. NOT a current bug — flagged for awareness.
 	auto wait_cmd = []() { nrf_delay_ms(120); };
 
 	unsigned int dec_id = configuration_store->read_param<unsigned int>(ParamID::ARGOS_DECID);
@@ -1154,6 +1250,29 @@ bool SmdSat::write_credentials_from_config() {
 				}
 			}
 		}
+	}
+
+	// Read back the actual modulation programmed in STM32WL flash and persist
+	// it. The master RCONF (ARGOS_RADIOCONF) is encrypted hex — we can't decode
+	// which modulation it encodes locally. After the credentials-dirty path
+	// just wrote it, READ_RCONF gives us the truth. Cache to config_store so
+	// subsequent boots load the correct modulation at SmdSat construction
+	// without needing a runtime SPI readback on the surface-burst critical
+	// path. Failure here is non-fatal — m_modulation keeps its prior value.
+	try {
+		SmdArgosModulation reported = m_modulation;
+		m_cmd.read_radio_conf(&reported);
+		if (reported != m_modulation) {
+			DEBUG_INFO("SmdSat::%s: cached modulation update %d -> %d (master RCONF readback)",
+			           __func__, static_cast<int>(m_modulation), static_cast<int>(reported));
+			m_modulation = reported;
+		}
+		if (configuration_store) {
+			configuration_store->write_param(ParamID::ARGOS_CACHED_MODULATION,
+			                                 static_cast<unsigned int>(m_modulation));
+		}
+	} catch (...) {
+		DEBUG_WARN("SmdSat::%s: read_radio_conf failed — cached modulation not refreshed", __func__);
 	}
 
 	DEBUG_INFO("SmdSat::%s: credentials written successfully", __func__);
@@ -1429,6 +1548,11 @@ bool SmdSat::switch_modulation(KineisModulation mode, const std::string& rconf_h
 		              static_cast<int>(target));
 		m_modulation = target;
 		m_pending_rconf = rconf_hex;
+		// Persist so the next boot loads this modulation directly.
+		if (configuration_store) {
+			configuration_store->write_param(ParamID::ARGOS_CACHED_MODULATION,
+			                                 static_cast<unsigned int>(m_modulation));
+		}
 		// Force state_load_kmac on next boot so the deferred RCONF gets applied.
 		// Without this, idle_pending skips to idle and the RCONF is never written.
 		is_kmac_profil_loaded = false;
@@ -1486,6 +1610,11 @@ bool SmdSat::switch_modulation(KineisModulation mode, const std::string& rconf_h
 	// Update cached modulation
 	m_modulation = target;
 	is_kmac_profil_loaded = true;
+	// Persist so the next boot loads this modulation directly.
+	if (configuration_store) {
+		configuration_store->write_param(ParamID::ARGOS_CACHED_MODULATION,
+		                                 static_cast<unsigned int>(m_modulation));
+	}
 
 	MODSWITCH_LOG(modswitch_elapsed(), "modulation switched to %d OK — TOTAL",
 	              static_cast<int>(target));

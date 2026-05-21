@@ -69,6 +69,11 @@ void ArgosTxService::service_init() {
 	m_prepared_doppler_size_bits = 0;
 	m_prepared_at_ms = 0;
 
+	// Snapshot which per-mod RCONFs are provisioned. Used by adaptive bursts
+	// to skip a TX cleanly when the fallback modulation can't hold the packet
+	// — better than KIM2's silent payload-too-long drop + 30 s service timeout.
+	refresh_modulation_availability();
+
 	// Set the idle timeout depending on the configuration settings
 	// i) In certification mode, keep powered on for 10 seconds in idle
 	// ii) In normal operation, keep powered on for 1 second in idle
@@ -105,6 +110,10 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 
 	DEBUG_TRACE("ArgosTxService::service_next_schedule_in_ms");
 
+	// Refresh provisioned-modulation mask in case PARMW edited an RCONF since
+	// the last cycle. Cheap (3 string-length checks); only logs on change.
+	refresh_modulation_availability();
+
 	// Critical battery check: immediate powerdown, no transmission
 	if (argos_config.is_lb) {
 		service_update_battery();
@@ -129,7 +138,7 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 			return Service::SCHEDULE_DISABLED;
 		} else if (argos_config.mode == BaseArgosMode::DOPPLER) {
 			m_scheduled_task = [this]() { process_doppler_burst(); };
-			m_scheduled_mode = argos_config.adaptive_modulation ? KineisModulation::VLDA4 : KineisModulation::LDA2;
+			m_scheduled_mode = argos_config.adaptive_modulation ? KineisModulation::VLDA4 : resolve_non_adaptive_modulation();
 			return m_sched.schedule_legacy(argos_config, now);
 		} else if (argos_config.mode == BaseArgosMode::SURFACING_BURST) {
 			m_scheduled_mode = KineisModulation::LDA2;
@@ -222,11 +231,11 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 			if (!argos_config.gnss_en) {
 				m_scheduled_task = [this]() { process_doppler_burst(); };
 				if (argos_config.mode == BaseArgosMode::DUTY_CYCLE) {
-					m_scheduled_mode = argos_config.adaptive_modulation ? KineisModulation::VLDA4 : KineisModulation::LDA2;
+					m_scheduled_mode = argos_config.adaptive_modulation ? KineisModulation::VLDA4 : resolve_non_adaptive_modulation();
 					return m_sched.schedule_duty_cycle(argos_config, now);
 				}
 				if (argos_config.mode == BaseArgosMode::LEGACY) {
-					m_scheduled_mode = argos_config.adaptive_modulation ? KineisModulation::VLDA4 : KineisModulation::LDA2;
+					m_scheduled_mode = argos_config.adaptive_modulation ? KineisModulation::VLDA4 : resolve_non_adaptive_modulation();
 					return m_sched.schedule_legacy(argos_config, now);
 				}
 				return Service::SCHEDULE_DISABLED;
@@ -245,7 +254,13 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 				return Service::SCHEDULE_DISABLED;
 			}
 			if (argos_config.mode == BaseArgosMode::DUTY_CYCLE) {
-				m_scheduled_mode = KineisModulation::LDA2;
+				// Non-adaptive: honor the master RCONF's actual modulation
+				// (decoded from AT+RCONF=? at init on KIM2; LDA2 on SMD).
+				// Adaptive: default to LDA2; process_*_burst will switch to
+				// LDK if the payload fits (96/128-bit packets).
+				m_scheduled_mode = argos_config.adaptive_modulation
+					? KineisModulation::LDA2
+					: resolve_non_adaptive_modulation();
 #ifdef BOARD_RSPB
 				if (argos_config.adaptive_modulation && argos_config.sensor_tx_enable) {
 					unsigned int pkt_fmt = configuration_store->read_param<unsigned int>(ParamID::RSPB_PACKET_FORMAT);
@@ -260,7 +275,9 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 				return m_sched.schedule_duty_cycle(argos_config, now);
 			}
 			if (argos_config.mode == BaseArgosMode::LEGACY) {
-				m_scheduled_mode = KineisModulation::LDA2;
+				m_scheduled_mode = argos_config.adaptive_modulation
+					? KineisModulation::LDA2
+					: resolve_non_adaptive_modulation();
 #ifdef BOARD_RSPB
 				if (argos_config.adaptive_modulation && argos_config.sensor_tx_enable) {
 					unsigned int pkt_fmt = configuration_store->read_param<unsigned int>(ParamID::RSPB_PACKET_FORMAT);
@@ -275,7 +292,9 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 				return m_sched.schedule_legacy(argos_config, now);
 			}
 			if (argos_config.mode == BaseArgosMode::PASS_PREDICTION) {
-				m_scheduled_mode = KineisModulation::LDA2;
+				m_scheduled_mode = argos_config.adaptive_modulation
+					? KineisModulation::LDA2
+					: resolve_non_adaptive_modulation();
 				if (argos_config.sensor_tx_enable) {
 					m_scheduled_task = [this]() { process_sensor_burst(); };
 				} else {
@@ -330,12 +349,29 @@ void ArgosTxService::service_initiate() {
 	// In these modes we switch RCONF + reload KMAC at init time (no timing
 	// constraint). For SURFACING_BURST, the switch is done at TX complete
 	// or during process to avoid KMAC reload at boot.
+	//
+	// Skip the pre-switch when the burst processor will re-decide modulation
+	// from payload size (GNSS-only bursts on non-RSPB in LEGACY/DUTY_CYCLE/
+	// PASS_PREDICTION): m_scheduled_mode is provisionally LDA2 at scheduling
+	// time, but process_gnss_burst flips to LDK for single-fix short packets
+	// (96 bits). Without this guard the device would switch LDA2 → then LDK
+	// in succession, costing an extra RCONF+KMAC cycle (~280 ms) per TX.
+	// RSPB already nails m_scheduled_mode at scheduling via RSPB_PACKET_FORMAT
+	// so the pre-switch is accurate there.
 	if (!m_modulation_preconfig.has_value()) {
 		ArgosConfig argos_config;
 		configuration_store->get_argos_configuration(argos_config);
 		if (argos_config.adaptive_modulation &&
 			argos_config.mode != BaseArgosMode::SURFACING_BURST) {
-			if (m_kineis.get_current_modulation() != m_scheduled_mode) {
+			bool burst_may_override_mode = false;
+#ifndef BOARD_RSPB
+			burst_may_override_mode = argos_config.gnss_en &&
+				(argos_config.mode == BaseArgosMode::LEGACY ||
+				 argos_config.mode == BaseArgosMode::DUTY_CYCLE ||
+				 argos_config.mode == BaseArgosMode::PASS_PREDICTION);
+#endif
+			if (!burst_may_override_mode &&
+				m_kineis.get_current_modulation() != m_scheduled_mode) {
 				DEBUG_INFO("ArgosTxService::service_initiate: adaptive pre-switch to %s",
 				           argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode));
 				ensure_modulation(m_scheduled_mode);
@@ -618,6 +654,67 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 // Adaptive modulation helpers
 // ============================================================================
 
+/// @brief Refresh the m_modulation_avail_mask snapshot from config_store.
+/// Called at service_init and at the top of every scheduling cycle so a
+/// runtime PARMW edit on one of the per-mod RCONFs takes effect on the next
+/// TX without requiring a reboot. A modulation is "provisioned" iff its
+/// RCONF is a non-empty 32-char hex string (ensure_modulation()'s validity
+/// rule). The mask is purely advisory — ensure_modulation() still re-checks
+/// at switch time, so a stale mask only delays the skip decision by one
+/// cycle, never causes a wrong TX.
+void ArgosTxService::refresh_modulation_availability() {
+	ArgosConfig cfg;
+	configuration_store->get_argos_configuration(cfg);
+	auto valid = [](const std::string& s) { return !s.empty() && s.size() == 32; };
+	uint8_t prev = m_modulation_avail_mask;
+	m_modulation_avail_mask = 0;
+	if (valid(cfg.radioconf_ldk))   m_modulation_avail_mask |= (1u << 0);
+	if (valid(cfg.radioconf_lda2))  m_modulation_avail_mask |= (1u << 1);
+	if (valid(cfg.radioconf_vlda4)) m_modulation_avail_mask |= (1u << 2);
+	if (prev != m_modulation_avail_mask) {
+		DEBUG_INFO("ArgosTxService: modulation availability mask=0x%02X (LDK=%u LDA2=%u VLDA4=%u)",
+		           m_modulation_avail_mask,
+		           (m_modulation_avail_mask >> 0) & 1,
+		           (m_modulation_avail_mask >> 1) & 1,
+		           (m_modulation_avail_mask >> 2) & 1);
+	}
+}
+
+bool ArgosTxService::is_modulation_provisioned(KineisModulation mode) const {
+	switch (mode) {
+		case KineisModulation::LDK:   return (m_modulation_avail_mask >> 0) & 1;
+		case KineisModulation::LDA2:  return (m_modulation_avail_mask >> 1) & 1;
+		case KineisModulation::VLDA4: return (m_modulation_avail_mask >> 2) & 1;
+		default: return false;
+	}
+}
+
+/// @brief Whether a payload of @p payload_bits will fit @p mode (per the
+/// KIM2/SMD send() max-size table). LDA2 has the largest budget, so when an
+/// ensure_modulation() switch fails and we'd fall back to "current", this is
+/// what tells the burst processor whether the fallback is viable or whether
+/// the TX must be skipped to avoid KIM2's silent payload-too-long drop.
+bool ArgosTxService::size_fits_modulation(unsigned int payload_bits, KineisModulation mode) {
+	switch (mode) {
+		case KineisModulation::LDK:   return payload_bits <= 128;
+		case KineisModulation::LDA2:  return payload_bits <= 192;
+		case KineisModulation::VLDA4: return payload_bits <= 24;
+		default: return false;
+	}
+}
+
+/// @brief Modulation honored by the device when adaptive is OFF.
+/// On KIM2, state_init parses AT+RCONF=? and updates m_current_rconf_mode to
+/// the modulation actually encoded in the master RCONF (which is encrypted
+/// hex and not locally decodable). On SMD, m_modulation stays at the LDA2
+/// constructor default — SMD users see today's behavior (master RCONF must
+/// encode LDA2). On first cold boot of KIM2 before init has run, returns the
+/// LDA2 default; the first TX may fail if the master encodes a different
+/// modulation, but state_init will update the cache and subsequent TXs work.
+KineisModulation ArgosTxService::resolve_non_adaptive_modulation() {
+	return m_kineis.get_current_modulation();
+}
+
 /// @brief Get RCONF hex string for a given modulation from config store.
 /// @param mode  Target modulation (LDK, LDA2, VLDA4).
 /// @return 32-char hex RCONF string, or empty if not configured.
@@ -710,6 +807,12 @@ void ArgosTxService::process_sensor_burst() {
 				if (!ensure_modulation(m_scheduled_mode)) {
 					DEBUG_WARN("ArgosTxService::process_sensor_burst: CloudLocate modulation switch failed");
 					m_scheduled_mode = m_kineis.get_current_modulation();
+					if (!size_fits_modulation(size_bits, m_scheduled_mode)) {
+						DEBUG_ERROR("ArgosTxService::process_sensor_burst: CloudLocate payload %u bits doesn't fit fallback mod %d — skipping TX",
+						            size_bits, (int)m_scheduled_mode);
+						service_complete();
+						return;
+					}
 				}
 			}
 			DEBUG_INFO("ArgosTxService::process_sensor_burst: CloudLocate fmt=%u mode=%s data=%s",
@@ -729,6 +832,12 @@ void ArgosTxService::process_sensor_burst() {
 				if (!ensure_modulation(m_scheduled_mode)) {
 					DEBUG_WARN("ArgosTxService::process_sensor_burst: fastloc modulation switch failed, using current");
 					m_scheduled_mode = m_kineis.get_current_modulation();
+					if (!size_fits_modulation(size_bits, m_scheduled_mode)) {
+						DEBUG_ERROR("ArgosTxService::process_sensor_burst: fastloc payload %u bits doesn't fit fallback mod %d — skipping TX",
+						            size_bits, (int)m_scheduled_mode);
+						service_complete();
+						return;
+					}
 				}
 			}
 			DEBUG_INFO("ArgosTxService::process_sensor_burst: fastloc mode=%s data=%s sz=%u",
@@ -767,6 +876,12 @@ void ArgosTxService::process_sensor_burst() {
 			if (!ensure_modulation(m_scheduled_mode)) {
 				DEBUG_WARN("ArgosTxService::process_sensor_burst: RSPB modulation switch failed, using current");
 				m_scheduled_mode = m_kineis.get_current_modulation();
+				if (!size_fits_modulation(size_bits, m_scheduled_mode)) {
+					DEBUG_ERROR("ArgosTxService::process_sensor_burst: RSPB payload %u bits doesn't fit fallback mod %d — skipping TX",
+					            size_bits, (int)m_scheduled_mode);
+					service_complete();
+					return;
+				}
 			}
 		}
 #else
@@ -797,6 +912,12 @@ void ArgosTxService::process_sensor_burst() {
 			if (!ensure_modulation(m_scheduled_mode)) {
 				DEBUG_WARN("ArgosTxService::process_sensor_burst: modulation switch failed, using current");
 				m_scheduled_mode = m_kineis.get_current_modulation();
+				if (!size_fits_modulation(size_bits, m_scheduled_mode)) {
+					DEBUG_ERROR("ArgosTxService::process_sensor_burst: sensor payload %u bits doesn't fit fallback mod %d — skipping TX",
+					            size_bits, (int)m_scheduled_mode);
+					service_complete();
+					return;
+				}
 			}
 		}
 #endif
@@ -841,6 +962,12 @@ void ArgosTxService::process_gnss_burst() {
 				if (!ensure_modulation(m_scheduled_mode)) {
 					DEBUG_WARN("ArgosTxService::process_gnss_burst: CloudLocate modulation switch failed");
 					m_scheduled_mode = m_kineis.get_current_modulation();
+					if (!size_fits_modulation(size_bits, m_scheduled_mode)) {
+						DEBUG_ERROR("ArgosTxService::process_gnss_burst: CloudLocate payload %u bits doesn't fit fallback mod %d — skipping TX",
+						            size_bits, (int)m_scheduled_mode);
+						service_complete();
+						return;
+					}
 				}
 			}
 			DEBUG_INFO("ArgosTxService::process_gnss_burst: CloudLocate fmt=%u mode=%s data=%s",
@@ -882,6 +1009,12 @@ void ArgosTxService::process_gnss_burst() {
 			if (!ensure_modulation(m_scheduled_mode)) {
 				DEBUG_WARN("ArgosTxService::process_gnss_burst: modulation switch failed, using current");
 				m_scheduled_mode = m_kineis.get_current_modulation();
+				if (!size_fits_modulation(size_bits, m_scheduled_mode)) {
+					DEBUG_ERROR("ArgosTxService::process_gnss_burst: GNSS payload %u bits doesn't fit fallback mod %d — skipping TX",
+					            size_bits, (int)m_scheduled_mode);
+					service_complete();
+					return;
+				}
 			}
 		}
 
@@ -1028,6 +1161,12 @@ void ArgosTxService::process_doppler_burst() {
 				if (!ensure_modulation(tx_mode)) {
 					DEBUG_WARN("ArgosTxService::process_doppler_burst: CloudLocate modulation switch failed");
 					tx_mode = m_kineis.get_current_modulation();
+					if (!size_fits_modulation(size_bits, tx_mode)) {
+						DEBUG_ERROR("ArgosTxService::process_doppler_burst: CloudLocate payload %u bits doesn't fit fallback mod %d — skipping TX",
+						            size_bits, (int)tx_mode);
+						service_complete();
+						return;
+					}
 				}
 			}
 
@@ -1090,6 +1229,12 @@ void ArgosTxService::process_doppler_burst() {
 			if (!ensure_modulation(tx_mode)) {
 				DEBUG_WARN("ArgosTxService::process_doppler_burst: fastloc modulation switch failed, using current");
 				tx_mode = m_kineis.get_current_modulation();
+				if (!size_fits_modulation(size_bits, tx_mode)) {
+					DEBUG_ERROR("ArgosTxService::process_doppler_burst: fastloc payload %u bits doesn't fit fallback mod %d — skipping TX",
+					            size_bits, (int)tx_mode);
+					service_complete();
+					return;
+				}
 			}
 		}
 
@@ -1127,14 +1272,20 @@ void ArgosTxService::process_doppler_burst() {
 		service_get_voltage(), service_is_battery_level_low(), size_bits);
 #endif
 
-	// Adaptive modulation: Doppler = 24 bits = VLDA4
-	KineisModulation tx_mode = KineisModulation::LDA2;
+	// Adaptive modulation: Doppler = 24 bits = VLDA4.
+	// Non-adaptive: honor the master RCONF's modulation (LDK/LDA2/VLDA4 all
+	// accept a 24-bit Doppler payload — KIM2 pads per modulation). LDA2
+	// fallback is for SMD users (m_modulation stays at LDA2) and the very
+	// first KIM2 boot before state_init has read back the actual modulation.
+	KineisModulation tx_mode;
 	if (argos_config.adaptive_modulation) {
 		tx_mode = KineisModulation::VLDA4;
 		if (!ensure_modulation(tx_mode)) {
 			DEBUG_WARN("ArgosTxService::process_doppler_burst: modulation switch failed, using current");
 			tx_mode = m_kineis.get_current_modulation();
 		}
+	} else {
+		tx_mode = resolve_non_adaptive_modulation();
 	}
 
 	// Demoted to TRACE: METRIC-SURF and METRIC-FIRST-TX already mark the burst

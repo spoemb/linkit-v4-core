@@ -72,6 +72,7 @@ public:
 	bool initiate_tx(const KineisPacket& payload) override;
 	bool is_tx_finished() override;
 	bool is_tx_in_progress() override;
+	bool is_tx_successful() override { return m_last_tx_status == MAC_TX_DONE; }
 
 	// Status
 	void get_status(uint8_t *status) override;
@@ -124,6 +125,11 @@ private:
 	// DFU state
 	bool m_dfu_mode;
 	SmdDfuInfo m_dfu_info;
+
+	// Last TX status — populated by is_tx_finished() when it returns true.
+	// Used by is_tx_successful() to distinguish MAC_TX_DONE (real success)
+	// from MAC_TX_TIMEOUT / MAC_ERROR (failures). 0 = no TX yet.
+	uint8_t m_last_tx_status = 0;
 
 	// Legacy SPI
 	void read_byte(uint8_t *byte_read);

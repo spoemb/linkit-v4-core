@@ -59,6 +59,10 @@ private:
 	bool m_credentials_written = false;
 	bool m_rconf_recovery_attempted = false;
 
+	// (m_modulation is now loaded from ParamID::ARGOS_CACHED_MODULATION at
+	//  construction and updated only in the credentials-dirty path. No runtime
+	//  readback is needed on the TX critical path.)
+
 	/// @brief Consecutive error count — after MAX errors, enter long cooldown to prevent SPI spam.
 	/// Aligned with ArgosTxService::DEVICE_ERROR_MAX_CONSECUTIVE (3) so the SmdSat-level
 	/// autofallback engages at the same threshold as the ArgosTx session suspension. If
@@ -126,6 +130,14 @@ private:
 	uint64_t    m_tx_trace_start_ms = 0;  ///< Anchor for [TXTRACE +N ms] timing logs; reset in send()
 	uint8_t     m_lpm_mode;  // SMD LPM bitmap written at every boot
 	bool        m_wkup_lowered = false;  // True if state_idle_enter dropped WKUP (=> idle_exit must re-raise + wait for wake)
+
+	/// @brief Timestamp (ms) of the last full power-off (shutdown). Used by
+	/// state_powering_on to skip the redundant VDD discharge wait when the
+	/// dive lasted long enough for natural decay (>5 s). Saves ~50 ms FAST /
+	/// ~100 ms SAFE on the first Doppler at surface — the typical sealed
+	/// turtle case where dives are minutes long. 0 = never powered off.
+	uint64_t    m_last_power_off_ms = 0;
+	static constexpr uint64_t VDD_NATURAL_DISCHARGE_MS = 5000;  ///< Dive >5 s → VDD fully decayed
 
 	// New firmware version (cached after DFU)
 	std::string m_new_firmware_version;

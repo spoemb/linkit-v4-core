@@ -365,8 +365,17 @@ enum class ParamID {
 	GNSS_BCKP_CHARGE_UW_ONLY                 = 225,  // bool: when true, charge only while submerged (saltwater switch).
 	// === SMD degraded-mode flag (slot 226) ===
 	SMD_DEGRADED_MODE                        = 226,  // uint: 0 = FAST timings (default); 1 = SAFE timings (set by SmdSat after repeated SPI errors). Persists across reboot when SMDSAT_AUTOFALLBACK is built in. Read-only via DTE.
+	// === SMD cached modulation (slot 227) — persisted across boots ===
+	// uint: 0 = LDA2 (default), 1 = LDK, 2 = VLDA4. Mirrors SmdArgosModulation.
+	// Updated only when ARGOS_RADIOCONF master is re-written (credentials dirty
+	// path: after save_radio_conf, read_radio_conf reads back the actual
+	// modulation encoded in the new RCONF and persists here). On boot, SmdSat
+	// loads this value into m_modulation so the FIRST surface-burst TX uses
+	// the correct modulation — no need for a runtime readback that would add
+	// SPI latency to every surface event. Read-only via DTE.
+	ARGOS_CACHED_MODULATION                  = 227,
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 227,
+	__PARAM_SIZE                             = 228,
 	__NULL_PARAM                             = 0xFFFF
 };
 
