@@ -536,6 +536,17 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 		} else {
 			// Device surfaced
 			m_is_underwater = false;
+			// Reset the session-suspension counter so a transient burst of
+			// failures earlier in the deployment can't permanently kill TX.
+			// Without this reset m_consecutive_device_errors only clears on
+			// service_init (boot) — on a multi-year single-boot deployment,
+			// 3 early errors would suspend TX forever even after the SmdSat
+			// 30-min cooldown expires and autofallback flips to SAFE.
+			if (m_consecutive_device_errors > 0) {
+				DEBUG_INFO("ArgosTxService: clearing %u-error suspension on surface event — fresh session",
+				           m_consecutive_device_errors);
+				m_consecutive_device_errors = 0;
+			}
 			ArgosConfig argos_config;
 			configuration_store->get_argos_configuration(argos_config);
 			std::time_t earliest_schedule = service_current_time() + argos_config.dry_time_before_tx;

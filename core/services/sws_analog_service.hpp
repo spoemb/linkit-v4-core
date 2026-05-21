@@ -400,6 +400,16 @@ private:
     uint8_t m_consecutive_samples;      // Consecutive samples in same direction
     uint8_t m_consecutive_spike_rejects = 0; // Consecutive peak spike rejections
 
+    // ADC silicon/frontend failure detector. Increments on every invalid
+    // raw read, resets on the first valid one. If the SAADC or SWS frontend
+    // permanently fails while the device is underwater, the "return
+    // m_current_state" early-out in detector_state() would otherwise pin
+    // the device in state=underwater forever — no TX ever. After this many
+    // consecutive invalids we force state=surface and emit a WARN so the
+    // device at least keeps transmitting.
+    uint16_t m_consecutive_invalid_adc = 0;
+    static constexpr uint16_t MAX_CONSECUTIVE_INVALID_ADC = 60;  // ~1 min at 1 Hz
+
     // Surface readings buffer for adaptive air baseline
     static constexpr int SURFACE_BUFFER_SIZE = 10;
     uint16_t m_surface_readings[SURFACE_BUFFER_SIZE];

@@ -155,7 +155,14 @@ unsigned int LoRaTxService::service_next_schedule_in_ms() {
 			// happy path.
 			if (m_status_burst_count == 0) {
 				unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
-				if (fastloc_mode == (unsigned int)BaseFastlocMode::CLOUDLOCATE) {
+				// Defer 1st STATUS only when a CloudLocate raw can actually arrive:
+				//   - FASTLOC_MODE == CLOUDLOCATE (CloudLocate enabled)
+				//   - argos_config.gnss_en (GPS hardware will run)
+				// Without the gnss_en check, a deployment with GNSS_EN=0 would
+				// burn the full GNSS_ACQ_TIMEOUT on every surface waiting for
+				// a raw that can never come.
+				if (fastloc_mode == (unsigned int)BaseFastlocMode::CLOUDLOCATE &&
+				    argos_config.gnss_en) {
 					unsigned int wait_s = configuration_store->read_param<unsigned int>(ParamID::GNSS_ACQ_TIMEOUT);
 					if (wait_s == 0) wait_s = 30;  // Safety floor — should never fire (param min is 10)
 					DEBUG_INFO("LoRaTxService::SURFACING_BURST: status #1 deferred up to %u s waiting for CloudLocate raw", wait_s);

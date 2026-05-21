@@ -13,6 +13,7 @@
 #include "interrupt_lock.hpp"
 #include "sws_analog_service.hpp"
 #include "../sm/error.hpp"
+#include "crc16.h"
 #include <cstddef>
 #include <stdexcept>
 #include <variant>
@@ -89,6 +90,14 @@ void ServiceManager::inject_event(ServiceEvent& event) {
 		m_data_notification_callback(event);
 }
 
+// Build-time guarantee that time_t is 64-bit. If the toolchain ever flips to
+// 32-bit signed time_t (newlib --enable-newlib-time-t-32bit or similar), the
+// cooldown math (now - last_cycle) silently wraps in January 2038, leading
+// to false-negative cooldowns mid-deployment. Catching this at compile time
+// is the cheapest possible safety net.
+static_assert(sizeof(std::time_t) >= 8,
+              "time_t must be 64-bit to avoid 2038-01-19 wraparound on multi-year deployments");
+
 // Noinit RAM structure for cooldown persistence across System OFF (PSEUDO_POWER_OFF)
 struct CooldownNoinit {
 	std::time_t last_cycle_time;
@@ -102,11 +111,16 @@ static CooldownNoinit s_cooldown_noinit;
 #endif
 
 static uint16_t cooldown_noinit_crc() {
-	uint16_t crc = 0;
-	const uint8_t *p = reinterpret_cast<const uint8_t *>(&s_cooldown_noinit);
-	for (size_t i = 0; i < offsetof(decltype(s_cooldown_noinit), crc); i++)
-		crc = (crc << 1) ^ p[i];
-	return crc;
+	// CRC-16-CCITT — same algorithm used for SWS calibration and the PMU
+	// callstack, replacing the earlier shift-XOR pseudo-CRC. On a fresh
+	// power-on (battery insert) the noinit RAM is uninitialised; the weak
+	// CRC was prone to false-positive validations against random RAM
+	// patterns, leading to phantom cooldowns that would skip a GPS cycle
+	// at the start of deployment.
+	return crc16_compute(
+		reinterpret_cast<const uint8_t *>(&s_cooldown_noinit),
+		offsetof(decltype(s_cooldown_noinit), crc),
+		nullptr);
 }
 
 /// @brief Persist cooldown state to .noinit RAM (survives System OFF / pseudo power-off).

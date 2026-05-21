@@ -439,6 +439,14 @@ void SWSAnalogService::service_init() {
     m_calib_interval_sec = service_read_param<unsigned int>(ParamID::SWS_ANALOG_CALIB_INTERVAL);
     m_max_dive_time_sec = service_read_param<unsigned int>(ParamID::UW_MAX_DIVE_TIME);
     m_min_surface_time_sec = service_read_param<unsigned int>(ParamID::UW_MIN_SURFACE_TIME);
+    // Defense in depth: UNP25=0 disables the L-override lockout entirely, which
+    // combined with a short SAMPLING_SURF_FREQ allows rapid flap. The
+    // OVERRIDE_MIN_TIME_SEC=1 backstop covers most of this, but the lockout
+    // floor here is a cleaner guarantee. Clamp without warning since 0 is in
+    // the valid DTE range — operators may have set it intentionally.
+    if (m_min_surface_time_sec < 1) {
+        m_min_surface_time_sec = 1;
+    }
 
     if (m_hysteresis_percent > 50) {
         m_hysteresis_percent = DEFAULT_HYSTERESIS_PERCENT;

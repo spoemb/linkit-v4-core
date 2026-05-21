@@ -82,7 +82,29 @@ bool SWSAnalogService::detector_state() {
     uint16_t raw_value = read_analog_sws();
     if (!is_value_valid(raw_value)) {
         DEBUG_WARN("SWSAnalog: Invalid ADC %u", raw_value);
+        // Stuck-failure escape: if the SAADC silicon or SWS frontend dies
+        // while underwater, returning m_current_state forever pins the
+        // device in "underwater" and blocks all TX. After
+        // MAX_CONSECUTIVE_INVALID_ADC reads we force-flip to surface so
+        // the device at least keeps transmitting. We DO NOT reset the
+        // counter here on purpose — only a single valid read clears it.
+        if (m_consecutive_invalid_adc < UINT16_MAX) {
+            m_consecutive_invalid_adc++;
+        }
+        if (m_consecutive_invalid_adc == MAX_CONSECUTIVE_INVALID_ADC) {
+            DEBUG_ERROR("SWSAnalog: %u consecutive invalid ADC reads — forcing state=surface to keep TX alive",
+                        m_consecutive_invalid_adc);
+            return false;  // force surface
+        }
+        if (m_consecutive_invalid_adc > MAX_CONSECUTIVE_INVALID_ADC) {
+            // Stay in forced-surface until ADC recovers
+            return false;
+        }
         return m_current_state;
+    }
+    if (m_consecutive_invalid_adc > 0) {
+        DEBUG_INFO("SWSAnalog: ADC recovered after %u invalid reads", m_consecutive_invalid_adc);
+        m_consecutive_invalid_adc = 0;
     }
 
     // === 1b. COHERENCE CHECK (first sample + continuous) ===
@@ -501,7 +523,10 @@ bool SWSAnalogService::detector_state() {
                                          offsetof(SWSAnalogService::CalibrationData, crc), nullptr);
             m_observed_peak_crc = crc16_compute((const uint8_t *)&m_observed_peak_adc,
                                                  sizeof(m_observed_peak_adc), nullptr);
-            save_calibration_to_flash();
+            // Debounced: a stuck-low electrode (raw≈0 = valid surface) triggers
+            // this recovery every ~50 s and would otherwise burn ~1700 flash
+            // writes/day, exhausting the 100k-cycle endurance in ~60 days.
+            save_calibration_to_flash_debounced();
 
             m_surface_readings_count = 0;
             m_surface_readings_idx = 0;

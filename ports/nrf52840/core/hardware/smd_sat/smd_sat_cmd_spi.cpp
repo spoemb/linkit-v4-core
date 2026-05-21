@@ -227,6 +227,34 @@ bool SmdSatCmdSpi::parse_aplus_response(const uint8_t *rx_buffer, uint16_t rx_le
     return true;
 }
 
+// True if the command triggers a flash/NVM write on the STM32 side, which
+// requires NOP-polling with BUSY pattern handling (the STM stalls SPI while
+// it writes flash). Must be a whitelist of *actual flash-writing* opcodes —
+// matching by cmd_delay >= TIMING_WRITE_MS misclassifies any slow read
+// (e.g. READ_SPIMAC_STATE polled during RF) and causes seq_num desync
+// (per the Zephyr-derived comment in send_command_aplus).
+static bool is_flash_command(uint8_t cmd) {
+    switch (cmd) {
+        case SMDSAT_CMD_DFU_ERASE:
+        case SMDSAT_CMD_DFU_WRITE_DATA:
+        case SMDSAT_CMD_DFU_SET_HEADER:
+        case SMDSAT_CMD_WRITE_RCONF:
+        case SMDSAT_CMD_WRITE_KMAC:
+        case SMDSAT_CMD_WRITE_SECKEY:
+        case SMDSAT_CMD_SAVE_RCONF:
+        case SMDSAT_CMD_WRITE_ID:
+        case SMDSAT_CMD_WRITE_ADDR:
+        case SMDSAT_CMD_WRITE_LPM:
+        case SMDSAT_CMD_WRITE_TCXO:
+        case SMDSAT_CMD_WRITE_CW:
+        case SMDSAT_CMD_WRITE_PREPASSEN:
+        case SMDSAT_CMD_WRITE_UDATE:
+            return true;
+        default:
+            return false;
+    }
+}
+
 // Command-specific delay (matches Zephyr timing constants)
 static uint32_t get_command_delay(uint8_t cmd) {
     switch (cmd) {
@@ -323,7 +351,11 @@ bool SmdSatCmdSpi::send_command_aplus(uint8_t command, const uint8_t *tx_data, u
     // Zephyr behavior: only retry NOP polling for flash/NVM write operations.
     // For standard commands, send ONE NOP and accept whatever comes back.
     // Retrying NOPs for non-flash commands causes sequence number desync with STM32.
-    bool is_flash_op = (cmd_delay >= SMDSAT_TIMING_WRITE_MS);
+    // 2026-05 fix: was `cmd_delay >= SMDSAT_TIMING_WRITE_MS` which misclassified
+    // any slow read (e.g. READ_SPIMAC_STATE @150ms) as a flash op and triggered
+    // the retry-with-seq-bump path — the very cascade the long cmd_delay was
+    // meant to suppress. Whitelist by opcode now.
+    bool is_flash_op = is_flash_command(command);
     uint8_t max_retries = is_flash_op ? SMDSAT_SPI_BUSY_MAX_RETRIES : 0;
 
     for (uint8_t retry = 0; retry <= max_retries; retry++) {

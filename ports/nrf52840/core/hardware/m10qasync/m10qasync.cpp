@@ -158,43 +158,71 @@ void M10QAsyncReceiver::check_for_power_off() {
 		return;
 
 	// On unrecoverable error, force shutdown regardless of client count —
-	// the GPS hardware is in a broken state and cannot serve any client
+	// the GPS hardware is in a broken state and cannot serve any client.
+	// Dispatch through the same switch as the clean-shutdown path so the
+	// CURRENT state's exit handler runs (STATE_CHANGE(idle, poweroff) would
+	// always call state_idle_exit, skipping cleanup of receive/configure/etc.).
 	if (m_unrecoverable_error) {
 		m_powering_off = true;
 		m_num_power_on = 0;
-		STATE_CHANGE(idle, poweroff);
-		return;
 	}
 
-	// Don't power off if there are still active clients
-	if (m_num_power_on)
+	// Don't power off if there are still active clients (and not error path)
+	if (m_num_power_on && !m_unrecoverable_error)
 		return;
 
 	// Try to cleanup in a way that will preserve navigation data
 	// before powering off
 	m_powering_off = true;
 
-	// Try to shutdown cleanly
-	if (STATE_EQUAL(idle)) {
-		return;
-	} else if (STATE_EQUAL(receive)) {
-		STATE_CHANGE(receive, stopreceive);
-	} else if (STATE_EQUAL(poweron)) {
-		STATE_CHANGE(poweron, poweroff);
-	} else if (STATE_EQUAL(configure)) {
-		STATE_CHANGE(configure, poweroff);
-	} else if (STATE_EQUAL(startreceive)) {
-		STATE_CHANGE(startreceive, poweroff);
-	} else if (STATE_EQUAL(senddatabase)) {
-		STATE_CHANGE(senddatabase, poweroff);
-	} else if (STATE_EQUAL(sendofflinedatabase)) {
-		STATE_CHANGE(sendofflinedatabase, poweroff);
-	} else if (STATE_EQUAL(backupidle)) {
-		STATE_CHANGE(backupidle, poweroff);
-	} else if (STATE_EQUAL(enterbackup)) {
-		STATE_CHANGE(enterbackup, poweroff);
-	} else {
-		STATE_CHANGE(idle, poweroff);
+	// Try to shutdown cleanly — dispatch the exit handler matching CURRENT
+	// state, not a fixed literal in STATE_CHANGE. Earlier the `else` fallback
+	// at the bottom called STATE_CHANGE(idle, poweroff) which expanded to
+	// state_idle_exit() regardless of m_state — leaking stopreceive's
+	// cancel_timeout(), fetchdatabase's stop_dbd_filter(), etc.
+	switch (m_state) {
+		case idle:
+			return;  // already idle, nothing to clean up
+		case receive:
+			STATE_CHANGE(receive, stopreceive);
+			break;
+		case poweron:
+			STATE_CHANGE(poweron, poweroff);
+			break;
+		case configure:
+			STATE_CHANGE(configure, poweroff);
+			break;
+		case startreceive:
+			STATE_CHANGE(startreceive, poweroff);
+			break;
+		case senddatabase:
+			STATE_CHANGE(senddatabase, poweroff);
+			break;
+		case sendofflinedatabase:
+			STATE_CHANGE(sendofflinedatabase, poweroff);
+			break;
+		case backupidle:
+			STATE_CHANGE(backupidle, poweroff);
+			break;
+		case enterbackup:
+			STATE_CHANGE(enterbackup, poweroff);
+			break;
+		case stopreceive:
+			STATE_CHANGE(stopreceive, poweroff);
+			break;
+		case fetchdatabase:
+			STATE_CHANGE(fetchdatabase, poweroff);
+			break;
+		case poweroff:
+			// Already in poweroff state — nothing to do
+			return;
+		default:
+			// Should never reach here — enum is fully covered above. Guard
+			// against future state additions: walk through state_idle_exit
+			// so we at least power down cleanly.
+			DEBUG_WARN("M10QAsyncReceiver::check_for_power_off: unhandled state %d", static_cast<int>(m_state));
+			STATE_CHANGE(idle, poweroff);
+			break;
 	}
 }
 
