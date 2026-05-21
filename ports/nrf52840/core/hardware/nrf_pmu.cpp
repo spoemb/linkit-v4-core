@@ -32,15 +32,35 @@ extern RGBLed *status_led;
 static uint32_t m_reset_cause = 0;  ///< Raw RESETREAS register + pseudo power-off flag
 
 #ifdef SOFTDEVICE_PRESENT
-/// @brief SoftDevice power-failure warning handler — saves RTC and cooldown state before brown-out.
+/// @brief SoftDevice power-failure warning handler — captures cooldown state before brown-out.
+///
+/// On `NRF_EVT_POWER_FAILURE_WARNING` (POFCON V27 = 2.7 V on Vbatt) the device has only the
+/// supercap energy left. The previous implementation called `configuration_store->save_params()`
+/// here, which performs an LFS journal write of ~100 ms. If the brown-out is caused by a deep
+/// discharge (supercap drained), that write can be truncated and corrupt the params block.
+///
+/// LFS is journaling, so the file system itself doesn't brick, but partial writes can lose the
+/// last 30 minutes of param updates AND in rare cases leave a half-written record that the
+/// reader then rejects on next boot.
+///
+/// New policy:
+///   - Save ONLY cooldown state to `.noinit` RAM (atomic, no flash, ~µs)
+///   - Capture RTC into the param store IN RAM (write_param updates RAM only, no flash)
+///   - Skip the flash sync entirely — rely on the 30-min periodic flush (gentracker.cpp:202)
+///     and the clean-shutdown save in `PMU::powerdown()` for durable persistence
+///
+/// Net effect: on POF, the device loses up to 30 min of param updates (acceptable) but never
+/// corrupts the params block (catastrophic).
 static void pof_soc_evt_handler(uint32_t evt_id, void * p_context) {
 	(void)p_context;
 	if (evt_id == NRF_EVT_POWER_FAILURE_WARNING) {
 		ServiceManager::save_cooldown_state();
+		// write_param updates RAM only — durable persistence depends on the
+		// next clean-shutdown save_params or periodic flush. Trade-off
+		// accepted: lose <=30 min of RTC vs. risk corrupting all 227 params.
 		if (configuration_store && rtc && rtc->is_set()) {
 			configuration_store->write_param(ParamID::LAST_KNOWN_RTC,
 				static_cast<unsigned int>(rtc->gettime()));
-			configuration_store->save_params();
 		}
 	}
 }
