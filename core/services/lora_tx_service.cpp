@@ -144,8 +144,24 @@ unsigned int LoRaTxService::service_next_schedule_in_ms() {
 
 			m_scheduled_task = [this]() { process_status_burst(); };
 
-			// First message is immediate
+			// First message: normally immediate, but if FASTLOC_MODE=CLOUDLOCATE
+			// defer to give the GPS time to capture the raw measurement before
+			// our 1st TX. The raw-ready notification (notify_peer_event below)
+			// pre-empts this delay via service_reschedule(true), so the actual
+			// 1st TX fires the moment raw is available — typically 5-15 s after
+			// surface. The full timeout only fires as a safety fallback if GPS
+			// never emits raw, at which point we send a STATUS ping (raw=false
+			// branch in process_status_burst). Saves one TX per burst on the
+			// happy path.
 			if (m_status_burst_count == 0) {
+				unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
+				if (fastloc_mode == (unsigned int)BaseFastlocMode::CLOUDLOCATE) {
+					unsigned int wait_s = configuration_store->read_param<unsigned int>(ParamID::GNSS_ACQ_TIMEOUT);
+					if (wait_s == 0) wait_s = 30;  // Safety floor — should never fire (param min is 10)
+					DEBUG_INFO("LoRaTxService::SURFACING_BURST: status #1 deferred up to %u s waiting for CloudLocate raw", wait_s);
+					m_sched.schedule_at(now + wait_s);
+					return wait_s * 1000;
+				}
 				DEBUG_INFO("LoRaTxService::SURFACING_BURST: status #%u (immediate)", m_status_burst_count + 1);
 				m_sched.schedule_at(now);
 				return 0;
