@@ -115,6 +115,16 @@ public:
 		return v;
 	}
 
+	// Peek the most recent entry without consuming a burst slot. Unlike
+	// retrieve_latest(), returns the entry even if burst_counter == 0 (i.e. all
+	// scheduled retries have been used). Intended for read-only inspection by
+	// the BaseGnssStrategy::REUSE_LAST path, which needs to read the last fix
+	// regardless of whether it still has retries left.
+	T* peek_back() {
+		if (m_entry.empty()) return nullptr;
+		return &m_entry.back().data;
+	}
+
 	std::vector<T*> retrieve(unsigned int depth, unsigned int max_messages=3) {
 		max_messages = std::min(depth, max_messages);
 		unsigned int max_index = (depth + (max_messages-1)) / max_messages;
@@ -197,6 +207,12 @@ public:
 
 	std::vector<GPSLogEntry*> retrieve_gps_latest() {
 		return m_gps_depth_pile.retrieve_latest();
+	}
+
+	// Peek the most recent GPS entry without consuming a burst slot — backs
+	// the BaseGnssStrategy::REUSE_LAST path. Returns nullptr on empty pile.
+	GPSLogEntry* peek_gps_latest_any() {
+		return m_gps_depth_pile.peek_back();
 	}
 
 	std::vector<GPSLogEntry*> retrieve_gps(unsigned int depth_pile) {

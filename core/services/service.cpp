@@ -14,6 +14,8 @@
 #include "sws_analog_service.hpp"
 #include "../sm/error.hpp"
 #include "pmu.hpp"
+#include "rate_limiter.hpp"
+#include "hauled_mode_service.hpp"
 #include <cstddef>
 #include <stdexcept>
 #include <variant>
@@ -62,6 +64,8 @@ void ServiceManager::remove(Service& s) {
 void ServiceManager::startall(std::function<void(ServiceEvent&)> data_notification_callback) {
 	m_data_notification_callback = data_notification_callback;
 	restore_cooldown_state();
+	RateLimiter::restore_state();
+	HauledModeService::restore_state();
 	for (auto const& p : m_map) {
 		DEBUG_TRACE("ServiceManager::startall: starting %s id=%u", p.second.get_name(), p.first);
 		p.second.start(data_notification_callback);
@@ -114,6 +118,16 @@ void ServiceManager::stopall() {
 /// @brief Broadcast a peer event to all services except the originator.
 /// @param event  Service event to broadcast.
 void ServiceManager::notify_peer_event(ServiceEvent& event) {
+	// HauledModeService funnel — feeds every UW transition (dive/surface) into
+	// the hauled classifier. Hooked here rather than in a Service subclass so
+	// there's a single ground-truth dispatch site (Plan 1 step 3).
+	if (event.event_source == ServiceIdentifier::UW_SENSOR &&
+	    event.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+		std::time_t now = (rtc && rtc->is_set()) ? rtc->gettime() : 0;
+		if (now > 0) {
+			HauledModeService::on_underwater_event(std::get<bool>(event.event_data), now);
+		}
+	}
 	for (auto const& p : m_map) {
 		if (p.first != event.event_originator_unique_id)
 			p.second.notify_peer_event(event);

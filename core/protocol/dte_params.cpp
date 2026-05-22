@@ -346,6 +346,26 @@ const BaseMap param_map[] = {
 	// TX uses the correct modulation without needing a runtime SPI READ_RCONF.
 	// Read-only at DTE; written exclusively by SmdSat itself.
 	{ "ARGOS_CACHED_MODULATION", "SMP01", BaseEncoding::UINT, 0U, 2U, {}, true, false },
+	// [228] GNSS REUSE_LAST max fix age — see ParamID comment.
+	// 0 = disable reuse (always fall back to OFF/Doppler). Default 24h.
+	{ "GNSS_REUSE_FIX_MAX_AGE_S", "GNP50", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true },
+	// [229..231] Rolling-window TX rate limiter (Plan 1 step 2).
+	// Disabled by default. RATE_LIMIT_MAX_TX is bounded by RateLimiter::MAX_CAP
+	// (32) to keep the noinit ring buffer at a fixed 256-byte footprint.
+	{ "RATE_LIMIT_EN",        "RLP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
+	{ "RATE_LIMIT_WINDOW_S",  "RLP02", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
+	{ "RATE_LIMIT_MAX_TX",    "RLP03", BaseEncoding::UINT, 0U, 32U, {}, true, true },
+	// [232..238] Hauled-vs-at-sea mode (Plan 1 step 3).
+	// Detection params (HMP00..02) and override params (HMP10..13). Disabled
+	// by default — HAULED_* substitutes mode/TR/gnss_en when engaged.
+	{ "HAULED_DETECT_EN",          "HMP00", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
+	{ "HAULED_IDLE_THRESHOLD_H",   "HMP01", BaseEncoding::UINT,    1U, 0xFFFFU, {}, true, true },
+	{ "HAULED_RETURN_EVENTS",      "HMP02", BaseEncoding::UINT,    1U, 0xFFU,   {}, true, true },
+	{ "HAULED_ARGOS_MODE",         "HMP10", BaseEncoding::ARGOSMODE, 0, 0, { 0U, 1U, 2U, 3U, 4U, 5U }, true, true },
+	{ "HAULED_TR_NOM",             "HMP11", BaseEncoding::UINT,    1U, 0xFFFFFFFFU, {}, true, true },
+	{ "HAULED_GNSS_EN",            "HMP12", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
+	// HAULED_GNSS_STRAT: 0=FRESH, 1=REUSE_LAST, 2=OFF (BaseGnssStrategy)
+	{ "HAULED_GNSS_STRAT",         "HMP13", BaseEncoding::UINT,    0U, 2U, {}, true, true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

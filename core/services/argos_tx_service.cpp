@@ -14,6 +14,7 @@
 #include "binascii.hpp"
 #include "debug.hpp"
 #include "pmu.hpp"
+#include "rate_limiter.hpp"
 extern ConfigurationStore *configuration_store;
 extern Scheduler *system_scheduler;
 extern GPSDevice *gps_device;
@@ -109,6 +110,31 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 	std::time_t now = service_current_time();
 
 	DEBUG_TRACE("ArgosTxService::service_next_schedule_in_ms");
+
+	// Cooldown gate (2026-05): refuse to schedule any Argos TX while
+	// MIN_SURFACE_CYCLE_INTERVAL_S is still running. Matches the gate added
+	// to GPSService::service_next_schedule_in_ms — without it, the boot path
+	// (Service::start → reschedule → here) would compute a fresh TX schedule
+	// inside the cooldown window, defeating the whole cooldown mechanism on
+	// any reset that lands mid-cooldown. SWS re-emits state when cooldown
+	// expires and rewakes us via notify_underwater_state.
+	if (ServiceManager::is_in_cooldown(now)) {
+		DEBUG_TRACE("ArgosTxService::service_next_schedule_in_ms: cooldown active — SCHEDULE_DISABLED");
+		return Service::SCHEDULE_DISABLED;
+	}
+
+	// Rolling-window rate limit (Plan 1 step 2). Applies to ALL TX cycles
+	// including SURFACING_BURST's first ping — battery priority over the
+	// §5.3 first-TX-fast objective, by explicit user decision. Disabled by
+	// default (RATE_LIMIT_EN = false → returns false without reading config).
+	{
+		unsigned int reschedule_s = 0;
+		if (RateLimiter::is_blocked(now, reschedule_s)) {
+			DEBUG_INFO("ArgosTxService: rate limit reached, reschedule in %u s", reschedule_s);
+			m_sched.schedule_at(now + (std::time_t)reschedule_s);
+			return reschedule_s * 1000;
+		}
+	}
 
 	// Refresh provisioned-modulation mask in case PARMW edited an RCONF since
 	// the last cycle. Cheap (3 string-length checks); only logs on change.
@@ -1403,6 +1429,11 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 		// Modes 0 (AT_SURFACE) and 1 (END_OF_DOPPLER) are handled elsewhere
 	}
 
+	// Record the completed TX in the rolling-window rate limiter (Plan 1
+	// step 2). No-op if disabled. Placed AFTER cooldown arming so the rate
+	// limiter records every TX irrespective of cooldown trigger mode.
+	RateLimiter::record_tx(t);
+
 	m_sched.notify_tx_complete();
 	service_complete();
 }
@@ -1450,4 +1481,36 @@ void ArgosTxService::react(KineisEventDeviceError const&) {
 			service_complete();
 		}
 	}
+}
+
+// === BaseGnssStrategy::REUSE_LAST plumbing =================================
+// Helpers landed ahead of the HAULED / sequencer consumers so the wiring is
+// reviewable and unit-testable in isolation. Currently unused at runtime.
+
+unsigned int ArgosTxService::compute_gps_log_age_seconds(const GPSLogEntry &entry, std::time_t now) {
+	// LogHeader year=0 is the cold-boot / unset RTC sentinel — never trust it.
+	if (entry.header.year == 0) return UINT_MAX;
+	std::time_t entry_time = convert_epochtime(entry.header.year, entry.header.month,
+	                                           entry.header.day, entry.header.hours,
+	                                           entry.header.minutes, entry.header.seconds);
+	// Future-dated entries indicate either RTC roll-back or corruption — reject
+	// rather than reporting age=0 which would falsely qualify as "fresh".
+	if (now < entry_time) return UINT_MAX;
+	return (unsigned int)(now - entry_time);
+}
+
+bool ArgosTxService::read_cached_last_fix(GPSLogEntry &out) {
+	unsigned int max_age_s = configuration_store->read_param<unsigned int>(ParamID::GNSS_REUSE_FIX_MAX_AGE_S);
+	if (max_age_s == 0) return false;  // reuse disabled
+	GPSLogEntry *cached = m_depth_pile_manager.peek_gps_latest_any();
+	if (!cached) return false;
+	// Only accept entries that carry an actual position. NO_FIX / FASTLOC /
+	// CLOUDLOCATE entries don't contain a reusable lat/lon for an Argos GNSS
+	// packet — REUSE_LAST must fall back to Doppler (OFF) in those cases.
+	if (cached->info.event_type != GPSEventType::FIX &&
+	    cached->info.event_type != GPSEventType::UPDATE) return false;
+	unsigned int age = compute_gps_log_age_seconds(*cached, service_current_time());
+	if (age > max_age_s) return false;
+	out = *cached;
+	return true;
 }

@@ -374,8 +374,34 @@ enum class ParamID {
 	// the correct modulation — no need for a runtime readback that would add
 	// SPI latency to every surface event. Read-only via DTE.
 	ARGOS_CACHED_MODULATION                  = 227,
+	// === GNSS REUSE_LAST fix age cap (slot 228) ===
+	// uint seconds: maximum age of a cached depth-pile fix that may be reused
+	// when BaseGnssStrategy::REUSE_LAST is selected for a TX cycle. Stale fixes
+	// (older than this) cause a fallback to BaseGnssStrategy::OFF (Doppler).
+	// 0 disables reuse entirely. Consumed by Plan 1 (HAULED_GNSS_STRAT) and
+	// later by Plan 2 (sequencer per-phase strategy). The path itself is wired
+	// in argos_tx_service.cpp::read_cached_last_fix().
+	GNSS_REUSE_FIX_MAX_AGE_S                 = 228,
+	// === TX rolling rate limiter (slots 229-231) — Plan 1 step 2 ===
+	// Sliding-window TX cap. Applies to every Argos TX (incl. SURFACING_BURST
+	// first ping — battery > §5.3 first-TX-fast). State in noinit RAM + CRC16.
+	RATE_LIMIT_EN                            = 229,  // bool: master enable
+	RATE_LIMIT_WINDOW_S                      = 230,  // uint seconds: sliding window
+	RATE_LIMIT_MAX_TX                        = 231,  // uint: max TX inside window (0..RateLimiter::MAX_CAP)
+	// === Hauled-vs-at-sea mode (slots 232-238) — Plan 1 step 3 ===
+	// Detection: AT_SEA → HAULED when (now - last_uw_event) > IDLE_THRESHOLD_H.
+	// Hysteresis: HAULED → AT_SEA after RETURN_EVENTS consecutive dive events.
+	// HAULED_* override the base ARP/GNP params (clones LOW_BATTERY pattern).
+	// Priority: LOW_BATTERY > HAULED > sequencer (Plan 2) > base.
+	HAULED_DETECT_EN                         = 232,  // bool: master enable
+	HAULED_IDLE_THRESHOLD_H                  = 233,  // uint hours: dry duration before HAULED engages
+	HAULED_RETURN_EVENTS                     = 234,  // uint: consecutive dives to return to AT_SEA
+	HAULED_ARGOS_MODE                        = 235,  // BaseArgosMode override
+	HAULED_TR_NOM                            = 236,  // uint seconds: TX interval override
+	HAULED_GNSS_EN                           = 237,  // bool: GNSS enable override
+	HAULED_GNSS_STRAT                        = 238,  // BaseGnssStrategy: 0=FRESH, 1=REUSE_LAST, 2=OFF
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 228,
+	__PARAM_SIZE                             = 239,
 	__NULL_PARAM                             = 0xFFFF
 };
 
@@ -621,6 +647,18 @@ enum class BaseGNSSDynModel {
 	AIRBORNE_4G = 8,
 	WRIST_WORN_WATCH = 9,
 	BIKE = 10
+};
+
+// GNSS sourcing strategy for an Argos TX cycle.
+// FRESH      = current default behavior: GPS service acquires a new fix, packet uses it.
+// REUSE_LAST = skip acquisition this cycle, build packet from most recent depth-pile fix
+//              (any age within GNSS_REUSE_FIX_MAX_AGE_S; otherwise fall back to OFF).
+// OFF        = no GNSS at all; Doppler-only TX (existing gnss_en=false path).
+// Plan 1 consumer: HAULED_GNSS_STRAT. Plan 2 consumer: per-phase SEQP{i}_GNSS_STRAT.
+enum class BaseGnssStrategy : uint8_t {
+	FRESH       = 0,
+	REUSE_LAST  = 1,
+	OFF         = 2
 };
 
 enum class BaseLEDMode {

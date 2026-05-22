@@ -14,12 +14,19 @@
 #include "depth_pile.hpp"
 #include "argos_packet_builder.hpp"
 #include "argos_tx_scheduler.hpp"
+#include "messages.hpp"
 
 /// @brief Argos satellite TX service — builds and transmits packets via KineisDevice.
 class ArgosTxService : public Service, KineisEventListener {
 public:
 	ArgosTxService(KineisDevice& device);
 	void notify_peer_event(ServiceEvent& e) override;
+
+	// Compute the age in seconds of a GPS log entry against a reference RTC time.
+	// Returns UINT_MAX when the entry timestamp is invalid (zero year) or in the
+	// future relative to `now` — both indicate an entry the REUSE_LAST path must
+	// not trust. Pure / static so unit tests can exercise it without an instance.
+	static unsigned int compute_gps_log_age_seconds(const GPSLogEntry &entry, std::time_t now);
 
 protected:
 	void service_init() override;
@@ -73,6 +80,13 @@ private:
 	void process_sensor_burst();
 	void process_doppler_burst();
 	void prepare_doppler_packet();
+
+	// BaseGnssStrategy::REUSE_LAST plumbing: read the most recent depth-pile fix
+	// if it is fresh enough per ParamID::GNSS_REUSE_FIX_MAX_AGE_S. Returns false
+	// when the pile is empty, the latest entry is not a real fix, the entry is
+	// older than the configured threshold, or reuse is disabled (threshold = 0).
+	// Currently NOT called — wiring lands with the HAULED consumer (Plan 1 step 3).
+	bool read_cached_last_fix(GPSLogEntry &out);
 
 	// Adaptive modulation: switch RCONF if needed before TX
 	bool ensure_modulation(KineisModulation target);

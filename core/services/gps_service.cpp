@@ -8,6 +8,9 @@
 #include "gps_service.hpp"
 #include "config_store.hpp"
 #include "scheduler.hpp"
+#include "rtc.hpp"
+
+extern RTC *rtc;
 #if ENABLE_AXL_SENSOR
 #include "axl_sensor_service.hpp"
 #endif
@@ -112,6 +115,20 @@ bool GPSService::service_is_enabled() {
 unsigned int GPSService::service_next_schedule_in_ms() {
 	GNSSConfig gnss_config;
 	configuration_store->get_gnss_configuration(gnss_config);
+
+	// Cooldown gate (2026-05): refuse to schedule a GPS acquisition while
+	// MIN_SURFACE_CYCLE_INTERVAL_S is still running. Without this guard, the
+	// boot path (Service::start → reschedule → here) computes a UTC-aligned
+	// next schedule that fires inside the cooldown window — symptom: GPS
+	// launching right after a watchdog/POR reset that lands mid-cooldown.
+	// Same trap on the AXL-wakeup / Argos-RX / first-fix retry reschedule
+	// paths, all of which route through here without otherwise touching
+	// is_in_cooldown(). When cooldown expires, SWS re-emits its state and
+	// notify_underwater_state(false) rewakes us via the normal path.
+	if (rtc && rtc->is_set() && ServiceManager::is_in_cooldown(service_current_time())) {
+		DEBUG_TRACE("GPSService::service_next_schedule_in_ms: cooldown active — SCHEDULE_DISABLED");
+		return Service::SCHEDULE_DISABLED;
+	}
 
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 	// Gate: while waiting for the first Argos TX to complete, no GPS

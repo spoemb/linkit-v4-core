@@ -15,11 +15,13 @@
 #include "nrf_gpio.h"
 #endif
 #include "rgb_led.hpp"
+#include "rtc.hpp"
 
 // CRC16 and constants are in sws_analog_constants.hpp
 
 // LED for test mode visual feedback
 extern RGBLed *status_led;
+extern RTC *rtc;
 
 // ADC constants
 #define ADC_REFERENCE_V 0.6f
@@ -555,6 +557,19 @@ unsigned int SWSAnalogService::service_next_schedule_in_ms() {
     // a deployed unit if SWSTST,0 is forgotten.
     if (m_test_mode) {
         return SWS_TEST_MODE_SAMPLE_MS;
+    }
+    // Cooldown gate (2026-05): defer SWS sampling while
+    // MIN_SURFACE_CYCLE_INTERVAL_S is still running. Without this guard the
+    // boot path (Service::start → reschedule → here) samples within seconds
+    // of POR even though cooldown is active — emits a phantom surface event
+    // that triggers the passive-surfacing path and one full SWS measurement
+    // cycle just to be silenced again. The exit_cooldown_sleep() wake timer
+    // (set in enter_cooldown_sleep) re-emits state when cooldown expires.
+    // Skipped during guided calibration / test mode (handled above) so DTE
+    // diagnostics never get blocked.
+    if (rtc && rtc->is_set() && ServiceManager::is_in_cooldown(service_current_time())) {
+        DEBUG_TRACE("SWSAnalogService::service_next_schedule_in_ms: cooldown active — SCHEDULE_DISABLED");
+        return Service::SCHEDULE_DISABLED;
     }
     // Normal: read configured surface/underwater period (seconds, supports fractions ≥ 0.1)
     double period_s = m_current_state ?

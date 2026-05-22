@@ -14,6 +14,8 @@
 #include "argos_packet_builder.hpp"
 #include "crc8.hpp"
 #include "messages.hpp"
+#include "rate_limiter.hpp"
+#include "hauled_mode_service.hpp"
 
 using namespace std::string_literals;
 
@@ -1640,7 +1642,12 @@ TEST(ArgosTxService, DepthPileManagerTestSensorValueConversion)
 	CHECK_EQUAL(200, (unsigned int)converted->port[1]);
 	converted = man.retrieve_sensor_single(1, ServiceIdentifier::SEA_TEMP_SENSOR);
 	CHECK_FALSE(nullptr == converted);
-	CHECK_EQUAL(113657, (unsigned int)converted->port[0]);
+	// Encoding: (°C + 126) × 100, dropped from × 1000 because the 14-bit field
+	// truncated silently via PACK_BITS for every value > -109.6 °C (see comment
+	// in depth_pile.cpp). For -12.343 °C: (-12.343 + 126) × 100 = 11365 (uint
+	// truncation of 11365.7). Previous expected value 113657 matched the old
+	// × 1000 formula and is now stale.
+	CHECK_EQUAL(11365, (unsigned int)converted->port[0]);
 }
 
 // Helper: verify a built LDA2 sensor packet has the right size, the expected data prefix,
@@ -2329,4 +2336,263 @@ TEST(ArgosTxService, NtryZeroSendsOnce)
 	fake_timer->set_counter(t);
 	system_scheduler->run();
 	mock().checkExpectations();
+}
+
+// === BaseGnssStrategy::REUSE_LAST helpers (Plan 1 step 1) =================
+
+TEST(ArgosTxService, DepthPilePeekBackReturnsLatestWithoutConsuming)
+{
+	DepthPile<GPSLogEntry> dp;
+	GPSLogEntry e1{}; e1.info.day = 1;
+	GPSLogEntry e2{}; e2.info.day = 2;
+	dp.store(e1, 3);  // burst_counter = 3
+	dp.store(e2, 1);  // burst_counter = 1
+
+	// Peek returns the most recent entry…
+	GPSLogEntry *peeked = dp.peek_back();
+	CHECK(peeked != nullptr);
+	CHECK_EQUAL(2, peeked->info.day);
+	// …and does NOT consume burst_counter — eligible() must still report both.
+	CHECK_EQUAL(2u, dp.eligible());
+
+	// Now drain the latest entry's burst slot via retrieve(2,1) so its
+	// burst_counter hits zero, but the entry itself remains in the deque.
+	dp.retrieve(2, 1);
+	CHECK_EQUAL(1u, dp.eligible());
+
+	// peek_back must still return the same latest data even when it's no
+	// longer eligible — this is the whole point: REUSE_LAST reads stale entries.
+	peeked = dp.peek_back();
+	CHECK(peeked != nullptr);
+	CHECK_EQUAL(2, peeked->info.day);
+}
+
+TEST(ArgosTxService, DepthPilePeekBackOnEmptyReturnsNull)
+{
+	DepthPile<GPSLogEntry> dp;
+	CHECK(dp.peek_back() == nullptr);
+}
+
+TEST(ArgosTxService, ComputeGpsLogAgeSecondsNormalEntry)
+{
+	GPSLogEntry e = make_gps_location();  // stamps header with rtc->gettime() = 1580083200
+	// 90 seconds later
+	unsigned int age = ArgosTxService::compute_gps_log_age_seconds(e, 1580083200 + 90);
+	CHECK_EQUAL(90u, age);
+}
+
+TEST(ArgosTxService, ComputeGpsLogAgeSecondsZeroYearIsInvalid)
+{
+	GPSLogEntry e{};  // year == 0 — cold-boot / unset RTC sentinel
+	unsigned int age = ArgosTxService::compute_gps_log_age_seconds(e, 1580083200);
+	CHECK_EQUAL(UINT_MAX, age);
+}
+
+TEST(ArgosTxService, ComputeGpsLogAgeSecondsFutureEntryIsInvalid)
+{
+	GPSLogEntry e = make_gps_location();  // stamped at rtc = 1580083200
+	// `now` BEFORE the entry timestamp → corruption / RTC roll-back. Must reject
+	// rather than report age=0 which would falsely qualify as "fresh".
+	unsigned int age = ArgosTxService::compute_gps_log_age_seconds(e, 1580083200 - 60);
+	CHECK_EQUAL(UINT_MAX, age);
+}
+
+// === RateLimiter (Plan 1 step 2) ==========================================
+
+TEST(ArgosTxService, RateLimiterDisabledNeverBlocks)
+{
+	RateLimiter::reset_for_tests();
+	// Default: RATE_LIMIT_EN = false. Cap could be exhausted yet still allowed.
+	for (unsigned int i = 0; i < 20; i++)
+		RateLimiter::record_tx(1000 + i);  // no-op while disabled
+	unsigned int rs = 0;
+	CHECK_FALSE(RateLimiter::is_blocked(2000, rs));
+}
+
+TEST(ArgosTxService, RateLimiterBlocksOnceCapReached)
+{
+	RateLimiter::reset_for_tests();
+	fake_config_store->write_param(ParamID::RATE_LIMIT_EN, (bool)true);
+	fake_config_store->write_param(ParamID::RATE_LIMIT_WINDOW_S, 100U);
+	fake_config_store->write_param(ParamID::RATE_LIMIT_MAX_TX, 3U);
+
+	// Three TX within the window — cap exactly hit.
+	RateLimiter::record_tx(1000);
+	RateLimiter::record_tx(1010);
+	RateLimiter::record_tx(1020);
+
+	unsigned int rs = 0;
+	CHECK_TRUE(RateLimiter::is_blocked(1025, rs));
+	// Next allowed = oldest_in_window(1000) + window(100) = 1100. From now=1025
+	// that's 75 s away.
+	CHECK_EQUAL(75u, rs);
+}
+
+TEST(ArgosTxService, RateLimiterUnblocksOnceOldestRollsOut)
+{
+	RateLimiter::reset_for_tests();
+	fake_config_store->write_param(ParamID::RATE_LIMIT_EN, (bool)true);
+	fake_config_store->write_param(ParamID::RATE_LIMIT_WINDOW_S, 100U);
+	fake_config_store->write_param(ParamID::RATE_LIMIT_MAX_TX, 2U);
+
+	RateLimiter::record_tx(1000);
+	RateLimiter::record_tx(1050);
+
+	unsigned int rs = 0;
+	CHECK_TRUE(RateLimiter::is_blocked(1080, rs));  // both inside window
+
+	// At now=1101 the entry @1000 has rolled out (1101 - 100 = 1001 > 1000).
+	CHECK_FALSE(RateLimiter::is_blocked(1101, rs));
+}
+
+TEST(ArgosTxService, RateLimiterIgnoresFutureDatedEntries)
+{
+	RateLimiter::reset_for_tests();
+	fake_config_store->write_param(ParamID::RATE_LIMIT_EN, (bool)true);
+	fake_config_store->write_param(ParamID::RATE_LIMIT_WINDOW_S, 100U);
+	fake_config_store->write_param(ParamID::RATE_LIMIT_MAX_TX, 2U);
+
+	// RTC rollback: a recorded entry sits in the future relative to `now`.
+	// Such entries must be ignored (defense matching compute_gps_log_age).
+	RateLimiter::record_tx(2000);  // future-dated
+	RateLimiter::record_tx(1000);  // in-window entry @ now=1050
+
+	unsigned int rs = 0;
+	CHECK_FALSE(RateLimiter::is_blocked(1050, rs));  // only 1 in-window, cap=2
+}
+
+TEST(ArgosTxService, RateLimiterZeroCapDisables)
+{
+	RateLimiter::reset_for_tests();
+	fake_config_store->write_param(ParamID::RATE_LIMIT_EN, (bool)true);
+	fake_config_store->write_param(ParamID::RATE_LIMIT_WINDOW_S, 100U);
+	fake_config_store->write_param(ParamID::RATE_LIMIT_MAX_TX, 0U);
+
+	for (unsigned int i = 0; i < 10; i++)
+		RateLimiter::record_tx(1000 + i);  // no-op while cap = 0
+
+	unsigned int rs = 0;
+	CHECK_FALSE(RateLimiter::is_blocked(1020, rs));
+}
+
+// === HauledModeService (Plan 1 step 3) ====================================
+
+TEST(ArgosTxService, HauledModeDisabledNeverHauls)
+{
+	HauledModeService::reset_for_tests();
+	// HAULED_DETECT_EN defaults to false. Even with a stale last_uw_event,
+	// evaluate() must keep us at AT_SEA.
+	HauledModeService::on_underwater_event(true, 1000);
+	HauledModeService::evaluate(1000 + 100 * 3600);  // 100 hours later
+	CHECK_FALSE(HauledModeService::is_hauled());
+}
+
+TEST(ArgosTxService, HauledModeHaulsAfterIdleThreshold)
+{
+	HauledModeService::reset_for_tests();
+	fake_config_store->write_param(ParamID::HAULED_DETECT_EN, (bool)true);
+	fake_config_store->write_param(ParamID::HAULED_IDLE_THRESHOLD_H, 2U);  // 2h
+	fake_config_store->write_param(ParamID::HAULED_RETURN_EVENTS, 3U);
+
+	HauledModeService::on_underwater_event(true, 1000);
+	// 1h59m later: still AT_SEA.
+	HauledModeService::evaluate(1000 + 119 * 60);
+	CHECK_FALSE(HauledModeService::is_hauled());
+	// Just past 2h: HAULED engages.
+	HauledModeService::evaluate(1000 + 2 * 3600 + 5);
+	CHECK_TRUE(HauledModeService::is_hauled());
+}
+
+TEST(ArgosTxService, HauledModeReturnsAfterReturnEvents)
+{
+	HauledModeService::reset_for_tests();
+	fake_config_store->write_param(ParamID::HAULED_DETECT_EN, (bool)true);
+	fake_config_store->write_param(ParamID::HAULED_IDLE_THRESHOLD_H, 1U);
+	fake_config_store->write_param(ParamID::HAULED_RETURN_EVENTS, 3U);
+
+	// Engage HAULED first.
+	HauledModeService::on_underwater_event(true, 1000);
+	HauledModeService::evaluate(1000 + 3601);
+	CHECK_TRUE(HauledModeService::is_hauled());
+
+	// 2 dive events: still HAULED (hysteresis).
+	HauledModeService::on_underwater_event(true, 5000);
+	CHECK_TRUE(HauledModeService::is_hauled());
+	HauledModeService::on_underwater_event(true, 5100);
+	CHECK_TRUE(HauledModeService::is_hauled());
+	// 3rd dive: returns AT_SEA.
+	HauledModeService::on_underwater_event(true, 5200);
+	CHECK_FALSE(HauledModeService::is_hauled());
+	CHECK_EQUAL(0u, HauledModeService::uw_events_since_hauled());
+}
+
+TEST(ArgosTxService, HauledModeOverrideAppliesToArgosConfig)
+{
+	HauledModeService::reset_for_tests();
+	fake_config_store->write_param(ParamID::HAULED_DETECT_EN, (bool)true);
+	fake_config_store->write_param(ParamID::HAULED_IDLE_THRESHOLD_H, 1U);
+	fake_config_store->write_param(ParamID::HAULED_ARGOS_MODE, BaseArgosMode::PASS_PREDICTION);
+	fake_config_store->write_param(ParamID::HAULED_TR_NOM, 9999U);
+	fake_config_store->write_param(ParamID::HAULED_GNSS_EN, (bool)false);
+	fake_config_store->write_param(ParamID::HAULED_GNSS_STRAT, 1U);  // REUSE_LAST
+
+	// Set non-hauled baseline first.
+	ArgosConfig ac;
+	configuration_store->get_argos_configuration(ac);
+	CHECK_FALSE(ac.mode == BaseArgosMode::PASS_PREDICTION);  // base = LEGACY
+
+	// Engage hauled.
+	HauledModeService::on_underwater_event(true, 1000);
+	HauledModeService::evaluate(1000 + 3601);
+	CHECK_TRUE(HauledModeService::is_hauled());
+
+	configuration_store->get_argos_configuration(ac);
+	CHECK_TRUE(ac.mode == BaseArgosMode::PASS_PREDICTION);
+	CHECK_EQUAL(9999u, ac.tx_interval_s);
+	CHECK_FALSE(ac.gnss_en);  // HAULED_GNSS_EN=false → off
+}
+
+TEST(ArgosTxService, HauledModeGnssStratOffForcesGnssOff)
+{
+	HauledModeService::reset_for_tests();
+	fake_config_store->write_param(ParamID::HAULED_DETECT_EN, (bool)true);
+	fake_config_store->write_param(ParamID::HAULED_IDLE_THRESHOLD_H, 1U);
+	// HAULED_GNSS_EN says ON, but STRAT=OFF must win (Doppler-only).
+	fake_config_store->write_param(ParamID::HAULED_GNSS_EN, (bool)true);
+	fake_config_store->write_param(ParamID::HAULED_GNSS_STRAT, 2U);  // OFF
+
+	HauledModeService::on_underwater_event(true, 1000);
+	HauledModeService::evaluate(1000 + 3601);
+
+	ArgosConfig ac;
+	configuration_store->get_argos_configuration(ac);
+	CHECK_FALSE(ac.gnss_en);
+
+	GNSSConfig gc;
+	configuration_store->get_gnss_configuration(gc);
+	CHECK_FALSE(gc.enable);
+}
+
+TEST(ArgosTxService, HauledModeLowBatteryWins)
+{
+	// Priority cascade per Plan 1 §5: LOW_BATTERY > HAULED. When both
+	// conditions are met, HAULED must not override LB params.
+	HauledModeService::reset_for_tests();
+	fake_config_store->write_param(ParamID::HAULED_DETECT_EN, (bool)true);
+	fake_config_store->write_param(ParamID::HAULED_IDLE_THRESHOLD_H, 1U);
+	fake_config_store->write_param(ParamID::HAULED_ARGOS_MODE, BaseArgosMode::PASS_PREDICTION);
+	fake_config_store->write_param(ParamID::LB_EN, (bool)true);
+	fake_config_store->write_param(ParamID::LB_ARGOS_MODE, BaseArgosMode::DOPPLER);
+	// Force the LB flag directly. FakeConfigurationStore::update_battery_level
+	// is a no-op, so the underlying flag must be set explicitly.
+	fake_config_store->set_is_battery_level_low(true);
+
+	HauledModeService::on_underwater_event(true, 1000);
+	HauledModeService::evaluate(1000 + 3601);
+
+	ArgosConfig ac;
+	configuration_store->get_argos_configuration(ac);
+	CHECK_TRUE(ac.is_lb);
+	// LB wins — HAULED's mode does NOT override.
+	CHECK_TRUE(ac.mode == BaseArgosMode::DOPPLER);
 }

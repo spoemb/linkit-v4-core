@@ -19,6 +19,7 @@
 #include "pmu.hpp"
 #include "sensor.hpp"
 #include "service_scheduler.hpp"
+#include "hauled_mode_service.hpp"
 
 static constexpr unsigned int MAX_CONFIG_ITEMS = (unsigned int)ParamID::__PARAM_SIZE;
 
@@ -96,7 +97,9 @@ struct ArgosConfig {
 enum class ConfigMode {
 	NORMAL,
 	LOW_BATTERY,
-	OUT_OF_ZONE
+	OUT_OF_ZONE,
+	HAULED               // Plan 1 step 3 — substitutes HAULED_* override params
+	// (Plan 2 will add AT_SEA_SEQUENCED below this, between HAULED and base.)
 };
 
 
@@ -339,6 +342,17 @@ protected:
 		/* [225] GNSS_BCKP_CHARGE_UW_ONLY */ (bool)false,
 		/* [226] SMD_DEGRADED_MODE */ 0U,              // 0 = FAST timings (default); 1 = SAFE (set by SmdSat::degraded_mode_engage)
 		/* [227] ARGOS_CACHED_MODULATION */ 0U,        // 0 = LDA2 (default), 1 = LDK, 2 = VLDA4 (mirrors SmdArgosModulation enum)
+		/* [228] GNSS_REUSE_FIX_MAX_AGE_S */ 86400U,   // 24 h: cached depth-pile fix older than this falls back to Doppler-only (REUSE_LAST → OFF)
+		/* [229] RATE_LIMIT_EN */ (bool)false,         // Plan 1 step 2 — disabled by default
+		/* [230] RATE_LIMIT_WINDOW_S */ 3600U,         // 60 min sliding window
+		/* [231] RATE_LIMIT_MAX_TX */ 10U,             // 10 TX max inside the window
+		/* [232] HAULED_DETECT_EN */ (bool)false,      // Plan 1 step 3 — disabled by default
+		/* [233] HAULED_IDLE_THRESHOLD_H */ 24U,       // 24 h dry → HAULED
+		/* [234] HAULED_RETURN_EVENTS */ 3U,           // 3 dives → AT_SEA
+		/* [235] HAULED_ARGOS_MODE */ BaseArgosMode::LEGACY,
+		/* [236] HAULED_TR_NOM */ 7200U,               // 2 h interval when hauled
+		/* [237] HAULED_GNSS_EN */ (bool)false,        // GNSS off when hauled by default
+		/* [238] HAULED_GNSS_STRAT */ 1U,              // BaseGnssStrategy::REUSE_LAST (stored as uint per BaseMap)
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,
@@ -757,6 +771,29 @@ public:
 			}
 		}
 
+		// HAULED override (Plan 1 step 3) — runs AFTER the LB/OUT_OF_ZONE/NORMAL
+		// cascade and substitutes the GNSS enable flag (clones LOW_BATTERY's
+		// "narrow override" pattern but limited to comm-side params per user
+		// scope decision: §4 of Plan 1). Priority: LOW_BATTERY > HAULED > OoZ
+		// > NORMAL — so HAULED applies whenever LB is NOT active.
+		// HAULED_GNSS_STRAT=OFF forces GNSS off (Doppler-only); FRESH and
+		// REUSE_LAST both leave GNSS on for now. REUSE_LAST wiring through to
+		// the TX dispatch is a follow-up (helpers landed in step 1).
+		HauledModeService::evaluate();
+		if (!gnss_config.is_lb && HauledModeService::is_hauled() &&
+		    read_param<bool>(ParamID::HAULED_DETECT_EN)) {
+			unsigned int strat = read_param<unsigned int>(ParamID::HAULED_GNSS_STRAT);
+			if (strat == (unsigned int)BaseGnssStrategy::OFF) {
+				gnss_config.enable = false;
+			} else {
+				gnss_config.enable = read_param<bool>(ParamID::HAULED_GNSS_EN);
+			}
+			if (m_last_config_mode != ConfigMode::HAULED) {
+				DEBUG_INFO("ConfigurationStore: HAULED mode engaged (GNSS)");
+				m_last_config_mode = ConfigMode::HAULED;
+			}
+		}
+
 		// Disable GNSS if certification TX is enabled
 		if (cert_tx_enable) {
 			DEBUG_TRACE("ConfigurationStore::get_gnss_configuration: disable GNSS as TX certification mode is set");
@@ -877,6 +914,26 @@ public:
 			if (m_last_config_mode != ConfigMode::NORMAL) {
 				DEBUG_INFO("ConfigurationStore: NORMAL mode detected");
 				m_last_config_mode = ConfigMode::NORMAL;
+			}
+		}
+
+		// HAULED override (Plan 1 step 3) — see matching logic in
+		// get_gnss_configuration() above. Overrides mode / TR_NOM / gnss_en
+		// only; everything else inherits from the LB/OoZ/NORMAL cascade.
+		HauledModeService::evaluate();
+		if (!argos_config.is_lb && HauledModeService::is_hauled() &&
+		    read_param<bool>(ParamID::HAULED_DETECT_EN)) {
+			argos_config.mode = read_param<BaseArgosMode>(ParamID::HAULED_ARGOS_MODE);
+			argos_config.tx_interval_s = read_param<unsigned int>(ParamID::HAULED_TR_NOM);
+			unsigned int strat = read_param<unsigned int>(ParamID::HAULED_GNSS_STRAT);
+			if (strat == (unsigned int)BaseGnssStrategy::OFF) {
+				argos_config.gnss_en = false;
+			} else {
+				argos_config.gnss_en = read_param<bool>(ParamID::HAULED_GNSS_EN);
+			}
+			if (m_last_config_mode != ConfigMode::HAULED) {
+				DEBUG_INFO("ConfigurationStore: HAULED mode engaged (Argos)");
+				m_last_config_mode = ConfigMode::HAULED;
 			}
 		}
 
