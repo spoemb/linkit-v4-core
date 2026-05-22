@@ -111,7 +111,12 @@ static bool led_24h_window_active() {
 
 void LEDOff::entry() {
 	DEBUG_TRACE("LEDOff: entry");
-	arm_led_freeze_safety();
+	// Disarm: WHITE-solid while magnet engaged must stay visible to operator
+	// (no time bound — operator releases magnet when ready). For BLACK (off),
+	// the disarm is harmless. We also accept that a magnet held silently for
+	// >5 s could be cleaned by the safety, but that path is uncommon and the
+	// operator UX cost of having the LED disappear is higher.
+	disarm_led_freeze_safety();
 	if (m_is_magnet_engaged)
 		status_led->set(RGBLedColor::WHITE);
 	else if (m_is_battery_critical)
@@ -154,7 +159,10 @@ void LEDError::entry() {
 
 void LEDPreOperationalPending::entry() {
 	DEBUG_TRACE("LEDPreOperationalPending: entry");
-	arm_led_freeze_safety();
+	// Pre-operational = magnet activation UX. Operator must see GREEN until
+	// they release the magnet. Exempted from the 5 s freeze safety per the
+	// "operational mode only" scope of the user spec.
+	disarm_led_freeze_safety();
 	m_is_battery_critical = false;
 	status_led->set(RGBLedColor::GREEN);
 	if (ext_status_led)
@@ -163,7 +171,7 @@ void LEDPreOperationalPending::entry() {
 
 void LEDPreOperationalError::entry() {
 	DEBUG_TRACE("LEDPreOperationalError: entry");
-	arm_led_freeze_safety();
+	disarm_led_freeze_safety();  // Pre-operational — exempt per spec
 	m_is_battery_critical = false;
 	if (m_is_magnet_engaged)
 		status_led->set(RGBLedColor::WHITE);
@@ -175,7 +183,7 @@ void LEDPreOperationalError::entry() {
 
 void LEDPreOperationalBatteryNominal::entry() {
 	DEBUG_TRACE("LEDPreOperationalBatteryNominal: entry");
-	arm_led_freeze_safety();
+	disarm_led_freeze_safety();  // Pre-operational — exempt per spec
 	m_is_battery_critical = false;
 	if (m_is_magnet_engaged)
 		status_led->set(RGBLedColor::WHITE);
@@ -187,7 +195,7 @@ void LEDPreOperationalBatteryNominal::entry() {
 
 void LEDPreOperationalBatteryLow::entry() {
 	DEBUG_TRACE("LEDPreOperationalBatteryLow: entry");
-	arm_led_freeze_safety();
+	disarm_led_freeze_safety();  // Pre-operational — exempt per spec
 	m_is_battery_critical = false;
 	if (m_is_magnet_engaged)
 		status_led->set(RGBLedColor::WHITE);

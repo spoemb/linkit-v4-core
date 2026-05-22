@@ -679,6 +679,21 @@ static LFSFileSystem& init_storage(NrfSwitch& nrf_reed_switch, Is25Flash& is25_f
 			DEBUG_INFO("Restored LAST_KNOWN_RTC = %u", last_rtc);
 		}
 #endif
+
+		// Virtual RTC fallback (2026-05): sealed turtle deployments may go
+		// days / weeks before a first GNSS fix, and LAST_KNOWN_RTC stays at 0
+		// until then. Without an `is_set()` RTC, every time-based defense
+		// (cooldown, hauled, rate limiter, sequencer) is silently dead —
+		// they all gate on `rtc->is_set()`. Initialize to 1 (epoch + 1 s) so
+		// relative-time math works from boot; GPSService::on_fix() will
+		// overwrite with real UTC the moment a fix arrives. Code paths that
+		// need absolute UTC (PASS_PREDICTION, log human-readable timestamps)
+		// already independently validate the time horizon — they'll see a
+		// "1970" RTC and behave defensively until sync.
+		if (rtc && !rtc->is_set()) {
+			rtc->settime(static_cast<std::time_t>(1));
+			DEBUG_INFO("Cold-first-boot: RTC initialized to virtual epoch (1) — sync on first GNSS");
+		}
 	}
 
 	return lfs_file_system;
