@@ -359,10 +359,15 @@ enum class ParamID {
 #endif
 	// === LED window cutoff (slot 222) ===
 	LED_HRS24_RTC_CUTOFF                     = 222,  // time_t: RTC epoch at which LED HRS_24 window expires; auto-set by GPSService at first valid fix to (now+24h). 0 = unset.
-	// === GNSS backup-cell charge mode (slots 223-225) ===
-	GNSS_BCKP_CHARGE_INT                     = 223,  // uint seconds: period between charge sessions. 0 = disabled.
-	GNSS_BCKP_CHARGE_DUR                     = 224,  // uint seconds: duration of each charge session.
-	GNSS_BCKP_CHARGE_UW_ONLY                 = 225,  // bool: when true, charge only while submerged (saltwater switch).
+	// === Reserved: former GNSS backup-cell charge mode (slots 223-225) ===
+	// Removed in 2026-05 (deep-idle refactor). The periodic backup-charge cycle
+	// is replaced by deep-idle-after-off (slot 240). DTE keys GNP47/48/49 now
+	// return PARAM_KEY_NOT_FOUND. Slots reserved for flash-layout compat with
+	// devices provisioned before the migration. Mirrors the _RESERVED_117
+	// pattern from the prior EXT_LED_MODE deprecation.
+	_RESERVED_223                            = 223,
+	_RESERVED_224                            = 224,
+	_RESERVED_225                            = 225,
 	// === SMD degraded-mode flag (slot 226) ===
 	SMD_DEGRADED_MODE                        = 226,  // uint: 0 = FAST timings (default); 1 = SAFE timings (set by SmdSat after repeated SPI errors). Persists across reboot when SMDSAT_AUTOFALLBACK is built in. Read-only via DTE.
 	// === SMD cached modulation (slot 227) — persisted across boots ===
@@ -401,8 +406,19 @@ enum class ParamID {
 	HAULED_GNSS_EN                           = 237,  // bool: GNSS enable override
 	HAULED_GNSS_STRAT                        = 238,  // BaseGnssStrategy: 0=FRESH, 1=REUSE_LAST, 2=OFF
 	GNSS_CLOUDLOCATE_ALWAYS                  = 239,  // bool: when true, CloudLocate raw-meas is captured on every SURFACING_BURST surface (not just before the first fix). Trade-off: GPS stays on the full cold_acq_timeout each surface (~30s with ANO fresh) to collect raw measurements, vs. powering off as soon as a real fix arrives. Useful when surfaces are too short for warm fix to succeed reliably.
+	// === GNSS deep-idle after power-off (slot 240) — 2026-05 refactor ===
+	// uint seconds: when GPSService finishes a session, instead of cutting the
+	// rail immediately, keep VDD ON for this many seconds with M10Q in PMREQ-
+	// backup (EXTINT wake source). Coin cell V_BCKP charges naturally during
+	// the window. Sentinels:
+	//   0          → disabled (immediate poweroff, current behavior — default)
+	//   0xFFFFFFFF → never poweroff (rail always on, M10Q always in deep-idle)
+	//   else       → duration in seconds before auto-poweroff
+	// Replaces the deprecated GNSS_BCKP_CHARGE_* params (slots 223-225, now
+	// _RESERVED). See .claude/plans/gnss-deep-idle-refactor.md for design.
+	GNSS_DEEP_IDLE_AFTER_OFF_S               = 240,
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 240,
+	__PARAM_SIZE                             = 241,
 	__NULL_PARAM                             = 0xFFFF
 };
 

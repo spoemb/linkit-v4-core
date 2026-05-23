@@ -70,8 +70,8 @@ void GPSService::service_init() {
     m_underwater = false;
     m_backup_exit_task = {};
     m_backup_retry_task = {};
-    m_backup_periodic_task = {};
-    backup_charge_schedule_next();
+    // 2026-05 deep-idle refactor: no more periodic backup-charge scheduler.
+    // Recharge happens implicitly via the deep-idle-after-off window now.
 
     // Warn user about fastloc mode impact on sensor messages
     unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
@@ -88,9 +88,10 @@ void GPSService::service_init() {
     }
 }
 
-/// @brief Terminate GNSS service (no-op — device powered off by service_cancel).
+/// @brief Terminate GNSS service. UNCONDITIONAL power-off (R2 robustness from
+/// deep-idle refactor): never trust that prior state left the rail clean. Cuts
+/// rail even if state == idle/poweroff — safe no-op in those cases.
 void GPSService::service_term() {
-    system_scheduler->cancel_task(m_backup_periodic_task);
     system_scheduler->cancel_task(m_backup_exit_task);
     system_scheduler->cancel_task(m_backup_retry_task);
     m_pending_backup_duration_s = 0;
@@ -98,6 +99,10 @@ void GPSService::service_term() {
         m_device.exit_backup_charge_mode();
         m_backup_active = false;
     }
+    // R2 (deep-idle refactor): unconditional hard power-off — covers
+    // ConfigurationState entry, BatteryCriticalState/ErrorState/OffState
+    // transits, OTA, factory_reset.
+    m_device.power_off();
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
     m_defer_gnss_until_argos_first_tx = false;
 #endif
@@ -732,12 +737,12 @@ void GPSService::notify_peer_event(ServiceEvent& e) {
 				DEBUG_TRACE("GPSService: cold start required on surfaced");
 				m_is_first_fix_found = false;
 			}
-			// Backup charge: if UW_ONLY is enabled and we just surfaced,
-			// abort the charge so the normal surface flow can take over.
-			if (m_backup_active && service_read_param<bool>(ParamID::GNSS_BCKP_CHARGE_UW_ONLY)) {
-				DEBUG_INFO("GPSService: surfaced — aborting backup-charge (UW_ONLY)");
-				backup_charge_stop_internal();
-			}
+			// 2026-05 deep-idle refactor: the GNSS_BCKP_CHARGE_UW_ONLY abort
+			// branch was removed here. With deep-idle, the rail-on window is
+			// scoped to a per-session timer (GNSS_DEEP_IDLE_AFTER_OFF_S), not
+			// a surface-vs-submerged condition. A manual DTE GNSSBCKP_REQ is
+			// the only path that should engage backup-charge while surfaced
+			// and the operator explicitly asked for it — don't auto-abort.
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
 			// Arm the gate: GNSS power-on will wait until ArgosTxService emits
 			// SERVICE_INACTIVE (first satellite TX done) to free CPU for the burst.
@@ -921,36 +926,11 @@ void GPSService::set_backup_charge_callbacks(std::function<void()> on_start, std
 	m_on_backup_charge_stop  = std::move(on_stop);
 }
 
-/// @brief Schedule the next periodic backup-charge tick (or arm immediately if
-/// the interval was just enabled).  Re-reads the param each call so DTE changes
-/// take effect without restart.
-void GPSService::backup_charge_schedule_next() {
-	system_scheduler->cancel_task(m_backup_periodic_task);
-	unsigned int interval_s = configuration_store->read_param<unsigned int>(ParamID::GNSS_BCKP_CHARGE_INT);
-	if (interval_s == 0) {
-		DEBUG_TRACE("GPSService: backup-charge periodic disabled (GNSS_BCKP_CHARGE_INT=0)");
-		return;
-	}
-	m_backup_periodic_task = system_scheduler->post_task_prio([this]() {
-		backup_charge_periodic_fire();
-	}, "GPSBackupChargePeriodic", Scheduler::DEFAULT_PRIORITY, interval_s * MS_PER_SEC);
-}
-
-/// @brief Periodic tick: try to start a backup-charge session if conditions allow.
-/// Always reschedules itself (caller can disable via INT=0).
-void GPSService::backup_charge_periodic_fire() {
-	unsigned int duration_s = configuration_store->read_param<unsigned int>(ParamID::GNSS_BCKP_CHARGE_DUR);
-	bool uw_only = configuration_store->read_param<bool>(ParamID::GNSS_BCKP_CHARGE_UW_ONLY);
-
-	if (m_is_active) {
-		DEBUG_INFO("GPSService: backup-charge tick skipped — GNSS acquisition in progress");
-	} else if (uw_only && !m_underwater) {
-		DEBUG_INFO("GPSService: backup-charge tick skipped — UW_ONLY and surfaced");
-	} else if (m_backup_active) {
-		DEBUG_INFO("GPSService: backup-charge tick skipped — already charging");
-	} else {
-		request_backup_charge(duration_s);
-	}
-
-	backup_charge_schedule_next();
-}
+// 2026-05 deep-idle refactor: the periodic backup-charge scheduler is gone.
+// Recharging the V_BCKP coin cell now happens implicitly during the deep-idle
+// window after each GPS session (configured via GNSS_DEEP_IDLE_AFTER_OFF_S).
+// No more dedicated `backup_charge_schedule_next` / `backup_charge_periodic_fire`
+// — those functions used the removed GNSS_BCKP_CHARGE_{INT,DUR,UW_ONLY} params.
+// The DTE GNSSBCKP_REQ command (request_backup_charge) is still available for
+// manual operator-triggered charge sessions and now delegates to the deep-idle
+// driver path internally.

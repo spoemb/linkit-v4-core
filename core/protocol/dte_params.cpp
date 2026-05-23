@@ -334,12 +334,17 @@ const BaseMap param_map[] = {
 	// give a true 24h-since-deployment window across TPL5111 hard shutdowns.
 	// User can override via DTE PARMW for re-deployment scenarios.
 	{ "LED_HRS24_RTC_CUTOFF", "LDP03", BaseEncoding::DATESTRING, 0, 0, {}, true, true },
-	// [223] GNSS backup-cell charge: period between sessions (seconds). 0 = disabled.
-	{ "GNSS_BCKP_CHARGE_INT", "GNP47", BaseEncoding::UINT, 0U, 86400U, {}, true, true },
-	// [224] GNSS backup-cell charge: duration of each session (seconds).
-	{ "GNSS_BCKP_CHARGE_DUR", "GNP48", BaseEncoding::UINT, 60U, 3600U, {}, true, true },
-	// [225] GNSS backup-cell charge: when true, only run while submerged (saltwater switch).
-	{ "GNSS_BCKP_CHARGE_UW_ONLY", "GNP49", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
+	// [223..225] RESERVED — former GNSS_BCKP_CHARGE_{INT,DUR,UW_ONLY} (GNP47/48/49).
+	// Removed in 2026-05 deep-idle refactor. The periodic backup-charge cycle is
+	// replaced by GNSS_DEEP_IDLE_AFTER_OFF_S (slot 240, GNP51). Slots reserved for
+	// flash-layout compatibility — devices provisioned before the migration keep
+	// raw bytes intact; the param store ignores reserved slots at read-time so the
+	// old values are inert. DTE PARMR/PARMW for the old keys returns
+	// PARAM_KEY_NOT_FOUND because key="" and settable=false. Mirrors the
+	// _RESERVED_117 (EXT_LED_MODE) pattern.
+	{ "_RESERVED_223", "", BaseEncoding::UINT, 0U, 0U, {}, false, false },
+	{ "_RESERVED_224", "", BaseEncoding::UINT, 0U, 0U, {}, false, false },
+	{ "_RESERVED_225", "", BaseEncoding::BOOLEAN, 0, 0, {}, false, false },
 	// [226] SMD degraded-mode flag — 0 = FAST timings (default), 1 = SAFE timings (auto-engaged
 	// by SmdSat after SMD_MAX_CONSECUTIVE_ERRORS SPI errors when SMDSAT_AUTOFALLBACK is built in).
 	// Persisted across reboot so a watchdog reset in degraded mode does not lose the SAFE state.
@@ -385,6 +390,12 @@ const BaseMap param_map[] = {
 	// cold_acq_timeout) even if a real fix arrives early, since raw-meas
 	// collection runs the full window.
 	{ "GNSS_CLOUDLOCATE_ALWAYS",   "GNP51", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
+	// [240] GNSS deep-idle after power-off (seconds). 0=disabled (immediate
+	// poweroff, current behavior); 0xFFFFFFFF=never poweroff (rail always on,
+	// M10Q in PMREQ-backup); else=duration before auto-poweroff. Replaces the
+	// deprecated GNSS_BCKP_CHARGE_* family. See plan doc in
+	// .claude/plans/gnss-deep-idle-refactor.md.
+	{ "GNSS_DEEP_IDLE_AFTER_OFF_S", "GNP52", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

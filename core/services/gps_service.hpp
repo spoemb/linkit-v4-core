@@ -129,12 +129,13 @@ private:
 	unsigned int m_pending_backup_duration_s = 0;  ///< Set when waiting for M10 poweroff to retry
 	Scheduler::TaskHandle m_backup_exit_task;     ///< Auto-exit timer once backup-charge is active
 	Scheduler::TaskHandle m_backup_retry_task;    ///< Retry scheduler used while waiting for M10 poweroff
-	Scheduler::TaskHandle m_backup_periodic_task;
+	// 2026-05 deep-idle refactor: removed m_backup_periodic_task,
+	// backup_charge_schedule_next(), backup_charge_periodic_fire(). Recharge now
+	// happens implicitly during the deep-idle window after each GPS session,
+	// not via dedicated periodic cycles.
 	std::function<void()> m_on_backup_charge_start;
 	std::function<void()> m_on_backup_charge_stop;
 
-	void backup_charge_schedule_next();
-	void backup_charge_periodic_fire();
 	void backup_charge_stop_internal();
 	void schedule_backup_charge_retry(unsigned int attempt);
 

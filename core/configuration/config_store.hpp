@@ -342,9 +342,9 @@ protected:
 		/* [220] AXL_FIFO_ENABLE */ (bool)false,       // false=single sample, true=FIFO batch averaging
 		/* [221] AXL_FIFO_SAMPLE_COUNT */ 50U,         // 1-170 samples per batch
 		/* [222] LED_HRS24_RTC_CUTOFF */ static_cast<std::time_t>(0U),  // 0=unset, auto-set by GPSService at first valid fix to (now+24h)
-		/* [223] GNSS_BCKP_CHARGE_INT */ 0U,           // 0=disabled (no periodic backup charge)
-		/* [224] GNSS_BCKP_CHARGE_DUR */ 300U,         // 5 min per session by default
-		/* [225] GNSS_BCKP_CHARGE_UW_ONLY */ (bool)false,
+		/* [223] _RESERVED_223 */ 0U,                  // Was GNSS_BCKP_CHARGE_INT — deprecated 2026-05, slot reserved for flash compat
+		/* [224] _RESERVED_224 */ 0U,                  // Was GNSS_BCKP_CHARGE_DUR — deprecated 2026-05, slot reserved for flash compat
+		/* [225] _RESERVED_225 */ (bool)false,         // Was GNSS_BCKP_CHARGE_UW_ONLY — deprecated 2026-05, slot reserved for flash compat
 		/* [226] SMD_DEGRADED_MODE */ 0U,              // 0 = FAST timings (default); 1 = SAFE (set by SmdSat::degraded_mode_engage)
 		/* [227] ARGOS_CACHED_MODULATION */ 0U,        // 0 = LDA2 (default), 1 = LDK, 2 = VLDA4 (mirrors SmdArgosModulation enum)
 		/* [228] GNSS_REUSE_FIX_MAX_AGE_S */ 86400U,   // 24 h: cached depth-pile fix older than this falls back to Doppler-only (REUSE_LAST → OFF)
@@ -359,6 +359,7 @@ protected:
 		/* [237] HAULED_GNSS_EN */ (bool)false,        // GNSS off when hauled by default
 		/* [238] HAULED_GNSS_STRAT */ 1U,              // BaseGnssStrategy::REUSE_LAST (stored as uint per BaseMap)
 		/* [239] GNSS_CLOUDLOCATE_ALWAYS */ (bool)false,  // false=CloudLocate only on cold-start surfaces (default, battery-friendly); true=raw-meas captured at every SURFACING_BURST surface (short-surface tortue fallback)
+		/* [240] GNSS_DEEP_IDLE_AFTER_OFF_S */ 0U,     // 0=disabled (immediate poweroff, default — no behavior change); 0xFFFFFFFF=never poweroff (rail always on, M10Q in deep-idle); else=duration in seconds. Replaces deprecated GNSS_BCKP_CHARGE_* (slots 223-225).
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,
