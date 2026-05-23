@@ -228,6 +228,39 @@ void ServiceManager::restore_cooldown_state() {
 		m_passive_surfacing_count = s_cooldown_noinit.passive_count;
 		DEBUG_INFO("ServiceManager: cooldown restored from noinit (last_cycle=%u, passive=%u)",
 		           (unsigned int)m_last_successful_cycle_time, m_passive_surfacing_count);
+
+		// FIX 2026-05-23 (audit cooldown finding 3): if we boot mid-cooldown
+		// (noinit restored a non-expired timestamp), the wake task MUST be
+		// re-armed. Otherwise services gate themselves via is_in_cooldown(),
+		// stay dormant, and never re-emit SWS state since exit_cooldown_sleep
+		// (the path that re-emits) is only triggered by the wake task. Without
+		// this arm, a device that crashed mid-cooldown and reboots at surface
+		// would never wake any service until the next external event (magnet,
+		// AXL wakeup) — sealed turtle = dormant for the rest of the day.
+		if (rtc && rtc->is_set() && system_scheduler) {
+			unsigned int interval = configuration_store
+				? configuration_store->read_param<unsigned int>(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S)
+				: 0;
+			if (interval > 0) {
+				std::time_t now = rtc->gettime();
+				std::time_t elapsed = (now > m_last_successful_cycle_time)
+					? (now - m_last_successful_cycle_time) : 0;
+				if (elapsed < (std::time_t)interval) {
+					unsigned int remaining_ms = (interval - (unsigned int)elapsed) * 1000;
+					m_cooldown_wake_task = system_scheduler->post_task_prio([]() {
+						exit_cooldown_sleep();
+					}, "CooldownWakeBoot", Scheduler::DEFAULT_PRIORITY, remaining_ms);
+					DEBUG_INFO("ServiceManager: cooldown boot-wake armed for %u s remaining",
+					           (interval - (unsigned int)elapsed));
+				} else {
+					DEBUG_TRACE("ServiceManager: cooldown already expired at boot — no wake task needed");
+				}
+			}
+		} else {
+			// RTC not set: the wake task will be armed when RTC syncs and the
+			// next set_cycle_complete or enter_cooldown_sleep fires.
+			DEBUG_TRACE("ServiceManager: cooldown restored but RTC not set, deferring wake-task arm");
+		}
 	} else {
 		m_last_successful_cycle_time = 0;
 		m_passive_surfacing_count = 0;
@@ -238,6 +271,23 @@ void ServiceManager::restore_cooldown_state() {
 /// @brief Mark a successful surface cycle — starts cooldown timer.
 /// @param t  RTC time of cycle completion.
 void ServiceManager::set_cycle_complete(std::time_t t) {
+	// FIX 2026-05-23 (audit cooldown finding 1): refuse to anchor cooldown on
+	// virtual-epoch RTC. If RTC is not set (cold boot before GNSS sync), `t`
+	// is virtual epoch (1 or close to it). Anchoring cooldown there means the
+	// elapsed-time math at is_in_cooldown() compares "now" against virtual
+	// epoch — once GPS syncs and "now" jumps to real time, elapsed becomes
+	// massive and cooldown looks expired immediately. Or worse, the wake task
+	// posted below fires after `interval * 1000` ms even though the RTC frame
+	// will shift mid-cooldown. Defer arming until we have real time.
+	if (!rtc || !rtc->is_set()) {
+		DEBUG_WARN("ServiceManager::set_cycle_complete: RTC not set — deferring cooldown arm");
+		// Don't update m_last_successful_cycle_time (would store virtual epoch
+		// and corrupt subsequent is_in_cooldown math). The caller (typically
+		// ArgosTxService dive handler) will retry on the next dive event,
+		// which should be after RTC sync in normal operation.
+		return;
+	}
+
 	m_last_successful_cycle_time = t;
 	save_cooldown_state();
 	unsigned int interval = configuration_store->read_param<unsigned int>(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S);

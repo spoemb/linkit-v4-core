@@ -94,6 +94,28 @@ void ArgosTxService::service_init() {
 /// @brief Terminate: power off device immediately.
 void ArgosTxService::service_term() {
 	m_kineis.unsubscribe(*this);
+	// FIX 2026-05-23 (audit boot finding 5): mirror GPSService R2 — cut the
+	// Kineis (SMD/KIM) power state unconditionally on teardown. Without this,
+	// a service_term firing during an in-flight TX could leave the radio
+	// rail in an indeterminate state (e.g., SMD STM32WL still in TX phase
+	// when the host service drops its KineisEventListener subscription).
+	// The radio device's own cleanup is best-effort but not guaranteed
+	// idempotent under all race conditions. set_idle_timeout(0) tells the
+	// driver to fall through to power-off as soon as the current TX (if any)
+	// finishes, instead of holding the rail for the configured surfacing
+	// burst max.
+	m_kineis.set_idle_timeout(0);
+	m_kineis.power_off_immediate();
+	// Reset session state so a subsequent service_init starts clean (covers
+	// the rare path where service_term + service_init fire back-to-back
+	// without a full FSM teardown, e.g., DFU rollback).
+	m_is_surfacing_burst = false;
+	m_awaiting_surfacing = false;
+	m_doppler_burst_count = 0;
+	m_first_gnss_tx_sent = false;
+	m_has_gnss_fix_since_surfacing = false;
+	m_cooldown_armed = false;
+	m_is_tx_pending = false;
 	// Defensive: clear pre-warm state so a hypothetical service_term-without-
 	// service_init sequence doesn't leak stale prep across the next session.
 	m_is_underwater = false;

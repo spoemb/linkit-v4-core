@@ -46,5 +46,18 @@ protected:
 	unsigned int service_next_schedule_in_ms() override;
 	void service_initiate() override;
 	bool service_is_usable_underwater() override;
-	void reset_state_for_cooldown_exit() override { m_is_first_time = true; }
+	// FIX 2026-05-23 (audit SWS finding 2.1 / UWD finding 3.1):
+	// reset the in-progress sample iteration state too. Previously only
+	// m_is_first_time was set, leaving m_sample_iteration / m_dry_count /
+	// m_pending_state at their mid-cycle values from before the cooldown.
+	// After a long cooldown (minutes/hours) the early samples are stale —
+	// conditions may have flipped surface↔UW during the pause — and
+	// continuing the iteration could produce a wrong terminal verdict.
+	// Force a fresh cycle from sample 0 on every cooldown-exit.
+	void reset_state_for_cooldown_exit() override {
+		m_is_first_time = true;
+		m_sample_iteration = 0;
+		m_dry_count = 0;
+		m_pending_state = false;
+	}
 };
