@@ -107,24 +107,55 @@ void M10QAsyncReceiver::power_on(const GPSNavSettings& nav_settings) {
     // know the M10Q state with certainty. The state machine will then
     // proceed via the normal poweron → configure path.
     if (STATE_EQUAL(backupidle)) {
-        DEBUG_INFO("M10QAsyncReceiver::power_on: wake from deep-idle via EXTINT");
-        // M10Q wakes on EXTINT rising edge. Re-init UART driver (was
-        // deinit'd in state_enterbackup step 3 to save the UART block
-        // power during deep-idle). Then pulse EXTINT and let the
-        // M10Q boot into its post-wake state. The configure state's
-        // BBR fast-path will validate at MAX_BAUDRATE.
-        m_ubx_comms.init();
-        m_ubx_comms.subscribe(*this);
-        m_ubx_comms.set_debug_enable(m_nav_settings.debug_enable);
-        pulse_extint_wake();
-        PMU::delay_ms(50);   // give M10Q time to come out of backup (datasheet ~30 ms)
-        m_num_power_on = 1;  // single user (this acquisition)
-        m_powering_off = false;
-        // Skip the normal poweron-state baud-sync loop (state_poweron tries
-        // 9600 first which would fail since M10Q is at MAX after BBR-warm
-        // wake). Jump straight to configure where the fast-path tries MAX.
-        STATE_CHANGE(backupidle, configure);
-        return;
+        // 2026-05 robustness: after WAKE_FAIL_FAST_FALLBACK consecutive
+        // failures on this boot session, the wake-from-deep-idle fast-path
+        // has proven unreliable (HW or M10Q state). Force a cold rail-cycle
+        // — the known-working path — instead of attempting the same fast
+        // path again. Counter is reset on first successful PVT (see
+        // react(UBXCommsEventNavReport) and state_configure SUCCESS path).
+        if (m_consecutive_wake_failures >= WAKE_FAIL_FAST_FALLBACK) {
+            DEBUG_WARN("M10QAsyncReceiver::power_on: %u consecutive wake-fail — forcing cold rail-cycle",
+                       m_consecutive_wake_failures);
+            m_ubx_comms.deinit();
+            GPIOPins::clear(BSP::GPIO::GPIO_GPS_PWR_EN);
+            GPIOPins::release_to_highz(BSP::GPIO::GPIO_GPS_RST);
+            GPIOPins::release_to_highz(BSP::GPIO::GPIO_GPS_EXT_INT);
+            GPIOPins::release_sensors_pwr();
+            PMU::delay_ms(50);
+            m_state = State::idle;
+            m_num_power_on = 0;
+            // Fall through to the normal cold power-on path below.
+        } else {
+            DEBUG_INFO("M10QAsyncReceiver::power_on: wake from deep-idle via EXTINT (fail_count=%u)",
+                       m_consecutive_wake_failures);
+            // M10Q wakes on EXTINT rising edge. Re-init UART driver (was
+            // deinit'd in state_enterbackup step 3 to save the UART block
+            // power during deep-idle). Then pulse EXTINT and let the
+            // M10Q boot into its post-wake state. The configure state's
+            // BBR fast-path will validate at MAX_BAUDRATE.
+            //
+            // Pre-increment the wake-fail counter so even if we hang
+            // mid-sequence (unlikely — every step has a timeout) the
+            // counter still grows on next attempt. Reset to 0 on first
+            // successful UBX response (configure's NAV-PVT or earlier
+            // BBR validation acks). NOTE: if the M10Q does wake but the
+            // configure path subsequently fails for unrelated reasons,
+            // the counter is conservatively NOT reset — better to force
+            // a cold-boot once than ignore a real wake issue.
+            m_consecutive_wake_failures++;
+            m_ubx_comms.init();
+            m_ubx_comms.subscribe(*this);
+            m_ubx_comms.set_debug_enable(m_nav_settings.debug_enable);
+            pulse_extint_wake();
+            PMU::delay_ms(50);   // give M10Q time to come out of backup (datasheet ~30 ms)
+            m_num_power_on = 1;  // single user (this acquisition)
+            m_powering_off = false;
+            // Skip the normal poweron-state baud-sync loop (state_poweron tries
+            // 9600 first which would fail since M10Q is at MAX after BBR-warm
+            // wake). Jump straight to configure where the fast-path tries MAX.
+            STATE_CHANGE(backupidle, configure);
+            return;
+        }
     } else if (STATE_EQUAL(enterbackup)) {
         DEBUG_INFO("M10QAsyncReceiver::power_on: aborting enterbackup (mid-transition) → cold reboot");
         m_ubx_comms.deinit();
@@ -573,6 +604,15 @@ void M10QAsyncReceiver::react(const UBXCommsEventNavReport& n) {
         // Copy under InterruptLock to prevent ISR overwriting mid-read
         UBXCommsEventNavReport nav;
         { InterruptLock lock; std::memcpy(&nav, &m_pending_nav, sizeof(nav)); }
+
+        // 2026-05 deep-idle robustness: NAV report received → M10Q is alive
+        // and configured. If we got here via the EXTINT wake fast-path, that
+        // path is proven working for this session; reset the consecutive-
+        // wake-failure counter.
+        if (m_consecutive_wake_failures > 0) {
+            DEBUG_TRACE("M10QAsyncReceiver: NAV report received — resetting wake-fail counter");
+            m_consecutive_wake_failures = 0;
+        }
 
         while (STATE_EQUAL(receive)) {
 

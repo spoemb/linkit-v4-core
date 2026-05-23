@@ -31,21 +31,23 @@ constexpr unsigned long long LED_HRS_24_MS = 24ULL * 3600ULL * 1000ULL;
 // Timeout history:
 //   - Initial: 5 s (too short, fires during normal SMD Argos TX).
 //   - Bumped to 10 s to cover full SMD Argos TX (TCXO 5 s + RF ≈ 3 s + margin).
-//   - 2026-05-23 (this commit): bumped to 130 s after field log showed it
-//     firing 3× during a 5-min operational session. Root cause: LEDGNSSOn
-//     legitimately stays armed for the full GPS acquisition session, which
-//     can reach GNSS_COLD_ACQ_TIMEOUT (default 120 s). 130 s = 120 s cold
-//     acq + 10 s margin covers every legit long-running LED state without
-//     defeating the catastrophic-freeze recovery purpose (system WDT is at
-//     15 min so 130 s remains comfortably below WDT reset and gets the LED
-//     off well before the watchdog kicks).
+//   - 2026-05-23 (first bump): 130 s after field log showed it firing 3×
+//     during a 5-min operational session. Root cause: LEDGNSSOn legitimately
+//     stays armed for the full GPS acquisition session, which can reach
+//     GNSS_COLD_ACQ_TIMEOUT (default 120 s). 130 s = 120 s cold acq + 10 s
+//     margin. Sufficient for the default config but not for users running
+//     the param at its allowed maximum.
+//   - 2026-05-23 (second bump, post-audit): 650 s to cover GNSS_COLD_ACQ_
+//     TIMEOUT at its full configurable range (10-600 s per dte_params.cpp).
+//     A genuinely-frozen LED FSM still recovers within 10.8 min, well below
+//     the 15-min system watchdog. The safety is a catastrophic-freeze net,
+//     not a tight UX timer.
 //
-// Note: a user-configured GNSS_COLD_ACQ_TIMEOUT > 130 s would re-introduce
-// the false positive. If that becomes a real config, switch to a per-state
-// timeout (small for LEDArgosTX, large for LEDGNSSOn) instead of bumping
-// this constant further — the larger the global timeout, the slower the
-// recovery from a true FSM freeze.
-static constexpr uint64_t LED_FREEZE_TIMEOUT_MS = 130000;
+// Future option: per-state timeouts (LEDArgosTX=10 s tight, LEDGNSSOn=650 s
+// generous, LEDDFUUpdate=120 s). Not implemented — keeping the simple
+// global cap is preferable to per-state tuning unless a real freeze case
+// shows up that needs the tighter recovery.
+static constexpr uint64_t LED_FREEZE_TIMEOUT_MS = 650000;
 static Timer::TimerHandle s_led_freeze_handle;
 
 static void arm_led_freeze_safety() {

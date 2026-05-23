@@ -107,6 +107,15 @@ void GPSService::try_enter_deep_idle_or_poweroff() {
     if (m_deep_idle_inhibit_first_session) {
         DEBUG_INFO("GPSService::try_enter_deep_idle_or_poweroff: WDT-reset inhibit — cold power_off");
         m_device.power_off();
+        // FIX 2026-05-23: clear the inhibit AFTER the first cold-cycle even if
+        // no PVT was obtained (NO_FIX, error, indoor bench, REUSE_LAST path
+        // where no real fix arrives). Rationale: reaching this end-of-session
+        // path means the cold-power-on completed without bricking the device
+        // — that's the invariant R4 is trying to prove. Without this clear,
+        // HAULED + REUSE_LAST or indoor-bench scenarios would permanently
+        // pin the inhibit and disable deep-idle forever (audit finding 4).
+        DEBUG_INFO("GPSService::try_enter_deep_idle_or_poweroff: cold-cycle completed — releasing WDT inhibit");
+        m_deep_idle_inhibit_first_session = false;
         return;
     }
 
@@ -173,7 +182,27 @@ void GPSService::service_term() {
 bool GPSService::service_is_enabled() {
 	GNSSConfig gnss_config;
 	configuration_store->get_gnss_configuration(gnss_config);
-	return gnss_config.enable;
+	bool enabled = gnss_config.enable;
+
+	// R5 robustness side-effect (2026-05-23 audit finding 3): if the operator
+	// disables GNSS_EN while deep-idle is engaged (rail on, M10Q in PMREQ-
+	// backup), the Service framework stops calling service_next_schedule_in_ms
+	// — the natural place where the R5 24 h hygiene cap fires. Without this
+	// hook, the rail could stay on forever on a disabled device, slowly
+	// draining the battery via the M10Q backup current.
+	//
+	// We do the cleanup here because service_is_enabled() is called frequently
+	// by the framework. Yes, this violates the "pure query" idiom — but a
+	// stuck rail on a sealed turtle is a worse outcome than a side-effect
+	// in a frequently-called check.
+	if (!enabled && m_device.is_in_deep_idle()) {
+		DEBUG_INFO("GPSService::service_is_enabled: GNSS disabled while in deep-idle — cutting rail");
+		m_device.power_off();
+		m_deep_idle_started_at_ms = 0;
+		system_scheduler->cancel_task(m_deep_idle_auto_off_task);
+	}
+
+	return enabled;
 }
 
 /// @brief Compute next GNSS schedule aligned to UTC 00:00 boundary.
@@ -309,6 +338,31 @@ void GPSService::service_initiate() {
 	// session via try_enter_deep_idle_or_poweroff().
 	system_scheduler->cancel_task(m_deep_idle_auto_off_task);
 	m_deep_idle_started_at_ms = 0;   // R5: leaving deep-idle (entering acquisition)
+
+	// FIX 2026-05-23 (audit finding cross #2): re-check rate-limit at the
+	// service_initiate entry. service_next_schedule_in_ms gates rate-limited
+	// sessions, but when the framework's reschedule task fires (Service::
+	// reschedule posts a delayed task that calls service_initiate DIRECTLY,
+	// without re-running service_next_schedule_in_ms — see service.cpp:586),
+	// the gate check is bypassed. Without this re-check, a rate-limited GPS
+	// would still power-on at the rescheduled time, burning a full
+	// cold-acq window of current for a fix that can't be TX'd.
+	{
+		unsigned int rl_reschedule_s = 0;
+		if (rtc && rtc->is_set() && RateLimiter::is_blocked(service_current_time(), rl_reschedule_s)) {
+			DEBUG_INFO("GPSService::service_initiate: rate-limited (reschedule_s=%u), aborting fire",
+			           rl_reschedule_s);
+			// Caller (Service::reschedule lambda) does not expect us to
+			// re-schedule ourselves — but if we just return, no further
+			// task fires. service_complete with shall_reschedule=true so
+			// the framework calls reschedule() which routes back through
+			// service_next_schedule_in_ms (which will return the same
+			// reschedule_s and re-arm the timer correctly).
+			m_is_active = false;
+			service_complete(nullptr, nullptr, true);
+			return;
+		}
+	}
 
 	// If a backup-cell charge session is in flight (active or pending retry),
 	// abort it synchronously so the device returns to idle before we request a
@@ -758,6 +812,24 @@ void GPSService::react(const GPSEventCloudLocateReady& e) {
 	if (configuration_store->read_param<bool>(ParamID::GNSS_CLOUDLOCATE_ONLY)) {
 		DEBUG_INFO("GPSService::react(GPSEventCloudLocateReady): CLOUDLOCATE_ONLY — power-off, no PVT wait");
 		m_is_active = false;
+
+		// FIX 2026-05-23 (audit finding 5): reset NTRY counter so we don't
+		// accumulate "failures" — capturing a raw measurement IS progress for
+		// CLOUDLOCATE_ONLY deployments (the position is computed cloud-side
+		// from this raw). Without this reset, two consecutive sessions that
+		// timeout-without-PVT (which is the NORMAL CLOUDLOCATE_ONLY behavior)
+		// would push NTRY into back-off and stretch GNSS_DELTATIME_ACQ for the
+		// next acquisition — wrong incentive given a raw IS what we wanted.
+		m_cold_start_ntry = 0;
+
+		// R4 clear: even though CLOUDLOCATE_ONLY produces no PVT, we did
+		// successfully reach the M10Q (raw meas implies UART OK + nav up).
+		// That's enough to prove the cold path works post-WDT.
+		if (m_deep_idle_inhibit_first_session) {
+			DEBUG_INFO("GPSService::react(GPSEventCloudLocateReady): raw OK — releasing WDT inhibit");
+			m_deep_idle_inhibit_first_session = false;
+		}
+
 		try_enter_deep_idle_or_poweroff();
 		// Build a synthetic CloudLocate log entry from the raw measurement so
 		// peer services get the same SERVICE_LOG_UPDATED hook they'd get on a

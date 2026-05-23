@@ -173,6 +173,17 @@ private:
 	void sync_baud_rate(unsigned int baud);
 	void send_pmreq_backup();
 	void pulse_extint_wake();   ///< 2026-05 deep-idle: pulse EXTINT to wake M10Q from PMREQ-backup
+
+	// 2026-05 deep-idle robustness: counter of consecutive wake-from-deep-idle
+	// failures. Incremented before each attempt, reset on first successful
+	// PVT (proves the M10Q actually woke). After WAKE_FAIL_FAST_FALLBACK
+	// attempts, force a cold-boot path (rail-cycle) instead of the EXTINT
+	// fast-path for the rest of the session — defends against the case where
+	// the EXTINT pin is somehow not waking the M10Q (HW fault, BBR lost +
+	// wrong baud assumed, etc.). The counter is also session-scoped: a reset
+	// or service_init clears it.
+	uint8_t m_consecutive_wake_failures = 0;
+	static constexpr uint8_t WAKE_FAIL_FAST_FALLBACK = 2;
 	void dump_navigation_database(unsigned int);
 	void save_dbd_to_flash();
 	bool load_dbd_from_flash();
