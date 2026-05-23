@@ -1107,6 +1107,15 @@ static void init_runtime(NrfSwitch& nrf_reed_switch)
 	DEBUG_TRACE("Dive mode monitor...");
 	static DiveModeService dive_mode_service(nrf_reed_switch);
 
+	// R4 robustness (2026-05 deep-idle refactor): if the boot was a WDT reset,
+	// inhibit the deep-idle fast-path for the first GPS session post-boot.
+	// Force cold-cycle to prove the cold path works before re-engaging the
+	// optimization. Cleared in GPSService::react(GPSEventPVT) on first fix.
+	if (gps_service && PMU::reset_cause() == ResetCause::WDT_RESET) {
+		DEBUG_INFO("R4: WDT reset detected — inhibiting deep-idle for first GPS session");
+		gps_service->set_deep_idle_inhibit_first_session(true);
+	}
+
 #ifdef EXTERNAL_WAKEUP
 	// TPL5111 shutdown timer — powerdown after SHUTDOWN_TIMER seconds
 	{
@@ -1136,6 +1145,24 @@ static void init_runtime(NrfSwitch& nrf_reed_switch)
  */
 int main()
 {
+	// R1 robustness (2026-05 deep-idle refactor): force the GPS rail LOW
+	// before ANYTHING else runs. With deep-idle enabled, the rail can be left
+	// ON across hard faults / WDT resets — this 1-instruction invariant cuts
+	// it on every boot before init_peripherals even runs. Same for GPS_RST
+	// (drive low to assert reset) and GPS_EXT_INT (high-Z so we don't push
+	// edges into a still-coming-up M10Q). Uses raw nrf_gpio API since BSP::
+	// hasn't been initialized yet at this point.
+	{
+		auto& pwr_en   = BSP::GPIO_Inits[BSP::GPIO::GPIO_GPS_PWR_EN];
+		auto& gps_rst  = BSP::GPIO_Inits[BSP::GPIO::GPIO_GPS_RST];
+		auto& ext_int  = BSP::GPIO_Inits[BSP::GPIO::GPIO_GPS_EXT_INT];
+		nrf_gpio_cfg_output(pwr_en.pin_number);
+		nrf_gpio_pin_clear(pwr_en.pin_number);
+		nrf_gpio_cfg_output(gps_rst.pin_number);
+		nrf_gpio_pin_clear(gps_rst.pin_number);
+		nrf_gpio_cfg_default(ext_int.pin_number);  // high-Z input
+	}
+
 	auto [reed, flash] = init_peripherals();
 	init_power_on_check(reed);
 

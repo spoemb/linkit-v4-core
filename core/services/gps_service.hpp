@@ -142,6 +142,11 @@ private:
 	// Cancelled at every service_initiate() so a new session re-engages cleanly.
 	Scheduler::TaskHandle m_deep_idle_auto_off_task;
 
+	// R5 robustness — timestamp (PMU::get_timestamp_ms) when the device entered
+	// deep-idle. Used by service_next_schedule_in_ms to force a prophylactic
+	// rail-cycle if the device has been in deep-idle > 24 h. 0 = not in deep-idle.
+	uint64_t m_deep_idle_started_at_ms = 0;
+
 	// R4 robustness gate (deep-idle plan): if the last reset was a WDT, inhibit
 	// the deep-idle fast-path for the first GPS session post-boot. Cold-boot
 	// proves the cold path works before re-engaging the optimization. Cleared

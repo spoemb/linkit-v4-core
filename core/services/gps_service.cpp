@@ -9,6 +9,7 @@
 #include "config_store.hpp"
 #include "scheduler.hpp"
 #include "rtc.hpp"
+#include "pmu.hpp"
 #include "rate_limiter.hpp"
 
 extern RTC *rtc;
@@ -119,14 +120,18 @@ void GPSService::try_enter_deep_idle_or_poweroff() {
     if (deep_idle_s == 0) {
         DEBUG_TRACE("GPSService::try_enter_deep_idle_or_poweroff: disabled — power_off");
         m_device.power_off();
+        m_deep_idle_started_at_ms = 0;
         return;
     }
 
     if (!m_device.enter_deep_idle()) {
         DEBUG_WARN("GPSService::try_enter_deep_idle_or_poweroff: enter_deep_idle refused — falling back to power_off");
         m_device.power_off();
+        m_deep_idle_started_at_ms = 0;
         return;
     }
+
+    m_deep_idle_started_at_ms = PMU::get_timestamp_ms();   // R5 timestamp
 
     if (deep_idle_s == 0xFFFFFFFFU) {
         DEBUG_INFO("GPSService::try_enter_deep_idle_or_poweroff: never-poweroff (rail on indefinitely, M10Q in PMREQ-backup)");
@@ -138,6 +143,7 @@ void GPSService::try_enter_deep_idle_or_poweroff() {
     m_deep_idle_auto_off_task = system_scheduler->post_task_prio([this]() {
         DEBUG_INFO("GPSService: deep-idle auto-poweroff timer fired");
         m_device.power_off();
+        m_deep_idle_started_at_ms = 0;
     }, "GPSDeepIdleAutoOff", Scheduler::DEFAULT_PRIORITY, deep_idle_s * MS_PER_SEC);
 }
 
@@ -175,6 +181,28 @@ bool GPSService::service_is_enabled() {
 unsigned int GPSService::service_next_schedule_in_ms() {
 	GNSSConfig gnss_config;
 	configuration_store->get_gnss_configuration(gnss_config);
+
+	// R5 robustness (2026-05 deep-idle refactor): if the M10Q has been in
+	// deep-idle longer than a 24 h hard cap, force a rail-cycle. Defensive
+	// against stale-state scenarios where the M10Q drifted into an
+	// unresponsive mode (V_BCKP exhausted + BBR lost, soft hang). The
+	// datasheet says PMREQ-backup is indefinitely stable, but for a 1-year
+	// sealed turtle a daily prophylactic cycle is cheap insurance. The
+	// cycle happens transparently — `power_off()` here, the next iteration
+	// of this function will see state == poweroff and proceed normally,
+	// then `power_on()` will cold-boot at the upcoming acquisition.
+	if (m_device.is_in_deep_idle() && m_deep_idle_started_at_ms > 0) {
+		uint64_t now_ms = PMU::get_timestamp_ms();
+		constexpr uint64_t DEEP_IDLE_HARD_CAP_MS = 24ULL * 3600ULL * 1000ULL;
+		if (now_ms - m_deep_idle_started_at_ms > DEEP_IDLE_HARD_CAP_MS) {
+			DEBUG_WARN("R5: deep-idle > 24 h (%llu ms) — forcing rail-cycle",
+			           (unsigned long long)(now_ms - m_deep_idle_started_at_ms));
+			m_device.power_off();
+			m_deep_idle_started_at_ms = 0;
+			system_scheduler->cancel_task(m_deep_idle_auto_off_task);
+			// Fall through to the normal scheduling path.
+		}
+	}
 
 	// Cooldown gate (2026-05): refuse to schedule a GPS acquisition while
 	// MIN_SURFACE_CYCLE_INTERVAL_S is still running. Without this guard, the
@@ -280,6 +308,7 @@ void GPSService::service_initiate() {
 	// to acquire a fresh fix — the disposition will be re-armed at end of
 	// session via try_enter_deep_idle_or_poweroff().
 	system_scheduler->cancel_task(m_deep_idle_auto_off_task);
+	m_deep_idle_started_at_ms = 0;   // R5: leaving deep-idle (entering acquisition)
 
 	// If a backup-cell charge session is in flight (active or pending retry),
 	// abort it synchronously so the device returns to idle before we request a
