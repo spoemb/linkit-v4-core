@@ -10,7 +10,11 @@
 #include "rate_limiter.hpp"
 #include "config_store.hpp"
 #include "interrupt_lock.hpp"
+#include "rtc.hpp"
 #include "debug.hpp"
+
+extern ConfigurationStore *configuration_store;
+extern RTC *rtc;
 
 // CRC16-CCITT: nRF SDK header in firmware build, inline stub in CppUTest build.
 // Mirrors the conditional already present in service.cpp.
@@ -28,8 +32,6 @@ static inline uint16_t crc16_compute(const uint8_t *data, uint16_t length, const
 	return crc;
 }
 #endif
-
-extern ConfigurationStore *configuration_store;
 
 namespace {
 
@@ -74,6 +76,26 @@ void RateLimiter::restore_state() {
 	if (s_noinit.crc == noinit_crc() &&
 	    s_noinit.head < MAX_CAP &&
 	    s_noinit.count <= MAX_CAP) {
+		// Mitigation M1c (2026-05): if every stored timestamp is now in the
+		// "future" relative to current RTC (typical after WDT reset that brought
+		// RTC back to virtual 1 while noinit kept the old session's epoch
+		// timestamps), the ring is effectively dead (the `ts > now` defense in
+		// is_blocked would filter every entry). Detect this case explicitly and
+		// clear the ring so it's reusable from boot. Keeps the noinit structure
+		// itself stable across less-extreme rollbacks.
+		if (rtc && rtc->is_set() && s_noinit.count > 0) {
+			std::time_t now = rtc->gettime();
+			bool all_future = true;
+			for (unsigned int i = 0; i < s_noinit.count; i++) {
+				if (s_noinit.ring[i] <= now) { all_future = false; break; }
+			}
+			if (all_future) {
+				DEBUG_WARN("RateLimiter: all %u stored timestamps in future (now=%u) — clearing ring",
+				           s_noinit.count, (unsigned int)now);
+				clear_ring();
+				return;
+			}
+		}
 		DEBUG_INFO("RateLimiter: restored from noinit (count=%u, head=%u)",
 		           s_noinit.count, s_noinit.head);
 		return;
@@ -134,6 +156,15 @@ bool RateLimiter::is_blocked(std::time_t now, unsigned int &reschedule_in_s) {
 	std::time_t expiry = oldest + static_cast<std::time_t>(window_s);
 	reschedule_in_s = (expiry > now) ? static_cast<unsigned int>(expiry - now) : 1;
 	return true;
+}
+
+void RateLimiter::reset_for_rtc_sync() {
+	// Called by GPSService right after rtc->settime(real_t). Pre-sync ring
+	// entries are in virtual-RTC frame and have no meaning post-sync; clear
+	// explicitly to avoid relying on the implicit `ts > now → skip` filter.
+	DEBUG_INFO("RateLimiter::reset_for_rtc_sync: clearing %u entries", s_noinit.count);
+	InterruptLock lock;
+	clear_ring();
 }
 
 void RateLimiter::reset_for_tests() {

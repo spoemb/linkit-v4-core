@@ -81,6 +81,35 @@ private:
 	void process_doppler_burst();
 	void prepare_doppler_packet();
 
+	// BaseGnssStrategy::REUSE_LAST dispatch (Plan 1 follow-up). Builds a GNSS
+	// Argos packet from the most recent cached depth-pile fix without powering
+	// the GPS. Falls back to process_doppler_burst() when no usable cached
+	// fix exists (pile empty, fix too old, or not a real FIX/UPDATE entry).
+	void process_gnss_burst_from_cached();
+
+	// Spacing guard (2026-05): minimum interval between any two TX, based on
+	// uptime (monotonic, immune to RTC rollback). Updated in
+	// react(KineisEventTxComplete). Used by service_next_schedule_in_ms when
+	// it would otherwise return an "immediate" schedule (0 ms) at transitions
+	// like Doppler→GNSS or FastLoc→Doppler. Surfacing_burst_init_s acts as
+	// the minimum-spacing value (≥ 5 s expected).
+	uint64_t m_last_tx_uptime_ms = 0;
+
+	// Returns the proposed_delay_ms clamped so the resulting TX time is at
+	// least min_spacing_s seconds after m_last_tx_uptime_ms. If clamped,
+	// also reschedules m_sched at the deferred time. No-op if no prior TX
+	// has completed (m_last_tx_uptime_ms == 0).
+	unsigned int apply_spacing_guard(unsigned int proposed_delay_ms,
+	                                 unsigned int min_spacing_s,
+	                                 std::time_t now);
+
+	// FastLoc priority (2026-05): peek depth pile; if the latest entry is a
+	// FastLoc (or real FIX/UPDATE) less than max_age_s old, returns true and
+	// the caller should route to process_gnss_burst instead of
+	// process_doppler_burst. The FastLoc occupies what would have been a
+	// Doppler TX slot.
+	bool should_promote_doppler_to_gnss(unsigned int max_age_s);
+
 	// BaseGnssStrategy::REUSE_LAST plumbing: read the most recent depth-pile fix
 	// if it is fresh enough per ParamID::GNSS_REUSE_FIX_MAX_AGE_S. Returns false
 	// when the pile is empty, the latest entry is not a real fix, the entry is

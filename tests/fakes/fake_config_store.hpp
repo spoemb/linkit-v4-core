@@ -21,4 +21,9 @@ public:
 	unsigned int get_saved_count() { return m_saved_count; }
 	void set_battery_level(unsigned int level) { m_battery_level = level; }
 	void set_is_battery_level_low(bool state) { m_is_battery_level_low = state; }
+
+	// Test helper — returns the raw BaseType variant for a given ParamID so
+	// callers can dispatch on variant.index() (e.g. config-file loaders that
+	// need to coerce textual values into the correct variant slot).
+	BaseType get_param_variant(ParamID p) { return m_params.at((unsigned int)p); }
 };

@@ -171,7 +171,12 @@ const BaseMap param_map[] = {
 	{ "THERMISTOR_SENSOR_WAKEUP_THRESH", "THP04", BaseEncoding::FLOAT, (double)0.0, (double)0.0, {}, ENABLE_THERMISTOR_SENSOR, true },
 	{ "THERMISTOR_SENSOR_WAKEUP_SAMPLES", "THP05", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, ENABLE_THERMISTOR_SENSOR, true },
 	// [117] External LED
-	{ "EXT_LED_MODE", "LDP02", BaseEncoding::LEDMODE, 0U, 0U, {}, true, true },
+	// [117] Reserved: was EXT_LED_MODE / LDP02 — external LED indicator from
+	// the Icoteq Horizon / Artic-R2 era. EXT_LED_PIN is not wired on LinkIt V4
+	// or RSPB, so the param had no visible effect. Slot kept reserved (hidden
+	// from DTE) to preserve the param array indexing for flash-persisted
+	// configs from earlier firmware.
+	{ "_RESERVED_117", "", BaseEncoding::UINT, 0, 0, {}, false, false },
 	// [118-123] Accelerometer sensor (slots always reserved)
 	{ "AXL_SENSOR_ENABLE", "AXP01", BaseEncoding::BOOLEAN, 0, 0, {}, ENABLE_AXL_SENSOR, true },
 	{ "AXL_SENSOR_PERIODIC", "AXP02", BaseEncoding::UINT, 0U, 0U, {}, ENABLE_AXL_SENSOR, true },
@@ -361,11 +366,25 @@ const BaseMap param_map[] = {
 	{ "HAULED_DETECT_EN",          "HMP00", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "HAULED_IDLE_THRESHOLD_H",   "HMP01", BaseEncoding::UINT,    1U, 0xFFFFU, {}, true, true },
 	{ "HAULED_RETURN_EVENTS",      "HMP02", BaseEncoding::UINT,    1U, 0xFFU,   {}, true, true },
-	{ "HAULED_ARGOS_MODE",         "HMP10", BaseEncoding::ARGOSMODE, 0, 0, { 0U, 1U, 2U, 3U, 4U, 5U }, true, true },
+	// HMP10 deliberately excludes SURFACING_BURST (5): in HAULED the device is
+	// dry/stationary by definition, so a dive-event-triggered burst can never
+	// fire — using it as the hauled mode would silently produce zero TX.
+	// LEGACY / DUTY_CYCLE / DOPPLER / PASS_PREDICTION are valid choices.
+	// Defensive fallback: config_store HAULED branch auto-promotes any legacy
+	// SURFACING_BURST value to LEGACY at read time.
+	{ "HAULED_ARGOS_MODE",         "HMP10", BaseEncoding::ARGOSMODE, 0, 0, { 0U, 1U, 2U, 3U, 4U }, true, true },
 	{ "HAULED_TR_NOM",             "HMP11", BaseEncoding::UINT,    1U, 0xFFFFFFFFU, {}, true, true },
 	{ "HAULED_GNSS_EN",            "HMP12", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	// HAULED_GNSS_STRAT: 0=FRESH, 1=REUSE_LAST, 2=OFF (BaseGnssStrategy)
 	{ "HAULED_GNSS_STRAT",         "HMP13", BaseEncoding::UINT,    0U, 2U, {}, true, true },
+	// [239] CloudLocate always-on: capture raw GNSS measurements on every
+	// SURFACING_BURST surface, not just before the first fix. Useful for
+	// devices with short surface windows where warm GPS fixes often miss
+	// the 30 s timeout — CloudLocate raw-meas gives a cloud-side position
+	// fallback at every surface. Costs ~30 s of GPS-on per surface (full
+	// cold_acq_timeout) even if a real fix arrives early, since raw-meas
+	// collection runs the full window.
+	{ "GNSS_CLOUDLOCATE_ALWAYS",   "GNP51", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

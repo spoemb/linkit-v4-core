@@ -44,6 +44,14 @@ public:
 	// (i.e. when the next TX would again be allowed).
 	static bool is_blocked(std::time_t now, unsigned int &reschedule_in_s);
 
+	// Mitigation L (2026-05): clear the ring buffer when the RTC is synced
+	// from GNSS. Pre-sync timestamps are in the virtual RTC frame (uptime
+	// since boot) and become meaningless once the RTC jumps to real epoch
+	// seconds. Without this, the `ts > now → skip` defense filters them all
+	// implicitly, but explicit reset is cleaner: future TX records start
+	// counting against the cap from the real-time baseline.
+	static void reset_for_rtc_sync();
+
 	// Visible-for-testing accessors. Not stable API.
 	static unsigned int count_in_window(std::time_t now, unsigned int window_s);
 	static void reset_for_tests();

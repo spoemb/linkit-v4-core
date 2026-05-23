@@ -7,10 +7,8 @@
 #include "debug.hpp"
 #include "config_store.hpp"
 #include "rgb_led.hpp"
-#include "led.hpp"
 #include "rtc.hpp"
 
-extern Led *ext_status_led;
 extern RGBLed *status_led;
 extern Timer *system_timer;
 extern ConfigurationStore *configuration_store;
@@ -23,13 +21,15 @@ constexpr unsigned long long LED_HRS_24_MS = 24ULL * 3600ULL * 1000ULL;
 // === LED freeze safety (2026-05) ===========================================
 // Defense against a stuck FSM (e.g. an Argos TX that never returns its
 // completion event) leaving the LED solid for hours. Each non-exempt state
-// entry() arms a 5 s deadline; the next state entry that runs disarms /
-// re-arms it. If 5 s pass without any LED FSM transition the deadline fires
+// entry() arms a 10 s deadline; the next state entry that runs disarms /
+// re-arms it. If 10 s pass without any LED FSM transition the deadline fires
 // and forces the LED off — purely visual, the FSM stays in its current
 // state. EXEMPT (disarmed explicitly): config modes (BLE GUI connected),
-// battery-critical warning, OTA success — all "intentionally solid" states
-// the operator needs to keep seeing.
-static constexpr uint64_t LED_FREEZE_TIMEOUT_MS = 5000;
+// battery-critical warning, OTA success, all pre-operational states — all
+// "intentionally solid" states the operator needs to keep seeing.
+// Timeout was 5 s; bumped to 10 s to cover full SMD Argos TX (TCXO 5 s +
+// RF ≈ 3 s + margin).
+static constexpr uint64_t LED_FREEZE_TIMEOUT_MS = 10000;
 static Timer::TimerHandle s_led_freeze_handle;
 
 static void arm_led_freeze_safety() {
@@ -37,9 +37,8 @@ static void arm_led_freeze_safety() {
 	if (s_led_freeze_handle.has_value())
 		system_timer->cancel_schedule(s_led_freeze_handle);
 	s_led_freeze_handle = system_timer->add_schedule([]() {
-		DEBUG_WARN("LED freeze safety: 5 s without FSM transition — forcing LED off");
+		DEBUG_WARN("LED freeze safety: 10 s without FSM transition — forcing LED off");
 		if (status_led) status_led->off();
-		if (ext_status_led) ext_status_led->off();
 		s_led_freeze_handle.reset();
 	}, system_timer->get_counter() + LED_FREEZE_TIMEOUT_MS);
 }
@@ -103,11 +102,6 @@ static bool led_24h_window_active() {
 		(configuration_store->read_param<BaseLEDMode>(ParamID::LED_MODE) == BaseLEDMode::HRS_24 && \
 		 led_24h_window_active()))
 
-#define EXT_LED_MODE_GUARD \
-	if (configuration_store->read_param<BaseLEDMode>(ParamID::EXT_LED_MODE) == BaseLEDMode::ALWAYS || \
-		(configuration_store->read_param<BaseLEDMode>(ParamID::EXT_LED_MODE) == BaseLEDMode::HRS_24 && \
-		 led_24h_window_active()))
-
 
 void LEDOff::entry() {
 	DEBUG_TRACE("LEDOff: entry");
@@ -123,16 +117,12 @@ void LEDOff::entry() {
 		transit<LEDBatteryCritical>();
 	else
 		status_led->off();
-	if (ext_status_led)
-		ext_status_led->off();
 }
 
 void LEDBoot::entry() {
 	DEBUG_TRACE("LEDBoot: entry");
 	arm_led_freeze_safety();
 	status_led->flash(RGBLedColor::WHITE, 125);
-	if (ext_status_led)
-		ext_status_led->flash(125);
 }
 
 void LEDPowerDown::entry() {
@@ -141,8 +131,6 @@ void LEDPowerDown::entry() {
 	m_is_battery_critical = false;
 	// Always flash white during powerdown countdown, regardless of magnet
 	status_led->flash(RGBLedColor::WHITE, 50);
-	if (ext_status_led)
-		ext_status_led->flash(50);
 }
 
 void LEDError::entry() {
@@ -153,8 +141,6 @@ void LEDError::entry() {
 		status_led->set(RGBLedColor::WHITE);
 	else
 		status_led->flash(RGBLedColor::RED);
-	if (ext_status_led)
-		ext_status_led->off();
 }
 
 void LEDPreOperationalPending::entry() {
@@ -165,8 +151,6 @@ void LEDPreOperationalPending::entry() {
 	disarm_led_freeze_safety();
 	m_is_battery_critical = false;
 	status_led->set(RGBLedColor::GREEN);
-	if (ext_status_led)
-		ext_status_led->off();
 }
 
 void LEDPreOperationalError::entry() {
@@ -177,8 +161,6 @@ void LEDPreOperationalError::entry() {
 		status_led->set(RGBLedColor::WHITE);
 	else
 		status_led->flash(RGBLedColor::RED);
-	if (ext_status_led)
-		ext_status_led->off();
 }
 
 void LEDPreOperationalBatteryNominal::entry() {
@@ -189,8 +171,6 @@ void LEDPreOperationalBatteryNominal::entry() {
 		status_led->set(RGBLedColor::WHITE);
 	else
 		status_led->flash(RGBLedColor::GREEN);
-	if (ext_status_led)
-		ext_status_led->off();
 }
 
 void LEDPreOperationalBatteryLow::entry() {
@@ -201,8 +181,6 @@ void LEDPreOperationalBatteryLow::entry() {
 		status_led->set(RGBLedColor::WHITE);
 	else
 		status_led->flash(RGBLedColor::YELLOW);
-	if (ext_status_led)
-		ext_status_led->off();
 }
 
 void LEDConfigPending::entry() {
@@ -210,8 +188,6 @@ void LEDConfigPending::entry() {
 	disarm_led_freeze_safety();  // BLE GUI connect path — exempt per spec
 	m_is_battery_critical = false;
 	status_led->set(RGBLedColor::BLUE);
-	if (ext_status_led)
-		ext_status_led->off();
 }
 
 void LEDConfigNotConnected::entry() {
@@ -222,8 +198,6 @@ void LEDConfigNotConnected::entry() {
 		status_led->set(RGBLedColor::WHITE);
 	else
 		status_led->flash(RGBLedColor::BLUE);
-	if (ext_status_led)
-		ext_status_led->off();
 }
 
 void LEDConfigConnected::entry() {
@@ -234,8 +208,6 @@ void LEDConfigConnected::entry() {
 		status_led->set(RGBLedColor::WHITE);
 	else
 		status_led->set(RGBLedColor::BLUE);
-	if (ext_status_led)
-		ext_status_led->off();
 }
 
 void LEDGNSSOn::entry() {
@@ -249,13 +221,6 @@ void LEDGNSSOn::entry() {
 			status_led->flash(RGBLedColor::CYAN, 1000);
 		} else {
 			status_led->off();
-		}
-		EXT_LED_MODE_GUARD {
-			if (ext_status_led)
-				ext_status_led->on();
-		} else {
-			if (ext_status_led)
-				ext_status_led->off();
 		}
 	}
 }
@@ -272,8 +237,6 @@ void LEDGNSSOffWithFix::entry() {
 			} else {
 				status_led->off();
 			}
-			if (ext_status_led)
-				ext_status_led->off();
 		}
 		system_timer->add_schedule([this]() {
 			if (is_in_state<LEDConfigNotConnected>())
@@ -297,8 +260,6 @@ void LEDGNSSOffWithoutFix::entry() {
 			} else {
 				status_led->off();
 			}
-			if (ext_status_led)
-				ext_status_led->off();
 		}
 		system_timer->add_schedule([this]() {
 			if (is_in_state<LEDConfigNotConnected>())
@@ -364,56 +325,42 @@ void LEDDFUUpdate::entry() {
 	DEBUG_TRACE("LEDDFUUpdate: entry");
 	arm_led_freeze_safety();
 	status_led->flash_alternate(RGBLedColor::BLUE, RGBLedColor::WHITE, 250);
-	if (ext_status_led)
-		ext_status_led->off();
 }
 
 void LEDOTASuccess::entry() {
 	DEBUG_TRACE("LEDOTASuccess: entry");
 	disarm_led_freeze_safety();  // Terminal post-update state — must stay visible
 	status_led->set(RGBLedColor::GREEN);
-	if (ext_status_led)
-		ext_status_led->on();
 }
 
 void LEDOTAFailed::entry() {
 	DEBUG_TRACE("LEDOTAFailed: entry");
 	arm_led_freeze_safety();
 	status_led->flash(RGBLedColor::RED, 200);
-	if (ext_status_led)
-		ext_status_led->flash(200);
 }
 
 void LEDFirmwareApplied::entry() {
 	DEBUG_TRACE("LEDFirmwareApplied: entry");
 	arm_led_freeze_safety();
 	status_led->flash(RGBLedColor::GREEN, 150);
-	if (ext_status_led)
-		ext_status_led->flash(150);
 }
 
 void LEDConfirmConfig::entry() {
 	DEBUG_TRACE("LEDConfirmConfig: entry");
 	arm_led_freeze_safety();
 	status_led->flash(RGBLedColor::BLUE, 50);
-	if (ext_status_led)
-		ext_status_led->off();
 }
 
 void LEDConfirmExitConfig::entry() {
 	DEBUG_TRACE("LEDConfirmExitConfig: entry");
 	arm_led_freeze_safety();
 	status_led->flash(RGBLedColor::GREEN, 50);
-	if (ext_status_led)
-		ext_status_led->off();
 }
 
 void LEDConfirmPowerOff::entry() {
 	DEBUG_TRACE("LEDConfirmPowerOff: entry");
 	arm_led_freeze_safety();
 	status_led->flash(RGBLedColor::RED, 50);
-	if (ext_status_led)
-		ext_status_led->off();
 }
 
 void LEDSurfaceDetected::entry() {

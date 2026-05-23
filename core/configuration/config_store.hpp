@@ -79,6 +79,11 @@ struct ArgosConfig {
 	bool argos_rx_en;
 	unsigned int argos_rx_max_window;
 	bool gnss_en;
+	// GNSS sourcing strategy. Default FRESH = existing behavior (acquire fresh
+	// fix, then build packet from depth-pile entry). Set to REUSE_LAST only in
+	// the HAULED branch of get_argos_configuration; all other branches keep
+	// FRESH so existing GNSS paths are byte-identical to pre-Plan-1 code.
+	BaseGnssStrategy gnss_strategy;
 	unsigned int argos_rx_aop_update_period;
 	std::time_t last_aop_update;
 	bool        cert_tx_enable;
@@ -231,7 +236,7 @@ protected:
 		/* [114] THERMISTOR_SENSOR_VALUE */ (double)0.0,
 		/* [115] THERMISTOR_SENSOR_WAKEUP_THRESH */ (double)0.0,
 		/* [116] THERMISTOR_SENSOR_WAKEUP_SAMPLES */ 0U,
-		/* [117] EXT_LED_MODE */ BaseLEDMode::ALWAYS,
+		/* [117] _RESERVED_117 (was EXT_LED_MODE) */ BaseLEDMode::ALWAYS,  // Slot kept for flash-layout backward compat; no code reads it.
 		/* [118] AXL_SENSOR_ENABLE */ (bool)false,
 		/* [119] AXL_SENSOR_PERIODIC */ 0U,
 		/* [120] AXL_SENSOR_WAKEUP_THRESHOLD */ (double)0.0,
@@ -353,6 +358,7 @@ protected:
 		/* [236] HAULED_TR_NOM */ 7200U,               // 2 h interval when hauled
 		/* [237] HAULED_GNSS_EN */ (bool)false,        // GNSS off when hauled by default
 		/* [238] HAULED_GNSS_STRAT */ 1U,              // BaseGnssStrategy::REUSE_LAST (stored as uint per BaseMap)
+		/* [239] GNSS_CLOUDLOCATE_ALWAYS */ (bool)false,  // false=CloudLocate only on cold-start surfaces (default, battery-friendly); true=raw-meas captured at every SURFACING_BURST surface (short-surface tortue fallback)
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,
@@ -808,6 +814,10 @@ public:
 
 		argos_config.is_out_of_zone = is_zone_exclusion();
 		argos_config.is_lb = false;
+		// Default GNSS strategy = FRESH preserves byte-identical pre-Plan-1
+		// behavior for every non-HAULED path. Only the HAULED override branch
+		// (below) sets it to REUSE_LAST / OFF when the user requests.
+		argos_config.gnss_strategy = BaseGnssStrategy::FRESH;
 
 		// Power and frequency are controlled by RADIOCONF on SMD devices.
 		// These fields are kept for legacy (non-SMD) scheduler compatibility.
@@ -917,18 +927,38 @@ public:
 			}
 		}
 
-		// HAULED override (Plan 1 step 3) — see matching logic in
+		// HAULED override (Plan 1) — see matching logic in
 		// get_gnss_configuration() above. Overrides mode / TR_NOM / gnss_en
 		// only; everything else inherits from the LB/OoZ/NORMAL cascade.
 		HauledModeService::evaluate();
 		if (!argos_config.is_lb && HauledModeService::is_hauled() &&
 		    read_param<bool>(ParamID::HAULED_DETECT_EN)) {
 			argos_config.mode = read_param<BaseArgosMode>(ParamID::HAULED_ARGOS_MODE);
+			// SURFACING_BURST requires UW transitions to fire — meaningless in
+			// HAULED (the animal isn't diving). DTE write now rejects this
+			// value (HMP10 allowed_values restricted to {0,1,2,3,4}); this
+			// guard catches legacy configs persisted before the restriction
+			// and silently rolls back to LEGACY to avoid a TX-less hauled mode.
+			if (argos_config.mode == BaseArgosMode::SURFACING_BURST) {
+				DEBUG_WARN("ConfigurationStore: HAULED_ARGOS_MODE=SURFACING_BURST auto-promoted to LEGACY");
+				argos_config.mode = BaseArgosMode::LEGACY;
+			}
 			argos_config.tx_interval_s = read_param<unsigned int>(ParamID::HAULED_TR_NOM);
+			// HMP13 = strategy. Translate to (gnss_strategy, gnss_en):
+			//   FRESH      → gnss_en = HMP12 (acquire as usual)
+			//   REUSE_LAST → gnss_en = false (GPS stays OFF, battery saved);
+			//                ArgosTxService dispatch sees strategy and routes
+			//                to process_gnss_burst_from_cached() instead of
+			//                process_doppler_burst()
+			//   OFF        → gnss_en = false; dispatch falls through to
+			//                process_doppler_burst() (no cached lookup)
 			unsigned int strat = read_param<unsigned int>(ParamID::HAULED_GNSS_STRAT);
-			if (strat == (unsigned int)BaseGnssStrategy::OFF) {
+			argos_config.gnss_strategy = static_cast<BaseGnssStrategy>(strat);
+			if (strat == (unsigned int)BaseGnssStrategy::REUSE_LAST) {
+				argos_config.gnss_en = false;  // No acquisition; TX uses cached fix
+			} else if (strat == (unsigned int)BaseGnssStrategy::OFF) {
 				argos_config.gnss_en = false;
-			} else {
+			} else {  // FRESH
 				argos_config.gnss_en = read_param<bool>(ParamID::HAULED_GNSS_EN);
 			}
 			if (m_last_config_mode != ConfigMode::HAULED) {

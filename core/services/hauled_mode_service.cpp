@@ -30,6 +30,11 @@ static inline uint16_t crc16_compute(const uint8_t *data, uint16_t length, const
 extern ConfigurationStore *configuration_store;
 extern RTC *rtc;
 
+// Validation threshold for stored timestamps — anything below year 2000 is a
+// virtual-RTC artifact or corruption, anything above year 2100 is corruption.
+static constexpr std::time_t RTC_MIN_VALID = 946684800;   // 2000-01-01
+static constexpr std::time_t RTC_MAX_VALID = 4102444800;  // 2100-01-01
+
 namespace {
 
 struct HauledNoinit {
@@ -62,6 +67,20 @@ void clear_state() {
 
 void HauledModeService::restore_state() {
 	if (s_noinit.crc == noinit_crc() && s_noinit.in_hauled <= 1) {
+		// Mitigation M1c (2026-05): a future-dated last_uw_event_rtc after a
+		// WDT reset (RTC reset to virtual 1, noinit kept old large value) was
+		// previously handled lazily in evaluate(). With M1b that path now
+		// re-baselines correctly. We still defensively reject impossible
+		// values here so the in-hauled flag isn't trusted blindly when the
+		// timestamp shape is suspicious.
+		if (s_noinit.last_uw_event_rtc != 0 &&
+		    rtc && rtc->is_set() && s_noinit.last_uw_event_rtc > rtc->gettime() + RTC_MAX_VALID) {
+			// Absurd future value — likely a bit-flip past the CRC. Clear.
+			DEBUG_WARN("HauledModeService: noinit last_uw_event_rtc=%u absurdly future, discarding",
+			           (unsigned int)s_noinit.last_uw_event_rtc);
+			clear_state();
+			return;
+		}
 		DEBUG_INFO("HauledModeService: restored from noinit (in_hauled=%u, last_uw=%u, returns=%u)",
 		           s_noinit.in_hauled,
 		           (unsigned int)s_noinit.last_uw_event_rtc,
@@ -116,7 +135,21 @@ void HauledModeService::evaluate(std::time_t now) {
 	}
 	if (s_noinit.in_hauled) return;  // hysteresis: only on_underwater_event can clear
 	if (s_noinit.last_uw_event_rtc == 0) return;  // never seen UW yet — stay AT_SEA
-	if (now < s_noinit.last_uw_event_rtc) return; // RTC rollback — wait it out
+	// Mitigation M1b (2026-05): RTC rollback detected (typically a WDT reset
+	// brought RTC back to 1 while noinit still has timestamps from previous
+	// session). The previous behavior `return` left HAULED stuck for the rest
+	// of the deployment. Re-baseline `last_uw_event_rtc = now` so the elapsed-
+	// time count restarts from the new RTC frame — HAULED can engage after
+	// threshold_h hours from this point. The hauled flag itself is preserved
+	// where applicable (we only reach here when !in_hauled, so no state loss).
+	if (now < s_noinit.last_uw_event_rtc) {
+		DEBUG_WARN("HauledModeService::evaluate: RTC rollback (now=%u < stored=%u), re-baselining",
+		           (unsigned int)now, (unsigned int)s_noinit.last_uw_event_rtc);
+		InterruptLock lock;
+		s_noinit.last_uw_event_rtc = now;
+		s_noinit.crc = noinit_crc();
+		return;
+	}
 
 	unsigned int threshold_h = configuration_store->read_param<unsigned int>(ParamID::HAULED_IDLE_THRESHOLD_H);
 	if (threshold_h == 0) return;
@@ -141,6 +174,16 @@ std::time_t HauledModeService::last_uw_event_rtc() {
 
 unsigned int HauledModeService::uw_events_since_hauled() {
 	return s_noinit.uw_events_since_hauled;
+}
+
+void HauledModeService::reset_for_rtc_sync(std::time_t now) {
+	// Called by GPSService right after rtc->settime(real_t). Re-anchor the
+	// elapsed-time baseline to the new RTC frame; keep logical state.
+	InterruptLock lock;
+	DEBUG_INFO("HauledModeService::reset_for_rtc_sync: re-anchoring last_uw_event_rtc %u → %u (in_hauled=%u)",
+	           (unsigned int)s_noinit.last_uw_event_rtc, (unsigned int)now, s_noinit.in_hauled);
+	s_noinit.last_uw_event_rtc = now;
+	s_noinit.crc = noinit_crc();
 }
 
 void HauledModeService::reset_for_tests() {

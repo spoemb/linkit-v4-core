@@ -163,7 +163,15 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 		if (argos_config.mode == BaseArgosMode::OFF) {
 			return Service::SCHEDULE_DISABLED;
 		} else if (argos_config.mode == BaseArgosMode::DOPPLER) {
-			m_scheduled_task = [this]() { process_doppler_burst(); };
+			// FastLoc priority (2026-05): see explanation at the LEGACY/DUTY_CYCLE
+			// site. process_gnss_burst auto-selects the FastLoc packet builder
+			// when the latest pile entry is FASTLOC.
+			if (should_promote_doppler_to_gnss(60)) {
+				DEBUG_INFO("ArgosTxService::DOPPLER mode: fresh FastLoc/FIX — promoting to GNSS TX");
+				m_scheduled_task = [this]() { process_gnss_burst(); };
+			} else {
+				m_scheduled_task = [this]() { process_doppler_burst(); };
+			}
 			m_scheduled_mode = argos_config.adaptive_modulation ? KineisModulation::VLDA4 : resolve_non_adaptive_modulation();
 			return m_sched.schedule_legacy(argos_config, now);
 		} else if (argos_config.mode == BaseArgosMode::SURFACING_BURST) {
@@ -187,28 +195,38 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 					return Service::SCHEDULE_DISABLED;
 				}
 
-				m_scheduled_task = [this]() { process_doppler_burst(); };
+				// FastLoc priority (2026-05): if a fresh FastLoc / FIX is in the
+				// depth pile, promote to GNSS phase immediately rather than
+				// wasting this slot on a position-less Doppler. Fall through
+				// to phase 2 below; do NOT execute the Doppler scheduling.
+				if (should_promote_doppler_to_gnss(60)) {
+					DEBUG_INFO("ArgosTxService::SURFACING_BURST: fresh FastLoc/FIX in pile — promoting to GNSS phase");
+					m_has_gnss_fix_since_surfacing = true;
+					// Fall through to "Phase 2" below.
+				} else {
+					m_scheduled_task = [this]() { process_doppler_burst(); };
 
-				// First message is immediate (0 delay)
-				if (m_doppler_burst_count == 0) {
-					// Demoted to TRACE: redundant with METRIC-SURF which is emitted
-					// when the burst is armed on the surface event. This log fires
-					// on every reschedule of the immediate-Doppler scheduling path,
-					// adding LFS commit overhead just before the first send().
-					DEBUG_TRACE("ArgosTxService::SURFACING_BURST: Doppler #%u (immediate)", m_doppler_burst_count + 1);
-					m_sched.schedule_at(now);
-					return 0;
+					// First message is immediate (0 delay) — but apply spacing
+					// guard if a prior TX (e.g. from a prior session or a back-
+					// to-back transition) is too recent.
+					if (m_doppler_burst_count == 0) {
+						DEBUG_TRACE("ArgosTxService::SURFACING_BURST: Doppler #%u (immediate)", m_doppler_burst_count + 1);
+						unsigned int delay_ms = apply_spacing_guard(0, argos_config.surfacing_burst_init_s, now);
+						if (delay_ms == 0) m_sched.schedule_at(now);
+						return delay_ms;
+					}
+
+					// Progressive interval: init + (count-1) * step, capped at max
+					unsigned int interval_s = argos_config.surfacing_burst_init_s +
+						(m_doppler_burst_count - 1) * argos_config.surfacing_burst_step_s;
+					if (interval_s > argos_config.surfacing_burst_max_s)
+						interval_s = argos_config.surfacing_burst_max_s;
+
+					DEBUG_INFO("ArgosTxService::SURFACING_BURST: Doppler #%u in %u s", m_doppler_burst_count + 1, interval_s);
+					m_sched.schedule_at(now + interval_s);
+					return interval_s * 1000;
 				}
-
-				// Progressive interval: init + (count-1) * step, capped at max
-				unsigned int interval_s = argos_config.surfacing_burst_init_s +
-					(m_doppler_burst_count - 1) * argos_config.surfacing_burst_step_s;
-				if (interval_s > argos_config.surfacing_burst_max_s)
-					interval_s = argos_config.surfacing_burst_max_s;
-
-				DEBUG_INFO("ArgosTxService::SURFACING_BURST: Doppler #%u in %u s", m_doppler_burst_count + 1, interval_s);
-				m_sched.schedule_at(now + interval_s);
-				return interval_s * 1000;
+				// Promote branch fell through: continue to Phase 2 below.
 			}
 
 			// Phase 2: GNSS fix available — switch to normal GNSS TX with tx_interval_s
@@ -237,8 +255,14 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 				// because scheduling can be called while a TX is still in progress.
 				if (!m_first_gnss_tx_sent) {
 					DEBUG_INFO("ArgosTxService::SURFACING_BURST: GNSS TX #1 (immediate after fix)");
-					m_sched.schedule_at(now);
-					return 0;
+					// Spacing guard (2026-05): if a Doppler TX just completed
+					// seconds ago and the GPS fix arrived right after, firing
+					// the first GNSS TX immediately would put 2 TX back-to-back
+					// (TCXO drift + CLS rate-limit risk). Defer to at least
+					// surfacing_burst_init_s after the previous TX.
+					unsigned int delay_ms = apply_spacing_guard(0, argos_config.surfacing_burst_init_s, now);
+					if (delay_ms == 0) m_sched.schedule_at(now);
+					return delay_ms;
 				}
 
 				DEBUG_INFO("ArgosTxService::SURFACING_BURST: GNSS TX in %u s", argos_config.tx_interval_s);
@@ -255,7 +279,25 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 			return m_sched.schedule_legacy(argos_config, now);
 		} else {
 			if (!argos_config.gnss_en) {
-				m_scheduled_task = [this]() { process_doppler_burst(); };
+				// BaseGnssStrategy::REUSE_LAST (Plan 1 follow-up): no GPS power-on
+				// but the TX uses the most recent cached fix from the depth pile
+				// (peek without consume, age-checked vs GNSS_REUSE_FIX_MAX_AGE_S).
+				// If no usable cached entry, process_gnss_burst_from_cached()
+				// internally falls back to a Doppler-only TX so the cycle still
+				// happens. For FRESH and OFF, the existing process_doppler_burst
+				// path is preserved exactly (no behavior change).
+				if (argos_config.gnss_strategy == BaseGnssStrategy::REUSE_LAST) {
+					m_scheduled_task = [this]() { process_gnss_burst_from_cached(); };
+				} else if (should_promote_doppler_to_gnss(60)) {
+					// FastLoc priority (2026-05): a fresh FastLoc / FIX in the
+					// pile is more useful than a position-less Doppler. Use
+					// process_gnss_burst — it auto-selects the FastLoc packet
+					// builder for FASTLOC entries (argos_tx_service.cpp ~1020).
+					DEBUG_INFO("ArgosTxService: fresh FastLoc/FIX in pile — promoting Doppler slot to GNSS TX");
+					m_scheduled_task = [this]() { process_gnss_burst(); };
+				} else {
+					m_scheduled_task = [this]() { process_doppler_burst(); };
+				}
 				if (argos_config.mode == BaseArgosMode::DUTY_CYCLE) {
 					m_scheduled_mode = argos_config.adaptive_modulation ? KineisModulation::VLDA4 : resolve_non_adaptive_modulation();
 					return m_sched.schedule_duty_cycle(argos_config, now);
@@ -1060,6 +1102,60 @@ void ArgosTxService::process_gnss_burst() {
 	}
 }
 
+/// @brief REUSE_LAST GNSS burst — TX a GNSS Argos packet from the most recent
+/// cached depth-pile fix WITHOUT powering the GPS. Used by HAULED mode (and
+/// later by Plan 2 sequencer phases) when battery matters more than positional
+/// freshness. Falls back to process_doppler_burst() if no usable fix.
+void ArgosTxService::process_gnss_burst_from_cached() {
+	DEBUG_TRACE("ArgosTxService::process_gnss_burst_from_cached");
+
+	GPSLogEntry cached;
+	if (!read_cached_last_fix(cached)) {
+		DEBUG_INFO("ArgosTxService::process_gnss_burst_from_cached: no usable cached fix — falling back to Doppler");
+		process_doppler_burst();
+		return;
+	}
+
+	ArgosConfig argos_config;
+	configuration_store->get_argos_configuration(argos_config);
+
+	unsigned int age_s = compute_gps_log_age_seconds(cached, service_current_time());
+	DEBUG_INFO("ArgosTxService::process_gnss_burst_from_cached: lat=%.6f lon=%.6f hAcc=%u age=%u s",
+	           cached.info.lat, cached.info.lon, cached.info.hAcc, age_s);
+
+	// build_gnss_packet expects a vector<GPSLogEntry*>. Use a stack-local
+	// vector pointing at our cached copy; the builder is read-only.
+	std::vector<GPSLogEntry*> v;
+	v.push_back(&cached);
+
+	unsigned int size_bits;
+	KineisPacket packet = ArgosPacketBuilder::build_gnss_packet(
+		v, argos_config.is_out_of_zone, argos_config.is_lb,
+		argos_config.delta_time_loc, size_bits);
+
+	// Adaptive modulation: same logic as process_gnss_burst (single-entry
+	// packet always fits LDK at 96/128 bits, so we prefer LDK for power).
+	if (argos_config.adaptive_modulation) {
+		m_scheduled_mode = (size_bits <= 128) ? KineisModulation::LDK : KineisModulation::LDA2;
+		if (!ensure_modulation(m_scheduled_mode)) {
+			DEBUG_WARN("ArgosTxService::process_gnss_burst_from_cached: modulation switch failed, using current");
+			m_scheduled_mode = m_kineis.get_current_modulation();
+			if (!size_fits_modulation(size_bits, m_scheduled_mode)) {
+				DEBUG_ERROR("ArgosTxService::process_gnss_burst_from_cached: packet %u bits doesn't fit fallback mod %d — skipping TX",
+				            size_bits, (int)m_scheduled_mode);
+				service_complete();
+				return;
+			}
+		}
+	}
+
+	DEBUG_INFO("ArgosTxService::process_gnss_burst_from_cached: REUSE_LAST TX mode=%s data=%s sz=%u",
+	           argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode),
+	           Binascii::hexlify(packet).c_str(), size_bits);
+	m_last_tx_had_gps = true;
+	m_kineis.send(m_scheduled_mode, packet, size_bits);
+}
+
 /// @brief Pre-build the first surfacing-burst Doppler packet while underwater.
 /// Samples the battery and builds the Doppler payload now so the first TX at
 /// surface skips the ADC read + packet build on its critical path. Only acts in
@@ -1434,6 +1530,14 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 	// limiter records every TX irrespective of cooldown trigger mode.
 	RateLimiter::record_tx(t);
 
+	// Track wall-clock uptime of this TX completion for the spacing guard
+	// (2026-05). Uses monotonic uptime, not RTC, so it survives RTC rollback
+	// (cold boot virtual epoch, GNSS sync jumps). The next service_next_-
+	// schedule_in_ms() that would return "immediate" (Doppler #1, first GNSS
+	// TX after fix, etc.) clamps to at least surfacing_burst_init_s seconds
+	// after this point — protects TCXO stability + CLS rate-limit + battery.
+	m_last_tx_uptime_ms = service_current_timer();
+
 	m_sched.notify_tx_complete();
 	service_complete();
 }
@@ -1499,14 +1603,56 @@ unsigned int ArgosTxService::compute_gps_log_age_seconds(const GPSLogEntry &entr
 	return (unsigned int)(now - entry_time);
 }
 
+unsigned int ArgosTxService::apply_spacing_guard(unsigned int proposed_delay_ms,
+                                                  unsigned int min_spacing_s,
+                                                  std::time_t now) {
+	if (m_last_tx_uptime_ms == 0) return proposed_delay_ms;  // no prior TX, no guard needed
+	uint64_t now_uptime_ms = service_current_timer();
+	uint64_t earliest_ms = m_last_tx_uptime_ms + (uint64_t)min_spacing_s * 1000;
+	uint64_t proposed_uptime_ms = now_uptime_ms + proposed_delay_ms;
+	if (proposed_uptime_ms >= earliest_ms) return proposed_delay_ms;  // OK as-is
+	unsigned int deferred_ms = (unsigned int)(earliest_ms - now_uptime_ms);
+	DEBUG_INFO("ArgosTxService: TX deferred %u ms (intra-burst spacing guard, last TX %u ms ago)",
+	           deferred_ms, (unsigned int)(now_uptime_ms - m_last_tx_uptime_ms));
+	// Re-anchor scheduler at the deferred RTC time so the scheduler doesn't
+	// fire "early" relative to our spacing.
+	m_sched.schedule_at(now + (std::time_t)(deferred_ms / 1000) + 1);
+	return deferred_ms;
+}
+
+bool ArgosTxService::should_promote_doppler_to_gnss(unsigned int max_age_s) {
+	GPSLogEntry *latest = m_depth_pile_manager.peek_gps_latest_any();
+	if (!latest) return false;
+	// Only "positional" entries are useful — CLOUDLOCATE handled separately
+	// in SURFACING_BURST path via process_gnss_burst itself.
+	bool is_positional = (latest->info.event_type == GPSEventType::FIX ||
+	                      latest->info.event_type == GPSEventType::UPDATE ||
+	                      latest->info.event_type == GPSEventType::FASTLOC);
+	if (!is_positional) return false;
+	unsigned int age = compute_gps_log_age_seconds(*latest, service_current_time());
+	if (age > max_age_s) return false;
+	return true;
+}
+
 bool ArgosTxService::read_cached_last_fix(GPSLogEntry &out) {
 	unsigned int max_age_s = configuration_store->read_param<unsigned int>(ParamID::GNSS_REUSE_FIX_MAX_AGE_S);
 	if (max_age_s == 0) return false;  // reuse disabled
 	GPSLogEntry *cached = m_depth_pile_manager.peek_gps_latest_any();
 	if (!cached) return false;
-	// Only accept entries that carry an actual position. NO_FIX / FASTLOC /
-	// CLOUDLOCATE entries don't contain a reusable lat/lon for an Argos GNSS
-	// packet — REUSE_LAST must fall back to Doppler (OFF) in those cases.
+	// REUSE_LAST semantically means "TX with the last KNOWN-GOOD position".
+	// Only FIX/UPDATE entries qualify:
+	//   - FASTLOC = degraded fix from a short surface where the device didn't
+	//     have time for a full PVT solution. In HAULED context (the primary
+	//     REUSE_LAST consumer) the user has time to wait for a real fix
+	//     before going hauled — TX'ing a stale FASTLOC days/weeks later
+	//     would mislead downstream tracking.
+	//   - CLOUDLOCATE = raw measurements, not a position; format-specific
+	//     packet builder (build_cloudlocate_packet) not wired here.
+	//   - NO_FIX = no position at all, nothing to reuse.
+	// Falls back to process_doppler_burst (no position) when this returns
+	// false. The FastLoc-priority path used in non-REUSE_LAST modes (see
+	// should_promote_doppler_to_gnss) covers the "use FastLoc opportunistically"
+	// use case separately.
 	if (cached->info.event_type != GPSEventType::FIX &&
 	    cached->info.event_type != GPSEventType::UPDATE) return false;
 	unsigned int age = compute_gps_log_age_seconds(*cached, service_current_time());

@@ -23,6 +23,9 @@
 #include "buzzm.hpp"
 #include "battery.hpp"
 #include "rgb_led.hpp"
+#include "rtc.hpp"
+
+extern RTC *rtc;
 #include "led.hpp"
 #include "gps.hpp"
 #include "gps_service.hpp"
@@ -66,7 +69,6 @@ extern KIM2Device *kim2_device_instance;
 
 // LED hardware access for forced LED off before powerdown
 extern RGBLed *status_led;
-extern Led *ext_status_led;
 
 // These contexts must be created before the FSM is initialised
 extern FileSystem *main_filesystem;
@@ -311,6 +313,24 @@ void GenTracker::periodic_config_flush() {
 	if (!m_config_flush_active)
 		return;
 	if (configuration_store->is_valid()) {
+		// Mitigation M1a (2026-05): periodic LAST_KNOWN_RTC snapshot. Without
+		// this, a sealed device that never acquires GNSS only updates this
+		// param at clean shutdown / POF / DTE write — meaning a WDT reset
+		// mid-deployment wipes RTC back to 1 and breaks every time-based
+		// defense (cooldown, hauled idle threshold, rate limiter). Saving
+		// here every 30 min bounds the post-reset drift to ≤ 30 min.
+		//
+		// We persist ANY rtc->gettime() (virtual or real) — `main.cpp` accepts
+		// small values for the same reason (RSPB pseudo-RTC chain and LinkIt
+		// sealed-turtle continuity). Without this we lose the post-WDT
+		// continuity entirely for sealed devices.
+		if (rtc && rtc->is_set()) {
+			std::time_t now = rtc->gettime();
+			if (now > 0) {
+				configuration_store->write_param(ParamID::LAST_KNOWN_RTC,
+					static_cast<unsigned int>(now));
+			}
+		}
 		DEBUG_TRACE("GenTracker::periodic_config_flush: saving counters to flash");
 		try {
 			configuration_store->save_params();
@@ -472,7 +492,6 @@ void OffState::entry() {
 	m_off_state_task = system_scheduler->post_task_prio([](){
 		// Force LED off at hardware level before powerdown
 		status_led->off();
-		if (ext_status_led) ext_status_led->off();
 		buzz_handle::dispatch<SetBuzzOff>({});
 		PMU::powerdown();
 	},
@@ -1238,7 +1257,6 @@ void BatteryCriticalState::entry() {
 	}
 	DEBUG_INFO("EXTERNAL_WAKEUP: Critical battery | immediate powerdown");
 	status_led->off();
-	if (ext_status_led) ext_status_led->off();
 	PMU::powerdown();
 #else
 	led_handle::dispatch<SetLEDBatteryCritical>({});

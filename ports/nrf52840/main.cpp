@@ -27,7 +27,6 @@
 #include "nrf_switch.hpp"
 #include "reed.hpp"
 #include "nrf_rgb_led.hpp"
-#include "gpio_led.hpp"
 #include "nrf_i2c.hpp"
 #include "nrf_usb.hpp"
 #include "nrf_memory_access.hpp"
@@ -153,7 +152,6 @@ MemoryAccess *memory_access;              ///< RAM read/write access for DTE DUM
 Timer *system_timer;                      ///< Hardware timer (NrfTimer, 1 ms resolution)
 Scheduler *system_scheduler;              ///< Task scheduler wrapping system_timer
 RGBLed *status_led;                       ///< On-board RGB status LED
-Led *ext_status_led;                      ///< Optional external LED (board-dependent)
 ReedSwitch *reed_switch;                  ///< Reed switch with confirmation gesture logic
 DTEHandler *dte_handler;                  ///< DTE protocol command dispatcher (PARMR/PARMW/STAT/DUMPD)
 RTC *rtc;                                 ///< Real-time clock (NrfRTC, epoch seconds)
@@ -433,17 +431,6 @@ static InitContext init_peripherals()
 	static NrfRGBLed nrf_status_led("STATUS", BSP::GPIO::GPIO_LED_RED, BSP::GPIO::GPIO_LED_GREEN, BSP::GPIO::GPIO_LED_BLUE, RGBLedColor::WHITE);
 	status_led = &nrf_status_led;
 
-#ifdef EXT_LED_PIN
-	DEBUG_TRACE("External LED...");
-	static GPIOLed gpio_led(EXT_LED_PIN);
-	ext_status_led = &gpio_led;
-#else
-	ext_status_led = nullptr;
-#endif
-
-	if (ext_status_led)
-		ext_status_led->off();
-
 	DEBUG_TRACE("Reed switch...");
 	static NrfSwitch nrf_reed_switch(BSP::GPIO::GPIO_REED_SW, REED_SWITCH_DEBOUNCE_TIME_MS, REED_SWITCH_ACTIVE_STATE);
 
@@ -643,6 +630,28 @@ static LFSFileSystem& init_storage(NrfSwitch& nrf_reed_switch, Is25Flash& is25_f
 	// Restore last known RTC from flash (enables MGA-ANO assistance and faster GNSS TTFF)
 	{
 		unsigned int last_rtc = configuration_store->read_param<unsigned int>(ParamID::LAST_KNOWN_RTC);
+
+		// Anti-corruption guard (2026-05, audit mitigation C): a POF / brown-out
+		// mid-LFS-write or a single-byte bit flip in the param block can leave
+		// LAST_KNOWN_RTC at an impossible future value. Restoring such a value
+		// would put the RTC decades ahead and break every time-based defense
+		// (cooldown, hauled, rate limiter, ANO staleness).
+		//
+		// We deliberately do NOT reject "small" values (< 2000-01-01) because:
+		//   - On RSPB / EXTERNAL_WAKEUP, the pseudo-RTC chain legitimately
+		//     stores small values (sum of WAKEUP_PERIOD * boot_count) before
+		//     the first GNSS sync.
+		//   - On sealed LinkIt V4 without GNSS, M1a periodic save persists the
+		//     virtual RTC (uptime-based, also small). Rejecting these would
+		//     defeat the entire post-WDT continuity mechanism.
+		// Field-deployed corruption tends to flip bits in the high half of the
+		// value, producing far-future values. The upper bound catches those.
+		// Tighter defense is the LFS file-level integrity (LittleFS CRC).
+		constexpr unsigned int RTC_MAX_VALID = 4102444800U; // 2100-01-01
+		if (last_rtc > RTC_MAX_VALID) {
+			DEBUG_WARN("Suspicious LAST_KNOWN_RTC=%u (post-2100), treating as corrupt", last_rtc);
+			last_rtc = 0;  // force virtual RTC fallback
+		}
 #ifdef EXTERNAL_WAKEUP
 		// Pseudo RTC: advance the last known RTC by WAKEUP_PERIOD at each boot.
 		unsigned int wakeup_period = configuration_store->read_param<unsigned int>(ParamID::WAKEUP_PERIOD);

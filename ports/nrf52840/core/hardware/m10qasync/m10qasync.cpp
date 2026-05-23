@@ -18,6 +18,8 @@
 #include "binascii.hpp"
 #include "interrupt_lock.hpp"
 #include "config_store.hpp"
+#include "hauled_mode_service.hpp"
+#include "rate_limiter.hpp"
 
 using namespace UBX;
 
@@ -550,9 +552,25 @@ void M10QAsyncReceiver::react(const UBXCommsEventNavReport& n) {
                 nav.pvt.valid & UBX::NAV::PVT::VALID_VALID_DATE &&
                 nav.pvt.valid & UBX::NAV::PVT::VALID_VALID_TIME)
             {
-                rtc->settime(convert_epochtime(nav.pvt.year, nav.pvt.month,
-                                                        nav.pvt.day, nav.pvt.hour,
-                                                        nav.pvt.min, nav.pvt.sec));
+                // Mitigations K + L (2026-05): detect first transition from
+                // virtual RTC (cold-boot fallback initialised to 1) to real
+                // UTC. Without this hook, time-based noinit state computed
+                // against the old virtual frame produces nonsense after the
+                // jump (e.g. HAULED could falsely engage with elapsed = 50
+                // years). Threshold 2000-01-01: anything below is virtual or
+                // unset, anything above is real GNSS-derived.
+                constexpr std::time_t RTC_MIN_REAL = 946684800;  // 2000-01-01
+                std::time_t prev = rtc ? rtc->gettime() : 0;
+                std::time_t now = convert_epochtime(nav.pvt.year, nav.pvt.month,
+                                                    nav.pvt.day, nav.pvt.hour,
+                                                    nav.pvt.min, nav.pvt.sec);
+                rtc->settime(now);
+                if (prev < RTC_MIN_REAL && now >= RTC_MIN_REAL) {
+                    DEBUG_INFO("RTC: virtual→real sync detected (prev=%u → now=%u), re-anchoring noinit timekeepers",
+                               (unsigned int)prev, (unsigned int)now);
+                    HauledModeService::reset_for_rtc_sync(now);
+                    RateLimiter::reset_for_rtc_sync();
+                }
             }
 
             if ((nav.pvt.fixType != UBX::NAV::PVT::FIXTYPE_2D &&
@@ -2365,7 +2383,13 @@ GNSSAlmanacStatus M10QAsyncReceiver::get_almanac_status(unsigned int ano_stale_t
 		unsigned int total_records = 0;
 		unsigned int valid_records = 0;
 		std::time_t deltatime = (std::time_t)0xFFFFFFFF;
-		bool rtc_available = rtc && rtc->is_set();
+		// Mitigation M2 (2026-05): treat a virtual RTC (cold-first-boot
+		// initialised to 1 by main.cpp's fallback) as "not available" for ANO
+		// staleness. Before this guard the previous abs() math happened to be
+		// safe (deltatime ~50 years → always > threshold → marked stale), but
+		// that was accidental. Anything below year 2000 is virtual or unset.
+		constexpr std::time_t RTC_MIN_REAL_FOR_ANO = 946684800;  // 2000-01-01
+		bool rtc_available = rtc && rtc->is_set() && rtc->gettime() >= RTC_MIN_REAL_FOR_ANO;
 		std::time_t now = rtc_available ? rtc->gettime() : 0;
 
 		// Hard cap on iterations: defense in depth against a corrupted LFS file

@@ -205,7 +205,7 @@ enum class ParamID {
 	THERMISTOR_SENSOR_WAKEUP_THRESH          = 115,
 	THERMISTOR_SENSOR_WAKEUP_SAMPLES         = 116,
 #endif
-	EXT_LED_MODE                             = 117,
+	_RESERVED_117                            = 117,  // Was EXT_LED_MODE — external LED was an Icoteq Horizon / Artic-era through-pot indicator; LinkIt V4 / RSPB don't wire EXT_LED_PIN, so the param had no effect on current production boards. Slot kept reserved to avoid breaking flash layout / DTE backward compat.
 	// === Accelerometer sensor (slots 118-123 always reserved) ===
 #if ENABLE_AXL_SENSOR
 	AXL_SENSOR_ENABLE                        = 118,
@@ -400,8 +400,9 @@ enum class ParamID {
 	HAULED_TR_NOM                            = 236,  // uint seconds: TX interval override
 	HAULED_GNSS_EN                           = 237,  // bool: GNSS enable override
 	HAULED_GNSS_STRAT                        = 238,  // BaseGnssStrategy: 0=FRESH, 1=REUSE_LAST, 2=OFF
+	GNSS_CLOUDLOCATE_ALWAYS                  = 239,  // bool: when true, CloudLocate raw-meas is captured on every SURFACING_BURST surface (not just before the first fix). Trade-off: GPS stays on the full cold_acq_timeout each surface (~30s with ANO fresh) to collect raw measurements, vs. powering off as soon as a real fix arrives. Useful when surfaces are too short for warm fix to succeed reliably.
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 239,
+	__PARAM_SIZE                             = 240,
 	__NULL_PARAM                             = 0xFFFF
 };
 

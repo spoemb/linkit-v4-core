@@ -374,6 +374,7 @@ target_sources(${TURTLE_SIM_NAME} PRIVATE
     "${NRF_DIR}/core/hardware/cdt/cdt.cpp"
     "src/turtle_simulation_test.cpp"
     "src/turtle_simulation_1year.cpp"
+    "src/turtle_simulation_shortsurface.cpp"
     "src/turtle_main.cpp"
     "fakes/memmang.cpp"
     "fakes/fake_bsp.cpp"

@@ -51,7 +51,6 @@ extern Scheduler *system_scheduler;
 extern BLEService *ble_service;
 extern OTAFileUpdater *ota_updater;
 extern RGBLed *status_led;
-extern Led *ext_status_led;
 extern Switch *saltwater_switch;
 extern ReedSwitch *reed_switch;
 extern BatteryMonitor *battery_monitor;
@@ -67,7 +66,6 @@ TEST_GROUP(Sm)
 	FakeSWS *fake_saltwater_switch;
 	FakeSwitch *dummy_switch;
 	FakeRGBLed *fake_status_led;
-	FakeLed *fake_ext_status_led;
 	FakeTimer *fake_timer;
 	FakeBatteryMonitor *fake_battery_monitor;
 	MockOTAFileUpdater *mock_ota_file_updater;
@@ -98,8 +96,6 @@ TEST_GROUP(Sm)
 		battery_monitor = fake_battery_monitor;
 		fake_status_led = new FakeRGBLed("STATUS");
 		status_led = fake_status_led;
-		fake_ext_status_led = new FakeLed("EXT_STATUS");
-		ext_status_led = fake_ext_status_led;
 		fake_saltwater_switch = new FakeSWS;
 		dummy_switch = new FakeSwitch();
 		fake_reed_switch = new FakeReedSwitch(*dummy_switch);
@@ -122,7 +118,6 @@ TEST_GROUP(Sm)
 		delete fake_timer;
 		delete sensor_log;
 		delete system_log;
-		delete fake_ext_status_led;
 	}
 };
 
@@ -139,8 +134,6 @@ TEST(Sm, CheckBootFileSystemMountOk)
 	CHECK_TRUE(fsm_handle::is_in_state<BootState>());
 	CHECK_EQUAL((int)RGBLedColor::WHITE, (int)fake_status_led->get_state());
 	CHECK_TRUE(status_led->is_flashing());
-	CHECK_TRUE(ext_status_led->is_flashing());
-	CHECK_TRUE(ext_status_led->get_state());
 }
 
 TEST(Sm, CheckBootFileSystemFirstMountFail)
@@ -196,8 +189,6 @@ TEST(Sm, CheckTransitionToPreOperationalState)
 	system_scheduler->run();
 	CHECK_TRUE(fsm_handle::is_in_state<PreOperationalState>());
 	CHECK_FALSE(fake_saltwater_switch->is_started());
-	CHECK_FALSE(ext_status_led->is_flashing());
-	CHECK_FALSE(ext_status_led->get_state());
 }
 
 TEST(Sm, CheckTransitionToOperationalConfigValid)
@@ -222,8 +213,6 @@ TEST(Sm, CheckTransitionToOperationalConfigValid)
 	CHECK_FALSE(status_led->is_flashing());
 	CHECK_TRUE(location_scheduler->is_started());
 	CHECK_TRUE(comms_scheduler->is_started());
-	CHECK_FALSE(ext_status_led->is_flashing());
-	CHECK_FALSE(ext_status_led->get_state());
 }
 
 
@@ -250,8 +239,6 @@ TEST(Sm, CheckTransitionToOperationalConfigValidBatteryLow)
 	CHECK_FALSE(status_led->is_flashing());
 	CHECK_TRUE(location_scheduler->is_started());
 	CHECK_TRUE(comms_scheduler->is_started());
-	CHECK_FALSE(ext_status_led->is_flashing());
-	CHECK_FALSE(ext_status_led->get_state());
 }
 
 
@@ -277,8 +264,6 @@ TEST(Sm, CheckTransitionToErrorConfigInvalid)
 	CHECK_TRUE(fsm_handle::is_in_state<ErrorState>());
 	CHECK_TRUE(status_led->is_flashing());
 	CHECK_EQUAL((int)RGBLedColor::RED, (int)status_led->get_state());
-	CHECK_FALSE(ext_status_led->is_flashing());
-	CHECK_FALSE(ext_status_led->get_state());
 
 	// Red LED should go off after 5 seconds and then transition to off state with white LED flashing
 	fake_timer->set_counter(11000);
@@ -286,8 +271,6 @@ TEST(Sm, CheckTransitionToErrorConfigInvalid)
 	CHECK_TRUE(fsm_handle::is_in_state<OffState>());
 	CHECK_TRUE(status_led->is_flashing());
 	CHECK_EQUAL((int)RGBLedColor::WHITE, (int)status_led->get_state());
-	CHECK_TRUE(ext_status_led->is_flashing());
-	CHECK_TRUE(ext_status_led->get_state());
 }
 
 TEST(Sm, CheckTransitionToConfigurationState)
@@ -310,8 +293,6 @@ TEST(Sm, CheckTransitionToConfigurationState)
 	CHECK_TRUE(fsm_handle::is_in_state<ConfigurationState>());
 	CHECK_TRUE(status_led->is_flashing());
 	CHECK_EQUAL((int)RGBLedColor::BLUE, (int)status_led->get_state());
-	CHECK_FALSE(ext_status_led->is_flashing());
-	CHECK_FALSE(ext_status_led->get_state());
 }
 
 TEST(Sm, CheckTransitionToOffState)
@@ -332,8 +313,6 @@ TEST(Sm, CheckTransitionToOffState)
 	CHECK_EQUAL((int)RGBLedColor::WHITE, (int)status_led->get_state());
 	CHECK_TRUE(status_led->is_flashing());
 	CHECK_EQUAL(50, fake_status_led->m_period);
-	CHECK_TRUE(ext_status_led->is_flashing());
-	CHECK_TRUE(ext_status_led->get_state());
 
 	// Continue to hold for 5 more seconds
 	mock().enable();
@@ -341,8 +320,6 @@ TEST(Sm, CheckTransitionToOffState)
 	fake_timer->set_counter(16000);
 	system_scheduler->run();
 	CHECK_EQUAL((int)RGBLedColor::BLACK, (int)status_led->get_state());
-	CHECK_FALSE(ext_status_led->is_flashing());
-	CHECK_FALSE(ext_status_led->get_state());
 }
 
 TEST(Sm, CheckOffStateCanBeCancelled)
@@ -494,8 +471,6 @@ TEST(Sm, CheckGNSSWithFixLedTransitions)
 	ServiceManager::inject_event(e);
 	CHECK_EQUAL((int)RGBLedColor::CYAN, (int)status_led->get_state());
 	CHECK_TRUE(status_led->is_flashing());
-	CHECK_TRUE(ext_status_led->get_state());
-	CHECK_FALSE(ext_status_led->is_flashing());
 
 	// Notify GNSS logged
 	GPSLogEntry log;
@@ -505,8 +480,6 @@ TEST(Sm, CheckGNSSWithFixLedTransitions)
 	ServiceManager::inject_event(e);
 	CHECK_EQUAL((int)RGBLedColor::GREEN, (int)status_led->get_state());
 	CHECK_FALSE(status_led->is_flashing());
-	CHECK_FALSE(ext_status_led->get_state());
-	CHECK_FALSE(ext_status_led->is_flashing());
 
 	// Notify GNSS inactive
 	e.event_type = ServiceEventType::SERVICE_INACTIVE;
@@ -516,8 +489,6 @@ TEST(Sm, CheckGNSSWithFixLedTransitions)
 	fake_timer->set_counter(9000);
 	CHECK_EQUAL((int)RGBLedColor::BLACK, (int)status_led->get_state());
 	CHECK_FALSE(status_led->is_flashing());
-	CHECK_FALSE(ext_status_led->get_state());
-	CHECK_FALSE(ext_status_led->is_flashing());
 }
 
 TEST(Sm, CheckGNSSWithoutFixLedTransitions)
@@ -550,9 +521,7 @@ TEST(Sm, CheckGNSSWithoutFixLedTransitions)
 	e.event_originator_unique_id = 0x12345678;
 	ServiceManager::inject_event(e);
 	CHECK_EQUAL((int)RGBLedColor::CYAN, (int)status_led->get_state());
-	CHECK_TRUE(ext_status_led->get_state());
 	CHECK_TRUE(status_led->is_flashing());
-	CHECK_FALSE(ext_status_led->is_flashing());
 
 	// Notify GNSS logged
 	GPSLogEntry log;
@@ -562,7 +531,6 @@ TEST(Sm, CheckGNSSWithoutFixLedTransitions)
 	ServiceManager::inject_event(e);
 	CHECK_EQUAL((int)RGBLedColor::RED, (int)status_led->get_state());
 	CHECK_FALSE(status_led->is_flashing());
-	CHECK_FALSE(ext_status_led->get_state());
 
 	// Notify GNSS inactive
 	e.event_type = ServiceEventType::SERVICE_INACTIVE;

@@ -33,7 +33,6 @@ BLEService *ble_service;
 OTAFileUpdater *ota_updater;
 Switch *reed_switch;
 RGBLed *status_led;
-Led *ext_status_led;
 MemoryAccess *memory_access;
 RTC *rtc;
 BatteryMonitor *battery_monitor;

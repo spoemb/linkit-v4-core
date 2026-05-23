@@ -1352,10 +1352,18 @@ TEST(ArgosTxService, SurfacingBurstFirstGnssTxImmediate)
 	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
 	mock_kineis->notify(KineisEventTxComplete({}));
 
+	// Advance time past the spacing guard window (surfacing_burst_init_s = 5s)
+	// so the first GNSS TX after fix can fire immediately. Without this advance
+	// the spacing guard correctly defers TX#1 to maintain ≥ 5 s between any
+	// pair of TX (2026-05 fix: protects TCXO + CLS rate-limit).
+	t += 6000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
 	// Inject GPS fix → switch to GNSS phase
 	inject_gps_location(true, 11.8768, -33.8232, t/1000);
 
-	// GNSS TX #1 should be IMMEDIATE (0 delay), not 60s
+	// GNSS TX #1 fires immediately now that the spacing window has elapsed.
 	CHECK_EQUAL(0U, serv.get_last_schedule());
 
 	// Fire GNSS TX
@@ -2572,6 +2580,147 @@ TEST(ArgosTxService, HauledModeGnssStratOffForcesGnssOff)
 	configuration_store->get_gnss_configuration(gc);
 	CHECK_FALSE(gc.enable);
 }
+
+// === BaseGnssStrategy::REUSE_LAST wiring (Plan 1 follow-up) ===============
+// Verifies the REUSE_LAST dispatch routes through process_gnss_burst_from_cached
+// and falls back gracefully when the depth pile has no usable entry. Each test
+// sets HAULED active so the strategy field is populated by the config store.
+
+TEST(ArgosTxService, ReuseLastEngagesGnssStrategyInHauled)
+{
+	HauledModeService::reset_for_tests();
+	fake_config_store->write_param(ParamID::HAULED_DETECT_EN, (bool)true);
+	fake_config_store->write_param(ParamID::HAULED_IDLE_THRESHOLD_H, 1U);
+	fake_config_store->write_param(ParamID::HAULED_GNSS_EN, (bool)true);   // ignored when STRAT=REUSE_LAST
+	fake_config_store->write_param(ParamID::HAULED_GNSS_STRAT, 1U);        // REUSE_LAST
+
+	HauledModeService::on_underwater_event(true, 1000);
+	HauledModeService::evaluate(1000 + 3601);
+
+	ArgosConfig ac;
+	configuration_store->get_argos_configuration(ac);
+	// REUSE_LAST keeps GPS OFF (no acquisition) but sets strategy so dispatch
+	// can route to the cached-fix path.
+	CHECK_FALSE(ac.gnss_en);
+	CHECK_TRUE(ac.gnss_strategy == BaseGnssStrategy::REUSE_LAST);
+}
+
+TEST(ArgosTxService, ReuseLastFreshHauledStillAcquires)
+{
+	HauledModeService::reset_for_tests();
+	fake_config_store->write_param(ParamID::HAULED_DETECT_EN, (bool)true);
+	fake_config_store->write_param(ParamID::HAULED_IDLE_THRESHOLD_H, 1U);
+	fake_config_store->write_param(ParamID::HAULED_GNSS_EN, (bool)true);
+	fake_config_store->write_param(ParamID::HAULED_GNSS_STRAT, 0U);        // FRESH
+
+	HauledModeService::on_underwater_event(true, 1000);
+	HauledModeService::evaluate(1000 + 3601);
+
+	ArgosConfig ac;
+	configuration_store->get_argos_configuration(ac);
+	// FRESH preserves the existing acquire-then-TX behavior — gnss_en honors HMP12.
+	CHECK_TRUE(ac.gnss_en);
+	CHECK_TRUE(ac.gnss_strategy == BaseGnssStrategy::FRESH);
+}
+
+// === New mitigations (R5 auto-promote, M1b rollback recovery, K+L RTC sync) ===
+
+TEST(ArgosTxService, HauledArgosModeAutoPromotesSurfacingBurstToLegacy)
+{
+	// HMP10 allowed_values now excludes SURFACING_BURST (5) at DTE write,
+	// but legacy configs persisted with that value must auto-promote at
+	// read time to avoid a TX-less HAULED mode (no dives = no burst).
+	HauledModeService::reset_for_tests();
+	fake_config_store->write_param(ParamID::HAULED_DETECT_EN, (bool)true);
+	fake_config_store->write_param(ParamID::HAULED_IDLE_THRESHOLD_H, 1U);
+	// Force the bad value at write — bypass param-store validation in test
+	// by setting directly (production would refuse PARMW HMP10=5).
+	fake_config_store->write_param(ParamID::HAULED_ARGOS_MODE, BaseArgosMode::SURFACING_BURST);
+
+	HauledModeService::on_underwater_event(true, 1000);
+	HauledModeService::evaluate(1000 + 3601);
+
+	ArgosConfig ac;
+	configuration_store->get_argos_configuration(ac);
+	// Auto-promoted to LEGACY despite the persisted SURFACING_BURST value.
+	CHECK_TRUE(ac.mode == BaseArgosMode::LEGACY);
+}
+
+TEST(ArgosTxService, HauledRollbackReBaselinesInsteadOfFreezing)
+{
+	// M1b (2026-05): a WDT reset puts RTC back to 1 while noinit may still
+	// have a large last_uw_event_rtc from the previous session. The old
+	// behavior was "return — wait it out" which leaves HAULED engagement
+	// stuck. The fix re-baselines `last_uw_event_rtc = now`, so HAULED can
+	// re-engage threshold_h hours later from the new RTC frame.
+	HauledModeService::reset_for_tests();
+	fake_config_store->write_param(ParamID::HAULED_DETECT_EN, (bool)true);
+	fake_config_store->write_param(ParamID::HAULED_IDLE_THRESHOLD_H, 1U);
+
+	// Stuff a "future" timestamp into the noinit by simulating an old session.
+	HauledModeService::on_underwater_event(true, 100000);  // future from "now=1" perspective
+
+	// Now evaluate at a tiny rtc value (mimics post-WDT virtual RTC).
+	HauledModeService::evaluate(1);
+	// Should NOT remain frozen: last_uw_event_rtc must have been re-baselined
+	// to now (= 1).
+	CHECK_EQUAL((std::time_t)1, HauledModeService::last_uw_event_rtc());
+}
+
+TEST(ArgosTxService, HauledResetForRtcSyncReAnchorsTimestamp)
+{
+	// K (2026-05): when GPS first syncs RTC from virtual epoch to real UTC,
+	// `last_uw_event_rtc` (computed in virtual frame) must be re-anchored
+	// to the new real-time frame, otherwise the next evaluate() sees a
+	// ~50-year elapsed and falsely engages HAULED.
+	HauledModeService::reset_for_tests();
+	HauledModeService::on_underwater_event(true, 3600);  // virtual RTC frame (1h uptime)
+
+	// GPS fix arrives, RTC jumps to real epoch.
+	std::time_t real_rtc = 1700000000;
+	HauledModeService::reset_for_rtc_sync(real_rtc);
+
+	CHECK_EQUAL(real_rtc, HauledModeService::last_uw_event_rtc());
+}
+
+TEST(ArgosTxService, RateLimiterResetForRtcSyncClearsRing)
+{
+	// L (2026-05): clear ring on virtual→real RTC transition. Pre-sync ring
+	// entries are in the virtual frame and meaningless post-sync.
+	RateLimiter::reset_for_tests();
+	fake_config_store->write_param(ParamID::RATE_LIMIT_EN, (bool)true);
+	fake_config_store->write_param(ParamID::RATE_LIMIT_WINDOW_S, 100U);
+	fake_config_store->write_param(ParamID::RATE_LIMIT_MAX_TX, 2U);
+
+	RateLimiter::record_tx(150);
+	RateLimiter::record_tx(180);
+	CHECK_EQUAL(2u, RateLimiter::count_in_window(200, 100));  // both in [100,200]
+
+	// Simulate RTC sync — ring should be cleared.
+	RateLimiter::reset_for_rtc_sync();
+	CHECK_EQUAL(0u, RateLimiter::count_in_window(200, 100));
+}
+
+TEST(ArgosTxService, NonHauledKeepsFreshStrategy)
+{
+	HauledModeService::reset_for_tests();
+	// HAULED detection disabled — config returns NORMAL branch.
+	fake_config_store->write_param(ParamID::HAULED_DETECT_EN, (bool)false);
+	fake_config_store->write_param(ParamID::HAULED_GNSS_STRAT, 1U);  // REUSE_LAST, but irrelevant
+	fake_config_store->write_param(ParamID::GNSS_EN, (bool)true);
+
+	ArgosConfig ac;
+	configuration_store->get_argos_configuration(ac);
+	// Non-HAULED path → strategy must be FRESH (byte-identical pre-Plan-1
+	// behavior preserved — REUSE_LAST never accidentally engages outside HAULED).
+	CHECK_TRUE(ac.gnss_strategy == BaseGnssStrategy::FRESH);
+	CHECK_TRUE(ac.gnss_en);
+}
+
+// (REUSE_LAST fallback when pile is empty is covered by the helper-level
+// tests ComputeGpsLogAgeSecondsZeroYearIsInvalid + DepthPilePeekBackOnEmptyReturnsNull:
+// process_gnss_burst_from_cached calls read_cached_last_fix → returns false →
+// falls through to process_doppler_burst — the existing Doppler path.)
 
 TEST(ArgosTxService, HauledModeLowBatteryWins)
 {

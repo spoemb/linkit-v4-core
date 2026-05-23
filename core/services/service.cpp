@@ -203,6 +203,20 @@ void ServiceManager::save_cooldown_state() {
 /// @brief Restore cooldown state from .noinit RAM on boot (CRC-validated).
 void ServiceManager::restore_cooldown_state() {
 	if (s_cooldown_noinit.crc == cooldown_noinit_crc() && s_cooldown_noinit.last_cycle_time > 0) {
+		// Mitigation M1c (2026-05): defense-in-depth against noinit corruption
+		// that passes CRC (single-bit flip in CRC field itself). If the stored
+		// timestamp is now in the future relative to current RTC (RTC rollback
+		// after WDT, or impossible far-future value), treat noinit as invalid
+		// rather than restoring it. The existing `now < stored → expired`
+		// defense in is_in_cooldown handles the math, but explicit rejection
+		// here keeps state clean for subsequent set_cycle_complete writes.
+		if (rtc && rtc->is_set() && s_cooldown_noinit.last_cycle_time > rtc->gettime()) {
+			DEBUG_WARN("ServiceManager: cooldown noinit timestamp in future (stored=%u > now=%u), discarding",
+			           (unsigned int)s_cooldown_noinit.last_cycle_time, (unsigned int)rtc->gettime());
+			m_last_successful_cycle_time = 0;
+			m_passive_surfacing_count = 0;
+			return;
+		}
 		m_last_successful_cycle_time = s_cooldown_noinit.last_cycle_time;
 		m_passive_surfacing_count = s_cooldown_noinit.passive_count;
 		DEBUG_INFO("ServiceManager: cooldown restored from noinit (last_cycle=%u, passive=%u)",

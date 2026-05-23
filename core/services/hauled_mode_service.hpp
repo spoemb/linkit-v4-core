@@ -55,6 +55,15 @@ public:
 	static std::time_t last_uw_event_rtc();
 	static unsigned    uw_events_since_hauled();
 
+	// Mitigation K (2026-05): re-baseline timestamp when the RTC is synced
+	// from GNSS (jump from virtual epoch ~1 to real UTC ~1.7e9). Called by
+	// GPSService right after rtc->settime(real_t). Without this, the elapsed-
+	// time computation `(now - last_uw_event_rtc)` would jump by ~50 years,
+	// falsely engaging HAULED on the very next evaluate() call.
+	// Preserves `in_hauled` (logical state stays valid) and
+	// `uw_events_since_hauled`; only the time baseline is shifted to `now`.
+	static void reset_for_rtc_sync(std::time_t now);
+
 	// Visible-for-tests: clear state directly.
 	static void reset_for_tests();
 };

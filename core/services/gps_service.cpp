@@ -265,19 +265,27 @@ void GPSService::service_initiate() {
 	nav_settings.min_elev = gnss_config.min_elev;
 	nav_settings.ano_stale_threshold_s = gnss_config.ano_stale_days ? gnss_config.ano_stale_days * 24 * 3600 : 0;
 
-	// CloudLocate: enable MEAS message capture only when ALL of:
+	// CloudLocate: enable MEAS message capture when ALL of:
 	//   - fastloc mode is CLOUDLOCATE
-	//   - we don't already have a real fix in this surface session (once a normal
-	//     fix is obtained, subsequent acquisitions should not waste a full
-	//     cold_acq_timeout on raw measurement capture)
 	//   - ARGOS_MODE is SURFACING_BURST (LEGACY mode raw-measurement-via-TR_NOM
 	//     is not yet wired up — TODO: add a dedicated GUI behavior for LEGACY
 	//     CloudLocate timing before re-enabling)
+	//   - AND one of:
+	//     - we don't already have a real fix in this surface session (default
+	//       battery-friendly behavior — once a normal fix is obtained,
+	//       subsequent acquisitions should not waste a full cold_acq_timeout
+	//       on raw measurement capture)
+	//     - OR GNSS_CLOUDLOCATE_ALWAYS=true (override: capture raw-meas at
+	//       every surface, including warm. Use case: short-surface tortue
+	//       where warm fix often misses the 30 s timeout and we want a
+	//       CloudLocate fallback for every surface. Costs the full
+	//       cold_acq_timeout each surface even when a real fix arrives.)
 	unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
 	BaseArgosMode argos_mode = configuration_store->read_param<BaseArgosMode>(ParamID::ARGOS_MODE);
+	bool cloudlocate_always = configuration_store->read_param<bool>(ParamID::GNSS_CLOUDLOCATE_ALWAYS);
 	nav_settings.cloudlocate_enable = (fastloc_mode == (unsigned int)BaseFastlocMode::CLOUDLOCATE)
-	                                  && !m_is_first_fix_found
-	                                  && (argos_mode == BaseArgosMode::SURFACING_BURST);
+	                                  && (argos_mode == BaseArgosMode::SURFACING_BURST)
+	                                  && (!m_is_first_fix_found || cloudlocate_always);
 
 	m_next_schedule = service_current_time();
 	m_is_first_schedule = false;
