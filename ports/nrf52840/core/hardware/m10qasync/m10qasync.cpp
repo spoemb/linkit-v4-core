@@ -93,16 +93,44 @@ M10QAsyncReceiver::~M10QAsyncReceiver() {
 void M10QAsyncReceiver::power_on(const GPSNavSettings& nav_settings) {
 	DEBUG_INFO("M10QAsyncReceiver::power_on");
 
-    // If the device is currently in a backup-charge state, tear it down
-    // synchronously so the normal poweron path sees state == idle. This
-    // resolves the race where service_initiate calls exit_backup_charge_mode()
-    // (which is async for `enterbackup`) and then power_on() right after.
-    if (STATE_EQUAL(enterbackup) || STATE_EQUAL(backupidle)) {
-        DEBUG_INFO("M10QAsyncReceiver::power_on: aborting backup-charge state synchronously");
-        if (STATE_EQUAL(enterbackup))
-            m_ubx_comms.deinit();
+    // 2026-05 deep-idle refactor: fast-path wake from PMREQ-backup.
+    //
+    // If we're in `backupidle` (M10Q in PMREQ-backup, rail still on, BBR
+    // intact), pulse EXTINT to wake the M10Q in place — no rail cycle,
+    // no cold boot. Sync UART at MAX_BAUDRATE (BBR retains the configured
+    // baud) and transit directly to `configure` which will fast-path via
+    // the BBR-validation step. TTFF should drop to warm-start range.
+    //
+    // If we're in `enterbackup` (mid-transition into deep-idle, e.g. the
+    // PMREQ message hasn't fully been processed by the M10Q yet), it's
+    // safer to fall back to the legacy synchronous teardown — we don't
+    // know the M10Q state with certainty. The state machine will then
+    // proceed via the normal poweron → configure path.
+    if (STATE_EQUAL(backupidle)) {
+        DEBUG_INFO("M10QAsyncReceiver::power_on: wake from deep-idle via EXTINT");
+        // M10Q wakes on EXTINT rising edge. Re-init UART driver (was
+        // deinit'd in state_enterbackup step 3 to save the UART block
+        // power during deep-idle). Then pulse EXTINT and let the
+        // M10Q boot into its post-wake state. The configure state's
+        // BBR fast-path will validate at MAX_BAUDRATE.
+        m_ubx_comms.init();
+        m_ubx_comms.subscribe(*this);
+        m_ubx_comms.set_debug_enable(m_nav_settings.debug_enable);
+        pulse_extint_wake();
+        PMU::delay_ms(50);   // give M10Q time to come out of backup (datasheet ~30 ms)
+        m_num_power_on = 1;  // single user (this acquisition)
+        m_powering_off = false;
+        // Skip the normal poweron-state baud-sync loop (state_poweron tries
+        // 9600 first which would fail since M10Q is at MAX after BBR-warm
+        // wake). Jump straight to configure where the fast-path tries MAX.
+        STATE_CHANGE(backupidle, configure);
+        return;
+    } else if (STATE_EQUAL(enterbackup)) {
+        DEBUG_INFO("M10QAsyncReceiver::power_on: aborting enterbackup (mid-transition) → cold reboot");
+        m_ubx_comms.deinit();
         GPIOPins::clear(BSP::GPIO::GPIO_GPS_PWR_EN);
         GPIOPins::release_to_highz(BSP::GPIO::GPIO_GPS_RST);
+        GPIOPins::release_to_highz(BSP::GPIO::GPIO_GPS_EXT_INT);
         GPIOPins::release_sensors_pwr();
         PMU::delay_ms(50); // brief rail-off gap before exit_shutdown re-energises it
         m_state = State::idle;
@@ -316,6 +344,12 @@ void M10QAsyncReceiver::enter_shutdown() {
     // Disable the power supply for the GPS
     GPIOPins::clear(BSP::GPIO::GPIO_GPS_PWR_EN);
     GPIOPins::release_to_highz(BSP::GPIO::GPIO_GPS_RST);  // Disconnect (ext pull-up)
+
+    // 2026-05 deep-idle refactor: release EXTINT to high-Z so the OUTPUT
+    // pin (BSP default direction since the refactor) doesn't sink/source
+    // current into a powered-off M10Q input pin. Zero leakage between
+    // sessions when GPS rail is cut.
+    GPIOPins::release_to_highz(BSP::GPIO::GPIO_GPS_EXT_INT);
 
     // Note: m_ubx_comms.deinit() already disconnects UART TX/RX pins
     // via nrf_gpio_cfg_default() in the libuarte driver uninit path.
@@ -924,10 +958,33 @@ void M10QAsyncReceiver::send_pmreq_backup() {
         .reserved1     = {0, 0, 0},
         .duration      = 0,                          // sleep until wakeup event
         .flags         = RXM::PMREQFlags::BACKUP,    // 0x02
-        .wakeupSources = RXM::PMREQWakeupSources::UARTRX, // wake on UART RX so next power_on can recover quickly
+        // 2026-05 deep-idle refactor: wake source is EXTINT0 (deepest sleep
+        // mode — ~10-12 µA vs ~15 µA with UARTRX since the UART block can
+        // be fully powered down). The nRF drives the EXTINT pin via
+        // pulse_extint_wake() at the start of power_on() when state ==
+        // backupidle.
+        .wakeupSources = RXM::PMREQWakeupSources::EXTINT0, // 0x20
     };
     m_ubx_comms.send_packet(MessageClass::MSG_CLASS_RXM, RXM::ID_PMREQ, pmreq);
     m_ubx_comms.wait_send();
+}
+
+// 2026-05 deep-idle refactor: pulse the M10Q EXTINT pin to wake it from
+// PMREQ-backup. Pre-conditions:
+//  - BSP::GPIO_GPS_EXT_INT is configured as OUTPUT (done in bsp.cpp 2026-05).
+//  - M10Q is in PMREQ-backup state (state == backupidle).
+//  - Rail (GPIO_GPS_PWR_EN) is still ON (caller's responsibility).
+// The M10Q datasheet requires a pulse width >= ~100 µs to register. We
+// drive HIGH for 1 ms (10× minimum spec margin) then back to LOW, then
+// release to high-Z so the pin doesn't sink/source current while the
+// M10Q is awake and using EXTINT as a normal logic input.
+void M10QAsyncReceiver::pulse_extint_wake() {
+    DEBUG_TRACE("M10QAsyncReceiver::pulse_extint_wake");
+    GPIOPins::init_pin(BSP::GPIO::GPIO_GPS_EXT_INT);  // ensure OUTPUT direction
+    GPIOPins::set(BSP::GPIO::GPIO_GPS_EXT_INT);       // edge rising → M10Q wakes
+    PMU::delay_ms(1);                                  // hold (>= 100 µs spec)
+    GPIOPins::clear(BSP::GPIO::GPIO_GPS_EXT_INT);     // back to LOW idle
+    GPIOPins::release_to_highz(BSP::GPIO::GPIO_GPS_EXT_INT);  // no leakage
 }
 
 void M10QAsyncReceiver::state_enterbackup_enter() {

@@ -167,8 +167,21 @@ public:
 
     // Backup-cell charge mode: rail powered, receiver in deep sleep (UBX-RXM-PMREQ backup).
     // Default no-op so non-M10 backends keep compiling. Caller is responsible for scheduling exit.
+    //
+    // 2026-05 deep-idle refactor: this same mechanism is the canonical "deep-idle"
+    // state. Aliased below via `enter_deep_idle()` / `exit_deep_idle()` for the
+    // GPSService deep-idle dispatch path. The DTE GNSSBCKP_REQ command still uses
+    // the original names. Both call paths converge on the same M10Q state machine.
     virtual bool enter_backup_charge_mode() { return false; }
     virtual void exit_backup_charge_mode() {}
+    /// @brief Alias for `enter_backup_charge_mode()` — see deep-idle plan §2.
+    virtual bool enter_deep_idle() { return enter_backup_charge_mode(); }
+    /// @brief Alias for `exit_backup_charge_mode()` — see deep-idle plan §2.
+    virtual void exit_deep_idle() { exit_backup_charge_mode(); }
+    /// @brief Is the M10Q currently in deep-idle (PMREQ-backup with rail on)?
+    /// Used by GPSService::service_next_schedule_in_ms for the R5 hygiene check
+    /// (force rail-cycle if device has been in deep-idle > 24 h).
+    virtual bool is_in_deep_idle() const { return false; }
     virtual GNSSDeviceInfo get_device_info() const { return {}; }
     virtual GNSSAlmanacStatus get_almanac_status(unsigned int ano_stale_threshold_s = 25 * 24 * 3600) const { (void)ano_stale_threshold_s; return {}; }
 

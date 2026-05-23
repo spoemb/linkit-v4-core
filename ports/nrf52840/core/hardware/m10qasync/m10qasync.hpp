@@ -18,6 +18,12 @@ public:
 	void power_off() override;
 	bool enter_backup_charge_mode() override;
 	void exit_backup_charge_mode() override;
+	/// @brief 2026-05 deep-idle refactor: report whether the M10Q is in PMREQ-backup
+	/// with rail still on (state == backupidle or transitioning to it). Used by
+	/// GPSService for the R5 hygiene check + service_initiate fast-path detection.
+	bool is_in_deep_idle() const override {
+		return m_state == State::backupidle || m_state == State::enterbackup;
+	}
 
 private:
 	GPSNavSettings m_nav_settings;
@@ -166,6 +172,7 @@ private:
 	void query_sec_uniqid();
 	void sync_baud_rate(unsigned int baud);
 	void send_pmreq_backup();
+	void pulse_extint_wake();   ///< 2026-05 deep-idle: pulse EXTINT to wake M10Q from PMREQ-backup
 	void dump_navigation_database(unsigned int);
 	void save_dbd_to_flash();
 	bool load_dbd_from_flash();
