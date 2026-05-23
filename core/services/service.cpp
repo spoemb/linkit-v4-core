@@ -240,11 +240,32 @@ void ServiceManager::restore_cooldown_state() {
 void ServiceManager::set_cycle_complete(std::time_t t) {
 	m_last_successful_cycle_time = t;
 	save_cooldown_state();
+	unsigned int interval = configuration_store->read_param<unsigned int>(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S);
 	DEBUG_INFO("ServiceManager: cycle complete at %u, cooldown started", (unsigned int)t);
 #if VALIDATION_LOG_ENABLE
-	unsigned int interval = configuration_store->read_param<unsigned int>(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S);
 	DEBUG_INFO("[VAL-COOLDOWN] enter t=%u interval_s=%u", (unsigned int)t, interval);
 #endif
+
+	// Schedule the cooldown-wake task UNCONDITIONALLY here (2026-05-23 fix).
+	// Previously this was only set in enter_cooldown_sleep(), which is only
+	// called from the passive-surfacing path (notify_underwater_state when
+	// state=false AND cooldown active). On the *dive-with-cooldown-armed* path
+	// (typical SURFACING_BURST END_OF_DOPPLER + dive), set_cycle_complete()
+	// fires alone — no wake task was posted, so when SWS gets disabled by its
+	// service_next_schedule_in_ms cooldown gate, NOTHING re-emits state when
+	// the window expires. The device sleeps until an unrelated periodic task
+	// (e.g. backup-charge tick) wakes it, by which point surface detection is
+	// effectively dead. Field log 2026-05-23: device stuck in UW state
+	// forever after a single max-msg burst completion. Critical for sealed
+	// turtles since this is the normal end-of-burst path.
+	if (interval > 0 && system_scheduler) {
+		unsigned int remaining_ms = interval * 1000;
+		system_scheduler->cancel_task(m_cooldown_wake_task);
+		m_cooldown_wake_task = system_scheduler->post_task_prio([]() {
+			exit_cooldown_sleep();
+		}, "CooldownWake", Scheduler::DEFAULT_PRIORITY, remaining_ms);
+		DEBUG_TRACE("ServiceManager::set_cycle_complete: wake timer set for %u s", interval);
+	}
 }
 
 /// @brief Check if surface cycle cooldown is active.

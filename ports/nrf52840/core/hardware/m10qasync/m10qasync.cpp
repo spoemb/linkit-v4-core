@@ -988,11 +988,27 @@ void M10QAsyncReceiver::state_enterbackup() {
                     m_step = 1;
                     m_retries = BOOT_BAUD_SYNC_RETRIES;
                 } else {
-                    DEBUG_ERROR("M10QAsyncReceiver: state_enterbackup failed (step %u) — bailing to poweroff",
-                                m_step);
-                    m_powering_off = true;
-                    m_num_power_on = 0;
-                    STATE_CHANGE(enterbackup, poweroff);
+                    // 2026-05-23 fix: previously bailed to poweroff here, which
+                    // cut the GPS rail — defeating the entire purpose of
+                    // backup-charge mode (recharging the M10Q's V_BCKP coin
+                    // cell). Field log showed sync failing repeatedly after a
+                    // ~2 min poweroff window (likely BBR lost → M10Q at 9600
+                    // but UART driver state contaminated by pre-power init).
+                    //
+                    // Recovery: skip the PMREQ-backup command (M10Q stays
+                    // awake) and proceed to backupidle anyway. The V_BCKP
+                    // regulator inside the M10Q charges the coin cell from VDD
+                    // whenever the rail is powered, regardless of whether the
+                    // M10Q is awake or in backup mode. We pay extra mA during
+                    // the duration window vs sleeping M10Q, but the coin cell
+                    // DOES recharge — vs the previous "fail, cut rail, no
+                    // recharge ever" behavior.
+                    DEBUG_WARN("M10QAsyncReceiver: state_enterbackup sync failed (step %u) — "
+                               "skipping PMREQ, continuing to backupidle with rail ON for V_BCKP recharge",
+                               m_step);
+                    // Deinit UART (we won't talk to M10Q in backupidle)
+                    m_ubx_comms.deinit();
+                    STATE_CHANGE(enterbackup, backupidle);
                     break;
                 }
             }

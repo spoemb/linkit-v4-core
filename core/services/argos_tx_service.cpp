@@ -404,6 +404,52 @@ void ArgosTxService::service_initiate() {
 		return;
 	}
 
+	// Re-check gates that service_next_schedule_in_ms enforces. The framework
+	// (Service::reschedule in service.cpp:586) schedules a task that fires
+	// service_initiate() DIRECTLY after the delay returned by
+	// service_next_schedule_in_ms — without re-running it. So a check that
+	// fired and returned a reschedule (rate-limit at line 139, or in this
+	// function once the burst max_msg branch runs) gets bypassed on the
+	// next fire. Field log 2026-05-23 caught this: rate-limit returned
+	// 45 s, burst counter was at 3/3, the rescheduled task fired
+	// process_doppler_burst() and pushed counter to 4 then 5 — the user-
+	// configured SURFACING_BURST_MAX_MSG=3 silently exceeded.
+	//
+	// Defense: re-evaluate rate-limit + burst-max here. If either says no,
+	// abort and let the next reschedule re-arm cleanly.
+	{
+		std::time_t now = service_current_time();
+		unsigned int rl_reschedule_s = 0;
+		if (RateLimiter::is_blocked(now, rl_reschedule_s)) {
+			DEBUG_INFO("ArgosTxService::service_initiate: rate-limited (reschedule_s=%u), aborting fire",
+			           rl_reschedule_s);
+			m_sched.schedule_at(now + (std::time_t)rl_reschedule_s);
+			service_complete(nullptr, nullptr, true);
+			return;
+		}
+		// Burst-max defense: if we're inside a SURFACING_BURST and already
+		// hit max_msg, do NOT fire another Doppler. Mirrors line 191 in
+		// service_next_schedule_in_ms. Only applies in Phase 1 (no GNSS fix
+		// yet); Phase 2 (GNSS) is bounded by depth-pile eligibility.
+		if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing) {
+			unsigned int max_msg = configuration_store->read_param<unsigned int>(ParamID::SURFACING_BURST_MAX_MSG);
+			if (max_msg > 0 && m_doppler_burst_count >= max_msg) {
+				DEBUG_INFO("ArgosTxService::service_initiate: Doppler limit reached (%u/%u), aborting fire",
+				           m_doppler_burst_count, max_msg);
+				unsigned int trigger = configuration_store->read_param<unsigned int>(ParamID::COOLDOWN_TRIGGER_MODE);
+				if (trigger == (unsigned int)BaseCooldownTrigger::END_OF_DOPPLER && !m_cooldown_armed) {
+					m_cooldown_armed = true;
+					DEBUG_INFO("ArgosTxService: cooldown armed (END_OF_DOPPLER, max msg via initiate)");
+				}
+				m_is_surfacing_burst = false;
+				m_awaiting_surfacing = true;
+				m_first_gnss_tx_sent = false;
+				service_complete(nullptr, nullptr, false);  // no reschedule — wait for next surface event
+				return;
+			}
+		}
+	}
+
 	m_is_first_tx = false;
 	m_is_tx_pending = true;
 

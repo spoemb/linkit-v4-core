@@ -9,6 +9,7 @@
 #include "config_store.hpp"
 #include "scheduler.hpp"
 #include "rtc.hpp"
+#include "rate_limiter.hpp"
 
 extern RTC *rtc;
 #if ENABLE_AXL_SENSOR
@@ -128,6 +129,23 @@ unsigned int GPSService::service_next_schedule_in_ms() {
 	if (rtc && rtc->is_set() && ServiceManager::is_in_cooldown(service_current_time())) {
 		DEBUG_TRACE("GPSService::service_next_schedule_in_ms: cooldown active — SCHEDULE_DISABLED");
 		return Service::SCHEDULE_DISABLED;
+	}
+
+	// Rate-limit gate (2026-05-23): if Argos TX is rate-limited, acquiring
+	// a GPS fix now is pure waste — no TX can fire to actually use the fix
+	// until the window expires. Field log on 2026-05-23 showed GPS running
+	// a full 70 s cold-acq session during a 45 s rate-limit reschedule —
+	// 100 % wasted current. Symptom from sealed deploy POV: shorter
+	// effective battery. Mirror the same RateLimiter::is_blocked check
+	// ArgosTxService uses (argos_tx_service.cpp:139); return reschedule_in_s
+	// matching the rate-limit window so GPS re-checks when it could be useful.
+	{
+		unsigned int rl_reschedule_s = 0;
+		if (rtc && rtc->is_set() && RateLimiter::is_blocked(service_current_time(), rl_reschedule_s)) {
+			DEBUG_INFO("GPSService::service_next_schedule_in_ms: rate-limited, reschedule in %u s",
+			           rl_reschedule_s);
+			return rl_reschedule_s * 1000;
+		}
 	}
 
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
