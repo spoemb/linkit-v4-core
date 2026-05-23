@@ -936,7 +936,35 @@ void M10QAsyncReceiver::state_enterbackup_enter() {
     m_op_state = OpState::IDLE;
     m_uart_error_count = 0;
     DEBUG_INFO("M10QAsyncReceiver::state_enterbackup_enter");
-    exit_shutdown();
+
+    // 2026-05-23 fix: every entry to enterbackup comes from poweroff state
+    // (idle → enterbackup, idle being post-poweroff). The M10Q is fresh-booting
+    // and BBR is likely LOST if the V_BCKP coin cell was depleted (the very
+    // reason we are running backup-charge). Force the boot baud sync to
+    // start at 9600 (factory default after cold-boot) — m_gnss_info_valid
+    // is stale across power cycles and previously led the sync at line 952
+    // to start at MAX_BAUDRATE, burning 6 retries against a stream the
+    // M10Q is actually sending at 9600. Field log 2026-05-23 caught this
+    // twice in a row, then bailed to poweroff → coin cell never recharged.
+    //
+    // Mirror what state_poweron_enter implicitly does (always 9600 first
+    // via the hardcoded sync_baud_rate(9600) at line 861).
+    // get_device_info() will re-set m_gnss_info_valid to true on the next
+    // normal power-on after BBR is re-established by the recharge cycle.
+    m_gnss_info_valid = false;
+
+    // Extra settling: after a long poweroff (typical for backup-charge —
+    // GNSS_BCKP_CHARGE_INTERVAL min between cycles), rail caps are fully
+    // discharged. exit_shutdown's 100 ms delay is calibrated for normal
+    // power-on where caps are warm from the previous session. We also need
+    // to ensure the libuarte RX buffer doesn't contain spurious bytes from
+    // listening on a floating pin between m_ubx_comms.init() and the rail
+    // actually rising (the order in exit_shutdown is: init UART → power
+    // rail). Strategy: ensure UART is dead during the power-up + boot
+    // window, then init + sync.
+    m_ubx_comms.deinit();   // Tear down libuarte if it was up from a prior cycle
+    exit_shutdown();        // Init UART, power rail, 100 ms settle
+    PMU::delay_ms(200);     // Extra margin for cold cap recharge + M10Q boot
 }
 
 void M10QAsyncReceiver::state_enterbackup() {
