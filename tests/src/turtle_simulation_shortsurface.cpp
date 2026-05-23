@@ -334,8 +334,23 @@ public:
 		const std::time_t SIM_DURATION_S = (std::time_t)cfg.duration_days * 86400;
 		std::time_t now = 1;
 		bool prev_hauled = false;
+		unsigned int last_html_day = 0;
+
+		// Write initial live HTML so the operator can already open the page.
+		write_html(100.0, /*live=*/true, /*day_done=*/0);
+		printf("[turtle-sim] live HTML: %s (auto-refresh every 2 s)\n",
+		       cfg.output_html.c_str());
 
 		while (now < (std::time_t)1 + SIM_DURATION_S) {
+			unsigned int current_day = (unsigned int)((now - 1) / 86400);
+			// Live HTML refresh on day boundary (cheap — once per simulated day).
+			if (current_day != last_html_day) {
+				last_html_day = current_day;
+				double soc_pct_live = 100.0 - 100.0 * total_battery_mah / (double)cfg.battery_capacity_mah;
+				if (soc_pct_live < 0) soc_pct_live = 0;
+				write_html(soc_pct_live, /*live=*/true, current_day);
+			}
+
 			// Animal hauled-out scenario (e.g. animal beaches / dies on day N).
 			bool force_hauled_now = (cfg.hauled_day < cfg.duration_days &&
 			                         (unsigned int)((now - 1) / 86400) >= cfg.hauled_day);
@@ -464,7 +479,7 @@ public:
 		       total_battery_mah, cfg.battery_capacity_mah, soc_pct);
 
 		write_csv();
-		write_html(soc_pct);
+		write_html(soc_pct, /*live=*/false, cfg.duration_days);
 	}
 
 private:
@@ -574,18 +589,27 @@ private:
 		printf("[turtle-sim] CSV written to %s\n", cfg.output_csv.c_str());
 	}
 
-	void write_html(double soc_pct) {
+	void write_html(double soc_pct, bool live = false, unsigned int day_done = 0) {
 		std::ofstream f(cfg.output_html);
 		if (!f.is_open()) {
-			printf("[turtle-sim] cannot write HTML %s\n", cfg.output_html.c_str());
+			static bool printed = false;
+			if (!printed) {
+				printf("[turtle-sim] cannot write HTML %s\n", cfg.output_html.c_str());
+				printed = true;
+			}
 			return;
 		}
 		unsigned int tx_total = tx_doppler + tx_gnss_fresh + tx_reuse + tx_fastloc;
-		double avg_tx_per_day = (double)tx_total / cfg.duration_days;
+		double avg_tx_per_day = day_done > 0 ? (double)tx_total / day_done :
+		                                       (cfg.duration_days > 0 ? (double)tx_total / cfg.duration_days : 0);
+		double progress_pct = cfg.duration_days > 0 ? 100.0 * day_done / cfg.duration_days : 100.0;
 
 		f << "<!DOCTYPE html><html><head><meta charset=\"UTF-8\">"
-		     "<title>Turtle Short-Surface Simulation</title>"
-		     "<style>"
+		     "<title>Turtle Short-Surface " << (live ? "(running)" : "(done)") << "</title>";
+		if (live) {
+			f << "<meta http-equiv=\"refresh\" content=\"2\">";
+		}
+		f << "<style>"
 		     "body{font-family:system-ui,sans-serif;background:#1a1a2e;color:#eee;padding:20px;max-width:1200px;margin:auto}"
 		     "h1{color:#00d4ff}h2{color:#ffa502;margin-top:30px}"
 		     ".stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:20px 0}"
@@ -597,11 +621,35 @@ private:
 		     "td:first-child,th:first-child{text-align:left}"
 		     ".hauled{background:rgba(255,165,2,0.15)}"
 		     ".tx-bar{background:linear-gradient(90deg,#00ff88,#00d4ff);height:8px;border-radius:4px;display:inline-block;vertical-align:middle}"
+		     ".banner{padding:14px 18px;border-radius:6px;margin-bottom:22px;font-size:14px;display:flex;justify-content:space-between;align-items:center}"
+		     ".banner.running{background:linear-gradient(90deg,rgba(0,212,255,.18),rgba(255,165,2,.18));border-left:4px solid #ffa502}"
+		     ".banner.done{background:rgba(0,255,136,.10);border-left:4px solid #00ff88}"
+		     ".pulse{display:inline-block;width:10px;height:10px;background:#ffa502;border-radius:50%;margin-right:8px;animation:pulse 1s ease-in-out infinite}"
+		     "@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}"
+		     ".progress-track{width:100%;height:10px;background:rgba(255,255,255,.08);border-radius:5px;overflow:hidden;margin-top:8px}"
+		     ".progress-fill{height:100%;background:linear-gradient(90deg,#00ff88,#00d4ff);transition:width .8s}"
 		     "</style></head><body>"
 		     "<h1>&#x1F422; Turtle Short-Surface Simulation</h1>"
-		     "<p>" << cfg.duration_days << " days, " << surface_events.size() << " surfaces</p>"
+		     "<p>" << cfg.duration_days << " days, " << surface_events.size() << " surfaces</p>";
 
-		     "<div class=\"stats\">"
+		// Live / done banner.
+		if (live) {
+			f << "<div class=\"banner running\">"
+			  << "<div><span class=\"pulse\"></span><b>RUNNING</b> &middot; "
+			  << "day " << day_done << " of " << cfg.duration_days
+			  << " &middot; " << surface_events.size() << " surfaces recorded</div>"
+			  << "<div>" << std::fixed << std::setprecision(1) << progress_pct << "%</div>"
+			  << "</div>"
+			  << "<div class=\"progress-track\"><div class=\"progress-fill\" style=\"width:" << progress_pct << "%\"></div></div>";
+		} else {
+			f << "<div class=\"banner done\">"
+			  << "<b>&#x2705; SIMULATION COMPLETE</b> &middot; "
+			  << surface_events.size() << " surfaces simulated, "
+			  << tx_total << " TX, "
+			  << std::fixed << std::setprecision(1) << soc_pct << "% SoC remaining"
+			  << "</div>";
+		}
+		f << "<div class=\"stats\">"
 		     "<div class=\"stat\"><div class=\"v\">" << tx_total << "</div><div class=\"l\">Total TX</div></div>"
 		     "<div class=\"stat\"><div class=\"v\">" << std::fixed << std::setprecision(1) << avg_tx_per_day << "</div><div class=\"l\">TX / day avg</div></div>"
 		     "<div class=\"stat\"><div class=\"v\">" << tx_doppler << "</div><div class=\"l\">Doppler</div></div>"

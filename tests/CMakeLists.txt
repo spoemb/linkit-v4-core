@@ -10,6 +10,46 @@ set(ROOT_DIR "..")
 set(LINUX_DIR "${ROOT_DIR}/ports/linux")
 set(NRF_DIR "${ROOT_DIR}/ports/nrf52840")
 
+# === Git metadata for test report header (TrackerTests + TurtleSimulation) ===
+# Captured at CMake configure time. Reconfigure (re-run cmake) to refresh after
+# committing if you want the report to show the latest SHA.
+execute_process(
+    COMMAND git rev-parse --short HEAD
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
+    OUTPUT_VARIABLE GIT_COMMIT_SHORT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+execute_process(
+    COMMAND git rev-parse HEAD
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
+    OUTPUT_VARIABLE GIT_COMMIT_FULL
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+execute_process(
+    COMMAND git rev-parse --abbrev-ref HEAD
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
+    OUTPUT_VARIABLE GIT_BRANCH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+execute_process(
+    COMMAND git describe --always --dirty --tags
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
+    OUTPUT_VARIABLE GIT_DESCRIBE
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NOT GIT_COMMIT_SHORT)
+    set(GIT_COMMIT_SHORT "unknown")
+    set(GIT_COMMIT_FULL "unknown")
+    set(GIT_BRANCH "unknown")
+    set(GIT_DESCRIBE "unknown")
+endif()
+string(TIMESTAMP BUILD_TIMESTAMP "%Y-%m-%dT%H:%M:%S")
+message(STATUS "Test build metadata: branch=${GIT_BRANCH} commit=${GIT_COMMIT_SHORT} describe=${GIT_DESCRIBE}")
+
 # CppUTest
 include(FetchContent)
 FetchContent_Declare(
@@ -100,6 +140,13 @@ target_compile_options(${PROJECT_NAME} PRIVATE
     # For setting firmware app version
     -DFW_APP_VERSION_STR=std::string\("V0.1"\)
     -DFW_APP_VERSION_STR_C="V0.1"
+
+    # Git metadata used by the HTML test report header (TrackerTests main.cpp).
+    "-DTEST_BUILD_GIT_SHORT=\"${GIT_COMMIT_SHORT}\""
+    "-DTEST_BUILD_GIT_FULL=\"${GIT_COMMIT_FULL}\""
+    "-DTEST_BUILD_GIT_BRANCH=\"${GIT_BRANCH}\""
+    "-DTEST_BUILD_GIT_DESCRIBE=\"${GIT_DESCRIBE}\""
+    "-DTEST_BUILD_TIMESTAMP=\"${BUILD_TIMESTAMP}\""
 
 	# Packet protocol option for including CRC8
     -DARGOS_USE_CRC8
@@ -298,6 +345,11 @@ target_compile_options(${TURTLE_SIM_NAME} PRIVATE
     -DDEVICE_MODEL_NAME=std::string\("SURFACEBOX"\)
     -DFW_APP_VERSION_STR=std::string\("V0.1"\)
     -DFW_APP_VERSION_STR_C="V0.1"
+    "-DTEST_BUILD_GIT_SHORT=\"${GIT_COMMIT_SHORT}\""
+    "-DTEST_BUILD_GIT_FULL=\"${GIT_COMMIT_FULL}\""
+    "-DTEST_BUILD_GIT_BRANCH=\"${GIT_BRANCH}\""
+    "-DTEST_BUILD_GIT_DESCRIBE=\"${GIT_DESCRIBE}\""
+    "-DTEST_BUILD_TIMESTAMP=\"${BUILD_TIMESTAMP}\""
     -DARGOS_USE_CRC8
     -DINPLACE_FUNCTION_SIZE_SCHEDULER=1024
     -DINPLACE_FUNCTION_SIZE_TIMER=1536
