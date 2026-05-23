@@ -707,7 +707,6 @@ void GPSService::react(const GPSEventPVTDegraded& e) {
 /// react(GPSEventRawMeasurement)). One-shot per acquisition: the M10Q driver
 /// has its own guard so this fires once per power_on().
 void GPSService::react(const GPSEventCloudLocateReady& e) {
-	(void)e;  // payload available via gps_device->get_raw_measurement() if peer wants it
 	if (!m_is_active) return;
 	unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
 	if (fastloc_mode != (unsigned int)BaseFastlocMode::CLOUDLOCATE) {
@@ -716,6 +715,26 @@ void GPSService::react(const GPSEventCloudLocateReady& e) {
 	}
 	DEBUG_INFO("GPSService::react(GPSEventCloudLocateReady): broadcasting GNSS_CLOUDLOCATE_READY");
 	notify_service_event(ServiceEventType::GNSS_CLOUDLOCATE_READY);
+
+	// FAST3b (2026-05 deep-idle refactor): terminate the GNSS session as soon
+	// as a raw measurement is available — don't wait for a full PVT fix or the
+	// GNSS_ACQ_TIMEOUT. For tortue short-surface deployments where the
+	// CloudLocate raw data IS the position payload (resolved cloud-side from
+	// the Argos upload), waiting for a full PVT just burns battery.
+	//
+	// Drops typical session 30-120 s → 5-15 s. Trade-off: no local lat/lon
+	// (no GPSEventPVT will fire), so no LAST_KNOWN_POS update for the next
+	// session's MGA-INI-POS_LLH hint. Acceptable when the deployment relies
+	// on cloud-side processing of raw measurements.
+	if (configuration_store->read_param<bool>(ParamID::GNSS_CLOUDLOCATE_ONLY)) {
+		DEBUG_INFO("GPSService::react(GPSEventCloudLocateReady): CLOUDLOCATE_ONLY — power-off, no PVT wait");
+		m_is_active = false;
+		try_enter_deep_idle_or_poweroff();
+		// Build a synthetic CloudLocate log entry from the raw measurement so
+		// peer services get the same SERVICE_LOG_UPDATED hook they'd get on a
+		// normal raw-meas-driven end-of-session (via gnss_cloudlocate_callback).
+		gnss_cloudlocate_callback(e.data);
+	}
 }
 
 /// @brief Raw GNSS measurement received (CloudLocate fallback) — emit if CLOUDLOCATE mode.

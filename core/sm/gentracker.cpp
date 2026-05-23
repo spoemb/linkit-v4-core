@@ -646,6 +646,14 @@ void OperationalState::service_event_handler(ServiceEvent& e) {
 				led_handle::dispatch<SetLEDGNSSOffWithFix>({});
 			else
 				led_handle::dispatch<SetLEDGNSSOffWithoutFix>({});
+		} else if (e.event_type == ServiceEventType::GNSS_CLOUDLOCATE_READY) {
+			// 2026-05 deep-idle refactor FAST3c: visual marker for raw CloudLocate
+			// measurement available (double-blink CYAN). Does NOT short-circuit
+			// the event flow — peers (LoRaTxService etc.) still receive the
+			// broadcast and act on it. The LED state transits back to
+			// LEDGNSSOn (if GPS still active) or LEDOff (if CLOUDLOCATE_ONLY
+			// ended the session) after ~500 ms.
+			led_handle::dispatch<SetLEDGNSSCloudLocateReady>({});
 		}
 		return;
 	}

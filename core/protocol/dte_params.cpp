@@ -396,6 +396,10 @@ const BaseMap param_map[] = {
 	// deprecated GNSS_BCKP_CHARGE_* family. See plan doc in
 	// .claude/plans/gnss-deep-idle-refactor.md.
 	{ "GNSS_DEEP_IDLE_AFTER_OFF_S", "GNP52", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true },
+	// [241] FAST3b: terminate GNSS session as soon as first raw CloudLocate
+	// measurement arrives, no waiting for full PVT. Only meaningful when
+	// GNSS_FASTLOC_MODE=CLOUDLOCATE. Off by default.
+	{ "GNSS_CLOUDLOCATE_ONLY",      "GNP53", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);

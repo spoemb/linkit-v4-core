@@ -417,8 +417,17 @@ enum class ParamID {
 	// Replaces the deprecated GNSS_BCKP_CHARGE_* params (slots 223-225, now
 	// _RESERVED). See .claude/plans/gnss-deep-idle-refactor.md for design.
 	GNSS_DEEP_IDLE_AFTER_OFF_S               = 240,
+	// === GNSS CloudLocate-only mode (slot 241) — 2026-05 refactor FAST3b ===
+	// bool: when true AND GNSS_FASTLOC_MODE == CLOUDLOCATE, the GNSS session is
+	// terminated as soon as the first raw measurement is available (the
+	// GPSEventCloudLocateReady event), without waiting for a full PVT fix or
+	// the GNSS_ACQ_TIMEOUT. Drops typical session duration from 30-120 s down
+	// to 5-15 s on tortoise short-surface deployments. Trade-off: no local
+	// lat/lon (position computed in the cloud from the raw measurements
+	// uploaded via Argos). Off by default — operator must opt in.
+	GNSS_CLOUDLOCATE_ONLY                    = 241,
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 241,
+	__PARAM_SIZE                             = 242,
 	__NULL_PARAM                             = 0xFFFF
 };
 

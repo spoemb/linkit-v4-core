@@ -26,6 +26,11 @@ struct SetLEDConfigConnected : tinyfsm::Event { };
 struct SetLEDGNSSOn : tinyfsm::Event { };
 struct SetLEDGNSSOffWithFix : tinyfsm::Event { };
 struct SetLEDGNSSOffWithoutFix : tinyfsm::Event { };
+// 2026-05 deep-idle refactor FAST3c: visual marker when the M10Q has captured
+// its first raw CloudLocate measurement mid-session. Double-blink CYAN
+// distinguishes from LEDGNSSOn (steady CYAN flash) so bench operators can see
+// when raw measurements are ready without waiting for full PVT.
+struct SetLEDGNSSCloudLocateReady : tinyfsm::Event { };
 struct SetLEDArgosTX : tinyfsm::Event { };
 struct SetLEDArgosTXComplete : tinyfsm::Event { };
 struct SetLEDBatteryCritical : tinyfsm::Event { };
@@ -53,6 +58,7 @@ class LEDConfigConnected;
 class LEDGNSSOn;
 class LEDGNSSOffWithFix;
 class LEDGNSSOffWithoutFix;
+class LEDGNSSCloudLocateReady;   // 2026-05 deep-idle refactor FAST3c
 class LEDArgosTX;
 class LEDArgosTXComplete;
 class LEDBatteryCritical;
@@ -92,6 +98,7 @@ public:
 	void react(SetLEDGNSSOn const &) { transit<LEDGNSSOn>(); }
 	void react(SetLEDGNSSOffWithFix const &) { transit<LEDGNSSOffWithFix>(); }
 	void react(SetLEDGNSSOffWithoutFix const &) { transit<LEDGNSSOffWithoutFix>(); }
+	void react(SetLEDGNSSCloudLocateReady const &) { transit<LEDGNSSCloudLocateReady>(); }
 	void react(SetLEDArgosTX const &) { transit<LEDArgosTX>(); }
 	void react(SetLEDArgosTXComplete const &) { transit<LEDArgosTXComplete>(); }
 	void react(SetLEDBatteryCritical const &) { transit<LEDBatteryCritical>(); }
@@ -203,6 +210,21 @@ public:
 };
 
 class LEDGNSSOffWithoutFix : public LEDState
+{
+public:
+	void entry() override;
+	void exit() override {};
+};
+
+// 2026-05 deep-idle refactor FAST3c: distinct visual pattern when the first
+// CloudLocate raw measurement arrives mid-session. Double-blink CYAN to
+// distinguish from the steady CYAN flash of LEDGNSSOn — bench operator
+// instantly knows raw measurements are ready (which can be uploaded via
+// Argos for cloud-side position resolution even without a full PVT fix).
+// After the double-blink, the state machine transitions back to LEDGNSSOn
+// (if GPS still active) or LEDOff (if GNSS_CLOUDLOCATE_ONLY terminated the
+// session). Transition handled inside the entry() via a scheduled task.
+class LEDGNSSCloudLocateReady : public LEDState
 {
 public:
 	void entry() override;

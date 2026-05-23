@@ -360,6 +360,7 @@ protected:
 		/* [238] HAULED_GNSS_STRAT */ 1U,              // BaseGnssStrategy::REUSE_LAST (stored as uint per BaseMap)
 		/* [239] GNSS_CLOUDLOCATE_ALWAYS */ (bool)false,  // false=CloudLocate only on cold-start surfaces (default, battery-friendly); true=raw-meas captured at every SURFACING_BURST surface (short-surface tortue fallback)
 		/* [240] GNSS_DEEP_IDLE_AFTER_OFF_S */ 0U,     // 0=disabled (immediate poweroff, default — no behavior change); 0xFFFFFFFF=never poweroff (rail always on, M10Q in deep-idle); else=duration in seconds. Replaces deprecated GNSS_BCKP_CHARGE_* (slots 223-225).
+		/* [241] GNSS_CLOUDLOCATE_ONLY */ (bool)false, // FAST3b: when true + FASTLOC_MODE=CLOUDLOCATE, end GNSS session on first raw measurement (skip full PVT wait). Off by default to preserve current behavior.
 	}};
 	static inline const BasePassPredict default_prepass = {
 		/* version_code */ m_config_version_code_aop,

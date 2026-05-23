@@ -288,6 +288,42 @@ void LEDGNSSOffWithoutFix::entry() {
 	m_is_gnss_on = false;
 }
 
+// 2026-05 deep-idle refactor FAST3c: visual marker for "raw CloudLocate
+// measurement ready". Double-blink CYAN (~120 ms on, 80 ms off, repeat —
+// total ~400 ms) distinguishes this from the steady CYAN flash of
+// LEDGNSSOn. After the double-blink, return to LEDGNSSOn (GPS still
+// active waiting for full PVT) or LEDOff (CLOUDLOCATE_ONLY just ended
+// the session). LED_MODE_GUARD respected — if the user disabled the LED
+// for deployment, the entry call is a no-op.
+void LEDGNSSCloudLocateReady::entry() {
+	DEBUG_TRACE("LEDGNSSCloudLocateReady: entry");
+	arm_led_freeze_safety();
+	if (m_is_magnet_engaged) {
+		status_led->set(RGBLedColor::WHITE);
+	} else {
+		LED_MODE_GUARD {
+			// flash_alternate(on_color, off_color, period_ms) produces a
+			// repeating on→off pattern. With 120 ms on / off period, two
+			// quick blinks span ~400 ms before the transit_back fires at
+			// 500 ms. Falls through to LEDGNSSOn / LEDOff cleanly.
+			status_led->flash_alternate(RGBLedColor::CYAN, RGBLedColor::BLACK, 120);
+		} else {
+			status_led->off();
+		}
+	}
+	// Schedule transit back. If GPS is still active (CLOUDLOCATE_ONLY=false),
+	// resume LEDGNSSOn so the operator sees the GPS is still acquiring.
+	// Otherwise go to LEDOff (the GNSS session ended).
+	system_timer->add_schedule([this]() {
+		if (m_is_gnss_on)
+			transit<LEDGNSSOn>();
+		else if (is_in_state<LEDConfigNotConnected>())
+			transit<LEDConfigNotConnected>();
+		else
+			transit<LEDOff>();
+	}, system_timer->get_counter() + 500);
+}
+
 void LEDArgosTX::entry() {
 	DEBUG_TRACE("LEDArgosTX: entry");
 	arm_led_freeze_safety();
