@@ -136,8 +136,32 @@ private:
 	std::function<void()> m_on_backup_charge_start;
 	std::function<void()> m_on_backup_charge_stop;
 
+	// 2026-05 deep-idle refactor — auto-poweroff timer after deep-idle window.
+	// Armed when end-of-session enters deep-idle with a finite duration; fires
+	// `m_device.power_off()` if the window elapses without intervening acquisition.
+	// Cancelled at every service_initiate() so a new session re-engages cleanly.
+	Scheduler::TaskHandle m_deep_idle_auto_off_task;
+
+	// R4 robustness gate (deep-idle plan): if the last reset was a WDT, inhibit
+	// the deep-idle fast-path for the first GPS session post-boot. Cold-boot
+	// proves the cold path works before re-engaging the optimization. Cleared
+	// in react(GPSEventPVT) after first valid fix.
+	bool m_deep_idle_inhibit_first_session = false;
+
 	void backup_charge_stop_internal();
 	void schedule_backup_charge_retry(unsigned int attempt);
+	/// @brief Dispatch end-of-session: enter deep-idle (with optional auto-off
+	/// timer) or fall back to immediate power_off, based on
+	/// GNSS_DEEP_IDLE_AFTER_OFF_S. Replaces the 7 raw `m_device.power_off()`
+	/// call sites scattered through the React handlers.
+	void try_enter_deep_idle_or_poweroff();
+
+public:
+	/// @brief R4 robustness — set by main.cpp on boot if reset cause was WDT.
+	/// Disables deep-idle fast-path until first clean acquisition.
+	void set_deep_idle_inhibit_first_session(bool inhibit) { m_deep_idle_inhibit_first_session = inhibit; }
+
+private:
 
     void react(const GPSEventMaxNavSamples&) override;
     void react(const GPSEventMaxSatSamples&) override;
