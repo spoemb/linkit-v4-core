@@ -689,6 +689,16 @@ public:
 		gnss_config.is_out_of_zone = is_zone_exclusion();
 		gnss_config.is_lb = false;
 
+		// Predict whether the HAULED override is going to engage. Used to gate
+		// "NORMAL/OUT_OF_ZONE mode detected" logs in the cascade below — without
+		// this guard, every call alternates m_last_config_mode NORMAL → HAULED
+		// and logs both transitions on each tick (2-line spam ~1 Hz on the
+		// observed field log of 2026-05-23).
+		HauledModeService::evaluate();
+		bool hauled_will_override = !(lb_en && m_is_battery_level_low) &&
+		                             HauledModeService::is_hauled() &&
+		                             read_param<bool>(ParamID::HAULED_DETECT_EN);
+
 		if (lb_en && m_is_battery_level_low) {
 			// Use LB mode which takes priority
 			gnss_config.is_lb = true;
@@ -742,7 +752,7 @@ public:
 			gnss_config.min_elev = read_param<unsigned int>(ParamID::GNSS_MIN_ELEV);
 			gnss_config.ano_stale_days = read_param<unsigned int>(ParamID::GNSS_ANO_STALE_DAYS);
 
-			if (m_last_config_mode != ConfigMode::OUT_OF_ZONE) {
+			if (!hauled_will_override && m_last_config_mode != ConfigMode::OUT_OF_ZONE) {
 				DEBUG_INFO("ConfigurationStore: OUT_OF_ZONE mode detected");
 				m_last_config_mode = ConfigMode::OUT_OF_ZONE;
 			}
@@ -771,23 +781,20 @@ public:
 			gnss_config.min_elev = read_param<unsigned int>(ParamID::GNSS_MIN_ELEV);
 			gnss_config.ano_stale_days = read_param<unsigned int>(ParamID::GNSS_ANO_STALE_DAYS);
 
-			if (m_last_config_mode != ConfigMode::NORMAL) {
+			if (!hauled_will_override && m_last_config_mode != ConfigMode::NORMAL) {
 				DEBUG_INFO("ConfigurationStore: NORMAL mode detected");
 				m_last_config_mode = ConfigMode::NORMAL;
 			}
 		}
 
-		// HAULED override (Plan 1 step 3) — runs AFTER the LB/OUT_OF_ZONE/NORMAL
-		// cascade and substitutes the GNSS enable flag (clones LOW_BATTERY's
-		// "narrow override" pattern but limited to comm-side params per user
-		// scope decision: §4 of Plan 1). Priority: LOW_BATTERY > HAULED > OoZ
-		// > NORMAL — so HAULED applies whenever LB is NOT active.
+		// HAULED override (Plan 1 step 3) — applied after the LB/OoZ/NORMAL
+		// cascade has filled the rest of gnss_config. `hauled_will_override`
+		// computed at the top of this function tells us whether to engage.
+		// Priority cascade: LOW_BATTERY > HAULED > OUT_OF_ZONE > NORMAL.
 		// HAULED_GNSS_STRAT=OFF forces GNSS off (Doppler-only); FRESH and
-		// REUSE_LAST both leave GNSS on for now. REUSE_LAST wiring through to
-		// the TX dispatch is a follow-up (helpers landed in step 1).
-		HauledModeService::evaluate();
-		if (!gnss_config.is_lb && HauledModeService::is_hauled() &&
-		    read_param<bool>(ParamID::HAULED_DETECT_EN)) {
+		// REUSE_LAST both leave GNSS on (REUSE_LAST routes through cached fix
+		// in the TX path, no GPS power-on).
+		if (hauled_will_override) {
 			unsigned int strat = read_param<unsigned int>(ParamID::HAULED_GNSS_STRAT);
 			if (strat == (unsigned int)BaseGnssStrategy::OFF) {
 				gnss_config.enable = false;
@@ -818,6 +825,16 @@ public:
 		// behavior for every non-HAULED path. Only the HAULED override branch
 		// (below) sets it to REUSE_LAST / OFF when the user requests.
 		argos_config.gnss_strategy = BaseGnssStrategy::FRESH;
+
+		// Predict whether HAULED override will engage. Used to gate
+		// "NORMAL/OUT_OF_ZONE mode detected" logs in the cascade so they
+		// don't alternate with "HAULED mode engaged" each tick. Single
+		// HauledModeService::evaluate() call shared with get_gnss_configuration
+		// would be ideal but the two functions are called independently.
+		HauledModeService::evaluate();
+		bool hauled_will_override = !(lb_en && m_is_battery_level_low) &&
+		                             HauledModeService::is_hauled() &&
+		                             read_param<bool>(ParamID::HAULED_DETECT_EN);
 
 		// Power and frequency are controlled by RADIOCONF on SMD devices.
 		// These fields are kept for legacy (non-SMD) scheduler compatibility.
@@ -887,7 +904,7 @@ public:
 			argos_config.surfacing_burst_step_s = read_param<unsigned int>(ParamID::SURFACING_BURST_STEP_S);
 			argos_config.surfacing_burst_max_s = read_param<unsigned int>(ParamID::SURFACING_BURST_MAX_S);
 
-			if (m_last_config_mode != ConfigMode::OUT_OF_ZONE) {
+			if (!hauled_will_override && m_last_config_mode != ConfigMode::OUT_OF_ZONE) {
 				DEBUG_INFO("ConfigurationStore: OUT_OF_ZONE mode detected");
 				m_last_config_mode = ConfigMode::OUT_OF_ZONE;
 			}
@@ -921,7 +938,7 @@ public:
 			argos_config.surfacing_burst_init_s = read_param<unsigned int>(ParamID::SURFACING_BURST_INIT_S);
 			argos_config.surfacing_burst_step_s = read_param<unsigned int>(ParamID::SURFACING_BURST_STEP_S);
 			argos_config.surfacing_burst_max_s = read_param<unsigned int>(ParamID::SURFACING_BURST_MAX_S);
-			if (m_last_config_mode != ConfigMode::NORMAL) {
+			if (!hauled_will_override && m_last_config_mode != ConfigMode::NORMAL) {
 				DEBUG_INFO("ConfigurationStore: NORMAL mode detected");
 				m_last_config_mode = ConfigMode::NORMAL;
 			}
@@ -930,9 +947,7 @@ public:
 		// HAULED override (Plan 1) — see matching logic in
 		// get_gnss_configuration() above. Overrides mode / TR_NOM / gnss_en
 		// only; everything else inherits from the LB/OoZ/NORMAL cascade.
-		HauledModeService::evaluate();
-		if (!argos_config.is_lb && HauledModeService::is_hauled() &&
-		    read_param<bool>(ParamID::HAULED_DETECT_EN)) {
+		if (hauled_will_override) {
 			argos_config.mode = read_param<BaseArgosMode>(ParamID::HAULED_ARGOS_MODE);
 			// SURFACING_BURST requires UW transitions to fire — meaningless in
 			// HAULED (the animal isn't diving). DTE write now rejects this

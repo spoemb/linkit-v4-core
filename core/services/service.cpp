@@ -20,6 +20,13 @@
 #include <stdexcept>
 #include <variant>
 
+// Pre-deploy validation channel — see hauled_mode_service.cpp header comment.
+// Enables grep-friendly [VAL-COOLDOWN] tags on enter/exit for short-surface
+// turtle deployment testing. Default off (zero overhead).
+#ifndef VALIDATION_LOG_ENABLE
+#define VALIDATION_LOG_ENABLE 0
+#endif
+
 // CRC16-CCITT: nRF SDK header in firmware build, inline stub in CppUTest build.
 // Mirrors the conditional in sws_analog_constants.hpp so tests can build this
 // file (the SDK header is not on the test include path).
@@ -234,6 +241,10 @@ void ServiceManager::set_cycle_complete(std::time_t t) {
 	m_last_successful_cycle_time = t;
 	save_cooldown_state();
 	DEBUG_INFO("ServiceManager: cycle complete at %u, cooldown started", (unsigned int)t);
+#if VALIDATION_LOG_ENABLE
+	unsigned int interval = configuration_store->read_param<unsigned int>(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S);
+	DEBUG_INFO("[VAL-COOLDOWN] enter t=%u interval_s=%u", (unsigned int)t, interval);
+#endif
 }
 
 /// @brief Check if surface cycle cooldown is active.
@@ -268,6 +279,12 @@ void ServiceManager::notify_passive_surfacing() {
 	m_passive_surfacing_count++;
 	save_cooldown_state();
 	DEBUG_INFO("ServiceManager: passive surfacing #%u (cooldown active, no GPS/TX)", m_passive_surfacing_count);
+#if VALIDATION_LOG_ENABLE
+	std::time_t now = (rtc && rtc->is_set()) ? rtc->gettime() : 0;
+	unsigned int remaining = get_cooldown_remaining_s(now);
+	DEBUG_INFO("[VAL-COOLDOWN] block passive #%u t=%u remaining_s=%u",
+	           (unsigned int)m_passive_surfacing_count, (unsigned int)now, remaining);
+#endif
 }
 
 unsigned int ServiceManager::get_passive_surfacing_count() {
@@ -286,6 +303,9 @@ void ServiceManager::enter_cooldown_sleep() {
 		}
 	}
 	DEBUG_INFO("ServiceManager: entering cooldown sleep (remaining %u s) — stopping SWS", remaining_s);
+#if VALIDATION_LOG_ENABLE
+	DEBUG_INFO("[VAL-SLEEP] cooldown_sws_pause remaining_s=%u", remaining_s);
+#endif
 
 	// Stop SWS (UW_SENSOR) to save power during cooldown — unless the user
 	// is actively running SWSTST,1 (bench/cable testing). Pausing SWS during
@@ -331,6 +351,16 @@ void ServiceManager::enter_cooldown_sleep() {
 void ServiceManager::exit_cooldown_sleep() {
 	DEBUG_INFO("ServiceManager: exiting cooldown sleep (RTC=%u) — restarting SWS",
 	           (rtc && rtc->is_set()) ? (unsigned int)rtc->gettime() : 0);
+#if VALIDATION_LOG_ENABLE
+	{
+		std::time_t now = (rtc && rtc->is_set()) ? rtc->gettime() : 0;
+		std::time_t elapsed = (now > m_last_successful_cycle_time && m_last_successful_cycle_time > 0)
+		                       ? (now - m_last_successful_cycle_time) : 0;
+		DEBUG_INFO("[VAL-COOLDOWN] exit t=%u elapsed_s=%u passive=%u",
+		           (unsigned int)now, (unsigned int)elapsed,
+		           (unsigned int)m_passive_surfacing_count);
+	}
+#endif
 
 	// Restart SWS with first-time flag — it will re-emit its current state
 	// on the next sample, triggering surface/UW notification to all peers.

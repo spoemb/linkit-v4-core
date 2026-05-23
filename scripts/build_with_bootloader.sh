@@ -15,12 +15,16 @@
 # Options:
 #   --clean       Clean build (remove build dir first)
 #   --debug       Build in Debug mode (default: Release with DEBUG_LEVEL=3)
+#   --release     Force Release (default)
 #   --no-merge    Skip bootloader build and hex merge
+#   --recover     Show nrfjprog --recover hint in the flash banner
+#   --metrics     -DMETRIC_LATENCY_LOG_ENABLE=1 ([METRIC-STATE/SURF/FIRST-TX] logs)
+#   --validation  -DVALIDATION_LOG_ENABLE=1 ([VAL-HAULED/COOLDOWN/RATELIMIT/TX] logs)
 #
 # Examples:
-#   ./scripts/build_release.sh rspb
-#   ./scripts/build_release.sh linkit-smd --clean
-#   ./scripts/build_release.sh linkit-kim --debug --no-merge
+#   ./scripts/build_with_bootloader.sh rspb
+#   ./scripts/build_with_bootloader.sh linkit-smd --clean
+#   ./scripts/build_with_bootloader.sh linkit-kim --debug --metrics --validation
 # =============================================================================
 
 set -e
@@ -42,13 +46,20 @@ CLEAN=false
 DEBUG_MODE=false
 NO_MERGE=false
 RECOVER=false
+METRICS=false
+VALIDATION=false
 
 for arg in "$@"; do
     case "$arg" in
         --clean)   CLEAN=true ;;
         --debug)   DEBUG_MODE=true ;;
+        --release) DEBUG_MODE=false ;;
         --no-merge) NO_MERGE=true ;;
         --recover) RECOVER=true ;;
+        --metrics) METRICS=true ;;
+        --no-metrics) METRICS=false ;;
+        --validation) VALIDATION=true ;;
+        --no-validation) VALIDATION=false ;;
         -*)        echo "Unknown option: $arg"; exit 1 ;;
         *)         TARGET="$arg" ;;
     esac
@@ -60,7 +71,7 @@ if [ "$RECOVER" = true ]; then
 fi
 
 if [ -z "$TARGET" ]; then
-    echo "Usage: $0 <target> [--clean] [--debug] [--no-merge] [--recover]"
+    echo "Usage: $0 <target> [--clean] [--debug|--release] [--no-merge] [--recover] [--metrics] [--validation]"
     echo ""
     echo "Targets:"
     echo "  linkit-kim    LinkIt V4 KIM (UART)"
@@ -78,7 +89,11 @@ for tool in arm-none-eabi-gcc nrfutil; do
     fi
 done
 
-echo "=== Release Build: $TARGET ==="
+if [ "$DEBUG_MODE" = true ]; then
+    echo "=== Debug Build: $TARGET ==="
+else
+    echo "=== Release Build: $TARGET ==="
+fi
 echo ""
 
 # Configure per-target — uses the same build scripts as standalone builds
@@ -137,6 +152,21 @@ echo "--- Step 1: Build application via $BUILD_SCRIPT ---"
 BUILD_ARGS=""
 if [ "$CLEAN" = true ]; then
     BUILD_ARGS="$BUILD_ARGS --clean"
+fi
+# Forward --debug/--release/--metrics/--validation to the sub-script so its
+# CMAKE_BUILD_TYPE + log-flag macros match the wrapper's. Without forwarding,
+# the wrapper would report "Debug" in its summary while the sub-script silently
+# rebuilt in Release with no log macros defined.
+if [ "$DEBUG_MODE" = true ]; then
+    BUILD_ARGS="$BUILD_ARGS --debug"
+else
+    BUILD_ARGS="$BUILD_ARGS --release"
+fi
+if [ "$METRICS" = true ]; then
+    BUILD_ARGS="$BUILD_ARGS --metrics"
+fi
+if [ "$VALIDATION" = true ]; then
+    BUILD_ARGS="$BUILD_ARGS --validation"
 fi
 
 # Run the target-specific build script (single source of truth for CMake flags)

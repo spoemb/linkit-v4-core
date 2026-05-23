@@ -12,6 +12,13 @@
 #include "rtc.hpp"
 #include "debug.hpp"
 
+// Pre-deploy validation channel — emit grep-friendly [VAL-HAULED] tagged
+// transitions when -DVALIDATION_LOG_ENABLE=1 is set at build. Default off
+// (zero overhead in deployment). See METRIC_LATENCY_LOG_ENABLE precedent.
+#ifndef VALIDATION_LOG_ENABLE
+#define VALIDATION_LOG_ENABLE 0
+#endif
+
 #ifndef CPPUTEST
 #include "crc16.h"
 #else
@@ -108,6 +115,11 @@ void HauledModeService::on_underwater_event(bool submerged, std::time_t now) {
 			s_noinit.uw_events_since_hauled++;
 		if (s_noinit.uw_events_since_hauled >= needed) {
 			DEBUG_INFO("HauledModeService: HAULED → AT_SEA after %u dive events", s_noinit.uw_events_since_hauled);
+#if VALIDATION_LOG_ENABLE
+			DEBUG_INFO("[VAL-HAULED] exit AT_SEA t=%u events=%u last_uw=%u",
+			           (unsigned int)now, s_noinit.uw_events_since_hauled,
+			           (unsigned int)s_noinit.last_uw_event_rtc);
+#endif
 			s_noinit.in_hauled = 0;
 			s_noinit.uw_events_since_hauled = 0;
 		}
@@ -161,6 +173,12 @@ void HauledModeService::evaluate(std::time_t now) {
 		s_noinit.crc = noinit_crc();
 		DEBUG_INFO("HauledModeService: AT_SEA → HAULED (dry for %u s, threshold %u h)",
 		           (unsigned int)(now - s_noinit.last_uw_event_rtc), threshold_h);
+#if VALIDATION_LOG_ENABLE
+		DEBUG_INFO("[VAL-HAULED] enter HAULED t=%u dry_s=%u threshold_h=%u",
+		           (unsigned int)now,
+		           (unsigned int)(now - s_noinit.last_uw_event_rtc),
+		           threshold_h);
+#endif
 	}
 }
 

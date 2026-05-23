@@ -707,6 +707,10 @@ target_compile_definitions(${TARGET_NAME} PRIVATE
     #WORKAROUND_ALLCAST_CONSTELLATION_STATUS_ENCODING_BUG
     _XOPEN_SOURCE=700 # Enables strptime() usage
     __STARTUP_FILL_STACK
+    # Optional log channels forwarded from build scripts (--metrics / --validation).
+    # Each header re-#defines to 0 if unset, so passing 0 here is also fine.
+    $<$<BOOL:${METRIC_LATENCY_LOG_ENABLE}>:METRIC_LATENCY_LOG_ENABLE=${METRIC_LATENCY_LOG_ENABLE}>
+    $<$<BOOL:${VALIDATION_LOG_ENABLE}>:VALIDATION_LOG_ENABLE=${VALIDATION_LOG_ENABLE}>
 )
 
 target_compile_options(${TARGET_NAME} PRIVATE

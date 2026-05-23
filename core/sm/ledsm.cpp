@@ -21,15 +21,31 @@ constexpr unsigned long long LED_HRS_24_MS = 24ULL * 3600ULL * 1000ULL;
 // === LED freeze safety (2026-05) ===========================================
 // Defense against a stuck FSM (e.g. an Argos TX that never returns its
 // completion event) leaving the LED solid for hours. Each non-exempt state
-// entry() arms a 10 s deadline; the next state entry that runs disarms /
-// re-arms it. If 10 s pass without any LED FSM transition the deadline fires
-// and forces the LED off — purely visual, the FSM stays in its current
-// state. EXEMPT (disarmed explicitly): config modes (BLE GUI connected),
-// battery-critical warning, OTA success, all pre-operational states — all
-// "intentionally solid" states the operator needs to keep seeing.
-// Timeout was 5 s; bumped to 10 s to cover full SMD Argos TX (TCXO 5 s +
-// RF ≈ 3 s + margin).
-static constexpr uint64_t LED_FREEZE_TIMEOUT_MS = 10000;
+// entry() arms a deadline; the next state entry that runs disarms / re-arms
+// it. If the deadline expires the safety fires and forces the LED off — purely
+// visual, the FSM stays in its current state. EXEMPT (disarmed explicitly):
+// config modes (BLE GUI connected), battery-critical warning, OTA success,
+// all pre-operational states — all "intentionally solid" states the operator
+// needs to keep seeing.
+//
+// Timeout history:
+//   - Initial: 5 s (too short, fires during normal SMD Argos TX).
+//   - Bumped to 10 s to cover full SMD Argos TX (TCXO 5 s + RF ≈ 3 s + margin).
+//   - 2026-05-23 (this commit): bumped to 130 s after field log showed it
+//     firing 3× during a 5-min operational session. Root cause: LEDGNSSOn
+//     legitimately stays armed for the full GPS acquisition session, which
+//     can reach GNSS_COLD_ACQ_TIMEOUT (default 120 s). 130 s = 120 s cold
+//     acq + 10 s margin covers every legit long-running LED state without
+//     defeating the catastrophic-freeze recovery purpose (system WDT is at
+//     15 min so 130 s remains comfortably below WDT reset and gets the LED
+//     off well before the watchdog kicks).
+//
+// Note: a user-configured GNSS_COLD_ACQ_TIMEOUT > 130 s would re-introduce
+// the false positive. If that becomes a real config, switch to a per-state
+// timeout (small for LEDArgosTX, large for LEDGNSSOn) instead of bumping
+// this constant further — the larger the global timeout, the slower the
+// recovery from a true FSM freeze.
+static constexpr uint64_t LED_FREEZE_TIMEOUT_MS = 130000;
 static Timer::TimerHandle s_led_freeze_handle;
 
 static void arm_led_freeze_safety() {
@@ -37,7 +53,8 @@ static void arm_led_freeze_safety() {
 	if (s_led_freeze_handle.has_value())
 		system_timer->cancel_schedule(s_led_freeze_handle);
 	s_led_freeze_handle = system_timer->add_schedule([]() {
-		DEBUG_WARN("LED freeze safety: 10 s without FSM transition — forcing LED off");
+		DEBUG_WARN("LED freeze safety: %llu s without FSM transition — forcing LED off",
+		           (unsigned long long)(LED_FREEZE_TIMEOUT_MS / 1000));
 		if (status_led) status_led->off();
 		s_led_freeze_handle.reset();
 	}, system_timer->get_counter() + LED_FREEZE_TIMEOUT_MS);

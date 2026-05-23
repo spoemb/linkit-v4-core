@@ -202,8 +202,19 @@ void PMU::reset(bool /*dfu_mode*/) {
 	sd_nvic_SystemReset();
 }
 
+// Pre-deploy validation channel — see hauled_mode_service.cpp header comment.
+// Marks terminal sleep (powerdown / System OFF). Default off (zero overhead).
+#ifndef VALIDATION_LOG_ENABLE
+#define VALIDATION_LOG_ENABLE 0
+#endif
+
 /// @brief Shut down device — save state, cut power rails, then reset or infinite sleep.
 void PMU::powerdown() {
+#if VALIDATION_LOG_ENABLE
+	DEBUG_INFO("[VAL-SLEEP] powerdown t=%u uptime_ms=%llu",
+	           (rtc && rtc->is_set()) ? (unsigned int)rtc->gettime() : 0,
+	           (unsigned long long)PMU::get_timestamp_ms());
+#endif
 	// Ensure all power control pins are turned off before shutdown
 // #ifdef CAM_PWR_EN
 // 	DEBUG_TRACE("Powering off CAM");

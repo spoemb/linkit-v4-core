@@ -72,10 +72,19 @@ echo ""
 # Parse arguments
 CLEAN=false
 RECOVER=false
+BUILD_TYPE=Release
+METRICS=OFF
+VALIDATION=OFF
 for arg in "$@"; do
     case $arg in
         --clean) CLEAN=true ;;
         --recover) RECOVER=true ;;
+        --debug) BUILD_TYPE=Debug ;;
+        --release) BUILD_TYPE=Release ;;
+        --metrics) METRICS=ON ;;
+        --no-metrics) METRICS=OFF ;;
+        --validation) VALIDATION=ON ;;
+        --no-validation) VALIDATION=OFF ;;
     esac
 done
 
@@ -83,6 +92,27 @@ if [ "$RECOVER" = true ]; then
     echo "NOTE: --recover flag set — recover command will be shown in flash commands below"
     echo ""
 fi
+
+# Build-type banner (see build_linkitv4_kim.sh for rationale).
+if [ "$BUILD_TYPE" = "Debug" ]; then
+    printf '\033[1;33m'
+    echo "╔══════════════════════════════════════════════════════════════════╗"
+    echo "║              BUILD TYPE: DEBUG  (g_debug_mode=USB_CDC)           ║"
+    echo "║   USB CDC logs ENABLED · DEBUG_NO_WATCHDOG ENABLED · DTE active  ║"
+    echo "║   NOT FOR DEPLOYMENT — for bench validation / VAL_LOG campaigns  ║"
+    echo "╚══════════════════════════════════════════════════════════════════╝"
+    printf '\033[0m'
+else
+    printf '\033[1;32m'
+    echo "╔══════════════════════════════════════════════════════════════════╗"
+    echo "║             BUILD TYPE: RELEASE  (g_debug_mode=NONE)             ║"
+    echo "║   USB CDC silent (DEPLOY) · WDT active · DTE still enumerable    ║"
+    echo "║   To enable logs: ./build_linkitv4_smd.sh --debug                ║"
+    echo "╚══════════════════════════════════════════════════════════════════╝"
+    printf '\033[0m'
+fi
+printf '\033[1;36m   Optional log flags:  METRIC_LATENCY=%s   VALIDATION=%s\033[0m\n' "$METRICS" "$VALIDATION"
+echo ""
 
 cd "$PROJECT_ROOT"
 BUILD_DIR="ports/nrf52840/build/LINKIT_SMD"
@@ -154,7 +184,7 @@ echo ""
 cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
       -DDEBUG_LEVEL=3 \
       -DBOARD=LINKIT \
-      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DARGOS_SMD=${ARGOS_SMD} \
       -DENABLE_AXL_SENSOR=${ENABLE_AXL_SENSOR} \
       -DENABLE_SWS_LOG=${ENABLE_SWS_LOG} \
@@ -162,6 +192,8 @@ cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
       -DBATTERY_CHEMISTRY=${BATTERY_CHEMISTRY} \
       -DSMDSAT_USE_SAFE_TIMINGS=${SMDSAT_USE_SAFE_TIMINGS} \
       -DSMDSAT_AUTOFALLBACK=${SMDSAT_AUTOFALLBACK} \
+      -DMETRIC_LATENCY_LOG_ENABLE=$([ "$METRICS" = "ON" ] && echo 1 || echo 0) \
+      -DVALIDATION_LOG_ENABLE=$([ "$VALIDATION" = "ON" ] && echo 1 || echo 0) \
       ../..
 
 make -j 20

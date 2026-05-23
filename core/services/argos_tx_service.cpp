@@ -15,6 +15,13 @@
 #include "debug.hpp"
 #include "pmu.hpp"
 #include "rate_limiter.hpp"
+
+// Pre-deploy validation channel — see hauled_mode_service.cpp header comment.
+// Enables grep-friendly [VAL-TX] tags on every TX completion with type + spacing
+// from previous [VAL-TX]. Critical for short-surface Doppler validation campaigns.
+#ifndef VALIDATION_LOG_ENABLE
+#define VALIDATION_LOG_ENABLE 0
+#endif
 extern ConfigurationStore *configuration_store;
 extern Scheduler *system_scheduler;
 extern GPSDevice *gps_device;
@@ -822,6 +829,7 @@ void ArgosTxService::process_certification_burst() {
 	unsigned int size_bits;
 	KineisPacket packet = ArgosPacketBuilder::build_certification_packet(argos_config.cert_tx_payload, size_bits);
 	DEBUG_INFO("ArgosTxService::process_certification_burst: mode=%s data=%s sz=%u", argos_modulation_to_string(argos_config.cert_tx_modulation), Binascii::hexlify(packet).c_str(), size_bits);
+	m_last_val_tx_type = "cert";
 	m_kineis.send((KineisModulation)argos_config.cert_tx_modulation, packet, size_bits);
 }
 
@@ -842,6 +850,7 @@ void ArgosTxService::process_time_sync_burst() {
 		}
 		DEBUG_INFO("ArgosTxService::process_time_sync_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
 		m_last_tx_had_gps = true;
+		m_last_val_tx_type = "tsync";
 		m_kineis.send(m_scheduled_mode, packet, size_bits);
 	} else {
 		// No eligible entries for transmission in the depth pile, so send a doppler burst instead
@@ -887,6 +896,7 @@ void ArgosTxService::process_sensor_burst() {
 			           format_id, argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode),
 			           Binascii::hexlify(packet).c_str());
 			m_last_tx_had_gps = true;
+			m_last_val_tx_type = "cloudloc";
 			m_kineis.send(m_scheduled_mode, packet, size_bits);
 			return;
 		}
@@ -911,6 +921,7 @@ void ArgosTxService::process_sensor_burst() {
 			DEBUG_INFO("ArgosTxService::process_sensor_burst: fastloc mode=%s data=%s sz=%u",
 			           argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
 			m_last_tx_had_gps = true;
+			m_last_val_tx_type = "fastloc";
 			m_kineis.send(m_scheduled_mode, packet, size_bits);
 			return;
 		}
@@ -991,6 +1002,7 @@ void ArgosTxService::process_sensor_burst() {
 #endif
 		DEBUG_INFO("ArgosTxService::process_sensor_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
 		m_last_tx_had_gps = true;
+		m_last_val_tx_type = "sensor";
 		m_kineis.send(m_scheduled_mode, packet, size_bits);
 	} else {
 		DEBUG_WARN("ArgosTxService::process_sensor_burst: no entries eligible in depth pile");
@@ -1042,6 +1054,7 @@ void ArgosTxService::process_gnss_burst() {
 			           format_id, argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode),
 			           Binascii::hexlify(packet).c_str());
 			m_last_tx_had_gps = true;
+			m_last_val_tx_type = "cloudloc";
 			m_kineis.send(m_scheduled_mode, packet, size_bits);
 			return;
 		}
@@ -1088,6 +1101,9 @@ void ArgosTxService::process_gnss_burst() {
 
 		DEBUG_INFO("ArgosTxService::process_gnss_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
 		m_last_tx_had_gps = true;
+		// fastloc fallback uses LDA2 + 96-bit packet → still attribute as "gnss"
+		// at this site; the inner fastloc branch above already tagged "fastloc".
+		m_last_val_tx_type = (v.back()->info.event_type == GPSEventType::FASTLOC) ? "fastloc" : "gnss";
 		m_kineis.send(m_scheduled_mode, packet, size_bits);
 	} else {
 		DEBUG_WARN("ArgosTxService::process_gnss_burst: no entries eligible in depth pile");
@@ -1153,6 +1169,7 @@ void ArgosTxService::process_gnss_burst_from_cached() {
 	           argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode),
 	           Binascii::hexlify(packet).c_str(), size_bits);
 	m_last_tx_had_gps = true;
+	m_last_val_tx_type = "reuse_last";
 	m_kineis.send(m_scheduled_mode, packet, size_bits);
 }
 
@@ -1236,6 +1253,7 @@ void ArgosTxService::process_doppler_burst() {
 			m_prepared_doppler_packet.clear();
 			m_prepared_doppler_size_bits = 0;
 			m_prepared_at_ms = 0;
+			m_last_val_tx_type = "doppler-prewarm";
 			m_kineis.send(tx_mode, prepared, prepared_bits);
 			return;
 		}
@@ -1296,6 +1314,7 @@ void ArgosTxService::process_doppler_burst() {
 			            m_doppler_burst_count, format_id, blob_size,
 			            argos_modulation_to_string((BaseArgosModulation)tx_mode));
 			m_last_tx_had_gps = true;
+			m_last_val_tx_type = "cloudloc-surf";
 			m_kineis.send(tx_mode, packet, size_bits);
 			return;
 		}
@@ -1364,6 +1383,7 @@ void ArgosTxService::process_doppler_burst() {
 		            m_doppler_burst_count, degraded.hAcc, degraded.numSV,
 		            argos_modulation_to_string((BaseArgosModulation)tx_mode), Binascii::hexlify(packet).c_str());
 		m_last_tx_had_gps = true;
+		m_last_val_tx_type = "fastloc-degr";
 		m_kineis.send(tx_mode, packet, size_bits);
 		return;
 	}
@@ -1416,6 +1436,7 @@ void ArgosTxService::process_doppler_burst() {
 	DEBUG_TRACE("ArgosTxService::process_doppler_burst: mode=%s data=%s sz=%u",
 	            argos_modulation_to_string((BaseArgosModulation)tx_mode), Binascii::hexlify(packet).c_str(), size_bits);
 	m_last_tx_had_gps = false;
+	m_last_val_tx_type = "doppler";
 	m_kineis.send(tx_mode, packet, size_bits);
 }
 
@@ -1430,6 +1451,30 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 	DEBUG_TRACE("ArgosTxService::react: KineisEventTxComplete");
 	m_is_tx_pending = false;
 	m_consecutive_device_errors = 0;
+
+#if VALIDATION_LOG_ENABLE
+	{
+		std::time_t now_v = service_current_time();
+		// Spacing in seconds from the previous TX complete. 0 if first TX of
+		// the session (m_last_val_tx_t == 0) — distinguishable from a true
+		// 0 s gap, which is physically impossible (TX takes ~360-720 ms).
+		unsigned int spacing_s = 0;
+		if (m_last_val_tx_t > 0 && now_v > m_last_val_tx_t)
+			spacing_s = static_cast<unsigned int>(now_v - m_last_val_tx_t);
+		// `burst=on` means the TX is inside a SURFACING_BURST sequence and
+		// m_doppler_burst_count was incremented by service_initiate. `burst=off`
+		// means the TX fired outside the burst (legacy DOPPLER mode, or first
+		// TX after boot that runs before the surface event has propagated to
+		// ArgosTxService — counter stays 0). The previous TX seen at boot in
+		// the field log on 2026-05-23 with burst#=0 was such a pre-surface-event
+		// "legacy" TX, not an off-by-one bug.
+		DEBUG_INFO("[VAL-TX] type=%s t=%u spacing_s=%u burst=%s dop_count=%u session#=%u",
+		           m_last_val_tx_type, (unsigned int)now_v, spacing_s,
+		           m_is_surfacing_burst ? "on" : "off",
+		           m_doppler_burst_count, m_session_tx_count + 1);
+		m_last_val_tx_t = now_v;
+	}
+#endif
 
 	// Restore TCXO warmup after first TX post-submerge
 	if (m_tcxo_skip_on_next_tx) {

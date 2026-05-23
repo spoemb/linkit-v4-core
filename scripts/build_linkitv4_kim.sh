@@ -72,10 +72,19 @@ echo ""
 # Parse arguments
 CLEAN=false
 RECOVER=false
+BUILD_TYPE=Release
+METRICS=OFF
+VALIDATION=OFF
 for arg in "$@"; do
     case $arg in
         --clean) CLEAN=true ;;
         --recover) RECOVER=true ;;
+        --debug) BUILD_TYPE=Debug ;;
+        --release) BUILD_TYPE=Release ;;
+        --metrics) METRICS=ON ;;
+        --no-metrics) METRICS=OFF ;;
+        --validation) VALIDATION=ON ;;
+        --no-validation) VALIDATION=OFF ;;
     esac
 done
 
@@ -83,6 +92,30 @@ if [ "$RECOVER" = true ]; then
     echo "NOTE: --recover flag set — recover command will be shown in flash commands below"
     echo ""
 fi
+
+# Build-type banner: highly visible because the silent default is Release
+# (NDEBUG → g_debug_mode=NONE → no USB CDC logs in the field), and operators
+# often confuse the absence of logs with a broken device. See pre-deploy
+# protocol + main.cpp:185-191.
+if [ "$BUILD_TYPE" = "Debug" ]; then
+    printf '\033[1;33m'
+    echo "╔══════════════════════════════════════════════════════════════════╗"
+    echo "║              BUILD TYPE: DEBUG  (g_debug_mode=USB_CDC)           ║"
+    echo "║   USB CDC logs ENABLED · DEBUG_NO_WATCHDOG ENABLED · DTE active  ║"
+    echo "║   NOT FOR DEPLOYMENT — for bench validation / VAL_LOG campaigns  ║"
+    echo "╚══════════════════════════════════════════════════════════════════╝"
+    printf '\033[0m'
+else
+    printf '\033[1;32m'
+    echo "╔══════════════════════════════════════════════════════════════════╗"
+    echo "║             BUILD TYPE: RELEASE  (g_debug_mode=NONE)             ║"
+    echo "║   USB CDC silent (DEPLOY) · WDT active · DTE still enumerable    ║"
+    echo "║   To enable logs: ./build_linkitv4_kim.sh --debug                ║"
+    echo "╚══════════════════════════════════════════════════════════════════╝"
+    printf '\033[0m'
+fi
+printf '\033[1;36m   Optional log flags:  METRIC_LATENCY=%s   VALIDATION=%s\033[0m\n' "$METRICS" "$VALIDATION"
+echo ""
 
 cd "$PROJECT_ROOT"
 BUILD_DIR="ports/nrf52840/build/LINKIT"
@@ -99,7 +132,7 @@ fi
 # Default to both disabled (0)
 CAM_ENABLE=${CAM_ENABLE:-1}
 BUZZER_ENABLE=${BUZZER_ENABLE:-0}
-cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=3 -DBOARD=LINKIT -DCMAKE_BUILD_TYPE=Release -DCAM_ENABLE=${CAM_ENABLE} -DBUZZER_ENABLE=${BUZZER_ENABLE} ../..
+cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=3 -DBOARD=LINKIT -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DCAM_ENABLE=${CAM_ENABLE} -DBUZZER_ENABLE=${BUZZER_ENABLE} -DMETRIC_LATENCY_LOG_ENABLE=$([ "$METRICS" = "ON" ] && echo 1 || echo 0) -DVALIDATION_LOG_ENABLE=$([ "$VALIDATION" = "ON" ] && echo 1 || echo 0) ../..
 make -j 20
 nrfutil settings generate --family NRF52840 --application LinkIt_board.hex --application-version 0 --bootloader-version 1 --bl-settings-version 2 --app-boot-validation VALIDATE_ECDSA_P256_SHA256 --sd-boot-validation VALIDATE_ECDSA_P256_SHA256 --softdevice ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/hex/s140_nrf52_7.2.0_softdevice.hex --key-file ../../nrfutil_pkg_key.pem settings.hex
 mergehex -m ../../bootloader/secure_bootloader/linkitv4_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex LinkIt_board.hex -o m1.hex

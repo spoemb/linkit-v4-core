@@ -13,6 +13,12 @@
 #include "rtc.hpp"
 #include "debug.hpp"
 
+// Pre-deploy validation channel — see hauled_mode_service.cpp header comment.
+// Enables grep-friendly [VAL-RATELIMIT] tags on block events. Default off.
+#ifndef VALIDATION_LOG_ENABLE
+#define VALIDATION_LOG_ENABLE 0
+#endif
+
 extern ConfigurationStore *configuration_store;
 extern RTC *rtc;
 
@@ -155,6 +161,10 @@ bool RateLimiter::is_blocked(std::time_t now, unsigned int &reschedule_in_s) {
 	// Cap reached. Compute when the oldest in-window entry expires.
 	std::time_t expiry = oldest + static_cast<std::time_t>(window_s);
 	reschedule_in_s = (expiry > now) ? static_cast<unsigned int>(expiry - now) : 1;
+#if VALIDATION_LOG_ENABLE
+	DEBUG_INFO("[VAL-RATELIMIT] block t=%u hits=%u/%u window_s=%u reschedule_in_s=%u",
+	           (unsigned int)now, hits, cap, window_s, reschedule_in_s);
+#endif
 	return true;
 }
 

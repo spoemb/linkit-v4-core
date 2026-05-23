@@ -59,6 +59,13 @@ private:
 	bool m_last_tx_had_gps = false;
 	bool m_cooldown_armed = false;
 
+	// Pre-deploy validation channel — populated by process_*_burst just before
+	// m_kineis.send() and consumed by the TxComplete handler to emit a
+	// [VAL-TX] line with type + spacing. Cheap unconditional storage (~16 B)
+	// even when VALIDATION_LOG_ENABLE is off — keeps the header stable.
+	const char* m_last_val_tx_type = "none";
+	std::time_t m_last_val_tx_t = 0;
+
 	// Pre-warm of the first surfacing-burst Doppler packet. While underwater
 	// (only in SURFACING_BURST mode) the battery is sampled and the Doppler
 	// payload is built so the first TX at surface skips the ADC read + packet
