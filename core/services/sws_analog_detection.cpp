@@ -91,6 +91,13 @@ bool SWSAnalogService::detector_state() {
         if (m_consecutive_invalid_adc < UINT16_MAX) {
             m_consecutive_invalid_adc++;
         }
+        // F-SWS-6 audit fix: periodic heartbeat log every 10 invalid reads
+        // makes slow-bleed silicon/frontend degradation visible in post-deploy
+        // forensics instead of being silent until the safety trigger fires.
+        if (m_consecutive_invalid_adc > 0 && m_consecutive_invalid_adc % 10 == 0) {
+            DEBUG_WARN("SWSAnalog: still bleeding invalid ADC reads (count=%u)",
+                       m_consecutive_invalid_adc);
+        }
         if (m_consecutive_invalid_adc == MAX_CONSECUTIVE_INVALID_ADC) {
             DEBUG_ERROR("SWSAnalog: %u consecutive invalid ADC reads — forcing state=surface to keep TX alive",
                         m_consecutive_invalid_adc);
@@ -122,6 +129,18 @@ bool SWSAnalogService::detector_state() {
 
         if (!m_first_sample_done) {
             m_first_sample_done = true;
+
+            // F-SWS-3 audit fix: explicitly seed m_prev_raw with the current
+            // reading on the first sample. Without this seed, m_prev_raw is
+            // 0-initialised and L1/L2 (lines ~253, ~261) skip due to the
+            // `prev_raw > 0` guard for the entire first sample's check. With
+            // the seed, the existing line ~213 (`prev_raw = m_prev_raw`)
+            // captures the same-sample raw_value for L1/L2 — delta computes
+            // to 0 so L1/L2 still does not falsely fire on sample #1, but the
+            // m_prev_raw state is properly initialised. Defense-in-depth
+            // against future code changes that might re-order the prev_raw
+            // capture relative to L1/L2 checks.
+            m_prev_raw = raw_value;
 
             // Case 1: Stored air is low, but reading is way above water → wrong medium
             if (raw_value > m_calib.threshold_current + m_calib.hysteresis_value * 3 &&

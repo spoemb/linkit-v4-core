@@ -94,4 +94,10 @@ public:
 		(void)mode; (void)rconf_hex; return true;
 	}
 	virtual KineisModulation get_current_modulation() const { return KineisModulation::LDA2; }
+	/// @brief Milliseconds remaining on the device's internal error cooldown,
+	/// or 0 if the device is not in cooldown. Used by ArgosTxService to
+	/// distinguish "cooldown reject" from a real device error so the
+	/// session-suspension budget isn't burned on the autofallback recovery
+	/// window. Default: backend has no cooldown concept.
+	virtual unsigned int cooldown_remaining_ms() const { return 0; }
 };

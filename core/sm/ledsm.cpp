@@ -14,6 +14,11 @@ extern Timer *system_timer;
 extern ConfigurationStore *configuration_store;
 extern RTC *rtc;
 
+// GNSS MED #3 audit fix: alias used by the deferred LEDGNSSOffWithoutFix
+// re-dispatch (lambda inside system_timer->add_schedule). Same pattern as
+// in gentracker.cpp / ota_flash_file_updater.cpp.
+using led_handle = LEDState;
+
 namespace {
 
 constexpr unsigned long long LED_HRS_24_MS = 24ULL * 3600ULL * 1000ULL;
@@ -270,6 +275,19 @@ void LEDGNSSOffWithFix::entry() {
 void LEDGNSSOffWithoutFix::entry() {
 	DEBUG_TRACE("LEDGNSSOffWithoutFix: entry");
 	arm_led_freeze_safety();
+	// 2026-05-24 LED refactor: this state remains as a LEGACY fallback only —
+	// no-fix sessions now route through LEDGNSSDeepIdle / LEDGNSSPowerOff (set
+	// by GPSService::notify_service_event with GNSS_OFF_DEEP_IDLE or
+	// GNSS_OFF_POWEROFF). Path is kept compiling for any caller still
+	// dispatching SetLEDGNSSOffWithoutFix directly, with duration halved
+	// from 3000 ms → 1500 ms per operator feedback "current red too long".
+	if (is_in_state<LEDGNSSCloudLocateReady>()) {
+		DEBUG_TRACE("LEDGNSSOffWithoutFix: deferring 500ms — CloudLocateReady CYAN double-blink in progress");
+		system_timer->add_schedule([]() {
+			led_handle::dispatch<SetLEDGNSSOffWithoutFix>({});
+		}, system_timer->get_counter() + 500);
+		return;
+	}
 	if (m_is_magnet_engaged)
 		status_led->set(RGBLedColor::WHITE);
 	else {
@@ -285,8 +303,69 @@ void LEDGNSSOffWithoutFix::entry() {
 				transit<LEDConfigNotConnected>();
 			else
 				transit<LEDOff>();
-		}, system_timer->get_counter() + 3000);
+		}, system_timer->get_counter() + 1500);
 	}
+	m_is_gnss_on = false;
+}
+
+// 2026-05-24: end-of-session deep-idle indicator (rail stays on, M10Q in
+// PMREQ-backup). Double-blink for ~500 ms then auto-transit to LEDOff.
+// Color picks from latched m_last_gnss_fix_valid:
+//   fix → GREEN (mirrors legacy LEDGNSSOffWithFix semantics)
+//   no fix → RED (mirrors legacy LEDGNSSOffWithoutFix, shortened from 3 s)
+// Mirrors LEDGNSSCloudLocateReady's double-blink pattern (120 ms alternate)
+// for visual consistency — operator learns "double-blink = transient state
+// transition". Replaces legacy LEDGNSSOff{With,Without}Fix solid 3 s flashes
+// on the deep-idle dispatch path.
+void LEDGNSSDeepIdle::entry() {
+	DEBUG_TRACE("LEDGNSSDeepIdle: entry (fix=%d)", m_last_gnss_fix_valid ? 1 : 0);
+	arm_led_freeze_safety();
+	if (m_is_magnet_engaged) {
+		status_led->set(RGBLedColor::WHITE);
+	} else {
+		LED_MODE_GUARD {
+			RGBLedColor color = m_last_gnss_fix_valid ? RGBLedColor::GREEN
+			                                          : RGBLedColor::RED;
+			status_led->flash_alternate(color, RGBLedColor::BLACK, 120);
+		} else {
+			status_led->off();
+		}
+	}
+	system_timer->add_schedule([this]() {
+		if (is_in_state<LEDConfigNotConnected>())
+			transit<LEDConfigNotConnected>();
+		else
+			transit<LEDOff>();
+	}, system_timer->get_counter() + 500);
+	m_is_gnss_on = false;
+}
+
+// 2026-05-24: end-of-session full power-off indicator (rail cut, M10Q cold-
+// boot next session). Fast-blink for ~500 ms (50 ms period = 10 Hz cadence)
+// — heavier-weight than the deep-idle double-blink so the operator can
+// distinguish the two sleep depths at a glance. Same fix/no-fix color logic:
+//   fix → GREEN fast-blink
+//   no fix → RED fast-blink
+void LEDGNSSPowerOff::entry() {
+	DEBUG_TRACE("LEDGNSSPowerOff: entry (fix=%d)", m_last_gnss_fix_valid ? 1 : 0);
+	arm_led_freeze_safety();
+	if (m_is_magnet_engaged) {
+		status_led->set(RGBLedColor::WHITE);
+	} else {
+		LED_MODE_GUARD {
+			RGBLedColor color = m_last_gnss_fix_valid ? RGBLedColor::GREEN
+			                                          : RGBLedColor::RED;
+			status_led->flash(color, 50);
+		} else {
+			status_led->off();
+		}
+	}
+	system_timer->add_schedule([this]() {
+		if (is_in_state<LEDConfigNotConnected>())
+			transit<LEDConfigNotConnected>();
+		else
+			transit<LEDOff>();
+	}, system_timer->get_counter() + 500);
 	m_is_gnss_on = false;
 }
 

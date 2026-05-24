@@ -274,6 +274,38 @@ public:
     void calibration_read(double &value, const unsigned int offset) override;
     void calibration_save(bool force) override;
 
+    // F-SWS-2 audit fix: extend the base UWDetectorService reset to also clear
+    // SWS-specific detection state. Previously, after a long cooldown the
+    // first sample compared against stale m_prev_raw / m_prev_ma3 / peak
+    // history from before the cooldown — could produce a spurious surface
+    // emit while still wet, triggering a new cycle (battery drain).
+    //
+    // Preserved (intentional learning across cooldowns):
+    //   - m_calib (calibration baselines)
+    //   - m_observed_peak_adc (lifetime peak)
+    //   - m_consecutive_dive_timeouts (safety escalation counter)
+    //   - m_last_state_change_time (UW duration estimate for max-dive timeout)
+    void reset_state_for_cooldown_exit() override {
+        UWDetectorService::reset_state_for_cooldown_exit();  // base class iter counters
+        m_prev_raw = 0;
+        m_prev_ma3 = 0;
+        m_recent_peak = 0;
+        m_peak_adc_since_underwater = 0;
+        m_l4_consecutive_below = 0;
+        m_consecutive_raw_drops = 0;
+        m_ma3_trend_count = 0;
+        m_trend_buffer_count = 0;
+        m_trend_buffer_idx = 0;
+        m_consecutive_samples = 0;
+        m_consecutive_invalid_adc = 0;
+        m_consecutive_spike_rejects = 0;
+        m_air_collapse_count = 0;
+        m_surface_lockout_remaining = 0;
+        m_first_sample_done = false;
+        m_coherence_high_count = 0;
+        m_fast_convergence_count = 0;
+    }
+
     SWSAnalogService() : UWDetectorService("SWSAnalog"), Calibratable("SWS"), m_manual_calib("SWS") {
         s_instance = this;
         m_adc_history_idx = 0;
@@ -364,6 +396,15 @@ private:
     // Used to cap water baseline estimates when calibrating from air with wet electrodes
     static uint16_t m_observed_peak_adc __attribute__((section(".noinit")));
     static uint16_t m_observed_peak_crc __attribute__((section(".noinit")));
+
+    // F-SWS-7 audit fix: persist the converged adaptive sample delay across
+    // soft resets. Without this, every WDT/POR reboot resets the delay to
+    // UNP08 default — on a months-deployed turtle with biofouled electrode
+    // (delay may have ratcheted down significantly), the first dozen
+    // post-reboot samples run at the wrong delay → contrast misreports →
+    // L1/L2 misfires during the convergence window.
+    static uint32_t m_sample_delay_us_noinit __attribute__((section(".noinit")));
+    static uint16_t m_sample_delay_us_crc __attribute__((section(".noinit")));
 
     // Diagnostic counters in noinit RAM (audit 2026-05 R-MON-01).
     // Separate from CalibrationData to avoid touching the existing CRC scheme.

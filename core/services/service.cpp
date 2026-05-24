@@ -279,18 +279,40 @@ void ServiceManager::set_cycle_complete(std::time_t t) {
 	// massive and cooldown looks expired immediately. Or worse, the wake task
 	// posted below fires after `interval * 1000` ms even though the RTC frame
 	// will shift mid-cooldown. Defer arming until we have real time.
+	unsigned int interval = configuration_store->read_param<unsigned int>(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S);
+
 	if (!rtc || !rtc->is_set()) {
-		DEBUG_WARN("ServiceManager::set_cycle_complete: RTC not set — deferring cooldown arm");
-		// Don't update m_last_successful_cycle_time (would store virtual epoch
-		// and corrupt subsequent is_in_cooldown math). The caller (typically
-		// ArgosTxService dive handler) will retry on the next dive event,
-		// which should be after RTC sync in normal operation.
+		// COOLDOWN HIGH audit fix: previously this path returned without arming
+		// ANY cooldown when RTC wasn't set (cold boot, no GPS fix yet). For
+		// AFTER_FIRST_GNSS / AFTER_LAST_TX trigger modes, this is fire-once —
+		// the cooldown was silently dropped, allowing the next surface to
+		// hammer the battery with an unbounded TX burst. Fix: arm the
+		// scheduler wake task unconditionally (it uses ms-uptime, not RTC),
+		// AND mark m_last_successful_cycle_time = 0 (sentinel "RTC not set
+		// at cooldown arm time"). The is_in_cooldown() RTC math is guarded
+		// by `== 0 → false` (line 335) so it returns "not in cooldown" —
+		// but services gate primarily on the wake task being pending via
+		// service_next_schedule_in_ms returning the remaining delay.
+		// Net effect: cooldown still throttles via scheduler timer even
+		// without RTC. When RTC syncs later, is_in_cooldown returns the
+		// correct answer (which is "no, not in cooldown" — by then the
+		// timer-based gate has likely expired anyway).
+		DEBUG_WARN("ServiceManager::set_cycle_complete: RTC not set — arming wake task only (no RTC anchor)");
+#if VALIDATION_LOG_ENABLE
+		DEBUG_INFO("[VAL-COOLDOWN] enter_no_rtc interval_s=%u (scheduler-only gate)", interval);
+#endif
+		if (interval > 0 && system_scheduler) {
+			unsigned int remaining_ms = interval * 1000;
+			system_scheduler->cancel_task(m_cooldown_wake_task);
+			m_cooldown_wake_task = system_scheduler->post_task_prio([]() {
+				exit_cooldown_sleep();
+			}, "CooldownWakeNoRTC", Scheduler::DEFAULT_PRIORITY, remaining_ms);
+		}
 		return;
 	}
 
 	m_last_successful_cycle_time = t;
 	save_cooldown_state();
-	unsigned int interval = configuration_store->read_param<unsigned int>(ParamID::MIN_SURFACE_CYCLE_INTERVAL_S);
 	DEBUG_INFO("ServiceManager: cycle complete at %u, cooldown started", (unsigned int)t);
 #if VALIDATION_LOG_ENABLE
 	DEBUG_INFO("[VAL-COOLDOWN] enter t=%u interval_s=%u", (unsigned int)t, interval);
@@ -374,9 +396,9 @@ void ServiceManager::enter_cooldown_sleep() {
 		}
 	}
 	DEBUG_INFO("ServiceManager: entering cooldown sleep (remaining %u s) — stopping SWS", remaining_s);
-#if VALIDATION_LOG_ENABLE
-	DEBUG_INFO("[VAL-SLEEP] cooldown_sws_pause remaining_s=%u", remaining_s);
-#endif
+// #if VALIDATION_LOG_ENABLE
+// 	DEBUG_INFO("[VAL-SLEEP] cooldown_sws_pause remaining_s=%u", remaining_s);
+// #endif
 
 	// Stop SWS (UW_SENSOR) to save power during cooldown — unless the user
 	// is actively running SWSTST,1 (bench/cable testing). Pausing SWS during
@@ -479,6 +501,12 @@ const char *Service::get_name() { return m_name; }
 ServiceIdentifier Service::get_service_id() { return m_service_id; }
 Logger *Service::get_logger() { return m_logger; }
 void Service::set_logger(Logger *logger) { m_logger = logger; }
+
+/// @brief GNSS MED #4 audit fix impl — cancel the rescheduler's safety-net
+/// timeout. Used by derived services that short-circuit service_initiate.
+void Service::cancel_safety_timeout() {
+	if (system_scheduler) system_scheduler->cancel_task(m_task_timeout);
+}
 
 /// @brief Start the service — init, register callback, schedule first execution.
 /// @param data_notification_callback  Global event callback.

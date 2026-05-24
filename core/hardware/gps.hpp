@@ -182,6 +182,19 @@ public:
     /// Used by GPSService::service_next_schedule_in_ms for the R5 hygiene check
     /// (force rail-cycle if device has been in deep-idle > 24 h).
     virtual bool is_in_deep_idle() const { return false; }
+    /// @brief Arm deep-idle as the next stop disposition (CRITICAL #1 audit fix).
+    /// When set, the next `power_off()` chain routes to `enterbackup` instead of
+    /// cutting the rail. Default no-op for backends without deep-idle support.
+    /// Must be called BEFORE `power_off()` so the intent is consumed during the
+    /// power-down chain. Single-shot: flag is cleared after consumption.
+    virtual void request_deep_idle_on_next_stop() {}
+    /// @brief Force-exit deep-idle by cutting the rail (HIGH GNSS-AUDIT #2 follow-up).
+    /// Distinct from `power_off()`: when the device is in PMREQ-backup with
+    /// users==0, `power_off()` is a no-op (nothing to decrement). This method
+    /// unconditionally tears down the rail from the backup state. Used by the
+    /// GNP52 auto-off timer to actually terminate deep-idle after the configured
+    /// duration. No-op if the device is not currently in deep-idle.
+    virtual void poweroff_from_deep_idle() {}
     virtual GNSSDeviceInfo get_device_info() const { return {}; }
     virtual GNSSAlmanacStatus get_almanac_status(unsigned int ano_stale_threshold_s = 25 * 24 * 3600) const { (void)ano_stale_threshold_s; return {}; }
 

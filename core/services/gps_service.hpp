@@ -153,6 +153,16 @@ private:
 	// in react(GPSEventPVT) after first valid fix.
 	bool m_deep_idle_inhibit_first_session = false;
 
+	// LED dispatch hint — records which branch try_enter_deep_idle_or_poweroff
+	// took on its last invocation. Read by the no-fix react handlers to emit
+	// GNSS_OFF_DEEP_IDLE or GNSS_OFF_POWEROFF so the LED FSM can render the
+	// right pattern (double-blink red vs fast blink red). True = deep-idle
+	// engaged (rail stays on, PMREQ-backup); false = full power-off.
+	bool m_last_dispatch_was_deep_idle = false;
+public:
+	bool last_dispatch_was_deep_idle() const { return m_last_dispatch_was_deep_idle; }
+private:
+
 	void backup_charge_stop_internal();
 	void schedule_backup_charge_retry(unsigned int attempt);
 	/// @brief Dispatch end-of-session: enter deep-idle (with optional auto-off

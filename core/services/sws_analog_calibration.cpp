@@ -116,16 +116,34 @@ bool SWSAnalogService::load_calibration_from_flash() {
     m_calib.crc = crc16_compute((const uint8_t *)&m_calib,
                                  offsetof(SWSAnalogService::CalibrationData, crc), nullptr);
 
-    if (peak > 0 && peak <= ADC_INVALID_MAX) {
+    // F-SWS-4 audit fix: extend peak validity check beyond ADC_INVALID_MAX.
+    // A partially-corrupted SWS.CAL (LittleFS atomicity edge at brown-out, the
+    // very scenario CLAUDE.md §6.4 addresses) could leave `peak` in a value
+    // that's syntactically valid (>0, <=ADC_INVALID_MAX) but absurd vs the
+    // water baseline (e.g. peak=200 with water=15000 — would pin the dynamic
+    // threshold cap below actual underwater readings forever).
+    //
+    // Coherence rule: peak should be in [water/2, water*5]. Outside that
+    // range it's almost certainly corruption — fall back to water baseline
+    // (same path as peak=0). Logged as WARN so post-deploy forensics can
+    // see the corruption signature.
+    bool peak_coherent = (peak >= (m_calib.threshold_water / 2)) &&
+                         (peak <= (m_calib.threshold_water * 5));
+    if (peak > 0 && peak <= ADC_INVALID_MAX && peak_coherent) {
         m_observed_peak_adc = (uint16_t)peak;
     } else {
-        // Peak is 0 / invalid (noinit corruption or never stored). Seed from
+        // Peak is 0, invalid, or incoherent vs water baseline. Seed from
         // water baseline so update_dynamic_threshold's cap logic doesn't pin
         // threshold_high below actual underwater readings. Use water itself —
         // conservative, the cap will be re-learned from real ADC samples.
+        if (peak > 0 && peak <= ADC_INVALID_MAX && !peak_coherent) {
+            DEBUG_WARN("SWSAnalog: stored peak=%u INCOHERENT vs water=%u (SWS.CAL partial corruption?) — seeding from water",
+                       (unsigned)peak, m_calib.threshold_water);
+        } else {
+            DEBUG_INFO("SWSAnalog: stored peak invalid — seeding from water baseline (%u)",
+                       m_calib.threshold_water);
+        }
         m_observed_peak_adc = m_calib.threshold_water;
-        DEBUG_INFO("SWSAnalog: stored peak invalid — seeding from water baseline (%u)",
-                   m_observed_peak_adc);
     }
     m_observed_peak_crc = crc16_compute((const uint8_t *)&m_observed_peak_adc,
                                          sizeof(m_observed_peak_adc), nullptr);
@@ -451,6 +469,12 @@ void SWSAnalogService::adjust_sample_delay() {
     if (old_delay != m_sample_delay_us) {
         DEBUG_TRACE("SWSAnalog: Adaptive delay %uus -> %uus (contrast=%u.%u)",
                     old_delay, m_sample_delay_us, contrast/10, contrast%10);
+        // F-SWS-7 audit fix: persist the converged delay to noinit so a soft
+        // reset (WDT/POR) restores the right value instead of falling back
+        // to UNP08 default. CRC protects against torn writes mid-update.
+        m_sample_delay_us_noinit = m_sample_delay_us;
+        m_sample_delay_us_crc = crc16_compute((const uint8_t *)&m_sample_delay_us_noinit,
+                                               sizeof(m_sample_delay_us_noinit), nullptr);
     }
 }
 

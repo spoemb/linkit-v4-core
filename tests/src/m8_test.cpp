@@ -95,19 +95,32 @@ TEST_GROUP(M8)
     }
 
     void expect_power_on() {
+        // Updated for 2026-05 M10Q reset-hold fix (analog of SAT_RESET BSP fix):
+        // NRST is now held LOW during VDD ramp, then released after stabilize.
+        // Sequence: init_pin(RST) → clear(RST) → delay → set(PWR_EN) → delay →
+        //           set(RST) → delay → GPSEventPowerOn.
         mock().expectOneCall("acquire_sensors_pwr");
         mock().expectOneCall("init_pin").withParameter("pin", BSP::GPIO::GPIO_GPS_RST);
-        mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_RST);
+        mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_RST);
         mock().expectOneCall("delay_ms").ignoreOtherParameters();
         mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
+        mock().expectOneCall("delay_ms").ignoreOtherParameters();
+        mock().expectOneCall("set").withParameter("pin", BSP::GPIO::GPIO_GPS_RST);
         mock().expectOneCall("delay_ms").ignoreOtherParameters();
         mock().expectOneCall("GPSEventPowerOn");
     }
 
     void expect_power_off() {
+        // Updated for 2026-05 M10Q discharge-wait fix (enter_shutdown now:
+        // init_pin(RST) → clear(RST) → clear(PWR_EN) → delay(50ms) →
+        // release_to_highz(RST) → release_to_highz(EXT_INT) → release_sensors).
         mock().expectOneCall("GPSEventPowerOff");
+        mock().expectOneCall("init_pin").withParameter("pin", BSP::GPIO::GPIO_GPS_RST);
+        mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_RST);
         mock().expectOneCall("clear").withParameter("pin", BSP::GPIO::GPIO_GPS_PWR_EN);
+        mock().expectOneCall("delay_ms").ignoreOtherParameters();
         mock().expectOneCall("release_to_highz").withParameter("pin", BSP::GPIO::GPIO_GPS_RST);
+        mock().expectOneCall("release_to_highz").withParameter("pin", BSP::GPIO::GPIO_GPS_EXT_INT);
         mock().expectOneCall("release_sensors_pwr");
     }
 

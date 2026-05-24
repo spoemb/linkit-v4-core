@@ -1657,6 +1657,28 @@ void ArgosTxService::react(KineisEventTxComplete const&) {
 
 /// @brief Device error event — increment backoff counter, complete service with error.
 void ArgosTxService::react(KineisEventDeviceError const&) {
+	// Distinguish "device cooldown reject" from a real device error. The SmdSat
+	// 30-min autofallback cooldown is itself the recovery path — counting it as
+	// a device error would burn the 3-strike session budget within ~3 surface
+	// events and suspend TX for the rest of the session, even though TX would
+	// have worked again on its own after the cooldown expired. Reschedule past
+	// the cooldown (no exponential backoff, no error increment).
+	unsigned int cooldown_ms = m_kineis.cooldown_remaining_ms();
+	if (cooldown_ms > 0) {
+		DEBUG_WARN("ArgosTxService::react: TX rejected by device cooldown (%u min left) — not counted",
+		           cooldown_ms / 60000);
+#if VALIDATION_LOG_ENABLE
+		DEBUG_INFO("[VAL-SAT] argos_react_skip_cooldown remaining_ms=%u (no error increment)",
+		           cooldown_ms);
+#endif
+		if (service_cancel()) {
+			unsigned int backoff_s = (cooldown_ms / 1000) + 1;  // +1 s margin
+			m_sched.set_earliest_schedule(service_current_time() + backoff_s);
+			service_complete();
+		}
+		return;
+	}
+
 	m_consecutive_device_errors++;
 	DEBUG_WARN("ArgosTxService::react: KineisEventDeviceError (consecutive=%u/%u)",
 	           m_consecutive_device_errors, DEVICE_ERROR_MAX_CONSECUTIVE);

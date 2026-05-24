@@ -103,19 +103,36 @@ void GPSService::service_init() {
 /// R4 inhibit: if the boot was a WDT reset, the first session post-boot
 /// MUST cold-power-off (no deep-idle) to prove the cold path works before
 /// re-engaging the optimization. Cleared after first valid fix.
+#ifndef VALIDATION_LOG_ENABLE
+#define VALIDATION_LOG_ENABLE 0
+#endif
+#if VALIDATION_LOG_ENABLE
+#define VAL_GNSS(fmt, ...) DEBUG_INFO("[VAL-GNSS] " fmt, ##__VA_ARGS__)
+#else
+#define VAL_GNSS(fmt, ...) do {} while (0)
+#endif
+
 void GPSService::try_enter_deep_idle_or_poweroff() {
     if (m_deep_idle_inhibit_first_session) {
         DEBUG_INFO("GPSService::try_enter_deep_idle_or_poweroff: WDT-reset inhibit — cold power_off");
+        VAL_GNSS("dispatch=wdt_inhibit_cold_off");
+        m_last_dispatch_was_deep_idle = false;
         m_device.power_off();
-        // FIX 2026-05-23: clear the inhibit AFTER the first cold-cycle even if
-        // no PVT was obtained (NO_FIX, error, indoor bench, REUSE_LAST path
-        // where no real fix arrives). Rationale: reaching this end-of-session
-        // path means the cold-power-on completed without bricking the device
-        // — that's the invariant R4 is trying to prove. Without this clear,
-        // HAULED + REUSE_LAST or indoor-bench scenarios would permanently
-        // pin the inhibit and disable deep-idle forever (audit finding 4).
-        DEBUG_INFO("GPSService::try_enter_deep_idle_or_poweroff: cold-cycle completed — releasing WDT inhibit");
-        m_deep_idle_inhibit_first_session = false;
+        // HIGH GNSS-AUDIT #2 fix: do NOT clear the inhibit here. This path
+        // fires on every end-of-session including pure timeouts (MaxNavSamples,
+        // MaxSatSamples, Error, service_cancel) where the M10Q may never have
+        // really responded — clearing the inhibit on a 0-satellite timeout
+        // would re-engage deep-idle on the next session without ever proving
+        // the cold path works (R4 robustness invariant violated).
+        //
+        // The inhibit is now cleared ONLY at the two sites that prove the
+        // M10Q is actually alive and the cold path succeeded:
+        //   - `react(GPSEventPVT)` — a valid PVT means cold power-on + UART +
+        //     nav engine all working.
+        //   - `react(GPSEventCloudLocateReady)` — raw measurement means UART +
+        //     nav up, even though no PVT.
+        // Both already clear the flag inline (see lines ~760 and ~840).
+        VAL_GNSS("dispatch=wdt_inhibit_pending_proof (no PVT yet)");
         return;
     }
 
@@ -128,30 +145,45 @@ void GPSService::try_enter_deep_idle_or_poweroff() {
 
     if (deep_idle_s == 0) {
         DEBUG_TRACE("GPSService::try_enter_deep_idle_or_poweroff: disabled — power_off");
+        VAL_GNSS("dispatch=immediate_off GNP52=0");
+        m_last_dispatch_was_deep_idle = false;
         m_device.power_off();
         m_deep_idle_started_at_ms = 0;
         return;
     }
 
-    if (!m_device.enter_deep_idle()) {
-        DEBUG_WARN("GPSService::try_enter_deep_idle_or_poweroff: enter_deep_idle refused — falling back to power_off");
-        m_device.power_off();
-        m_deep_idle_started_at_ms = 0;
-        return;
-    }
+    // CRITICAL #1 audit fix: instead of calling `enter_deep_idle()` directly
+    // (which always refused because state != idle at end-of-session), arm the
+    // device-side intent flag THEN call power_off(). The power-down chain
+    // runs through stopreceive → fetchdatabase → poweroff, and at the final
+    // step `state_poweroff()` reroutes to `enterbackup` (keeping VDD on)
+    // because the intent flag is set. Net result: M10Q ends up in
+    // PMREQ-backup with V_BCKP charging, exactly the deep-idle goal.
+    m_device.request_deep_idle_on_next_stop();
+    m_device.power_off();
+    m_last_dispatch_was_deep_idle = true;
+    VAL_GNSS("dispatch=deep_idle_armed_via_poweroff_chain GNP52=%u", deep_idle_s);
 
     m_deep_idle_started_at_ms = PMU::get_timestamp_ms();   // R5 timestamp
 
     if (deep_idle_s == 0xFFFFFFFFU) {
         DEBUG_INFO("GPSService::try_enter_deep_idle_or_poweroff: never-poweroff (rail on indefinitely, M10Q in PMREQ-backup)");
+        VAL_GNSS("dispatch=never_off GNP52=sentinel");
         return;
     }
 
     DEBUG_INFO("GPSService::try_enter_deep_idle_or_poweroff: deep-idle for %u s (rail on, M10Q in PMREQ-backup, auto-off timer armed)",
                deep_idle_s);
+    VAL_GNSS("dispatch=deep_idle_engaged duration_s=%u", deep_idle_s);
     m_deep_idle_auto_off_task = system_scheduler->post_task_prio([this]() {
         DEBUG_INFO("GPSService: deep-idle auto-poweroff timer fired");
-        m_device.power_off();
+        VAL_GNSS("auto_off_timer_fired");
+        // HIGH GNSS-AUDIT #2 follow-up: `power_off()` is a no-op when users==0
+        // (the deep-idle dispatch already decremented users). Use the dedicated
+        // `poweroff_from_deep_idle()` which unconditionally tears down the rail
+        // from the backupidle state. Without this, GNP52 duration was
+        // effectively infinite — rail stayed on forever after the dispatch.
+        m_device.poweroff_from_deep_idle();
         m_deep_idle_started_at_ms = 0;
     }, "GPSDeepIdleAutoOff", Scheduler::DEFAULT_PRIORITY, deep_idle_s * MS_PER_SEC);
 }
@@ -171,10 +203,28 @@ void GPSService::service_term() {
     // R2 (deep-idle refactor): unconditional hard power-off — covers
     // ConfigurationState entry, BatteryCriticalState/ErrorState/OffState
     // transits, OTA, factory_reset.
-    m_device.power_off();
+    //
+    // 2026-05-24 cosmetic fix: if the device is currently in deep-idle
+    // (rail on, M10Q in PMREQ-backup, users=0), `power_off()` is a no-op
+    // and trips the "called with users=0" defensive WARN added in HIGH
+    // GNSS-AUDIT #2 follow-up. The rail still needs to be cut on teardown
+    // — use `poweroff_from_deep_idle()` which is the dedicated path for
+    // that state. For all other states (idle, active session, mid-
+    // transition) the legacy `power_off()` call still applies.
+    if (m_device.is_in_deep_idle()) {
+        m_device.poweroff_from_deep_idle();
+    } else {
+        m_device.power_off();
+    }
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
     m_defer_gnss_until_argos_first_tx = false;
 #endif
+    // GNSS LOW #6 audit fix: reset deep-idle bookkeeping for defensive hygiene.
+    // Stale m_deep_idle_started_at_ms could lie about deep-idle duration after
+    // a ConfigurationState round-trip. Currently latent (R5 check is gated
+    // by is_in_deep_idle() which returns false post-teardown) but future
+    // code reading the timestamp without that guard would see invalid state.
+    m_deep_idle_started_at_ms = 0;
 }
 
 /// @brief Enabled if GNSS_EN is set in config (respects LB/zone overrides).
@@ -333,6 +383,29 @@ unsigned int GPSService::service_next_schedule_in_ms() {
 
 /// @brief Start GNSS acquisition — configure nav settings, power on M10Q.
 void GPSService::service_initiate() {
+	// HIGH #3 audit fix: detect re-entry during a previous session's teardown.
+	// Triggered by peer SERVICE_INACTIVE notifications fired synchronously
+	// from service_complete() inside react(GPSEventCloudLocateReady) — those
+	// notifications can route back through this path before the M10Q state
+	// machine has reached idle. Without this gate, the re-entry runs power_on()
+	// against a transient state (stopreceive/fetchdatabase/poweroff) → races
+	// with the pending teardown ticks → UART double-init / use-after-deinit.
+	//
+	// Strategy: defer by 200 ms — long enough for the teardown chain to settle
+	// (state_poweroff() either cuts the rail or routes to enterbackup) and the
+	// device to reach idle/backupidle. The framework's service_complete handler
+	// will then naturally reschedule us through the standard path.
+	if (m_is_active) {
+		DEBUG_WARN("GPSService::service_initiate: re-entry during active session (peer reschedule race) — deferring 200 ms");
+#if VALIDATION_LOG_ENABLE
+		DEBUG_INFO("[VAL-GNSS] service_initiate_deferred reason=already_active");
+#endif
+		system_scheduler->post_task_prio([this]() {
+			service_initiate();
+		}, "GPSServiceInitiateRetry", Scheduler::DEFAULT_PRIORITY, 200);
+		return;
+	}
+
 	// 2026-05 deep-idle refactor: cancel any pending auto-poweroff. We're about
 	// to acquire a fresh fix — the disposition will be re-armed at end of
 	// session via try_enter_deep_idle_or_poweroff().
@@ -352,6 +425,12 @@ void GPSService::service_initiate() {
 		if (rtc && rtc->is_set() && RateLimiter::is_blocked(service_current_time(), rl_reschedule_s)) {
 			DEBUG_INFO("GPSService::service_initiate: rate-limited (reschedule_s=%u), aborting fire",
 			           rl_reschedule_s);
+			// GNSS MED #4 audit fix: cancel the safety-net timeout posted
+			// by Service::reschedule() just before this call. Otherwise it
+			// fires ~120 s later, triggers service_cancel + a redundant
+			// reschedule, and leaks scheduler slots. Over a year-long
+			// deployment with rate limiting active, these accumulate.
+			cancel_safety_timeout();
 			// Caller (Service::reschedule lambda) does not expect us to
 			// re-schedule ourselves — but if we just return, no further
 			// task fires. service_complete with shall_reschedule=true so
@@ -471,6 +550,13 @@ bool GPSService::service_cancel() {
 		GPSLogEntry log_entry = invalid_log_entry();
 		ServiceEventData event_data = log_entry;
 		service_complete(&event_data, &log_entry);
+		// LED dispatch: signal which path the dispatcher took. Drives the
+		// LEDGNSSDeepIdle (double-blink red) vs LEDGNSSPowerOff (fast blink
+		// red) state in the LED FSM. No-fix path only; the fix path keeps
+		// the existing LEDGNSSOffWithFix (green) without overlay.
+		notify_service_event(m_last_dispatch_was_deep_idle
+		                     ? ServiceEventType::GNSS_OFF_DEEP_IDLE
+		                     : ServiceEventType::GNSS_OFF_POWEROFF);
 		return true;
 	}
 
@@ -611,6 +697,13 @@ void GPSService::task_process_gnss_data()
 
     ServiceEventData event_data = gps_entry;
     service_complete(&event_data, &gps_entry);
+    // LED dispatch: fix path. Drives LEDGNSSDeepIdle / LEDGNSSPowerOff entry,
+    // which read the latched fix-validity static and render GREEN for the
+    // fix case (vs RED for no-fix). Sequenced AFTER service_complete so the
+    // LED FSM's SERVICE_LOG_UPDATED handler latches valid=true first.
+    notify_service_event(m_last_dispatch_was_deep_idle
+                         ? ServiceEventType::GNSS_OFF_DEEP_IDLE
+                         : ServiceEventType::GNSS_OFF_POWEROFF);
 }
 
 /// @brief Process degraded GNSS fix (fastloc) — log entry with FASTLOC event type.
@@ -640,6 +733,12 @@ void GPSService::task_process_degraded_gnss_data()
 
     ServiceEventData event_data = gps_entry;
     service_complete(&event_data, &gps_entry);
+    // LED dispatch: degraded-fix path (GPSLogEntry has info.valid based on
+    // the degraded data — sometimes valid, sometimes not). Color picked by
+    // the LED FSM from the latched fix-validity static.
+    notify_service_event(m_last_dispatch_was_deep_idle
+                         ? ServiceEventType::GNSS_OFF_DEEP_IDLE
+                         : ServiceEventType::GNSS_OFF_POWEROFF);
 }
 
 /// @brief Process CloudLocate raw measurement — overlay blob into GPSLogEntry position fields.
@@ -694,6 +793,12 @@ void GPSService::task_process_cloudlocate_data()
 
     ServiceEventData event_data = gps_entry;
     service_complete(&event_data, &gps_entry);
+    // LED dispatch: CloudLocate path. info.valid is typically false (no
+    // on-device position), so LED FSM renders the RED variant — but the
+    // sleep-depth distinction (double-blink vs fast blink) still applies.
+    notify_service_event(m_last_dispatch_was_deep_idle
+                         ? ServiceEventType::GNSS_OFF_DEEP_IDLE
+                         : ServiceEventType::GNSS_OFF_POWEROFF);
 }
 
 /// @brief Acquisition timeout (max nav samples reached) — power off, log invalid.
@@ -706,6 +811,9 @@ void GPSService::react(const GPSEventMaxNavSamples&) {
     GPSLogEntry log_entry = invalid_log_entry();
     ServiceEventData event_data = log_entry;
     service_complete(&event_data, &log_entry);
+    notify_service_event(m_last_dispatch_was_deep_idle
+                         ? ServiceEventType::GNSS_OFF_DEEP_IDLE
+                         : ServiceEventType::GNSS_OFF_POWEROFF);
 }
 
 /// @brief No signal acquired (max sat samples) — power off, log invalid.
@@ -718,6 +826,9 @@ void GPSService::react(const GPSEventMaxSatSamples&) {
     GPSLogEntry log_entry = invalid_log_entry();
     ServiceEventData event_data = log_entry;
     service_complete(&event_data, &log_entry);
+    notify_service_event(m_last_dispatch_was_deep_idle
+                         ? ServiceEventType::GNSS_OFF_DEEP_IDLE
+                         : ServiceEventType::GNSS_OFF_POWEROFF);
 }
 
 /// @brief GPS hardware error — power off, log invalid.
@@ -730,6 +841,9 @@ void GPSService::react(const GPSEventError&) {
     GPSLogEntry log_entry = invalid_log_entry();
     ServiceEventData event_data = log_entry;
     service_complete(&event_data, &log_entry);
+    notify_service_event(m_last_dispatch_was_deep_idle
+                         ? ServiceEventType::GNSS_OFF_DEEP_IDLE
+                         : ServiceEventType::GNSS_OFF_POWEROFF);
 }
 
 /// @brief Device powered off — clear backup-charge flag if it was set
@@ -781,6 +895,9 @@ void GPSService::react(const GPSEventPVTDegraded& e) {
 		GPSLogEntry log_entry = invalid_log_entry();
 		ServiceEventData event_data = log_entry;
 		service_complete(&event_data, &log_entry);
+		notify_service_event(m_last_dispatch_was_deep_idle
+		                     ? ServiceEventType::GNSS_OFF_DEEP_IDLE
+		                     : ServiceEventType::GNSS_OFF_POWEROFF);
 	}
 }
 
@@ -944,6 +1061,14 @@ void GPSService::notify_peer_event(ServiceEvent& e) {
 				                     !ServiceManager::is_in_cooldown(service_current_time());
 				if (argos_will_tx) {
 					m_defer_gnss_until_argos_first_tx = true;
+					// GNSS MED #5 audit fix: also cancel any pending deep-idle
+					// auto-off timer. Without this, if GNP52 < surfacing-burst
+					// duration, the auto-off fires mid-burst → calls power_off
+					// → next acquisition is cold-start (defeats deep-idle).
+					// The deep-idle disposition is re-armed at end of the
+					// next session via try_enter_deep_idle_or_poweroff.
+					system_scheduler->cancel_task(m_deep_idle_auto_off_task);
+					m_deep_idle_started_at_ms = 0;
 					// Cancel any pending GPS schedule so the gate actually defers
 					// the next power_on. WITHOUT this, a UTC-boundary schedule
 					// that was queued at boot (gps_service.cpp:157 aligns the

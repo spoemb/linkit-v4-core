@@ -24,6 +24,18 @@ public:
 	bool is_in_deep_idle() const override {
 		return m_state == State::backupidle || m_state == State::enterbackup;
 	}
+	/// @brief 2026-05 (CRITICAL #1 audit fix): arm deep-idle as the next stop
+	/// disposition. Sets an intent flag that is honored in `state_poweroff()`:
+	/// instead of cutting VDD via `enter_shutdown()`, the state machine routes
+	/// `poweroff → enterbackup` keeping the rail on with the M10Q in PMREQ-backup.
+	/// Replaces the old direct `enter_backup_charge_mode()` call from the end-of-
+	/// session dispatch path which always failed (state != idle, users > 0).
+	/// Must be called BEFORE `power_off()` so the flag is consumed during the
+	/// power-down chain.
+	void request_deep_idle_on_next_stop() override;
+	/// @brief HIGH GNSS-AUDIT #2 follow-up: force-exit deep-idle by cutting rail.
+	/// Used by GPSService's GNP52 auto-off timer. See gps.hpp doc.
+	void poweroff_from_deep_idle() override;
 
 private:
 	GPSNavSettings m_nav_settings;
@@ -45,6 +57,42 @@ private:
 	bool m_fix_was_found;
 	bool m_unrecoverable_error;
 	bool m_database_overflow;
+	/// CRITICAL #1 fix: when true, the next `state_poweroff()` reroutes to
+	/// `enterbackup` instead of calling `enter_shutdown()` (rail cut). Set via
+	/// `request_deep_idle_on_next_stop()`. Single-shot: cleared upon consumption.
+	bool m_deep_idle_pending = false;
+
+	/// HIGH GNSS-AUDIT #1 follow-up: WARM-path indicator for `state_enterbackup_enter`.
+	/// Set by `state_poweroff()` immediately before rerouting to `enterbackup` —
+	/// signals that the rail is still powered and UART is still up, so the entry
+	/// handler must SKIP the cold-reboot sequence (deinit + exit_shutdown).
+	/// Previously detected via `GPIOPins::value(GPIO_GPS_PWR_EN)`, which can NEVER
+	/// return non-zero on this BSP because `GPIO_GPS_PWR_EN` is configured with
+	/// `NRF_GPIO_PIN_INPUT_DISCONNECT` → `nrf_gpio_pin_read()` returns 0
+	/// regardless of the output drive state. Without this flag, every deep-idle
+	/// dispatch fell into the COLD path, resetting the M10Q via exit_shutdown +
+	/// NRST cycle, dropping us back to 9600 baud and failing PMREQ-backup
+	/// sync ~50% of the time. Single-shot: cleared on consumption.
+	bool m_enterbackup_warm = false;
+
+	/// HIGH GNSS-AUDIT #3 follow-up: actual baud at which the last UBX-RXM-PMREQ
+	/// backup was successfully sent — i.e. the baud the M10Q is now sleeping at
+	/// and will resume at on next EXTINT wake (BBR-preserved by V_BCKP).
+	///
+	/// SOURCE OF TRUTH for EXTINT-wake baud pre-sync. Cannot be inferred from
+	/// `m_gnss_info_valid` because the WARM enterbackup path can fall back from
+	/// MAX to DEFAULT and succeed — leaving the M10Q at 9600 even when
+	/// `m_gnss_info_valid==true`. Previously we hardcoded MAX_BAUDRATE at wake
+	/// → mismatch → libuarte framing errors (type=0c) during the 50 ms wake
+	/// window → state_configure: failed. Field log 2026-05-24 caught this in
+	/// the dispatch-during-poweron/configure edge case where the M10Q was
+	/// still at 9600 (cold boot baud) when enterbackup was triggered.
+	///
+	/// Updated on SUCCESS in `state_enterbackup` step 0/1 (whichever baud
+	/// completed the sync that preceded send_pmreq_backup). Reset to DEFAULT
+	/// in cold rail-cycle paths (where M10Q is forced back to factory baud).
+	/// Initial value DEFAULT (9600) is the safe boot default.
+	unsigned int m_pmreq_baud = 9600;
 
 	// GNSS device info (cached from configure phase)
 	char m_gnss_sw_version[30];

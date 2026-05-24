@@ -92,12 +92,29 @@ void RateLimiter::restore_state() {
 		if (rtc && rtc->is_set() && s_noinit.count > 0) {
 			std::time_t now = rtc->gettime();
 			bool all_future = true;
+			std::time_t min_ts = s_noinit.ring[0];
+			std::time_t max_ts = s_noinit.ring[0];
 			for (unsigned int i = 0; i < s_noinit.count; i++) {
-				if (s_noinit.ring[i] <= now) { all_future = false; break; }
+				if (s_noinit.ring[i] <= now) all_future = false;
+				if (s_noinit.ring[i] < min_ts) min_ts = s_noinit.ring[i];
+				if (s_noinit.ring[i] > max_ts) max_ts = s_noinit.ring[i];
 			}
 			if (all_future) {
 				DEBUG_WARN("RateLimiter: all %u stored timestamps in future (now=%u) — clearing ring",
 				           s_noinit.count, (unsigned int)now);
+				clear_ring();
+				return;
+			}
+			// RateLimiter MED audit fix: detect MIXED-frame ring (some entries
+			// pre-rollback in virtual epoch, others post-RTC-sync). The
+			// all_future check above only handles uniform-future state; mixed
+			// frames can quasi-stall the limiter into long reschedules that
+			// never converge. Heuristic: if max - min span > 1 year, the ring
+			// straddles two RTC frames — clear to recover.
+			constexpr std::time_t ONE_YEAR_S = 365LL * 24 * 3600;
+			if ((max_ts - min_ts) > ONE_YEAR_S) {
+				DEBUG_WARN("RateLimiter: ring spans %lld s (mixed-frame post-rollback) — clearing",
+				           (long long)(max_ts - min_ts));
 				clear_ring();
 				return;
 			}

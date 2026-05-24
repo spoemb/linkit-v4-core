@@ -111,6 +111,13 @@ void HauledModeService::on_underwater_event(bool submerged, std::time_t now) {
 		// Hauled → AT_SEA hysteresis: count consecutive dive events.
 		unsigned int needed = configuration_store->read_param<unsigned int>(ParamID::HAULED_RETURN_EVENTS);
 		if (needed == 0) needed = 1;
+		// F-SWS-5 audit fix: clamp to minimum 2 to defend against a single
+		// stray UW=true emit (wave splash, Vbatt sag false flap) immediately
+		// exiting HAULED. With needed=1 a dead/stranded animal scenario
+		// could lose its battery-throttling cadence on a single bad sample.
+		// DTE allows down to 1 (HMP02 min=1) for testing/QA, but production
+		// defaults should be ≥ 2 — this clamp enforces it at runtime.
+		if (needed < 2) needed = 2;
 		if (s_noinit.uw_events_since_hauled < 0xFF)
 			s_noinit.uw_events_since_hauled++;
 		if (s_noinit.uw_events_since_hauled >= needed) {

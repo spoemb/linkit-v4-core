@@ -58,6 +58,15 @@ private:
 	void notify_underwater_state(bool state);
 
 protected:
+	/// @brief GNSS MED #4 audit fix: derived services that short-circuit
+	/// service_initiate (e.g. rate-limit early return) need to cancel the
+	/// safety-net timeout posted by `reschedule()`. Otherwise the timeout
+	/// fires ~120 s later, runs `service_cancel` + another reschedule, and
+	/// leaks scheduler slots over long deployments. Protected so only
+	/// derived service classes can use it. Implementation in service.cpp
+	/// since `system_scheduler` is a global not visible from this header.
+	void cancel_safety_timeout();
+
 	/// @brief Emit a custom ServiceEvent on the peer-notification bus.
 	/// Used for non-standard event types that don't fit ACTIVE/INACTIVE/
 	/// LOG_UPDATED semantics (e.g. SERVICE_CLOUDLOCATE_READY = "raw

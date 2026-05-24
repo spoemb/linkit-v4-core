@@ -112,6 +112,12 @@ private:
 	Scheduler::TaskHandle m_ble_inactivity_timeout_task;
 	Scheduler::TaskHandle m_usb_poll_task;
 	Scheduler::TaskHandle m_backup_charge_blink_task;
+	/// MED #6 audit fix: track the BackupChargeStopBLE task handle so it
+	/// can be cancelled in `exit()`. Previously this task was posted with
+	/// `[this]` capture but its handle was discarded — if the operator
+	/// transit'd out of ConfigurationState within the 200 ms window, the
+	/// lambda would fire with a dangling `this` pointer (dead state object).
+	Scheduler::TaskHandle m_backup_charge_stop_ble_task;
 	bool m_backup_charge_mode = false;
 
 	/// @brief Periodic yellow LED blink (200 ms on, 10 s off) during DTE-triggered

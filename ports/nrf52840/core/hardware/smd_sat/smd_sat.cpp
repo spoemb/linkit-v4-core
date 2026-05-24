@@ -33,6 +33,18 @@ extern ConfigurationStore *configuration_store;
 // it without needing a pointer back to SmdSat.
 bool g_smdsat_use_safe_timings = false;
 
+// Validation log helper — guarded by build-time flag (see scripts/build_*.sh
+// --validation). Lets us tag state transitions / cooldown / degraded-mode
+// events with a grep-friendly `[VAL-SAT]` prefix for post-deploy log analysis.
+#ifndef VALIDATION_LOG_ENABLE
+#define VALIDATION_LOG_ENABLE 0
+#endif
+#if VALIDATION_LOG_ENABLE
+#define VAL_SAT(fmt, ...) DEBUG_INFO("[VAL-SAT] " fmt, ##__VA_ARGS__)
+#else
+#define VAL_SAT(fmt, ...) do {} while (0)
+#endif
+
 // SMD state-machine task priority — bumped above GNSS (M10Q uses DEFAULT_PRIORITY=7)
 // so satellite TX path is not preempted by GPS init/fix work during surfacing burst.
 // Lower number = higher priority (0 = highest, 7 = default).
@@ -147,6 +159,29 @@ void SmdSat::power_on_blocking() {
 	DEBUG_INFO("SmdSat::%s: synchronous boot sequence", __func__);
 
 	GPIOPins::acquire_sensors_pwr();
+
+	// F-SAT-7 audit fix: honor m_last_power_off_ms like state_powering_on does.
+	// Without this, a DTE-initiated path (SATVF / dfu_enter / cw_start /
+	// get_firmware_version / smd_spi_test) called shortly after a soft reset
+	// hits the same INVALID_CMD cascade that CLAUDE.md §6.2 warns about —
+	// STM32WL holds residual state for up to ~50 ms after the previous reset.
+	// Run the discharge wait if last power-off was too recent. Same logic
+	// as state_powering_on, kept inline since power_on_blocking is a static
+	// method indirectly invoked.
+	{
+		uint64_t now = PMU::get_timestamp_ms();
+		bool vdd_already_decayed = (m_last_power_off_ms != 0) &&
+		                            ((now - m_last_power_off_ms) >= VDD_NATURAL_DISCHARGE_MS);
+		if (!vdd_already_decayed) {
+			GPIOPins::init_pin(SAT_RESET);
+			GPIOPins::clear(SAT_RESET);                          // hold reset during discharge
+			GPIOPins::clear(SAT_PWR_EN);                         // make sure rail is down
+#ifdef SMD_VPA_PIN
+			GPIOPins::drive_low(SMD_VPA_PIN);
+#endif
+			nrf_delay_ms(smdsat_vdd_discharge_ms());             // FAST=50ms / SAFE=100ms
+		}
+	}
 
 	// Hold RESET LOW during power ramp
 	GPIOPins::init_pin(SAT_RESET);
@@ -336,6 +371,8 @@ void SmdSat::state_error_enter() {
 		m_cooldown_until = PMU::get_timestamp_ms() + SMD_ERROR_COOLDOWN_MS;
 		DEBUG_ERROR("SmdSat: %u consecutive errors — cooldown for %u min",
 			m_error_count, SMD_ERROR_COOLDOWN_MS / 60000);
+		VAL_SAT("cooldown_engaged reason=state_error duration_min=%u",
+		        SMD_ERROR_COOLDOWN_MS / 60000);
 		m_error_count = 0;  // Reset for next attempt after cooldown
 #if SMDSAT_AUTOFALLBACK_ENABLED
 		// Autofallback: engage SAFE timings (or double the trust window if
@@ -396,6 +433,9 @@ void SmdSat::degraded_mode_load_if_needed() {
 		m_safe_mode_since_ms = PMU::get_timestamp_ms();
 		m_safe_mode_tx_count = 0;
 		DEBUG_INFO("SmdSat: degraded mode restored from flash — SAFE timings active");
+		VAL_SAT("degraded_mode_load persisted=1 -> SAFE timings active");
+	} else {
+		VAL_SAT("degraded_mode_load persisted=0 -> FAST timings active");
 	}
 }
 
@@ -412,6 +452,8 @@ void SmdSat::degraded_mode_engage() {
 		configuration_store->write_param(ParamID::SMD_DEGRADED_MODE, 1U);
 		DEBUG_ERROR("SmdSat: degraded mode ENGAGED — SAFE timings, retest in %u h",
 		            m_safe_trust_window_hours);
+		VAL_SAT("degraded_mode_engage trust_window_h=%u (first engage)",
+		        m_safe_trust_window_hours);
 	} else {
 		// We were already in SAFE and just hit the threshold again — the
 		// previous FAST retest failed, double the window.
@@ -424,6 +466,8 @@ void SmdSat::degraded_mode_engage() {
 		m_safe_mode_tx_count = 0;
 		DEBUG_WARN("SmdSat: FAST retest failed — next retest in %u h",
 		           m_safe_trust_window_hours);
+		VAL_SAT("degraded_mode_engage trust_window_h=%u (retest_failed)",
+		        m_safe_trust_window_hours);
 	}
 }
 
@@ -439,6 +483,8 @@ void SmdSat::degraded_mode_note_success() {
 		configuration_store->write_param(ParamID::SMD_DEGRADED_MODE, 0U);
 		DEBUG_INFO("SmdSat: retesting FAST timings (was SAFE %lu h, %u successful TX)",
 		           static_cast<unsigned long>(hours_in_safe), m_safe_mode_tx_count);
+		VAL_SAT("retest_fast hours_in_safe=%lu tx_count=%u",
+		        static_cast<unsigned long>(hours_in_safe), m_safe_mode_tx_count);
 	}
 }
 
@@ -596,18 +642,34 @@ void SmdSat::state_load_kmac() {
 		std::string rconf_bin = Binascii::unhexlify(m_pending_rconf);
 		smd_uint8_array_t rconf_struct = {static_cast<uint16_t>(rconf_bin.size()),
 		                                  reinterpret_cast<uint8_t *>(rconf_bin.data())};
+		// F-SAT-3 audit fix: track whether BOTH set + save succeeded. If save
+		// fails, the RAM RCONF on STM32 is half-written (next power cycle reverts
+		// to flash) — but we MUST retry. Previously we unconditionally cleared
+		// m_pending_rconf in the catch path AND in the success path, so a
+		// transient SPI error during save_radio_conf would silently leave the
+		// device on the wrong modulation for the rest of the deployment
+		// (m_modulation in RAM does not match flash).
+		bool save_succeeded = false;
 		try {
 			m_cmd.set_radio_conf(&rconf_struct);
 			wait_cmd();
 			m_cmd.save_radio_conf();
 			wait_cmd();
+			save_succeeded = true;
 			m_credentials_written = true;
 			m_needs_explicit_kmac_load = true;  // RCONF changed — must reload MAC
 			DEBUG_INFO("SmdSat::%s: deferred RCONF applied OK", __func__);
+			VAL_SAT("deferred_rconf_applied modulation=%d", (int)m_modulation);
 		} catch (...) {
-			DEBUG_ERROR("SmdSat::%s: failed to apply deferred RCONF — continuing with previous config", __func__);
+			DEBUG_ERROR("SmdSat::%s: failed to apply deferred RCONF — retry on next session", __func__);
+			VAL_SAT("deferred_rconf_throw modulation=%d (retry pending)", (int)m_modulation);
+			// Also mark KMAC reload pending so next session re-fires the path
+			m_needs_explicit_kmac_load = true;
 		}
-		m_pending_rconf.clear();
+		if (save_succeeded) {
+			m_pending_rconf.clear();
+		}
+		// else: keep m_pending_rconf so next state_load_kmac retries
 	}
 
 	// Step 1b: Write credentials if changed via DTE.
@@ -1013,6 +1075,14 @@ void SmdSat::set_frequency(double freq_mhz) {
 	m_tx_freq = freq_mhz;
 }
 
+unsigned int SmdSat::cooldown_remaining_ms() const {
+	if (m_cooldown_until == 0) return 0;
+	uint64_t now = PMU::get_timestamp_ms();
+	return (now < m_cooldown_until)
+	       ? static_cast<unsigned int>(m_cooldown_until - now)
+	       : 0;
+}
+
 void SmdSat::send(const KineisModulation mode, const KineisPacket& user_payload, const unsigned int payload_length)
 {
 	m_tx_trace_start_ms = PMU::get_timestamp_ms();
@@ -1021,10 +1091,15 @@ void SmdSat::send(const KineisModulation mode, const KineisPacket& user_payload,
 
 	// Reject operations during error cooldown — prevents SPI spam when SMD is unresponsive
 	if (m_cooldown_until > 0 && PMU::get_timestamp_ms() < m_cooldown_until) {
+		unsigned int remaining_ms = static_cast<unsigned int>(m_cooldown_until - PMU::get_timestamp_ms());
 		DEBUG_WARN("SmdSat::%s: in cooldown (%u min remaining) — TX rejected",
-			__func__, static_cast<unsigned>((m_cooldown_until - PMU::get_timestamp_ms()) / 60000));
+			__func__, remaining_ms / 60000);
+		VAL_SAT("send_rejected_cooldown remaining_ms=%u", remaining_ms);
 		notify(KineisEventDeviceError({}));
 		return;
+	}
+	if (m_cooldown_until > 0) {
+		VAL_SAT("cooldown_expired_naturally");
 	}
 	m_cooldown_until = 0;  // Cooldown expired — allow operation
 

@@ -160,6 +160,8 @@ extern RTC *rtc;
 SWSAnalogService::CalibrationData SWSAnalogService::m_calib;
 uint16_t SWSAnalogService::m_observed_peak_adc;
 uint16_t SWSAnalogService::m_observed_peak_crc;
+uint32_t SWSAnalogService::m_sample_delay_us_noinit;
+uint16_t SWSAnalogService::m_sample_delay_us_crc;
 SWSAnalogService::Diagnostics SWSAnalogService::m_diag;
 uint16_t SWSAnalogService::m_diag_crc;
 SWSAnalogService::Status SWSAnalogService::m_status = {};
@@ -466,9 +468,24 @@ void SWSAnalogService::service_init() {
     // Initialize adaptive sample delay from config (already in µs — UNP08
     // was renamed from UW_PIN_SAMPLE_DELAY (ms) to UW_PIN_SAMPLE_DELAY_US
     // for consistency with UNP09/UNP10).
-    m_sample_delay_us = m_enable_sample_delay;
-    if (m_sample_delay_us < m_delay_min_us) m_sample_delay_us = m_delay_min_us;
-    if (m_sample_delay_us > m_delay_max_us) m_sample_delay_us = m_delay_max_us;
+    //
+    // F-SWS-7 audit fix: restore from .noinit if CRC valid and within bounds.
+    // The converged delay can drift over weeks as biofouling progresses —
+    // a soft reset (WDT) would otherwise reset it to UNP08 default and
+    // require re-convergence (minutes of misreport during the window).
+    uint16_t delay_crc = crc16_compute((const uint8_t *)&m_sample_delay_us_noinit,
+                                        sizeof(m_sample_delay_us_noinit), nullptr);
+    if (delay_crc == m_sample_delay_us_crc &&
+        m_sample_delay_us_noinit >= m_delay_min_us &&
+        m_sample_delay_us_noinit <= m_delay_max_us) {
+        m_sample_delay_us = m_sample_delay_us_noinit;
+        DEBUG_INFO("SWSAnalog: sample delay restored from noinit = %u µs", m_sample_delay_us);
+    } else {
+        m_sample_delay_us = m_enable_sample_delay;
+        if (m_sample_delay_us < m_delay_min_us) m_sample_delay_us = m_delay_min_us;
+        if (m_sample_delay_us > m_delay_max_us) m_sample_delay_us = m_delay_max_us;
+        DEBUG_INFO("SWSAnalog: sample delay from UNP08 = %u µs (noinit invalid)", m_sample_delay_us);
+    }
 
     // Validate observed peak ADC from noinit RAM
     uint16_t peak_crc = crc16_compute((const uint8_t *)&m_observed_peak_adc,
@@ -625,6 +642,15 @@ uint16_t SWSAnalogService::read_analog_sws() {
     }
     nrfx_saadc_channel_init(SWS_ADC, &BSP::ADC_Inits.channel_config[SWS_ADC]);
 
+    // F-SWS-1 audit fix: double-sample sanity reject. Takes 2 ADC samples
+    // ~500 µs apart and rejects the pair if Δ > 12% of the reading. Catches
+    // transient Vbatt sag during SMD/GPS power-on inrush (~150-300 mV droop
+    // affecting the SAADC internal reference). Without this, a single
+    // sag-corrupted sample can fire L1 (4% drop threshold) underwater →
+    // false surface emit → spurious TX. Cost: 1 extra ADC conversion
+    // (~50 µs at 14-bit) + 500 µs settle. Negligible in the 100 ms-1 s
+    // SWS sampling budget. ADC_READ_ERROR returned on reject so the
+    // existing m_consecutive_invalid_adc safety mesh handles the recovery.
     nrf_saadc_value_t raw = 0;
     nrfx_err_t err = nrfx_saadc_sample_convert(SWS_ADC, &raw);
     if (err != NRFX_SUCCESS) {
@@ -633,6 +659,37 @@ uint16_t SWSAnalogService::read_analog_sws() {
     nrf_peripheral_power_reset(NRF_SAADC_BASE_ADDR);  // Errata 241: prevent 400 µA idle leak
         GPIOPins::clear(SWS_ENABLE_PIN);
         return ADC_READ_ERROR;
+    }
+
+    // Second sample for sanity check
+    PMU::delay_us(500);
+    nrf_saadc_value_t raw2 = 0;
+    err = nrfx_saadc_sample_convert(SWS_ADC, &raw2);
+    if (err != NRFX_SUCCESS) {
+        // Second sample failed — fall back to single sample, log diag
+        inc_diag(m_diag.saadc_init_retry_count);
+    } else {
+        // Both samples OK — check delta. If > 12% of the larger value,
+        // suspect rail instability and reject.
+        int32_t v1 = raw < 0 ? 0 : raw;
+        int32_t v2 = raw2 < 0 ? 0 : raw2;
+        int32_t larger = (v1 > v2) ? v1 : v2;
+        int32_t delta = (v1 > v2) ? (v1 - v2) : (v2 - v1);
+        // Threshold: 12% of larger sample, with floor of 50 LSB
+        // (avoids spurious rejects on near-zero readings — air baseline).
+        int32_t reject_threshold = (larger * 12) / 100;
+        if (reject_threshold < 50) reject_threshold = 50;
+        if (delta > reject_threshold) {
+            DEBUG_WARN("SWSAnalog: sample-pair delta %d > %d (Vbatt sag?) — rejecting",
+                       (int)delta, (int)reject_threshold);
+            inc_diag(m_diag.saadc_init_retry_count);
+            nrfx_saadc_uninit();
+            nrf_peripheral_power_reset(NRF_SAADC_BASE_ADDR);
+            GPIOPins::clear(SWS_ENABLE_PIN);
+            return ADC_READ_ERROR;
+        }
+        // Both consistent — use average for slightly better noise immunity
+        raw = static_cast<nrf_saadc_value_t>((v1 + v2) / 2);
     }
 
     nrfx_saadc_uninit();

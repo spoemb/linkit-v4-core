@@ -109,8 +109,14 @@ private:
 	/// the FAST profile counter ≈ 67, this is ~17 failed polls (~3-5 s of
 	/// WARN cascade) before counting as 1 autofallback error. Tighter than
 	/// the natural state_transmitting timeout (counter == 0, ~13-15 s).
+	// F-SAT-6 audit fix: bumped 1/4 (25%) → 1/2 (50%). The 25% threshold
+	// was too lax for turtle behavior — a dive event 3-5 s into a TX poll
+	// (very common on shallow rest dives) was counted as a cascade failure,
+	// tripping autofallback to SAFE timings unnecessarily. With 50%, the
+	// gate requires ~6-8 s of failed polling before counting — clearly
+	// distinguishes a real SPI stall from a normal dive cancellation.
 	static constexpr unsigned int TX_CASCADE_FAILURE_NUMERATOR = 1;
-	static constexpr unsigned int TX_CASCADE_FAILURE_DENOMINATOR = 4;
+	static constexpr unsigned int TX_CASCADE_FAILURE_DENOMINATOR = 2;
 
 	void degraded_mode_load_if_needed();
 	void degraded_mode_engage();
@@ -230,4 +236,5 @@ public:
 	// Runtime modulation switching (RCONF + save + KMAC reload, no power cycle)
 	bool switch_modulation(KineisModulation mode, const std::string& rconf_hex) override;
 	KineisModulation get_current_modulation() const override;
+	unsigned int cooldown_remaining_ms() const override;
 };

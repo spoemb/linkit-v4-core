@@ -43,9 +43,25 @@ static constexpr unsigned int MAX_FRAMING_ERRORS_BOOT       = 10;    ///< Tolera
 static constexpr unsigned int DBD_MAX_AGE_S                 = 12 * 3600; ///< Max age (12h) of persisted DBD navigation database
 
 // State machine helper macros
+#ifndef VALIDATION_LOG_ENABLE
+#define VALIDATION_LOG_ENABLE 0
+#endif
+
+#if VALIDATION_LOG_ENABLE
+#define VAL_GNSS_STATE_CHANGE(x, y) \
+	DEBUG_INFO("[VAL-GNSS] state " #x "->" #y " users=%u t=%llu", \
+	           m_num_power_on, (unsigned long long)PMU::get_timestamp_ms())
+#define VAL_GNSS(fmt, ...) \
+	DEBUG_INFO("[VAL-GNSS] " fmt, ##__VA_ARGS__)
+#else
+#define VAL_GNSS_STATE_CHANGE(x, y) do {} while (0)
+#define VAL_GNSS(fmt, ...)          do {} while (0)
+#endif
+
 #define STATE_CHANGE(x, y)                       \
 	do {                                             \
 		DEBUG_TRACE("M10QAsyncReceiver::STATE_CHANGE: " #x " -> " #y ); \
+		VAL_GNSS_STATE_CHANGE(x, y);                 \
 		m_state = y;                                 \
 		state_ ## x ##_exit();                       \
 		state_ ## y ##_enter();                      \
@@ -116,14 +132,31 @@ void M10QAsyncReceiver::power_on(const GPSNavSettings& nav_settings) {
         if (m_consecutive_wake_failures >= WAKE_FAIL_FAST_FALLBACK) {
             DEBUG_WARN("M10QAsyncReceiver::power_on: %u consecutive wake-fail — forcing cold rail-cycle",
                        m_consecutive_wake_failures);
+            // CRITICAL #2 audit fix: cancel pending state-machine tick + timeout
+            // BEFORE tearing down comms. Otherwise a previously-scheduled
+            // `run_state_machine()` task (e.g. from state_enterbackup) fires
+            // on the freshly-reset state with stale m_step / m_op_state →
+            // libuarte double-init / use-after-deinit → HardFault candidate.
+            cancel_timeout();
+            system_scheduler->cancel_task(m_state_machine_handle);
+            VAL_GNSS("power_on abort=cold_rail_cycle (cancelled pending tasks)");
             m_ubx_comms.deinit();
             GPIOPins::clear(BSP::GPIO::GPIO_GPS_PWR_EN);
             GPIOPins::release_to_highz(BSP::GPIO::GPIO_GPS_RST);
             GPIOPins::release_to_highz(BSP::GPIO::GPIO_GPS_EXT_INT);
             GPIOPins::release_sensors_pwr();
             PMU::delay_ms(50);
+            // HIGH #4 audit fix: direct m_state write is safe here ONLY because
+            // we just cancelled `m_state_machine_handle` + `m_timeout` above.
+            // No scheduled tick can observe a torn state machine. Do NOT
+            // remove the cancel calls — they are the precondition for this
+            // direct assignment instead of STATE_CHANGE().
             m_state = State::idle;
             m_num_power_on = 0;
+            // HIGH GNSS-AUDIT #3 follow-up: rail was cut here, M10Q lost BBR
+            // and will boot fresh at 9600 factory default. Stale m_pmreq_baud
+            // (likely MAX from before) would mislead the next session.
+            m_pmreq_baud = DEFAULT_BAUDRATE;
             // Fall through to the normal cold power-on path below.
         } else {
             DEBUG_INFO("M10QAsyncReceiver::power_on: wake from deep-idle via EXTINT (fail_count=%u)",
@@ -143,9 +176,46 @@ void M10QAsyncReceiver::power_on(const GPSNavSettings& nav_settings) {
             // the counter is conservatively NOT reset — better to force
             // a cold-boot once than ignore a real wake issue.
             m_consecutive_wake_failures++;
-            m_ubx_comms.init();
-            m_ubx_comms.subscribe(*this);
-            m_ubx_comms.set_debug_enable(m_nav_settings.debug_enable);
+            // HIGH #5 audit fix: libuarte allocator can throw
+            // ErrorCode::RESOURCE_NOT_AVAILABLE on transient failure. Without
+            // try/catch the exception propagates upward unwound through
+            // service_initiate → scheduler → unhandled std::exception →
+            // GenTracker::dispatch(ErrorEvent) → ErrorState transition. That's
+            // a heavy reaction for a transient init failure. Catch + mark
+            // unrecoverable + force the next iteration through the
+            // m_consecutive_wake_failures >= WAKE_FAIL_FAST_FALLBACK branch
+            // (cold rail-cycle path) which is the known-good recovery.
+            try {
+                m_ubx_comms.init();
+                m_ubx_comms.subscribe(*this);
+                m_ubx_comms.set_debug_enable(m_nav_settings.debug_enable);
+            } catch (...) {
+                DEBUG_ERROR("M10QAsyncReceiver::power_on: ubx_comms.init failed during wake — forcing cold next time");
+                VAL_GNSS("ubx_init_throw fast_path -> force cold next");
+                // Push the counter to threshold so the very next power_on falls
+                // into the cold-rail-cycle branch.
+                m_consecutive_wake_failures = WAKE_FAIL_FAST_FALLBACK;
+                m_unrecoverable_error = true;
+                notify(GPSEventError{});
+                return;
+            }
+            // HIGH GNSS-AUDIT #3 follow-up (revised): pre-sync our UART to
+            // `m_pmreq_baud` — the baud at which the last PMREQ-backup was
+            // actually sent. That's what the M10Q is sleeping at, preserved
+            // by V_BCKP across the deep-idle window. Using a hardcoded MAX
+            // was WRONG: if the WARM enterbackup fell back from MAX to 9600
+            // (e.g. dispatch during configure-in-progress where M10Q was
+            // still at boot baud), the M10Q resumes at 9600 but we'd try
+            // to read at MAX → garbage → framing errors (type=0c) → 50 ms
+            // of noise → state_configure: failed.
+            //
+            // Now we track the actual baud at SUCCESS in state_enterbackup
+            // (see m_pmreq_baud doc in header). If BBR was lost during a
+            // long deep-idle (V_BCKP discharged), the configure fast-path
+            // validation at our pre-set baud will fail and fall back to the
+            // full-config (9600) path — same recovery as before.
+            m_ubx_comms.set_baudrate(m_pmreq_baud);
+            VAL_GNSS("extint_wake_presync baud=%u", m_pmreq_baud);
             pulse_extint_wake();
             PMU::delay_ms(50);   // give M10Q time to come out of backup (datasheet ~30 ms)
             m_num_power_on = 1;  // single user (this acquisition)
@@ -158,14 +228,28 @@ void M10QAsyncReceiver::power_on(const GPSNavSettings& nav_settings) {
         }
     } else if (STATE_EQUAL(enterbackup)) {
         DEBUG_INFO("M10QAsyncReceiver::power_on: aborting enterbackup (mid-transition) → cold reboot");
+        // CRITICAL #2 audit fix: cancel pending state-machine tick + timeout
+        // BEFORE tearing down comms. The enterbackup state has a queued tick
+        // (`run_state_machine(100)` after `send_pmreq_backup`) that, if it
+        // fires after this reset, runs on stale m_step / m_op_state →
+        // libuarte double-init / use-after-deinit → HardFault candidate.
+        cancel_timeout();
+        system_scheduler->cancel_task(m_state_machine_handle);
+        VAL_GNSS("power_on abort=enterbackup_mid_transition (cancelled pending tasks)");
         m_ubx_comms.deinit();
         GPIOPins::clear(BSP::GPIO::GPIO_GPS_PWR_EN);
         GPIOPins::release_to_highz(BSP::GPIO::GPIO_GPS_RST);
         GPIOPins::release_to_highz(BSP::GPIO::GPIO_GPS_EXT_INT);
         GPIOPins::release_sensors_pwr();
         PMU::delay_ms(50); // brief rail-off gap before exit_shutdown re-energises it
+        // HIGH #4 audit fix: direct m_state write is safe here ONLY because
+        // we cancelled the state machine task + timeout above. Don't remove.
         m_state = State::idle;
         m_num_power_on = 0;
+        // HIGH GNSS-AUDIT #3 follow-up: rail was just cut, M10Q will cold-boot
+        // at 9600 factory default. Reset tracker so the next session reads
+        // the right baud at any subsequent EXTINT wake.
+        m_pmreq_baud = DEFAULT_BAUDRATE;
     }
 
     // Track number of power on requests
@@ -321,6 +405,16 @@ void M10QAsyncReceiver::generate_fake_fix() {
 
 void M10QAsyncReceiver::power_off() {
 	DEBUG_INFO("M10QAsyncReceiver::power_off");
+	VAL_GNSS("power_off users=%u->%u state=%d",
+	         m_num_power_on, m_num_power_on ? m_num_power_on - 1 : 0, (int)m_state);
+    // MED #7 audit fix: warn if power_off called with users already at 0 —
+    // indicates an upstream double-power_off bug (would normally be silent
+    // because of the `if` guard). Latent today (single client), but a future
+    // bridge-mode addition could trigger this.
+    if (m_num_power_on == 0) {
+        DEBUG_WARN("M10QAsyncReceiver::power_off: called with users=0 (no-op, possible upstream bug)");
+        VAL_GNSS("power_off_excess users=0 (upstream double-call)");
+    }
     // Just decrement the number of users
     if (m_num_power_on)
         m_num_power_on--;
@@ -332,6 +426,51 @@ void M10QAsyncReceiver::power_off() {
 #endif
 }
 
+void M10QAsyncReceiver::request_deep_idle_on_next_stop() {
+    DEBUG_INFO("M10QAsyncReceiver::request_deep_idle_on_next_stop");
+    VAL_GNSS("deep_idle_armed (next stop -> enterbackup)");
+    m_deep_idle_pending = true;
+}
+
+// HIGH GNSS-AUDIT #2 follow-up: previously the GNP52 auto-off timer called
+// `power_off()`, which is a no-op when `m_num_power_on == 0` (the dispatch
+// already decremented users at deep-idle entry). Result: the timer fired,
+// logged "auto_off_timer_fired", but the rail stayed on indefinitely — V_BCKP
+// kept charging at ~µA but the M10Q itself kept burning its backup current
+// (~10-12 µA) forever. This method does the actual rail teardown, allowing
+// the GNP52 duration to be honored.
+void M10QAsyncReceiver::poweroff_from_deep_idle() {
+    if (!STATE_EQUAL(backupidle) && !STATE_EQUAL(enterbackup)) {
+        DEBUG_TRACE("M10QAsyncReceiver::poweroff_from_deep_idle: not in deep-idle "
+                    "(state=%d) — no-op", (int)m_state);
+        VAL_GNSS("poweroff_from_deep_idle skipped state=%d", (int)m_state);
+        return;
+    }
+    DEBUG_INFO("M10QAsyncReceiver::poweroff_from_deep_idle: cutting rail (state=%d)",
+               (int)m_state);
+    VAL_GNSS("poweroff_from_deep_idle cutting_rail state=%d", (int)m_state);
+
+    // Cancel any pending state-machine ticks. In backupidle there should be
+    // none, but enterbackup-in-progress could still have a queued tick from
+    // `run_state_machine(100)` after send_pmreq_backup — same hazard as
+    // CRITICAL #2 audit fix in power_on cold-rail-cycle path.
+    cancel_timeout();
+    system_scheduler->cancel_task(m_state_machine_handle);
+
+    // Tear down the rail. UART was deinit'd in enterbackup step 3, but
+    // enter_shutdown's deinit is idempotent so a double-call is safe.
+    enter_shutdown();
+
+    notify(GPSEventPowerOff(m_fix_was_found));
+    m_state = State::idle;
+    m_num_power_on = 0;
+    // HIGH GNSS-AUDIT #3 follow-up: rail is now off — V_BCKP will discharge
+    // through the M10Q backup load over minutes/hours. Once BBR is lost,
+    // the next cold boot lands at 9600 factory default. Reset the tracker
+    // so we don't try to wake at a stale MAX baud.
+    m_pmreq_baud = DEFAULT_BAUDRATE;
+}
+
 bool M10QAsyncReceiver::enter_backup_charge_mode() {
     DEBUG_INFO("M10QAsyncReceiver::enter_backup_charge_mode");
     // Refuse if GPS already has active clients or is not idle — backup charge
@@ -340,8 +479,10 @@ bool M10QAsyncReceiver::enter_backup_charge_mode() {
     if (m_num_power_on != 0 || !STATE_EQUAL(idle)) {
         DEBUG_WARN("M10QAsyncReceiver: backup-charge refused (state=%d, users=%u)",
                    (int)m_state, m_num_power_on);
+        VAL_GNSS("backup_charge refused state=%d users=%u", (int)m_state, m_num_power_on);
         return false;
     }
+    VAL_GNSS("backup_charge accepted (idle, users=0)");
     m_powering_off = false;
     STATE_CHANGE(idle, enterbackup);
     return true;
@@ -349,6 +490,7 @@ bool M10QAsyncReceiver::enter_backup_charge_mode() {
 
 void M10QAsyncReceiver::exit_backup_charge_mode() {
     DEBUG_INFO("M10QAsyncReceiver::exit_backup_charge_mode");
+    VAL_GNSS("backup_charge exit (was state=%d users=%u)", (int)m_state, m_num_power_on);
     if (!STATE_EQUAL(backupidle) && !STATE_EQUAL(enterbackup))
         return;
     m_num_power_on = 0;
@@ -372,8 +514,27 @@ void M10QAsyncReceiver::exit_backup_charge_mode() {
 void M10QAsyncReceiver::enter_shutdown() {
     m_ubx_comms.deinit();
 
+    // Assert NRST LOW BEFORE cutting VDD so the M10Q sees a clean reset edge
+    // — without this, releasing NRST to high-Z while VDD is still up can leave
+    // the chip in an indeterminate state if the next power_on happens before
+    // caps fully discharge.
+    GPIOPins::init_pin(BSP::GPIO::GPIO_GPS_RST);
+    GPIOPins::clear(BSP::GPIO::GPIO_GPS_RST);
+
     // Disable the power supply for the GPS
     GPIOPins::clear(BSP::GPIO::GPIO_GPS_PWR_EN);
+
+    // VDD cap discharge wait — without this, a rapid power_off → power_on
+    // cycle (e.g. deep-idle refused → fallback power_off → next surface a few
+    // seconds later) leaves residual VDD on the M10Q decoupling caps. The
+    // next power_on doesn't trigger a true POR → M10Q stays in some
+    // intermediate state → `failed to sync comms` cascade.
+    // 50 ms matches the SMD VDD_DISCHARGE_FAST_MS pattern. Cost is amortized
+    // — it happens just before sleep/idle, not on the latency-critical path.
+    PMU::delay_ms(50);
+
+    // Now release NRST so the pin doesn't sink current via the external
+    // pull-up while the rail is dead.
     GPIOPins::release_to_highz(BSP::GPIO::GPIO_GPS_RST);  // Disconnect (ext pull-up)
 
     // 2026-05 deep-idle refactor: release EXTINT to high-Z so the OUTPUT
@@ -390,20 +551,38 @@ void M10QAsyncReceiver::enter_shutdown() {
 }
 
 void M10QAsyncReceiver::exit_shutdown() {
-	// Configure UBX comms if not already done
-    m_ubx_comms.init();
-    m_ubx_comms.subscribe(*this);
-    m_ubx_comms.set_debug_enable(m_nav_settings.debug_enable);
+	// Configure UBX comms if not already done.
+	// HIGH #5 audit fix: catch libuarte init failure (RESOURCE_NOT_AVAILABLE).
+	// Setting m_unrecoverable_error here cascades into state_poweron's step
+	// `m_step==1` branch which already calls `notify(GPSEventError{})`.
+    try {
+        m_ubx_comms.init();
+        m_ubx_comms.subscribe(*this);
+        m_ubx_comms.set_debug_enable(m_nav_settings.debug_enable);
+    } catch (...) {
+        DEBUG_ERROR("M10QAsyncReceiver::exit_shutdown: ubx_comms.init failed");
+        VAL_GNSS("ubx_init_throw cold_path -> unrecoverable_error");
+        m_unrecoverable_error = true;
+        // No further GPIO work — leave rail off so next session retries cleanly.
+        return;
+    }
 
     // Acquire VSENSORS before GPS power-on to ensure stable power rail
     GPIOPins::acquire_sensors_pwr();
 
-    // Reconfigure RST pin as output (was disconnected in shutdown) and enable power
-    GPIOPins::init_pin(BSP::GPIO::GPIO_GPS_RST);
-    GPIOPins::set(BSP::GPIO::GPIO_GPS_RST);
-    PMU::delay_ms(10);
-    GPIOPins::set(BSP::GPIO::GPIO_GPS_PWR_EN);
-    PMU::delay_ms(100); // M10Q boot ~30ms, 100ms margin (sync_baud_rate has retries)
+    // Hold NRST asserted (LOW) BEFORE bringing VDD up — mirrors the SMD
+    // state_powering_on pattern. Without this, the M10Q's NRST line gets
+    // pulled HIGH by the external pull-up the moment VDD ramps, and the
+    // chip starts booting at an unstable voltage. With NRST held LOW
+    // through the ramp, the M10Q stays in reset until we explicitly
+    // release — clean POR on release, no marginal-voltage boot.
+    GPIOPins::init_pin(BSP::GPIO::GPIO_GPS_RST);  // reconfigure as OUTPUT (S0D1 open-drain)
+    GPIOPins::clear(BSP::GPIO::GPIO_GPS_RST);     // drive LOW → NRST asserted (reset held)
+    PMU::delay_ms(2);                              // small settle for the drive
+    GPIOPins::set(BSP::GPIO::GPIO_GPS_PWR_EN);    // VDD ON with M10Q held in reset
+    PMU::delay_ms(20);                             // VDD ramp + stabilize while in reset
+    GPIOPins::set(BSP::GPIO::GPIO_GPS_RST);       // high-Z → ext pull-up → NRST released → POR
+    PMU::delay_ms(80); // M10Q boot ~30ms, 80ms margin (sync_baud_rate has retries)
 }
 
 void M10QAsyncReceiver::state_machine() {
@@ -977,6 +1156,31 @@ void M10QAsyncReceiver::state_poweroff() {
 		STATE_CHANGE(poweroff, configure);
 		return;
 	}
+
+	// CRITICAL #1 audit fix: if deep-idle was armed via
+	// request_deep_idle_on_next_stop() before the power-down chain started,
+	// route to `enterbackup` instead of cutting the rail. The M10Q stays
+	// powered with PMREQ-backup engaged so V_BCKP can charge naturally and
+	// next session uses the EXTINT wake fast-path (warm-start TTFF).
+	if (m_deep_idle_pending) {
+		m_deep_idle_pending = false;
+		m_powering_off = false;          // not a true power-off anymore
+		// HIGH GNSS-AUDIT #1 follow-up: signal WARM entry path to
+		// state_enterbackup_enter(). Cannot detect via PWR_EN GPIO read on this
+		// BSP — see m_enterbackup_warm doc in the header for the rationale.
+		m_enterbackup_warm = true;
+		VAL_GNSS("deep_idle_intent_consumed -> enterbackup (rail stays on, warm=1)");
+		// Restore num_power_on to 1 because backup-charge state machine
+		// needs the user count consistency check during the subsequent
+		// `exit_backup_charge_mode()` (called by next power_on path).
+		// However enter_backup_charge_mode's invariant is users==0; the
+		// PMREQ-backup chain itself doesn't require users>0. Keep users=0
+		// here — when power_on() is called later, it will run the wake
+		// fast-path which sets m_num_power_on = 1 explicitly.
+		STATE_CHANGE(poweroff, enterbackup);
+		return;
+	}
+
 	enter_shutdown();
 	// Persist current RTC for next boot (enables MGA-ANO assistance and faster TTFF)
 	if (rtc->is_set()) {
@@ -985,6 +1189,11 @@ void M10QAsyncReceiver::state_poweroff() {
 		DEBUG_TRACE("Updated LAST_KNOWN_RTC = %u (RAM)", static_cast<unsigned int>(rtc->gettime()));
 	}
     notify(GPSEventPowerOff(m_fix_was_found));
+    // HIGH GNSS-AUDIT #3 follow-up: rail just cut by enter_shutdown(). Without
+    // V_BCKP the M10Q will cold-boot at 9600 next session. Tracker reset so
+    // any subsequent EXTINT wake (shouldn't happen from idle, defensive) uses
+    // the correct baud.
+    m_pmreq_baud = DEFAULT_BAUDRATE;
     STATE_CHANGE(poweroff, idle);
 }
 
@@ -1020,6 +1229,7 @@ void M10QAsyncReceiver::send_pmreq_backup() {
 // M10Q is awake and using EXTINT as a normal logic input.
 void M10QAsyncReceiver::pulse_extint_wake() {
     DEBUG_TRACE("M10QAsyncReceiver::pulse_extint_wake");
+    VAL_GNSS("extint_pulse_wake from_state=%d", (int)m_state);
     GPIOPins::init_pin(BSP::GPIO::GPIO_GPS_EXT_INT);  // ensure OUTPUT direction
     GPIOPins::set(BSP::GPIO::GPIO_GPS_EXT_INT);       // edge rising → M10Q wakes
     PMU::delay_ms(1);                                  // hold (>= 100 µs spec)
@@ -1034,31 +1244,54 @@ void M10QAsyncReceiver::state_enterbackup_enter() {
     m_uart_error_count = 0;
     DEBUG_INFO("M10QAsyncReceiver::state_enterbackup_enter");
 
-    // 2026-05-23 fix: every entry to enterbackup comes from poweroff state
-    // (idle → enterbackup, idle being post-poweroff). The M10Q is fresh-booting
-    // and BBR is likely LOST if the V_BCKP coin cell was depleted (the very
-    // reason we are running backup-charge). Force the boot baud sync to
-    // start at 9600 (factory default after cold-boot) — m_gnss_info_valid
-    // is stale across power cycles and previously led the sync at line 952
-    // to start at MAX_BAUDRATE, burning 6 retries against a stream the
-    // M10Q is actually sending at 9600. Field log 2026-05-23 caught this
-    // twice in a row, then bailed to poweroff → coin cell never recharged.
+    // HIGH GNSS-AUDIT #1 fix: two entry paths reach enterbackup:
+    //   (a) WARM — from `state_poweroff()` rerouting via `m_deep_idle_pending`
+    //       (CRITICAL #1 fix). Rail still ON, UART still up, M10Q running.
+    //       We just want to send the PMREQ-backup and let it sleep.
+    //   (b) COLD — legacy DTE-triggered `enter_backup_charge_mode()` from
+    //       idle state. Rail OFF, UART torn down, M10Q dead.
     //
-    // Mirror what state_poweron_enter implicitly does (always 9600 first
-    // via the hardcoded sync_baud_rate(9600) at line 861).
-    // get_device_info() will re-set m_gnss_info_valid to true on the next
-    // normal power-on after BBR is re-established by the recharge cycle.
+    // The old code did (b) unconditionally — when reached via the new (a)
+    // path, this was killing the rail + waiting 200 ms + re-energising +
+    // re-booting M10Q only to immediately put it back to sleep. That wasted
+    // ~400 ms of active current per end-of-session AND discharged V_BCKP
+    // (defeating half the deep-idle benefit).
+    //
+    // Detect entry path via m_enterbackup_warm (set by state_poweroff() reroute).
+    // Reading PWR_EN GPIO does NOT work here — the pin is configured with
+    // NRF_GPIO_PIN_INPUT_DISCONNECT in the BSP, so `nrf_gpio_pin_read()` always
+    // returns 0 regardless of the output drive state. Without the flag, every
+    // deep-idle entry took the COLD path → unnecessary M10Q reset via
+    // exit_shutdown() → 9600 baud sync failure → bail to poweroff → PMREQ never
+    // sent → V_BCKP never charged. Field log 2026-05-24 caught this in 100%
+    // of deep-idle dispatches.
+    bool rail_warm = m_enterbackup_warm;
+    m_enterbackup_warm = false;   // single-shot
+    VAL_GNSS("enterbackup_enter rail_warm=%d", rail_warm ? 1 : 0);
+
+    if (rail_warm) {
+        // WARM path: M10Q running with UART up at MAX_BAUDRATE from the
+        // previous receive session. Skip the cold-boot work; the
+        // state_enterbackup() steps will sync at the cached rate
+        // (m_gnss_info_valid stays true since we never lost VDD), send
+        // PMREQ-backup, and the M10Q sleeps. On next EXTINT wake it comes
+        // back at the same rate (preserved by V_BCKP).
+        return;
+    }
+
+    // COLD path (legacy DTE-triggered backup-charge) — original behavior.
+    //
+    // 2026-05-23 fix: every entry to enterbackup comes from poweroff state
+    // (idle → enterbackup, idle being post-poweroff). The M10Q is fresh-
+    // booting and BBR is likely LOST if the V_BCKP coin cell was depleted
+    // (the very reason we are running backup-charge). Force the boot baud
+    // sync to start at 9600 (factory default after cold-boot).
     m_gnss_info_valid = false;
 
-    // Extra settling: after a long poweroff (typical for backup-charge —
-    // GNSS_BCKP_CHARGE_INTERVAL min between cycles), rail caps are fully
-    // discharged. exit_shutdown's 100 ms delay is calibrated for normal
-    // power-on where caps are warm from the previous session. We also need
-    // to ensure the libuarte RX buffer doesn't contain spurious bytes from
-    // listening on a floating pin between m_ubx_comms.init() and the rail
-    // actually rising (the order in exit_shutdown is: init UART → power
-    // rail). Strategy: ensure UART is dead during the power-up + boot
-    // window, then init + sync.
+    // After a long poweroff (typical for DTE-triggered backup-charge), rail
+    // caps are fully discharged. exit_shutdown's 100 ms delay is calibrated
+    // for normal power-on where caps are warm from the previous session.
+    // Ensure UART is dead during the power-up + boot window, then init + sync.
     m_ubx_comms.deinit();   // Tear down libuarte if it was up from a prior cycle
     exit_shutdown();        // Init UART, power rail, 100 ms settle
     PMU::delay_ms(200);     // Extra margin for cold cap recharge + M10Q boot
@@ -1095,11 +1328,27 @@ void M10QAsyncReceiver::state_enterbackup() {
                 break;
             }
         } else if (m_op_state == OpState::SUCCESS) {
-            // Skip the fallback baud step if the primary one succeeded
-            if (m_step == 0)
-                m_step = 2;
-            else
+            // HIGH GNSS-AUDIT #3 follow-up: capture the baud that actually
+            // worked. This is the baud the M10Q is now responding at — and
+            // critically, the baud it will preserve across PMREQ-backup
+            // (V_BCKP keeps BBR alive while the rail is on). Read at next
+            // EXTINT wake to pre-sync our UART without assumption.
+            //   - step 0 success: primary baud worked
+            //     (MAX if m_gnss_info_valid else DEFAULT)
+            //   - step 1 success: fallback baud worked
+            //     (DEFAULT if m_gnss_info_valid else MAX)
+            // Both branches must save BEFORE we increment m_step.
+            if (m_step == 0) {
+                m_pmreq_baud = m_gnss_info_valid ? MAX_BAUDRATE : DEFAULT_BAUDRATE;
+                m_step = 2;     // skip fallback step
+            } else if (m_step == 1) {
+                m_pmreq_baud = m_gnss_info_valid ? DEFAULT_BAUDRATE : MAX_BAUDRATE;
                 m_step++;
+            } else {
+                m_step++;       // step 2/3 advance — no baud change to record
+            }
+            VAL_GNSS("enterbackup_step_ok step=%u pmreq_baud=%u",
+                     m_step, m_pmreq_baud);
             m_retries = DEFAULT_RETRIES;
             m_op_state = OpState::IDLE;
         } else if (m_op_state == OpState::PENDING) {
@@ -1194,6 +1443,17 @@ void M10QAsyncReceiver::state_configure() {
 			}
 			// Fast path step 101: BBR validated, skip to assistance data
 			if (m_step == 101) {
+				// GNSS LOW #7 audit fix: BBR validation succeeded = the
+				// M10Q is alive AND came up at MAX_BAUDRATE (warm wake).
+				// This is the earliest reliable proof of wake-from-deep-idle
+				// success. Reset the wake-fail counter here instead of waiting
+				// for the first NAV report (which can take 5-30 s, allowing
+				// the counter to incorrectly trip on a short dive cancel).
+				if (m_consecutive_wake_failures > 0) {
+					DEBUG_TRACE("M10QAsyncReceiver: BBR validated — resetting wake-fail counter (was %u)",
+					            m_consecutive_wake_failures);
+					m_consecutive_wake_failures = 0;
+				}
 				m_step = 10; // Skip to continuous mode + nav settings
 				m_op_state = OpState::IDLE;
 				continue;

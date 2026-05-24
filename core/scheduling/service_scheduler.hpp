@@ -19,6 +19,12 @@ enum class ServiceEventType {
 	                        ///< (GPS keeps running — this is just a heads-up so peers like
 	                        ///< LoRa can fire an early CloudLocate TX without waiting for
 	                        ///< full PVT timeout)
+	GNSS_OFF_DEEP_IDLE,     ///< GPS session ended, dispatched to deep-idle (rail on,
+	                        ///< M10Q in PMREQ-backup). LED dispatcher renders as a brief
+	                        ///< double-blink RED. Emitted only on no-fix paths.
+	GNSS_OFF_POWEROFF,      ///< GPS session ended, full power-off (rail cut).
+	                        ///< LED dispatcher renders as a fast blink RED. Emitted
+	                        ///< only on no-fix paths.
 	GNSS_ON,              ///< GPS acquisition started (legacy)
 	ARGOS_TX_START,       ///< Argos TX started (legacy)
 	ARGOS_TX_END,         ///< Argos TX completed (legacy)

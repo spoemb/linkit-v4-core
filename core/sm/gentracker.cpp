@@ -641,11 +641,18 @@ void OperationalState::service_event_handler(ServiceEvent& e) {
 		if (e.event_type == ServiceEventType::SERVICE_ACTIVE) {
 			led_handle::dispatch<SetLEDGNSSOn>({});
 		} else if (e.event_type == ServiceEventType::SERVICE_LOG_UPDATED) {
+			// 2026-05-24 LED refactor: capture fix validity into the latched
+			// static so the immediately-following GNSS_OFF_DEEP_IDLE / GNSS_OFF_
+			// POWEROFF event can pick GREEN (fix) vs RED (no-fix) for its
+			// indicator. The legacy LEDGNSSOffWithFix / LEDGNSSOffWithoutFix
+			// dispatches are NOT fired here anymore — the new sleep-depth
+			// states handle all 4 combinations:
+			//   fix + deep-idle      → double-blink GREEN
+			//   fix + power-off      → fast blink GREEN
+			//   no-fix + deep-idle   → double-blink RED
+			//   no-fix + power-off   → fast blink RED
 			auto *gps_log = std::get_if<GPSLogEntry>(&e.event_data);
-			if (gps_log && gps_log->info.valid)
-				led_handle::dispatch<SetLEDGNSSOffWithFix>({});
-			else
-				led_handle::dispatch<SetLEDGNSSOffWithoutFix>({});
+			LEDState::m_last_gnss_fix_valid = (gps_log && gps_log->info.valid);
 		} else if (e.event_type == ServiceEventType::GNSS_CLOUDLOCATE_READY) {
 			// 2026-05 deep-idle refactor FAST3c: visual marker for raw CloudLocate
 			// measurement available (double-blink CYAN). Does NOT short-circuit
@@ -654,6 +661,18 @@ void OperationalState::service_event_handler(ServiceEvent& e) {
 			// LEDGNSSOn (if GPS still active) or LEDOff (if CLOUDLOCATE_ONLY
 			// ended the session) after ~500 ms.
 			led_handle::dispatch<SetLEDGNSSCloudLocateReady>({});
+		} else if (e.event_type == ServiceEventType::GNSS_OFF_DEEP_IDLE) {
+			// 2026-05-24 LED refactor: GPSService dispatched end-of-session to
+			// deep-idle (rail on, M10Q in PMREQ-backup). Render double-blink
+			// RED for ~500 ms then return to LEDOff. Sequenced AFTER any
+			// SERVICE_LOG_UPDATED above so this overlay reflects the actual
+			// sleep depth.
+			led_handle::dispatch<SetLEDGNSSDeepIdle>({});
+		} else if (e.event_type == ServiceEventType::GNSS_OFF_POWEROFF) {
+			// 2026-05-24 LED refactor: GPSService cut the rail (full power-off,
+			// no deep-idle). Render fast-blink RED to distinguish from the
+			// double-blink (deep-idle) — operator sees the heavier shutdown.
+			led_handle::dispatch<SetLEDGNSSPowerOff>({});
 		}
 		return;
 	}
@@ -734,7 +753,10 @@ void ConfigurationState::entry() {
 			[this]() {
 				// Charge started: cut BLE after 200ms (lets the $O; response TX complete).
 				m_backup_charge_mode = true;
-				system_scheduler->post_task_prio([this]() {
+				// MED #6 audit fix: store the task handle so `exit()` can cancel
+				// it if the FSM transits out during the 200 ms window. Without
+				// this, the lambda fires with a dangling `this` → HardFault.
+				m_backup_charge_stop_ble_task = system_scheduler->post_task_prio([this]() {
 					ble_service->stop();
 					system_scheduler->cancel_task(m_ble_inactivity_timeout_task);
 					led_handle::dispatch<SetLEDOff>({});
@@ -775,6 +797,9 @@ void ConfigurationState::exit() {
 	DEBUG_INFO("exit: ConfigurationState");
 	system_scheduler->cancel_task(m_ble_inactivity_timeout_task);
 	system_scheduler->cancel_task(m_backup_charge_blink_task);
+	// MED #6 audit fix: cancel the BackupChargeStopBLE task too — its lambda
+	// captures `this` and would HardFault if it fires after our destruction.
+	system_scheduler->cancel_task(m_backup_charge_stop_ble_task);
 	if (gps_service) gps_service->set_backup_charge_callbacks(nullptr, nullptr);
 	m_backup_charge_mode = false;
 #ifdef USB_DTE_ENABLED

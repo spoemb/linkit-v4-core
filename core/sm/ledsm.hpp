@@ -31,6 +31,13 @@ struct SetLEDGNSSOffWithoutFix : tinyfsm::Event { };
 // distinguishes from LEDGNSSOn (steady CYAN flash) so bench operators can see
 // when raw measurements are ready without waiting for full PVT.
 struct SetLEDGNSSCloudLocateReady : tinyfsm::Event { };
+// 2026-05-24: end-of-session sleep-depth indicators. Replace the legacy
+// LEDGNSSOffWithoutFix (RED solid 3 s) with two distinct short patterns so
+// the operator can tell at a glance whether the M10Q went to deep-idle
+// (PMREQ-backup, rail on, fast wake) or full power-off (rail cut, cold
+// boot on next surface). Both ~500 ms total.
+struct SetLEDGNSSDeepIdle : tinyfsm::Event { };
+struct SetLEDGNSSPowerOff : tinyfsm::Event { };
 struct SetLEDArgosTX : tinyfsm::Event { };
 struct SetLEDArgosTXComplete : tinyfsm::Event { };
 struct SetLEDBatteryCritical : tinyfsm::Event { };
@@ -59,6 +66,8 @@ class LEDGNSSOn;
 class LEDGNSSOffWithFix;
 class LEDGNSSOffWithoutFix;
 class LEDGNSSCloudLocateReady;   // 2026-05 deep-idle refactor FAST3c
+class LEDGNSSDeepIdle;           // 2026-05-24: post-session deep-idle indicator
+class LEDGNSSPowerOff;           // 2026-05-24: post-session full power-off indicator
 class LEDArgosTX;
 class LEDArgosTXComplete;
 class LEDBatteryCritical;
@@ -77,6 +86,16 @@ class LEDDiveDetected;
 
 /// @brief LED FSM base — dispatches events to LED state subclasses.
 class LEDState : public tinyfsm::Fsm<LEDState> {
+public:
+	/// 2026-05-24: latched fix validity from the most recent GPS SERVICE_LOG_UPDATED.
+	/// Read by LEDGNSSDeepIdle / LEDGNSSPowerOff entry handlers to pick the
+	/// indicator color: GREEN when the just-ended session had a valid fix,
+	/// RED otherwise. Set by gentracker's SERVICE_LOG_UPDATED handler BEFORE
+	/// the GNSS_OFF_DEEP_IDLE / GNSS_OFF_POWEROFF event that drives the LED
+	/// transit, so the entry handler reads a consistent value. Public so
+	/// gentracker (outside the FSM) can latch it directly without needing
+	/// a dedicated tinyfsm event.
+	static inline bool m_last_gnss_fix_valid = false;
 protected:
 	static inline bool m_is_battery_critical = false;
 	static inline bool m_is_gnss_on = false;
@@ -99,6 +118,8 @@ public:
 	void react(SetLEDGNSSOffWithFix const &) { transit<LEDGNSSOffWithFix>(); }
 	void react(SetLEDGNSSOffWithoutFix const &) { transit<LEDGNSSOffWithoutFix>(); }
 	void react(SetLEDGNSSCloudLocateReady const &) { transit<LEDGNSSCloudLocateReady>(); }
+	void react(SetLEDGNSSDeepIdle const &) { transit<LEDGNSSDeepIdle>(); }
+	void react(SetLEDGNSSPowerOff const &) { transit<LEDGNSSPowerOff>(); }
 	void react(SetLEDArgosTX const &) { transit<LEDArgosTX>(); }
 	void react(SetLEDArgosTXComplete const &) { transit<LEDArgosTXComplete>(); }
 	void react(SetLEDBatteryCritical const &) { transit<LEDBatteryCritical>(); }
@@ -225,6 +246,27 @@ public:
 // (if GPS still active) or LEDOff (if GNSS_CLOUDLOCATE_ONLY terminated the
 // session). Transition handled inside the entry() via a scheduled task.
 class LEDGNSSCloudLocateReady : public LEDState
+{
+public:
+	void entry() override;
+	void exit() override {};
+};
+
+// 2026-05-24: end-of-session deep-idle indicator (rail stays on, M10Q in
+// PMREQ-backup). Double-blink RED for ~500 ms then auto-transit to LEDOff.
+// Distinct from LEDGNSSPowerOff (fast blink) — operator can tell at a
+// glance which sleep depth was engaged after a no-fix session.
+class LEDGNSSDeepIdle : public LEDState
+{
+public:
+	void entry() override;
+	void exit() override {};
+};
+
+// 2026-05-24: end-of-session full power-off indicator (rail cut, M10Q will
+// cold-boot next session). Fast blink RED for ~500 ms then auto-transit to
+// LEDOff. Heavier shutdown signal than the deep-idle double-blink.
+class LEDGNSSPowerOff : public LEDState
 {
 public:
 	void entry() override;
