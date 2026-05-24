@@ -948,9 +948,13 @@ void ArgosTxService::process_sensor_burst() {
 
 			// Modulation policy:
 			//   adaptive=ON  → pick optimal mod from format (MEASC12→LDK, MEAS20→LDA2)
-			//   adaptive=OFF → keep master modulation set by the scheduler / config.
-			//                  The padding fits into LDA2 (24 B) without issue; the
-			//                  LDK micro-optimization is opt-in via ARGOS_AD_MOD.
+			//                  and switch the SMD accordingly.
+			//   adaptive=OFF → respect the master modulation actually configured in
+			//                  the SMD (NOT m_scheduled_mode — line 207 hardcodes
+			//                  LDA2 in SURFACING_BURST regardless of master). Query
+			//                  the live SMD state so send() always matches.
+			//                  Padding fits LDA2 (24 B); the LDK micro-optimization
+			//                  for MEASC12 is opt-in via ARGOS_AD_MOD.
 			if (argos_config.adaptive_modulation) {
 				m_scheduled_mode = (format_id == (uint8_t)BaseCloudLocateFormat::MEASC12) ?
 					KineisModulation::LDK : KineisModulation::LDA2;
@@ -964,13 +968,14 @@ void ArgosTxService::process_sensor_burst() {
 						return;
 					}
 				}
-			} else if (!size_fits_modulation(size_bits, m_scheduled_mode)) {
-				// Defensive: master modulation may be VLDA4 (small payload). MEAS20
-				// won't fit. Skip rather than truncate.
-				DEBUG_ERROR("ArgosTxService::process_sensor_burst: CloudLocate payload %u bits doesn't fit master mod %d (ARGOS_AD_MOD=0) — skipping TX",
-				            size_bits, (int)m_scheduled_mode);
-				service_complete();
-				return;
+			} else {
+				m_scheduled_mode = m_kineis.get_current_modulation();
+				if (!size_fits_modulation(size_bits, m_scheduled_mode)) {
+					DEBUG_ERROR("ArgosTxService::process_sensor_burst: CloudLocate payload %u bits doesn't fit master mod %d (ARGOS_AD_MOD=0) — skipping TX",
+					            size_bits, (int)m_scheduled_mode);
+					service_complete();
+					return;
+				}
 			}
 			DEBUG_INFO("ArgosTxService::process_sensor_burst: CloudLocate fmt=%u mode=%s data=%s",
 			           format_id, argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode),
@@ -1116,11 +1121,10 @@ void ArgosTxService::process_gnss_burst() {
 			packet = ArgosPacketBuilder::build_cloudlocate_packet(blob, blob_size, format_id,
 			                                                      v.back()->info.batt_voltage, argos_config.is_lb);
 			size_bits = ArgosPacketBuilder::cloudlocate_packet_bits(format_id);
-			// Modulation policy:
-			//   adaptive=ON  → pick optimal mod from format (MEASC12→LDK, MEAS20→LDA2)
-			//   adaptive=OFF → keep master modulation set by the scheduler / config.
-			//                  The padding fits into LDA2 (24 B) without issue; the
-			//                  LDK micro-optimization is opt-in via ARGOS_AD_MOD.
+			// Modulation policy: see process_sensor_burst for full rationale.
+			//   adaptive=ON  → pick optimal mod from format, switch SMD.
+			//   adaptive=OFF → use live SMD modulation, NOT m_scheduled_mode
+			//                  (which line 207 hardcodes to LDA2 in SURFACING_BURST).
 			if (argos_config.adaptive_modulation) {
 				m_scheduled_mode = (format_id == (uint8_t)BaseCloudLocateFormat::MEASC12) ?
 					KineisModulation::LDK : KineisModulation::LDA2;
@@ -1134,13 +1138,14 @@ void ArgosTxService::process_gnss_burst() {
 						return;
 					}
 				}
-			} else if (!size_fits_modulation(size_bits, m_scheduled_mode)) {
-				// Defensive: master modulation may be VLDA4 (small payload). MEAS20
-				// won't fit. Skip rather than truncate.
-				DEBUG_ERROR("ArgosTxService::process_gnss_burst: CloudLocate payload %u bits doesn't fit master mod %d (ARGOS_AD_MOD=0) — skipping TX",
-				            size_bits, (int)m_scheduled_mode);
-				service_complete();
-				return;
+			} else {
+				m_scheduled_mode = m_kineis.get_current_modulation();
+				if (!size_fits_modulation(size_bits, m_scheduled_mode)) {
+					DEBUG_ERROR("ArgosTxService::process_gnss_burst: CloudLocate payload %u bits doesn't fit master mod %d (ARGOS_AD_MOD=0) — skipping TX",
+					            size_bits, (int)m_scheduled_mode);
+					service_complete();
+					return;
+				}
 			}
 			DEBUG_INFO("ArgosTxService::process_gnss_burst: CloudLocate fmt=%u mode=%s data=%s",
 			           format_id, argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode),
@@ -1387,11 +1392,11 @@ void ArgosTxService::process_doppler_burst() {
 			                                                                   service_get_voltage(), argos_config.is_lb);
 			size_bits = ArgosPacketBuilder::cloudlocate_packet_bits(format_id);
 
-			// Modulation policy:
-			//   adaptive=ON  → pick optimal mod from format (MEASC12→LDK, MEAS20→LDA2)
-			//   adaptive=OFF → keep master modulation (m_scheduled_mode). The LDK
-			//                  override for MEASC12 is an opt-in power optimization,
-			//                  not a hard requirement — padding fits LDA2 (24 B).
+			// Modulation policy: see process_sensor_burst for full rationale.
+			//   adaptive=ON  → pick optimal mod from format, switch SMD.
+			//   adaptive=OFF → use live SMD modulation. m_scheduled_mode is NOT
+			//                  reliable here — line 207 hardcodes LDA2 in
+			//                  SURFACING_BURST regardless of master config.
 			KineisModulation tx_mode;
 			if (argos_config.adaptive_modulation) {
 				tx_mode = (format_id == (uint8_t)BaseCloudLocateFormat::MEASC12) ?
@@ -1407,7 +1412,7 @@ void ArgosTxService::process_doppler_burst() {
 					}
 				}
 			} else {
-				tx_mode = m_scheduled_mode;
+				tx_mode = m_kineis.get_current_modulation();
 				if (!size_fits_modulation(size_bits, tx_mode)) {
 					DEBUG_ERROR("ArgosTxService::process_doppler_burst: CloudLocate payload %u bits doesn't fit master mod %d (ARGOS_AD_MOD=0) — skipping TX",
 					            size_bits, (int)tx_mode);
