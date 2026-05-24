@@ -1089,6 +1089,26 @@ void SmdSat::send(const KineisModulation mode, const KineisPacket& user_payload,
 	TXTRACE("send() entered: mode=%d state=%d first_tx=%u tcxo_warmup=%u s",
 	        static_cast<int>(mode), static_cast<int>(m_state), m_is_first_tx, m_tcxo_warmup_time);
 
+#if SMDSAT_AUTOFALLBACK_ENABLED
+	// Lazy sync of runtime flag from persisted param. Lets a DTE PARMW SMP00=0
+	// (operator-triggered manual clear after a confirmed root-cause fix) take
+	// effect at the next TX without requiring a reboot. The runtime flag
+	// `g_smdsat_use_safe_timings` is otherwise only set at boot via
+	// `degraded_mode_load_if_needed()` and by `degraded_mode_engage()`. The
+	// reverse direction (param=1 while flag=false) cannot happen because DTE
+	// PARMW rejects SMP00=1 (see dte_handler.cpp::PARMW_REQ); only
+	// degraded_mode_engage() can set param=1, and it also sets the flag.
+	if (g_smdsat_use_safe_timings && configuration_store &&
+	    configuration_store->read_param<unsigned int>(ParamID::SMD_DEGRADED_MODE) == 0) {
+		DEBUG_INFO("SmdSat::send: DTE-cleared degraded mode — re-engaging FAST timings");
+		VAL_SAT("degraded_mode_cleared_via_dte -> FAST timings");
+		g_smdsat_use_safe_timings = false;
+		m_safe_mode_tx_count = 0;
+		m_safe_trust_window_hours = 1;
+		m_safe_mode_since_ms = 0;
+	}
+#endif
+
 	// Reject operations during error cooldown — prevents SPI spam when SMD is unresponsive
 	if (m_cooldown_until > 0 && PMU::get_timestamp_ms() < m_cooldown_until) {
 		unsigned int remaining_ms = static_cast<unsigned int>(m_cooldown_until - PMU::get_timestamp_ms());

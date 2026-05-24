@@ -349,7 +349,16 @@ const BaseMap param_map[] = {
 	// by SmdSat after SMD_MAX_CONSECUTIVE_ERRORS SPI errors when SMDSAT_AUTOFALLBACK is built in).
 	// Persisted across reboot so a watchdog reset in degraded mode does not lose the SAFE state.
 	// Read-only at DTE; written exclusively by SmdSat itself.
-	{ "SMD_DEGRADED_MODE", "SMP00", BaseEncoding::UINT, 0U, 1U, {}, true, false },
+	// SMD_DEGRADED_MODE: read mostly via DTE for diagnostic; writable to allow
+	// manual clear after a confirmed root-cause fix (e.g. HW repair, FW update
+	// addressing the original cascade). DTE writes ONLY accept 0 — engagement
+	// stays under autofallback control. min/max kept at 0/1 so firmware
+	// `write_param(1)` from `degraded_mode_engage()` continues to work; the
+	// `permitted_values = {0U}` restricts DTE PARMW only (the DTE protocol
+	// layer enforces permitted_values on PARMW but internal write_param
+	// bypasses it). Runtime flag `g_smdsat_use_safe_timings` is re-synced
+	// from this param at the next `SmdSat::send()` call (lazy sync).
+	{ "SMD_DEGRADED_MODE", "SMP00", BaseEncoding::UINT, 0U, 1U, { 0U }, true, true },
 	// [227] Cached SMD modulation (0=LDA2, 1=LDK, 2=VLDA4) — mirrors what's actually
 	// programmed in STM32WL flash. Written by SmdSat after the credentials-dirty path
 	// reads back the master RCONF. On boot, SmdSat loads this so the FIRST surface-burst
@@ -379,8 +388,24 @@ const BaseMap param_map[] = {
 	// SURFACING_BURST value to LEGACY at read time.
 	{ "HAULED_ARGOS_MODE",         "HMP10", BaseEncoding::ARGOSMODE, 0, 0, { 0U, 1U, 2U, 3U, 4U }, true, true },
 	{ "HAULED_TR_NOM",             "HMP11", BaseEncoding::UINT,    1U, 0xFFFFFFFFU, {}, true, true },
+	// HMP12 (HAULED_GNSS_EN): GPS acquisition enable WHEN HAULED. IMPORTANT:
+	// this param is ONLY consulted by config_store when HMP13 == FRESH (0).
+	// For HMP13 == REUSE_LAST (1) or OFF (2), config_store FORCES gnss_en=false
+	// regardless of HMP12 — the cache/Doppler path is used instead. So:
+	//   HMP13=0 (FRESH)      + HMP12=true  → GPS WAKES at every HAULED TX
+	//   HMP13=0 (FRESH)      + HMP12=false → GPS OFF (Doppler-only TX)
+	//   HMP13=1 (REUSE_LAST) + HMP12=*     → GPS OFF, TX uses cached fix
+	//                                        (falls back to Doppler if cache
+	//                                        > GNP50 = GNSS_REUSE_FIX_MAX_AGE_S)
+	//   HMP13=2 (OFF)        + HMP12=*     → GPS OFF, Doppler-only (no cache)
+	// A run-time WARN fires if HMP12=true is set with HMP13≠FRESH so the
+	// operator sees the ambiguous combo in the post-deploy log.
 	{ "HAULED_GNSS_EN",            "HMP12", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
-	// HAULED_GNSS_STRAT: 0=FRESH, 1=REUSE_LAST, 2=OFF (BaseGnssStrategy)
+	// HAULED_GNSS_STRAT: 0=FRESH (acquire as usual, gated by HMP12),
+	//                    1=REUSE_LAST (no GPS, TX uses last cached fix from
+	//                                  depth pile, max age = GNP50),
+	//                    2=OFF (no GPS, no cache lookup — pure Doppler).
+	// Default 1 (REUSE_LAST) — battery-optimal for sealed turtle deployment.
 	{ "HAULED_GNSS_STRAT",         "HMP13", BaseEncoding::UINT,    0U, 2U, {}, true, true },
 	// [239] CloudLocate always-on: capture raw GNSS measurements on every
 	// SURFACING_BURST surface, not just before the first fix. Useful for

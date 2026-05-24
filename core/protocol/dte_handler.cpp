@@ -105,9 +105,29 @@ std::string DTEHandler::PARMW_REQ(int error_code, std::vector<ParamValue>& param
 	}
 
 	for (unsigned int i = 0; i < param_values.size(); i++) {
-		if (param_map[(int)param_values[i].param].is_writable)
+		if (param_map[(int)param_values[i].param].is_writable) {
+			// SMP00 (SMD_DEGRADED_MODE): writable via DTE for manual clear
+			// after a confirmed root-cause fix, but only value 0 is accepted.
+			// Value 1 (engage SAFE) must remain under the autofallback's
+			// exclusive control — the device is in the best position to
+			// detect cascade failures and engage SAFE timings. Allowing
+			// PARMW SMP00=1 would let an operator manually trigger the
+			// "degraded" state, bypassing the success-count / trust-window
+			// re-test machinery that auto-clears it.
+			if (param_values[i].param == ParamID::SMD_DEGRADED_MODE) {
+				try {
+					unsigned int v = std::get<unsigned int>(param_values[i].value);
+					if (v != 0) {
+						DEBUG_WARN("DTEHandler::PARMW_REQ: SMP00 only accepts value 0 (manual clear) — rejected");
+						rejected_keys.push_back(param_map[(int)param_values[i].param].key);
+						continue;
+					}
+				} catch (const std::bad_variant_access&) {
+					// Type mismatch — let configuration_store handle / reject
+				}
+			}
 			configuration_store->write_param(param_values[i].param, param_values[i].value);
-		else {
+		} else {
 			DEBUG_WARN("DTEHandler::PARMW_REQ: not writing read-only attribute %s", param_map[(int)param_values[i].param].name.c_str());
 			rejected_keys.push_back(param_map[(int)param_values[i].param].key);
 		}

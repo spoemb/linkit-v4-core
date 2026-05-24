@@ -11,6 +11,7 @@
 #include "interrupt_lock.hpp"
 #include "rtc.hpp"
 #include "debug.hpp"
+#include "pmu.hpp"   // HM-4 audit fix: PMU::get_timestamp_ms() for evaluate() cache
 
 // Pre-deploy validation channel — emit grep-friendly [VAL-HAULED] tagged
 // transitions when -DVALIDATION_LOG_ENABLE=1 is set at build. Default off
@@ -142,8 +143,25 @@ void HauledModeService::evaluate() {
 
 void HauledModeService::evaluate(std::time_t now) {
 	if (!configuration_store) return;
+
+	// HM-4 audit fix: short-window cache to avoid re-reading config params and
+	// running the threshold subtraction on every call (evaluate is invoked
+	// from every get_argos_configuration / get_gnss_configuration, which fires
+	// many times per second). Cache TTL kept very short (500 ms) so a DTE
+	// HMP00 toggle takes effect within half a second. The HMP00=disabled
+	// fast-path below the cache check ALWAYS runs (immediate exit-from-HAULED
+	// semantics preserved). Only the AT_SEA→HAULED threshold check is cached.
+	#ifndef CPPUTEST
+	static uint64_t s_last_evaluate_ms = 0;
+	uint64_t now_ms = PMU::get_timestamp_ms();
+	bool cache_hot = (s_last_evaluate_ms != 0) && (now_ms - s_last_evaluate_ms < 500);
+	#else
+	bool cache_hot = false;  // tests need deterministic evaluation
+	#endif
+
 	if (!configuration_store->read_param<bool>(ParamID::HAULED_DETECT_EN)) {
 		// Detection disabled: ensure we never stay stuck in HAULED.
+		// NOT cached: immediate response to DTE HMP00 toggle is required.
 		if (s_noinit.in_hauled) {
 			InterruptLock lock;
 			s_noinit.in_hauled = 0;
@@ -154,6 +172,15 @@ void HauledModeService::evaluate(std::time_t now) {
 	}
 	if (s_noinit.in_hauled) return;  // hysteresis: only on_underwater_event can clear
 	if (s_noinit.last_uw_event_rtc == 0) return;  // never seen UW yet — stay AT_SEA
+
+	// Cache hot AND nothing changed above (still AT_SEA + last_uw stamped):
+	// skip the threshold check + HMP01 read. Saves a config_store lookup +
+	// one std::time_t subtraction per call. Threshold is in hours so a
+	// 500 ms cache window cannot meaningfully delay an AT_SEA→HAULED engage.
+	if (cache_hot) return;
+	#ifndef CPPUTEST
+	s_last_evaluate_ms = now_ms;
+	#endif
 	// Mitigation M1b (2026-05): RTC rollback detected (typically a WDT reset
 	// brought RTC back to 1 while noinit still has timestamps from previous
 	// session). The previous behavior `return` left HAULED stuck for the rest

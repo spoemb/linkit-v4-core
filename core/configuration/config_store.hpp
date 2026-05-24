@@ -384,6 +384,36 @@ protected:
 	bool     m_is_battery_level_low = false;
 	GPSLogEntry m_last_gps_log_entry;
 	ConfigMode  m_last_config_mode;
+
+	/// @brief HM-2 audit fix: track config-mode transitions with an explicit
+	/// HAULED-exit log. Previously the cascade logged "NORMAL/OOZ/LB detected"
+	/// when exiting HAULED but never named the exit transition itself, making
+	/// post-deploy forensics ambiguous (was it a fresh boot or a HAULED exit?).
+	/// Helper called by every transition site in get_gnss/argos_configuration.
+	/// Idempotent: only logs on actual change.
+	void mark_config_mode(ConfigMode new_mode) {
+		if (m_last_config_mode == new_mode) return;
+		if (m_last_config_mode == ConfigMode::HAULED) {
+			DEBUG_INFO("ConfigurationStore: HAULED mode EXITED -> %s",
+			           new_mode == ConfigMode::LOW_BATTERY ? "LOW_BATTERY" :
+			           new_mode == ConfigMode::OUT_OF_ZONE ? "OUT_OF_ZONE" :
+			           new_mode == ConfigMode::NORMAL      ? "NORMAL" : "?");
+#if VALIDATION_LOG_ENABLE
+			DEBUG_INFO("[VAL-HAULED] mode_exit t=%u to=%d",
+			           rtc && rtc->is_set() ? (unsigned int)rtc->gettime() : 0U,
+			           (int)new_mode);
+#endif
+		}
+		switch (new_mode) {
+			case ConfigMode::LOW_BATTERY: DEBUG_INFO("ConfigurationStore: LOW_BATTERY mode detected"); break;
+			case ConfigMode::OUT_OF_ZONE: DEBUG_INFO("ConfigurationStore: OUT_OF_ZONE mode detected"); break;
+			case ConfigMode::NORMAL:      DEBUG_INFO("ConfigurationStore: NORMAL mode detected"); break;
+			case ConfigMode::HAULED:      /* logged inline as "engaged (GNSS)" / "engaged (Argos)" */ break;
+			default: break;
+		}
+		m_last_config_mode = new_mode;
+	}
+
 	virtual void serialize_config() = 0;
 	virtual void update_battery_level() = 0;
 
@@ -726,10 +756,7 @@ public:
 			gnss_config.min_elev = read_param<unsigned int>(ParamID::GNSS_MIN_ELEV);
 			gnss_config.ano_stale_days = read_param<unsigned int>(ParamID::GNSS_ANO_STALE_DAYS);
 
-			if (m_last_config_mode != ConfigMode::LOW_BATTERY) {
-				DEBUG_INFO("ConfigurationStore: LOW_BATTERY mode detected");
-				m_last_config_mode = ConfigMode::LOW_BATTERY;
-			}
+			mark_config_mode(ConfigMode::LOW_BATTERY);
 
 		} else if (gnss_config.is_out_of_zone) {
 			gnss_config.enable = read_param<bool>(ParamID::GNSS_EN);
@@ -754,10 +781,7 @@ public:
 			gnss_config.min_elev = read_param<unsigned int>(ParamID::GNSS_MIN_ELEV);
 			gnss_config.ano_stale_days = read_param<unsigned int>(ParamID::GNSS_ANO_STALE_DAYS);
 
-			if (!hauled_will_override && m_last_config_mode != ConfigMode::OUT_OF_ZONE) {
-				DEBUG_INFO("ConfigurationStore: OUT_OF_ZONE mode detected");
-				m_last_config_mode = ConfigMode::OUT_OF_ZONE;
-			}
+			if (!hauled_will_override) mark_config_mode(ConfigMode::OUT_OF_ZONE);
 
 		} else {
 			// Use default params
@@ -783,10 +807,7 @@ public:
 			gnss_config.min_elev = read_param<unsigned int>(ParamID::GNSS_MIN_ELEV);
 			gnss_config.ano_stale_days = read_param<unsigned int>(ParamID::GNSS_ANO_STALE_DAYS);
 
-			if (!hauled_will_override && m_last_config_mode != ConfigMode::NORMAL) {
-				DEBUG_INFO("ConfigurationStore: NORMAL mode detected");
-				m_last_config_mode = ConfigMode::NORMAL;
-			}
+			if (!hauled_will_override) mark_config_mode(ConfigMode::NORMAL);
 		}
 
 		// HAULED override (Plan 1 step 3) — applied after the LB/OoZ/NORMAL
@@ -805,6 +826,10 @@ public:
 			}
 			if (m_last_config_mode != ConfigMode::HAULED) {
 				DEBUG_INFO("ConfigurationStore: HAULED mode engaged (GNSS)");
+#if VALIDATION_LOG_ENABLE
+				DEBUG_INFO("[VAL-HAULED] mode_enter t=%u src=GNSS",
+				           rtc && rtc->is_set() ? (unsigned int)rtc->gettime() : 0U);
+#endif
 				m_last_config_mode = ConfigMode::HAULED;
 			}
 		}
@@ -873,10 +898,7 @@ public:
 			argos_config.surfacing_burst_init_s = read_param<unsigned int>(ParamID::SURFACING_BURST_INIT_S);
 			argos_config.surfacing_burst_step_s = read_param<unsigned int>(ParamID::SURFACING_BURST_STEP_S);
 			argos_config.surfacing_burst_max_s = read_param<unsigned int>(ParamID::SURFACING_BURST_MAX_S);
-			if (m_last_config_mode != ConfigMode::LOW_BATTERY) {
-				DEBUG_INFO("ConfigurationStore: LOW_BATTERY mode detected");
-				m_last_config_mode = ConfigMode::LOW_BATTERY;
-			}
+			mark_config_mode(ConfigMode::LOW_BATTERY);
 		} else if (argos_config.is_out_of_zone) {
 			argos_config.gnss_en = read_param<bool>(ParamID::GNSS_EN);
 			argos_config.last_aop_update = read_param<std::time_t>(ParamID::ARGOS_AOP_DATE);
@@ -906,10 +928,7 @@ public:
 			argos_config.surfacing_burst_step_s = read_param<unsigned int>(ParamID::SURFACING_BURST_STEP_S);
 			argos_config.surfacing_burst_max_s = read_param<unsigned int>(ParamID::SURFACING_BURST_MAX_S);
 
-			if (!hauled_will_override && m_last_config_mode != ConfigMode::OUT_OF_ZONE) {
-				DEBUG_INFO("ConfigurationStore: OUT_OF_ZONE mode detected");
-				m_last_config_mode = ConfigMode::OUT_OF_ZONE;
-			}
+			if (!hauled_will_override) mark_config_mode(ConfigMode::OUT_OF_ZONE);
 		} else {
 			// Use default params
 			argos_config.gnss_en = read_param<bool>(ParamID::GNSS_EN);
@@ -940,10 +959,7 @@ public:
 			argos_config.surfacing_burst_init_s = read_param<unsigned int>(ParamID::SURFACING_BURST_INIT_S);
 			argos_config.surfacing_burst_step_s = read_param<unsigned int>(ParamID::SURFACING_BURST_STEP_S);
 			argos_config.surfacing_burst_max_s = read_param<unsigned int>(ParamID::SURFACING_BURST_MAX_S);
-			if (!hauled_will_override && m_last_config_mode != ConfigMode::NORMAL) {
-				DEBUG_INFO("ConfigurationStore: NORMAL mode detected");
-				m_last_config_mode = ConfigMode::NORMAL;
-			}
+			if (!hauled_will_override) mark_config_mode(ConfigMode::NORMAL);
 		}
 
 		// HAULED override (Plan 1) — see matching logic in
@@ -980,6 +996,25 @@ public:
 			}
 			if (m_last_config_mode != ConfigMode::HAULED) {
 				DEBUG_INFO("ConfigurationStore: HAULED mode engaged (Argos)");
+#if VALIDATION_LOG_ENABLE
+				DEBUG_INFO("[VAL-HAULED] mode_enter t=%u src=Argos",
+				           rtc && rtc->is_set() ? (unsigned int)rtc->gettime() : 0U);
+#endif
+				// HM-1 audit fix: warn about ambiguous config combos. HMP12
+				// (HAULED_GNSS_EN) is ONLY honored when HMP13 (HAULED_GNSS_STRAT)
+				// = FRESH. For REUSE_LAST and OFF the strategy forces gnss_en=false
+				// regardless of HMP12. Users frequently misread this as "enable
+				// GPS AND use last fix", but the actual behavior is "GPS stays
+				// off, TX uses cache only". Fired once on HAULED entry only
+				// (gated by the !=HAULED check above) — no log spam.
+				if (strat != (unsigned int)BaseGnssStrategy::FRESH &&
+				    read_param<bool>(ParamID::HAULED_GNSS_EN)) {
+					DEBUG_WARN("ConfigurationStore: HMP12=HAULED_GNSS_EN=true but HMP13=%s "
+					           "(non-FRESH) ignores it — GPS will stay OFF during HAULED. "
+					           "Set HMP13=FRESH if you want HMP12 to enable GPS, or set "
+					           "HMP12=false to remove this warning.",
+					           strat == (unsigned int)BaseGnssStrategy::REUSE_LAST ? "REUSE_LAST" : "OFF");
+				}
 				m_last_config_mode = ConfigMode::HAULED;
 			}
 		}
