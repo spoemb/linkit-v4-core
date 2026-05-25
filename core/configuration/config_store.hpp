@@ -383,6 +383,7 @@ protected:
 	uint16_t m_battery_voltage = 0;
 	bool     m_is_battery_level_low = false;
 	GPSLogEntry m_last_gps_log_entry;
+	GPSLogEntry m_last_fastloc_log_entry;
 	ConfigMode  m_last_config_mode;
 
 	/// @brief HM-2 audit fix: track config-mode transitions with an explicit
@@ -458,6 +459,7 @@ private:
 public:
 	ConfigurationStore() {
 		m_last_gps_log_entry.info.valid = 0; // Mark last GPS entry as invalid
+		m_last_fastloc_log_entry.info.valid = 0; // Mark last Fastloc entry as invalid
 		m_last_config_mode = ConfigMode::NORMAL;
 	}
 
@@ -675,6 +677,18 @@ public:
 	/// @brief Get the last known GPS fix.
 	const GPSLogEntry& get_last_gps_entry() const {
 		return m_last_gps_log_entry;
+	}
+
+	/// @brief Update cached last Fastloc / degraded-PVT position.
+	/// Used by Phase-1 surfacing burst to TX the most recent known position
+	/// when no live fix is available this surface.
+	void notify_fastloc_location(GPSLogEntry& gps_location) {
+		m_last_fastloc_log_entry = gps_location;
+	}
+
+	/// @brief Get the last known Fastloc / degraded-PVT position.
+	const GPSLogEntry& get_last_fastloc_entry() const {
+		return m_last_fastloc_log_entry;
 	}
 
 	/// @brief Check if device is outside the configured zone (haversine distance).

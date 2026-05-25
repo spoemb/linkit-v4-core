@@ -731,6 +731,10 @@ void GPSService::task_process_degraded_gnss_data()
                gps_entry.info.lat, gps_entry.info.lon,
                gps_entry.info.hAcc, gps_entry.info.numSV, gps_entry.info.fixType);
 
+    // Cache for Phase-1 surfacing burst: when next surface fires before a
+    // fresh fix is available, this entry is used as the 1st-ping payload.
+    configuration_store->notify_fastloc_location(gps_entry);
+
     ServiceEventData event_data = gps_entry;
     service_complete(&event_data, &gps_entry);
     // LED dispatch: degraded-fix path (GPSLogEntry has info.valid based on

@@ -145,15 +145,32 @@ unsigned int LoRaTxService::service_next_schedule_in_ms() {
 			m_scheduled_task = [this]() { process_status_burst(); };
 
 			// First message: normally immediate, but if FASTLOC_MODE=CLOUDLOCATE
-			// defer to give the GPS time to capture the raw measurement before
-			// our 1st TX. The raw-ready notification (notify_peer_event below)
-			// pre-empts this delay via service_reschedule(true), so the actual
-			// 1st TX fires the moment raw is available — typically 5-15 s after
-			// surface. The full timeout only fires as a safety fallback if GPS
-			// never emits raw, at which point we send a STATUS ping (raw=false
-			// branch in process_status_burst). Saves one TX per burst on the
-			// happy path.
+			// (and no cached position is available) defer to give the GPS time
+			// to capture the raw measurement before our 1st TX. The raw-ready
+			// notification (notify_peer_event below) pre-empts this delay via
+			// service_reschedule(true), so the actual 1st TX fires the moment
+			// raw is available — typically 5-15 s after surface. The full
+			// timeout only fires as a safety fallback if GPS never emits raw,
+			// at which point we send a STATUS ping (raw=false branch in
+			// process_status_burst).
+			//
+			// When a cached position (last GPS fix or last Fastloc) is
+			// available, we skip the defer and fire immediately at surface —
+			// the 1st TX packet content is "prepared underwater" from the
+			// cache, and we don't need to wait for live data.
 			if (m_status_burst_count == 0) {
+				const GPSLogEntry& cached_gps = configuration_store->get_last_gps_entry();
+				const GPSLogEntry& cached_fl  = configuration_store->get_last_fastloc_entry();
+				bool have_cached_position =
+					(cached_gps.info.valid && cached_gps.info.event_type == GPSEventType::FIX) ||
+					(cached_fl.info.valid  && cached_fl.info.event_type  == GPSEventType::FASTLOC);
+
+				if (have_cached_position) {
+					DEBUG_INFO("LoRaTxService::SURFACING_BURST: status #1 immediate (cached position available)");
+					m_sched.schedule_at(now);
+					return 0;
+				}
+
 				unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
 				// Defer 1st STATUS only when a CloudLocate raw can actually arrive:
 				//   - FASTLOC_MODE == CLOUDLOCATE (CloudLocate enabled)
@@ -169,7 +186,7 @@ unsigned int LoRaTxService::service_next_schedule_in_ms() {
 					m_sched.schedule_at(now + wait_s);
 					return wait_s * 1000;
 				}
-				DEBUG_INFO("LoRaTxService::SURFACING_BURST: status #%u (immediate)", m_status_burst_count + 1);
+				DEBUG_INFO("LoRaTxService::SURFACING_BURST: status #%u (immediate, no cache)", m_status_burst_count + 1);
 				m_sched.schedule_at(now);
 				return 0;
 			}
@@ -733,16 +750,77 @@ void LoRaTxService::process_status_burst() {
 		return;
 	}
 
-	// Standard status packet (first ping, or fastloc not available)
+	// Priority 3: Most recent cached position between last GPS fix and last
+	// Fastloc / degraded PVT (any past surface). Used when no live CloudLocate
+	// raw or degraded PVT is available this surface. Keeps every ping carrying
+	// a position rather than burning TX on pure status.
+	//
+	// "Most recent wins" comparison uses LogHeader UTC timestamp set at entry
+	// creation (service_set_log_header_time). build_sensor_packet handles
+	// FASTLOC vs FIX transparently via gps->info.event_type.
+	if (m_status_burst_count > 0) {
+		const GPSLogEntry& cached_gps = configuration_store->get_last_gps_entry();
+		const GPSLogEntry& cached_fl  = configuration_store->get_last_fastloc_entry();
+		bool gps_ok = (cached_gps.info.valid && cached_gps.info.event_type == GPSEventType::FIX);
+		bool fl_ok  = (cached_fl.info.valid  && cached_fl.info.event_type  == GPSEventType::FASTLOC);
+
+		const GPSLogEntry* pick = nullptr;
+		if (gps_ok && fl_ok) {
+			std::time_t t_gps = convert_epochtime(cached_gps.header.year, cached_gps.header.month,
+			                                     cached_gps.header.day,  cached_gps.header.hours,
+			                                     cached_gps.header.minutes, cached_gps.header.seconds);
+			std::time_t t_fl  = convert_epochtime(cached_fl.header.year, cached_fl.header.month,
+			                                     cached_fl.header.day,  cached_fl.header.hours,
+			                                     cached_fl.header.minutes, cached_fl.header.seconds);
+			pick = (t_fl > t_gps) ? &cached_fl : &cached_gps;
+		} else if (gps_ok) {
+			pick = &cached_gps;
+		} else if (fl_ok) {
+			pick = &cached_fl;
+		}
+
+		if (pick) {
+			GPSLogEntry entry = *pick;
+			entry.info.batt_voltage = service_get_voltage();  // freshen battery field
+			KineisPacket packet = LoRaPacketBuilder::build_sensor_packet(
+				&entry, nullptr, nullptr, nullptr, nullptr, nullptr,
+				false, service_is_battery_level_low(), size_bits);
+			const char* kind = (pick->info.event_type == GPSEventType::FIX) ? "CACHED_GPS" : "CACHED_FASTLOC";
+			DEBUG_INFO("LoRaTxService::process_status_burst: %s #%u lat=%lf lon=%lf data=%s",
+			           kind, m_status_burst_count, entry.info.lat, entry.info.lon,
+			           Binascii::hexlify(packet).c_str());
+			m_last_tx_had_gps = true;
+			m_device.send(KineisModulation::LDA2, packet, size_bits);
+			return;
+		}
+	}
+
+	// Priority 5: Pure status fallback — no live CloudLocate/degraded PVT and
+	// no cached position exist anywhere. Send one status ping then silence
+	// further pings this surface (continuing progressive status spam when we
+	// can never carry a position is wasteful). The next surfacing event will
+	// re-arm the burst.
 	KineisPacket packet = LoRaPacketBuilder::build_status_packet(
 			service_get_voltage(),
 			service_is_battery_level_low(),
 			size_bits);
 
-	DEBUG_INFO("LoRaTxService::process_status_burst: data=%s sz=%u bits",
-			Binascii::hexlify(packet).c_str(), size_bits);
+	DEBUG_INFO("LoRaTxService::process_status_burst: STATUS-PURE #%u data=%s sz=%u bits (no cache, silencing further pings)",
+			m_status_burst_count, Binascii::hexlify(packet).c_str(), size_bits);
 	m_last_tx_had_gps = false;
 	m_device.send(KineisModulation::LDA2, packet, size_bits);
+
+	// Silence the burst after this status-pure ping. Mirror the cooldown
+	// arming used by the max-msg-reached branch in service_next_schedule_in_ms.
+	if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing) {
+		unsigned int trigger = configuration_store->read_param<unsigned int>(ParamID::COOLDOWN_TRIGGER_MODE);
+		if (trigger == (unsigned int)BaseCooldownTrigger::END_OF_DOPPLER && !m_cooldown_armed) {
+			m_cooldown_armed = true;
+			DEBUG_INFO("LoRaTxService: cooldown armed (END_OF_DOPPLER, status-pure no cache)");
+		}
+		m_is_surfacing_burst = false;
+		m_awaiting_surfacing = true;
+	}
 }
 
 void LoRaTxService::react(KineisEventTxStarted const&) {
