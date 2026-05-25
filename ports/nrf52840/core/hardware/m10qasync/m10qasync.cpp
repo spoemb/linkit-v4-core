@@ -35,6 +35,8 @@ extern FileSystem *main_filesystem;
 // Tunable parameters (named constants, see embedded-qa review C1)
 static constexpr unsigned int DEFAULT_RETRIES               = 3;     ///< Default retry budget for op_state machines
 static constexpr unsigned int BOOT_BAUD_SYNC_RETRIES        = 6;     ///< Wider retry budget on initial baud sync
+static constexpr unsigned int PMREQ_VERIFY_RETRIES          = 3;     ///< 2026-05-25: PMREQ-backup verification retries (ping M10Q after PMREQ, re-send if replies)
+static constexpr unsigned int PMREQ_VERIFY_TIMEOUT_MS       = 200;   ///< Wait for verification poll response (TIMEOUT = backup confirmed, SUCCESS = M10Q still awake)
 static constexpr unsigned int EARLY_ABORT_SAT_REPORTS       = 20;    ///< Sat reports w/ qualityInd==0 before aborting (~20s @ 1Hz)
 static constexpr unsigned int NAV_REPORT_WATCHDOG_MS        = 5000;  ///< Inter-NAV-message UART watchdog while in receive state
 static constexpr unsigned int RECEIVE_TIMEOUT_FLOOR_MS      = 10000; ///< Minimum initial receive timeout (cold start floor)
@@ -159,8 +161,19 @@ void M10QAsyncReceiver::power_on(const GPSNavSettings& nav_settings) {
             m_pmreq_baud = DEFAULT_BAUDRATE;
             // Fall through to the normal cold power-on path below.
         } else {
-            DEBUG_INFO("M10QAsyncReceiver::power_on: wake from deep-idle via EXTINT (fail_count=%u)",
-                       m_consecutive_wake_failures);
+            // 2026-05-25 wake diagnostic: report how long the M10Q actually
+            // slept since state_backupidle_enter. A short delta (e.g. <5 s
+            // within a multi-minute GNP52 window) means someone called
+            // `power_on()` unexpectedly soon — the next investigation step is
+            // to identify the caller from the surrounding log context (likely
+            // GPSService scheduler retry or a peer event).
+            uint64_t now_ms = PMU::get_timestamp_ms();
+            uint64_t slept_ms = (m_backupidle_entered_ms > 0 && now_ms >= m_backupidle_entered_ms)
+                                ? (now_ms - m_backupidle_entered_ms)
+                                : 0;
+            DEBUG_INFO("M10QAsyncReceiver::power_on: wake from deep-idle via EXTINT (fail_count=%u, slept_ms=%llu)",
+                       m_consecutive_wake_failures,
+                       (unsigned long long)slept_ms);
             // M10Q wakes on EXTINT rising edge. Re-init UART driver (was
             // deinit'd in state_enterbackup step 3 to save the UART block
             // power during deep-idle). Then pulse EXTINT and let the
@@ -1242,6 +1255,10 @@ void M10QAsyncReceiver::state_enterbackup_enter() {
     m_retries = BOOT_BAUD_SYNC_RETRIES;
     m_op_state = OpState::IDLE;
     m_uart_error_count = 0;
+    // 2026-05-25 PMREQ verification: reset the per-dive retry budget so the
+    // verification step can retry PMREQ up to PMREQ_VERIFY_RETRIES times if
+    // the M10Q refuses backup on first attempt.
+    m_pmreq_verify_retries = PMREQ_VERIFY_RETRIES;
     DEBUG_INFO("M10QAsyncReceiver::state_enterbackup_enter");
 
     // HIGH GNSS-AUDIT #1 fix: two entry paths reach enterbackup:
@@ -1316,13 +1333,58 @@ void M10QAsyncReceiver::state_enterbackup() {
                 sync_baud_rate(baud);
                 break;
             } else if (m_step == 2) {
+                // 2026-05-25 EXTINT fix: drive GPIO_GPS_EXT_INT LOW (OUTPUT)
+                // BEFORE sending PMREQ-backup.
+                //
+                // Why: PMREQ-backup tells the M10Q to monitor EXTINT for wake
+                // edges (wakeupSources=EXTINT0). After the previous wake,
+                // `pulse_extint_wake` releases EXTINT to high-Z to avoid
+                // leakage while the M10Q is awake — correct for the awake
+                // state, but means EXTINT is floating when the next PMREQ-
+                // backup fires. Floating EXTINT can pick up ambient noise or
+                // settle at indeterminate levels, which the M10Q may interpret
+                // as wake edges → either refuses to stay in backup or wakes
+                // immediately after entering it.
+                //
+                // Driving LOW here gives the M10Q a clean stable idle state
+                // to observe across the entire backup duration. The next
+                // `pulse_extint_wake` already drives a clean LOW→HIGH→LOW
+                // pulse and releases to high-Z, so this is compatible with
+                // the existing wake path.
+                GPIOPins::init_pin(BSP::GPIO::GPIO_GPS_EXT_INT);
+                GPIOPins::clear(BSP::GPIO::GPIO_GPS_EXT_INT);
+
                 send_pmreq_backup();
                 m_op_state = OpState::IDLE;
                 m_step++;
-                run_state_machine(100); // let the PMREQ propagate before tearing down UART
+                run_state_machine(100); // let the PMREQ propagate before verification
+                break;
+            } else if (m_step == 3) {
+                // 2026-05-25 PMREQ-backup verification: send an invalid CFG-MSG
+                // and expect a NACK (same probe as `sync_baud_rate`). If the
+                // M10Q is in PMREQ-backup, UART RX is gated off → TIMEOUT →
+                // backup confirmed (good). If the M10Q is still awake (PMREQ
+                // refused or never received), it replies → SUCCESS → re-send
+                // PMREQ up to PMREQ_VERIFY_RETRIES.
+                //
+                // Why: catches the silent-failure mode observed 2026-05-25
+                // where firmware happily logged "M10 sleeping" but ammeter
+                // showed ~2 mA (PSM/Sleep) instead of ~10 µA (backup).
+                // Wakeup-source restriction (EXTINT0 only, no UARTRX) means
+                // this probe cannot accidentally wake an actually-sleeping
+                // M10Q.
+                {
+                    CFG::MSG::MSG_MSG_NORATE probe = {
+                        .msgClass = MessageClass::MSG_CLASS_BAD,
+                        .msgID = 0,
+                    };
+                    initiate_timeout(PMREQ_VERIFY_TIMEOUT_MS);
+                    m_ubx_comms.send_packet_with_expect(MessageClass::MSG_CLASS_CFG, CFG::ID_MSG, probe,
+                                                         MessageClass::MSG_CLASS_ACK, ACK::ID_NACK);
+                }
                 break;
             } else {
-                // Step 3: release UART pins (rail stays powered)
+                // Step 4 (formerly step 3): release UART pins (rail stays powered)
                 m_ubx_comms.deinit();
                 STATE_CHANGE(enterbackup, backupidle);
                 break;
@@ -1344,8 +1406,25 @@ void M10QAsyncReceiver::state_enterbackup() {
             } else if (m_step == 1) {
                 m_pmreq_baud = m_gnss_info_valid ? DEFAULT_BAUDRATE : MAX_BAUDRATE;
                 m_step++;
+            } else if (m_step == 3) {
+                // 2026-05-25 PMREQ verification: SUCCESS = M10Q replied to
+                // our probe = NOT in PMREQ-backup. Re-send PMREQ from step 2
+                // up to PMREQ_VERIFY_RETRIES times before giving up.
+                if (m_pmreq_verify_retries > 0) {
+                    m_pmreq_verify_retries--;
+                    DEBUG_WARN("M10QAsyncReceiver: M10Q replied to probe after PMREQ — backup refused, retrying (left=%u)",
+                               (unsigned)m_pmreq_verify_retries);
+                    VAL_GNSS("pmreq_verify_retry left=%u", (unsigned)m_pmreq_verify_retries);
+                    m_step = 2;  // re-send PMREQ
+                } else {
+                    DEBUG_ERROR("M10QAsyncReceiver: M10Q refusing PMREQ-backup after %u attempts — "
+                                "proceeding to backupidle (rail will draw ~2 mA this cycle instead of ~10 µA)",
+                                (unsigned)PMREQ_VERIFY_RETRIES);
+                    VAL_GNSS("pmreq_verify_giveup");
+                    m_step++;
+                }
             } else {
-                m_step++;       // step 2/3 advance — no baud change to record
+                m_step++;       // step 2/4 advance — no baud change to record
             }
             VAL_GNSS("enterbackup_step_ok step=%u pmreq_baud=%u",
                      m_step, m_pmreq_baud);
@@ -1354,6 +1433,18 @@ void M10QAsyncReceiver::state_enterbackup() {
         } else if (m_op_state == OpState::PENDING) {
             break;
         } else {
+            // 2026-05-25 PMREQ verification: step 3 non-SUCCESS (TIMEOUT,
+            // ERROR, unexpected NACK) = M10Q silent to probe = backup
+            // confirmed. Skip the normal baud-sync retry path; advance to
+            // step 4 (UART deinit + backupidle transition).
+            if (m_step == 3) {
+                DEBUG_INFO("M10QAsyncReceiver: PMREQ-backup verified (M10Q silent to probe)");
+                VAL_GNSS("pmreq_verify_ok");
+                m_step++;
+                m_retries = DEFAULT_RETRIES;
+                m_op_state = OpState::IDLE;
+                continue;   // re-enter while loop with new step
+            }
             if (--m_retries == 0) {
                 if (m_step == 0) {
                     // Primary baud failed all retries — try the fallback
@@ -1401,7 +1492,13 @@ void M10QAsyncReceiver::state_enterbackup_exit() {
 }
 
 void M10QAsyncReceiver::state_backupidle_enter() {
-    DEBUG_INFO("M10QAsyncReceiver::state_backupidle_enter: rail ON, M10 sleeping");
+    // 2026-05-25 wake diagnostic: record entry timestamp so the next power_on
+    // can report how long the M10Q actually got to sleep. Diagnoses the
+    // "M10Q wakes after only 3 seconds in a 5-min GNP52 window" case observed
+    // on the bench — see the wake log in `power_on()` below.
+    m_backupidle_entered_ms = PMU::get_timestamp_ms();
+    DEBUG_INFO("M10QAsyncReceiver::state_backupidle_enter: rail ON, M10 sleeping (deep-idle started, t0=%llu ms)",
+               (unsigned long long)m_backupidle_entered_ms);
     // Nothing to do — rail is powered, UART deinit'd, M10 in backup mode.
     // The state remains until exit_backup_charge_mode() is called.
 }

@@ -310,7 +310,22 @@ void LoRaDevice::start_device()
         }
         if (wake_ok) {
             DEBUG_TRACE("LoRa: wake from standby OK");
-            LORA_STATE_CHANGE(standby, idle);
+            // Fast path: skip state_idle when a packet is queued and no
+            // deferred config reload is pending. Saves one FSM tick
+            // (~100 ms, run_state_machine default delay) on the surface
+            // first-TX critical path. Mirrors the Argos optimization
+            // "skip state_idle on warm-packet path" (§5 priority 3,
+            // CLAUDE.md). state_transmit_enter() is robust to entry from
+            // any state — it only resets m_tx_done/m_is_error and fires
+            // AT+SEND synchronously. The config_reload_pending guard
+            // preserves the slow path when a PARMW landed between dive
+            // warm-up and surface TX (would otherwise TX with stale config).
+            if (m_packet_buffer.length() && !m_config_reload_pending) {
+                DEBUG_TRACE("LoRa: standby wake fast-path → transmit (packet queued)");
+                LORA_STATE_CHANGE(standby, transmit);
+            } else {
+                LORA_STATE_CHANGE(standby, idle);
+            }
         } else {
             // Module not responding after 3 attempts — full power cycle
             DEBUG_WARN("LoRa: standby wake failed after 3 attempts, power cycling");
@@ -487,7 +502,7 @@ void LoRaDevice::state_power_on()
     if (m_power_on_retry == 1)
         m_lora_comm.process_rx();
 
-    DEBUG_INFO("LoRaDevice::state_power_on retry=%u", m_power_on_retry);
+    DEBUG_TRACE("LoRaDevice::state_power_on retry=%u", m_power_on_retry);
 
     // Try AT ping with tight per-attempt timeout (default 2000 ms is way too
     // generous for AT_TEST — it just blocks the FSM when the module is silent).
@@ -727,6 +742,26 @@ void LoRaDevice::state_configure()
             if (!send_AT(AT_SET_LPMLVL, std::to_string(1))) {
                 DEBUG_WARN("LoRaDevice: AT+LPMLVL not supported by this RUI3 version — continuing with LPM=1 default");
             }
+
+            // Belt-and-suspenders verification: query LPM mode + level back from
+            // the module so we know what sleep state it will actually enter at
+            // idle. Pure diagnostic — failures don't fail the configure walk,
+            // they just leave "?" in the log. The only ground truth for sleep
+            // current is still an ammeter on SAT_PWR_EN (~3 µA at Stop1, ~400 µA
+            // if auto-sleep is off), but a matching LPM=1 + LPMLVL=1 readback is
+            // strong indirect evidence that the RAK accepted and applied the
+            // commands. Runs once per cold boot, not per standby cycle.
+            {
+                std::string lpm_val = "?";
+                std::string lpmlvl_val = "?";
+                if (send_AT(AT_GET_LPM))
+                    lpm_val = m_lora_comm.m_last_value;
+                if (send_AT(AT_GET_LPMLVL))
+                    lpmlvl_val = m_lora_comm.m_last_value;
+                DEBUG_INFO("LoRaDevice: low-power readback: LPM=%s LPMLVL=%s (configured LPM=%u; LPMLVL=1 → Stop1 ~3uA wake-on-UART1)",
+                           lpm_val.c_str(), lpmlvl_val.c_str(),
+                           static_cast<unsigned>(m_config.lp_mode));
+            }
             break;
 
         case 14:
@@ -909,7 +944,9 @@ void LoRaDevice::state_idle()
     if (m_packet_buffer.length()) {
         LORA_STATE_CHANGE(idle, transmit);
     } else if (m_config.lp_mode == 1) {
-        // Standby: module stays powered, LPM Stop2 ~1.7µA, wake ~10ms
+        // Standby: module stays powered. Configured LPMLVL=1 → Stop1
+        // (~3 µA per STM32WLE5 datasheet), NOT Stop2 (~1.7 µA): Stop2 cannot
+        // wake from UART1 on this PCB — see state_configure step 13 rationale.
         LORA_STATE_CHANGE(idle, standby);
     } else {
         // Shutdown: full power off = 0µA, but 2.5s reboot on next TX
@@ -923,24 +960,30 @@ void LoRaDevice::state_idle_exit() {
 
 // ========================================================================
 // State: standby
-//   - Module powered, UART initialized, LPM Stop2 active (~1.7µA)
+//   - Module powered, UART initialized, Stop1 LPM active (~3 µA per
+//     STM32WLE5 datasheet — Stop2 ~1.7 µA is incompatible with our UART1
+//     wake path, so configure pins LPMLVL=1).
 //   - RAK3172 auto-sleeps via LPM=1 when no UART activity
-//   - Wake on UART RX (any byte wakes the MCU from Stop2 in ~15µs)
+//   - Wake on UART RX (any byte wakes the MCU from Stop1 in ~15µs)
 //   - Waiting for send() to be called
 // ========================================================================
 
 void LoRaDevice::state_standby_enter() {
     // Deinitialize the nRF UARTE1 peripheral while the RAK3172 sleeps in
-    // its own Stop2 LPM. Without this, UARTE1 stays clocked and burns
+    // its own Stop1 LPM. Without this, UARTE1 stays clocked and burns
     // ~300-500 µA even when idle — that's the difference between the
     // LoRa board measuring 0.7 mA vs SMD measuring 27 µA.
     //
     // The RAK3172 itself continues to receive power via SAT_PWR_EN so it
     // retains LoRaWAN session state. We only detach the nRF-side UART;
-    // the module's internal Stop2 wake-on-UART is still active on its
+    // the module's internal Stop1 wake-on-UART is still active on its
     // side, but we no longer clock our peripheral while waiting for a
     // send() call from the service layer.
-    DEBUG_INFO("LoRaDevice: standby (RAK Stop2 ~1.7uA + UARTE1 deinit)");
+    // Demoted to TRACE: fires on every TX cycle (idle → standby) on the
+    // surfacing-burst hot path. LFS commit overhead (~50-300 ms) compounds
+    // across burst pings. The transition is observable via the standby_exit
+    // INFO log on next TX wake (if needed).
+    DEBUG_TRACE("LoRaDevice: standby (RAK Stop1 ~3uA + UARTE1 deinit)");
 
     // Explicit AT+SLEEP before UART deinit — workaround for AT+LPM=1 not
     // reliably triggering Stop2 auto-sleep on RUI 4.0.6. The continuous-sleep
@@ -979,7 +1022,10 @@ void LoRaDevice::state_standby_exit() {
 
 void LoRaDevice::state_transmit_enter()
 {
-    DEBUG_INFO("LoRaDevice::state_transmit_enter");
+    // Demoted to TRACE: fires on every TX. AT+SEND itself is the canonical
+    // marker (visible in module UART traces) and the service-layer log
+    // ("process_status_burst" or equivalent) already names the TX.
+    DEBUG_TRACE("LoRaDevice::state_transmit_enter");
 
     m_tx_done = false;
     m_is_error = false;

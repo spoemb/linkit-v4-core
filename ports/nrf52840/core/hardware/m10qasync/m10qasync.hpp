@@ -232,6 +232,23 @@ private:
 	// or service_init clears it.
 	uint8_t m_consecutive_wake_failures = 0;
 	static constexpr uint8_t WAKE_FAIL_FAST_FALLBACK = 2;
+
+	/// 2026-05-25 PMREQ-backup verification: counter for inline retry attempts
+	/// when the M10Q refuses to enter PMREQ-backup (i.e. it still responds to
+	/// a probe poll right after PMREQ was sent). Reset at every
+	/// `state_enterbackup_enter` so each new dive cycle gets a fresh budget.
+	/// Catches the silent-failure mode observed 2026-05-25 where PMREQ is sent
+	/// but the M10Q stays in PSM/Sleep (~2 mA) instead of entering true backup
+	/// (~10 µA).
+	uint8_t m_pmreq_verify_retries = 0;
+
+	/// 2026-05-25 wake diagnostic: timestamp (ms since boot via PMU) of the
+	/// most recent transition into `backupidle`. Used by `power_on` to log how
+	/// long the M10Q was supposed to be sleeping when an EXTINT wake fires —
+	/// a very-short delta (e.g. <5 s within a 5-min GNP52 window) indicates a
+	/// spurious wake from some caller of `power_on()` that didn't intend to
+	/// cut deep-idle short. Zero = never entered backupidle this session.
+	uint64_t m_backupidle_entered_ms = 0;
 	void dump_navigation_database(unsigned int);
 	void save_dbd_to_flash();
 	bool load_dbd_from_flash();

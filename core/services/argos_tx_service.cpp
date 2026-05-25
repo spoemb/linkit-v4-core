@@ -251,7 +251,9 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 					if (interval_s > argos_config.surfacing_burst_max_s)
 						interval_s = argos_config.surfacing_burst_max_s;
 
-					DEBUG_INFO("ArgosTxService::SURFACING_BURST: Doppler #%u in %u s", m_doppler_burst_count + 1, interval_s);
+					// Demoted to TRACE: per progressive ping. Burst start/end markers
+				// stay at INFO; intermediate scheduling is verbose forensics.
+				DEBUG_TRACE("ArgosTxService::SURFACING_BURST: Doppler #%u in %u s", m_doppler_burst_count + 1, interval_s);
 					m_sched.schedule_at(now + interval_s);
 					return interval_s * 1000;
 				}
@@ -294,7 +296,9 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 					return delay_ms;
 				}
 
-				DEBUG_INFO("ArgosTxService::SURFACING_BURST: GNSS TX in %u s", argos_config.tx_interval_s);
+				// Demoted to TRACE: per Phase-2 ping. The "GNSS TX #1" INFO at burst
+			// promotion already marks the entry; per-ping interval is verbose.
+			DEBUG_TRACE("ArgosTxService::SURFACING_BURST: GNSS TX in %u s", argos_config.tx_interval_s);
 				return m_sched.schedule_legacy(argos_config, now);
 			}
 
@@ -896,7 +900,8 @@ void ArgosTxService::process_certification_burst() {
 	configuration_store->get_argos_configuration(argos_config);
 	unsigned int size_bits;
 	KineisPacket packet = ArgosPacketBuilder::build_certification_packet(argos_config.cert_tx_payload, size_bits);
-	DEBUG_INFO("ArgosTxService::process_certification_burst: mode=%s data=%s sz=%u", argos_modulation_to_string(argos_config.cert_tx_modulation), Binascii::hexlify(packet).c_str(), size_bits);
+	// Demoted to TRACE: per-TX payload dump (~50-300 ms LFS commit).
+	DEBUG_TRACE("ArgosTxService::process_certification_burst: mode=%s data=%s sz=%u", argos_modulation_to_string(argos_config.cert_tx_modulation), Binascii::hexlify(packet).c_str(), size_bits);
 	m_last_val_tx_type = "cert";
 	m_kineis.send((KineisModulation)argos_config.cert_tx_modulation, packet, size_bits);
 }
@@ -916,7 +921,8 @@ void ArgosTxService::process_time_sync_burst() {
 		if (argos_config.adaptive_modulation) {
 			ensure_modulation(m_scheduled_mode);
 		}
-		DEBUG_INFO("ArgosTxService::process_time_sync_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
+		// Demoted to TRACE: per-TX payload dump.
+		DEBUG_TRACE("ArgosTxService::process_time_sync_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
 		m_last_tx_had_gps = true;
 		m_last_val_tx_type = "tsync";
 		m_kineis.send(m_scheduled_mode, packet, size_bits);
@@ -977,7 +983,8 @@ void ArgosTxService::process_sensor_burst() {
 					return;
 				}
 			}
-			DEBUG_INFO("ArgosTxService::process_sensor_burst: CloudLocate fmt=%u mode=%s data=%s",
+			// Demoted to TRACE: per-TX payload dump.
+			DEBUG_TRACE("ArgosTxService::process_sensor_burst: CloudLocate fmt=%u mode=%s data=%s",
 			           format_id, argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode),
 			           Binascii::hexlify(packet).c_str());
 			m_last_tx_had_gps = true;
@@ -1003,7 +1010,8 @@ void ArgosTxService::process_sensor_burst() {
 					}
 				}
 			}
-			DEBUG_INFO("ArgosTxService::process_sensor_burst: fastloc mode=%s data=%s sz=%u",
+			// Demoted to TRACE: per-TX payload dump.
+			DEBUG_TRACE("ArgosTxService::process_sensor_burst: fastloc mode=%s data=%s sz=%u",
 			           argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
 			m_last_tx_had_gps = true;
 			m_last_val_tx_type = "fastloc";
@@ -1050,7 +1058,8 @@ void ArgosTxService::process_sensor_burst() {
 		}
 #else
 		// Generic sensor packet for LinkIt V4 (all sensors, no RSPB-specific packing)
-		DEBUG_INFO("TX_RAW: SENS lat=%.6f lon=%.6f hAcc=%u nSV=%u hDOP=%.1f batt=%umV",
+		// Demoted to TRACE: per-TX payload dump on hot path.
+		DEBUG_TRACE("TX_RAW: SENS lat=%.6f lon=%.6f hAcc=%u nSV=%u hDOP=%.1f batt=%umV",
 		           gps->info.lat, gps->info.lon, gps->info.hAcc, gps->info.numSV, (double)gps->info.hDOP, (unsigned)gps->info.batt_voltage);
 		m_scheduled_mode = KineisModulation::LDA2;
 		packet = ArgosPacketBuilder::build_sensor_packet(gps,
@@ -1085,7 +1094,8 @@ void ArgosTxService::process_sensor_burst() {
 			}
 		}
 #endif
-		DEBUG_INFO("ArgosTxService::process_sensor_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
+		// Demoted to TRACE: per-TX payload dump.
+		DEBUG_TRACE("ArgosTxService::process_sensor_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
 		m_last_tx_had_gps = true;
 		m_last_val_tx_type = "sensor";
 		m_kineis.send(m_scheduled_mode, packet, size_bits);
@@ -1147,7 +1157,8 @@ void ArgosTxService::process_gnss_burst() {
 					return;
 				}
 			}
-			DEBUG_INFO("ArgosTxService::process_gnss_burst: CloudLocate fmt=%u mode=%s data=%s",
+			// Demoted to TRACE: per-TX payload dump.
+			DEBUG_TRACE("ArgosTxService::process_gnss_burst: CloudLocate fmt=%u mode=%s data=%s",
 			           format_id, argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode),
 			           Binascii::hexlify(packet).c_str());
 			m_last_tx_had_gps = true;
@@ -1173,7 +1184,8 @@ void ArgosTxService::process_gnss_burst() {
 				return;
 			}
 			for (unsigned int i = 0; i < v.size(); i++) {
-				DEBUG_INFO("TX_RAW: GNSS[%u] lat=%.6f lon=%.6f hAcc=%u nSV=%u hDOP=%.1f batt=%umV",
+				// Demoted to TRACE: per-entry payload dump in GNSS burst hot path.
+				DEBUG_TRACE("TX_RAW: GNSS[%u] lat=%.6f lon=%.6f hAcc=%u nSV=%u hDOP=%.1f batt=%umV",
 				           i, v[i]->info.lat, v[i]->info.lon, v[i]->info.hAcc, v[i]->info.numSV, (double)v[i]->info.hDOP, (unsigned)v[i]->info.batt_voltage);
 			}
 			packet = ArgosPacketBuilder::build_gnss_packet(v, argos_config.is_out_of_zone, argos_config.is_lb,
@@ -1196,7 +1208,8 @@ void ArgosTxService::process_gnss_burst() {
 			}
 		}
 
-		DEBUG_INFO("ArgosTxService::process_gnss_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
+		// Demoted to TRACE: per-TX payload dump.
+		DEBUG_TRACE("ArgosTxService::process_gnss_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
 		m_last_tx_had_gps = true;
 		// fastloc fallback uses LDA2 + 96-bit packet → still attribute as "gnss"
 		// at this site; the inner fastloc branch above already tagged "fastloc".
@@ -1262,7 +1275,8 @@ void ArgosTxService::process_gnss_burst_from_cached() {
 		}
 	}
 
-	DEBUG_INFO("ArgosTxService::process_gnss_burst_from_cached: REUSE_LAST TX mode=%s data=%s sz=%u",
+	// Demoted to TRACE: per-TX payload dump.
+	DEBUG_TRACE("ArgosTxService::process_gnss_burst_from_cached: REUSE_LAST TX mode=%s data=%s sz=%u",
 	           argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode),
 	           Binascii::hexlify(packet).c_str(), size_bits);
 	m_last_tx_had_gps = true;
@@ -1570,9 +1584,10 @@ void ArgosTxService::process_doppler_burst() {
 			}
 
 			if (can_send) {
-				const char* kind = is_fastloc ? "CACHED_FASTLOC" : "CACHED_GPS";
-				DEBUG_INFO("ArgosTxService::process_doppler_burst: %s #%u lat=%lf lon=%lf mode=%s data=%s",
-				           kind, m_doppler_burst_count, entry.info.lat, entry.info.lon,
+				// Demoted to TRACE: per-ping payload dump on hot path.
+				DEBUG_TRACE("ArgosTxService::process_doppler_burst: %s #%u lat=%lf lon=%lf mode=%s data=%s",
+				           is_fastloc ? "CACHED_FASTLOC" : "CACHED_GPS",
+				           m_doppler_burst_count, entry.info.lat, entry.info.lon,
 				           argos_modulation_to_string((BaseArgosModulation)cached_mode),
 				           Binascii::hexlify(cached_packet).c_str());
 				m_last_tx_had_gps = true;

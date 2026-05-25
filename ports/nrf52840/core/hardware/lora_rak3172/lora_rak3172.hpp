@@ -123,7 +123,7 @@ public:
         uint8_t cfm   = LoRa::DEFAULT_CFM;       // 0=unconfirmed, 1=confirmed
         uint8_t fport = LoRa::DEFAULT_FPORT;     // Application port
         uint8_t device_class = 'A';              // A, B, or C
-        uint8_t lp_mode = 1;                     // 0=shutdown (0µA, 2.5s wake), 1=standby (1.7µA, 10ms wake)
+        uint8_t lp_mode = 1;                     // 0=shutdown (0µA, 2.5s wake), 1=standby (Stop1 ~3µA, ~10 ms wake — Stop2 would be ~1.7µA but UART1 cannot wake from it on this PCB, see configure step 13)
     };
 
     LoRaConfig m_config;

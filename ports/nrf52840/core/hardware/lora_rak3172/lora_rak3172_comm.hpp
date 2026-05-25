@@ -63,6 +63,11 @@ namespace LoRa {
         AT_SET_SLEEP,       // AT+SLEEP=      - enter sleep for N ms
         AT_SLEEP_NOW,       // AT+SLEEP       - continuous sleep (no param), wakes on UART RX byte
         AT_SET_CW,          // AT+CW=         - continuous wave (RF test)
+        // Readback queries for low-power state — appended to the end to keep
+        // existing ATCmd enum values stable (AT_SLEEP_NOW must remain 45 so
+        // existing field logs / runbook references stay valid).
+        AT_GET_LPM,         // AT+LPM=?       - read back current LPM mode
+        AT_GET_LPMLVL,      // AT+LPMLVL=?    - read back current LPM level
         AT_UNKNOWN
     };
 

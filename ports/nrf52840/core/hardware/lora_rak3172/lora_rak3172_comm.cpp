@@ -110,6 +110,9 @@ static constexpr ATCmdEntry cmd_table[] = {
     { AT_SET_SLEEP,  "AT+SLEEP=",       true  },
     { AT_SLEEP_NOW,  "AT+SLEEP\r\n",    false },
     { AT_SET_CW,     "AT+CW=",          true  },
+    // Readback queries — see header note about enum stability.
+    { AT_GET_LPM,    "AT+LPM=?\r\n",    false },
+    { AT_GET_LPMLVL, "AT+LPMLVL=?\r\n", false },
 };
 
 bool LoRaComm::send_at_cmd(ATCmd cmd, const std::optional<std::string>& params)

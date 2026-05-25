@@ -185,6 +185,16 @@ void GPSService::try_enter_deep_idle_or_poweroff() {
         // effectively infinite — rail stayed on forever after the dispatch.
         m_device.poweroff_from_deep_idle();
         m_deep_idle_started_at_ms = 0;
+
+        // 2026-05-25 deep-idle scheduling gate exit: the gate in
+        // service_next_schedule_in_ms returned SCHEDULE_DISABLED for the whole
+        // GNP52 window, which left m_task_period unarmed. Now that deep-idle
+        // is finished (rail cut, m_deep_idle_started_at_ms cleared), explicitly
+        // call service_reschedule so the framework re-arms the next acquisition
+        // through the normal path. Without this, the service would idle until
+        // the next peer event (dive/surface) — fine for most flows but a
+        // regression for time-based scheduling on a stationary device.
+        service_reschedule(false);
     }, "GPSDeepIdleAutoOff", Scheduler::DEFAULT_PRIORITY, deep_idle_s * MS_PER_SEC);
 }
 
@@ -281,6 +291,34 @@ unsigned int GPSService::service_next_schedule_in_ms() {
 			system_scheduler->cancel_task(m_deep_idle_auto_off_task);
 			// Fall through to the normal scheduling path.
 		}
+	}
+
+	// 2026-05-25 deep-idle scheduling gate. Without this, Service::reschedule's
+	// UTC-aligned next_schedule (cold_start_retry_period = 10 s) fires INSIDE
+	// the GNP52 window, service_initiate cancels the auto-off timer at
+	// gps_service.cpp:412 and calls m_device.power_on() which pulses EXTINT
+	// and wakes the M10Q from PMREQ-backup — defeating deep-idle entirely.
+	//
+	// Observed 2026-05-25 on bench: GNP52=300s → 3 s of true backup (~10 µA)
+	// then ~2 mA for the remaining 297 s, repeating every 10 s as the
+	// scheduler kept retrying. The hard-cap branch above already cleared
+	// m_deep_idle_started_at_ms in pathological cases, so checking both flags
+	// (device state + non-zero timestamp) means a hard-cap-triggered fall-
+	// through reaches the normal scheduling path naturally.
+	//
+	// Exit paths from this gate:
+	//   - GNP52 finite: m_deep_idle_auto_off_task fires at end of window
+	//     and triggers a service_reschedule (see the lambda in
+	//     try_enter_deep_idle_or_poweroff) so normal scheduling resumes.
+	//   - GNP52 sentinel (never-poweroff): no auto-off — rail stays on
+	//     indefinitely; next acquisition comes from a peer event (surface)
+	//     which uses reschedule(immediate=true) and BYPASSES this gate
+	//     (Service::reschedule skips service_next_schedule_in_ms when
+	//     immediate is set).
+	//   - Underwater / cooldown: handled by separate gates further down.
+	if (m_device.is_in_deep_idle() && m_deep_idle_started_at_ms > 0) {
+		DEBUG_TRACE("GPSService::service_next_schedule_in_ms: deep-idle engaged — SCHEDULE_DISABLED");
+		return Service::SCHEDULE_DISABLED;
 	}
 
 	// Cooldown gate (2026-05): refuse to schedule a GPS acquisition while
@@ -662,7 +700,10 @@ void GPSService::task_process_gnss_data()
     gps_entry.info.event_type = GPSEventType::FIX;
     gps_entry.info.valid = true;
 
-    DEBUG_INFO("GPSService::task_process_gnss_data: lat=%lf lon=%lf hDOP=%lf hAcc=%lf numSV=%u batt=%lfV ", gps_entry.info.lat, gps_entry.info.lon,
+    // Demoted to TRACE: per-fix payload dump (~50-300 ms LFS commit). The
+    // GPSLogEntry itself is persisted via the log queue, so the lat/lon are
+    // already retrievable. retry_counter reset (line above) marks the event.
+    DEBUG_TRACE("GPSService::task_process_gnss_data: lat=%lf lon=%lf hDOP=%lf hAcc=%lf numSV=%u batt=%lfV ", gps_entry.info.lat, gps_entry.info.lon,
     		static_cast<double>(gps_entry.info.hDOP),
 			static_cast<double>(gps_entry.info.hAcc),
 			gps_entry.info.numSV,
@@ -727,7 +768,9 @@ void GPSService::task_process_degraded_gnss_data()
     gps_entry.info.event_type = GPSEventType::FASTLOC;
     gps_entry.info.valid = true;
 
-    DEBUG_INFO("GPSService::task_process_degraded_gnss_data: lat=%lf lon=%lf hAcc=%u numSV=%u fixType=%u",
+    // Demoted to TRACE: per-fastloc payload dump. The entry is persisted via
+    // the log queue and broadcast via service_complete; lat/lon are not lost.
+    DEBUG_TRACE("GPSService::task_process_degraded_gnss_data: lat=%lf lon=%lf hAcc=%u numSV=%u fixType=%u",
                gps_entry.info.lat, gps_entry.info.lon,
                gps_entry.info.hAcc, gps_entry.info.numSV, gps_entry.info.fixType);
 
@@ -968,7 +1011,9 @@ void GPSService::react(const GPSEventRawMeasurement& e) {
 
 	unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
 	if (fastloc_mode == (unsigned int)BaseFastlocMode::CLOUDLOCATE) {
-		DEBUG_INFO("GPSService::react(GPSEventRawMeasurement): CloudLocate measc12=%u meas20=%u meas50=%u",
+		// Demoted to TRACE: per-session size dump. The CloudLocate event log
+		// already names which format was emitted.
+		DEBUG_TRACE("GPSService::react(GPSEventRawMeasurement): CloudLocate measc12=%u meas20=%u meas50=%u",
 		           e.data.has_measc12, e.data.has_meas20, e.data.has_meas50);
 		gnss_cloudlocate_callback(e.data);
 	} else {

@@ -197,7 +197,10 @@ unsigned int LoRaTxService::service_next_schedule_in_ms() {
 			if (interval_s > argos_config.surfacing_burst_max_s)
 				interval_s = argos_config.surfacing_burst_max_s;
 
-			DEBUG_INFO("LoRaTxService::SURFACING_BURST: status #%u in %u s", m_status_burst_count + 1, interval_s);
+			// Demoted to TRACE: fires on every progressive ping in the burst.
+			// Burst start ("status #1 immediate") and end ("max messages
+			// reached" / "STATUS-PURE silencing") are the meaningful markers.
+			DEBUG_TRACE("LoRaTxService::SURFACING_BURST: status #%u in %u s", m_status_burst_count + 1, interval_s);
 			m_sched.schedule_at(now + interval_s);
 			return interval_s * 1000;
 		}
@@ -572,7 +575,9 @@ void LoRaTxService::process_gps_burst() {
 					size_bits);
 		}
 
-		DEBUG_INFO("LoRaTxService::process_gps_burst: data=%s sz=%u bits",
+		// Demoted to TRACE: per-TX payload dump on the burst hot path (~50-300 ms
+		// LFS commit per emit). TX completion event already logs the outcome.
+		DEBUG_TRACE("LoRaTxService::process_gps_burst: data=%s sz=%u bits",
 				Binascii::hexlify(packet).c_str(), size_bits);
 		m_last_tx_had_gps = true;
 		m_device.send(KineisModulation::LDA2, packet, size_bits);
@@ -608,7 +613,8 @@ void LoRaTxService::process_sensor_burst() {
 			unsigned int size_bits;
 			KineisPacket packet = LoRaPacketBuilder::build_cloudlocate_packet(blob, blob_size, format_id,
 					service_is_battery_level_low(), gps->info.batt_voltage, size_bits);
-			DEBUG_INFO("LoRaTxService::process_sensor_burst: CloudLocate fmt=%u data=%s",
+			// Demoted to TRACE: per-TX payload dump (~50-300 ms LFS commit).
+			DEBUG_TRACE("LoRaTxService::process_sensor_burst: CloudLocate fmt=%u data=%s",
 					format_id, Binascii::hexlify(packet).c_str());
 			m_last_tx_had_gps = true;
 			m_device.send(KineisModulation::LDA2, packet, size_bits);
@@ -636,7 +642,8 @@ void LoRaTxService::process_sensor_burst() {
 				argos_config.is_lb,
 				size_bits);
 
-		DEBUG_INFO("LoRaTxService::process_sensor_burst: data=%s sz=%u bits",
+		// Demoted to TRACE: per-TX payload dump (~50-300 ms LFS commit).
+		DEBUG_TRACE("LoRaTxService::process_sensor_burst: data=%s sz=%u bits",
 				Binascii::hexlify(packet).c_str(), size_bits);
 		m_last_tx_had_gps = true;
 		m_device.send(KineisModulation::LDA2, packet, size_bits);
@@ -692,7 +699,8 @@ void LoRaTxService::process_status_burst() {
 			KineisPacket packet = LoRaPacketBuilder::build_cloudlocate_packet(
 				blob, blob_size, format_id,
 				service_is_battery_level_low(), service_get_voltage(), size_bits);
-			DEBUG_INFO("LoRaTxService::process_status_burst: CLOUDLOCATE #%u fmt=%u sz=%u data=%s",
+			// Demoted to TRACE: per-ping payload dump (~50-300 ms LFS commit).
+			DEBUG_TRACE("LoRaTxService::process_status_burst: CLOUDLOCATE #%u fmt=%u sz=%u data=%s",
 			           m_status_burst_count, format_id, blob_size,
 			           Binascii::hexlify(packet).c_str());
 			m_last_tx_had_gps = true;
@@ -742,7 +750,8 @@ void LoRaTxService::process_status_burst() {
 			&fastloc_entry, nullptr, nullptr, nullptr, nullptr, nullptr,
 			false, service_is_battery_level_low(), size_bits);
 
-		DEBUG_INFO("LoRaTxService::process_status_burst: FASTLOC #%u hAcc=%um numSV=%u data=%s",
+		// Demoted to TRACE: per-ping payload dump (~50-300 ms LFS commit).
+		DEBUG_TRACE("LoRaTxService::process_status_burst: FASTLOC #%u hAcc=%um numSV=%u data=%s",
 		           m_status_burst_count, degraded.hAcc, degraded.numSV,
 		           Binascii::hexlify(packet).c_str());
 		m_last_tx_had_gps = true;
@@ -785,9 +794,10 @@ void LoRaTxService::process_status_burst() {
 			KineisPacket packet = LoRaPacketBuilder::build_sensor_packet(
 				&entry, nullptr, nullptr, nullptr, nullptr, nullptr,
 				false, service_is_battery_level_low(), size_bits);
-			const char* kind = (pick->info.event_type == GPSEventType::FIX) ? "CACHED_GPS" : "CACHED_FASTLOC";
-			DEBUG_INFO("LoRaTxService::process_status_burst: %s #%u lat=%lf lon=%lf data=%s",
-			           kind, m_status_burst_count, entry.info.lat, entry.info.lon,
+			// Demoted to TRACE: per-ping payload dump (~50-300 ms LFS commit).
+			DEBUG_TRACE("LoRaTxService::process_status_burst: %s #%u lat=%lf lon=%lf data=%s",
+			           (pick->info.event_type == GPSEventType::FIX) ? "CACHED_GPS" : "CACHED_FASTLOC",
+			           m_status_burst_count, entry.info.lat, entry.info.lon,
 			           Binascii::hexlify(packet).c_str());
 			m_last_tx_had_gps = true;
 			m_device.send(KineisModulation::LDA2, packet, size_bits);
