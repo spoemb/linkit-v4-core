@@ -353,12 +353,26 @@ const BaseMap param_map[] = {
 	// manual clear after a confirmed root-cause fix (e.g. HW repair, FW update
 	// addressing the original cascade). DTE writes ONLY accept 0 — engagement
 	// stays under autofallback control. min/max kept at 0/1 so firmware
-	// `write_param(1)` from `degraded_mode_engage()` continues to work; the
-	// `permitted_values = {0U}` restricts DTE PARMW only (the DTE protocol
-	// layer enforces permitted_values on PARMW but internal write_param
-	// bypasses it). Runtime flag `g_smdsat_use_safe_timings` is re-synced
-	// from this param at the next `SmdSat::send()` call (lazy sync).
-	{ "SMD_DEGRADED_MODE", "SMP00", BaseEncoding::UINT, 0U, 1U, { 0U }, true, true },
+	// `write_param(1)` from `degraded_mode_engage()` continues to work.
+	//
+	// Do NOT use permitted_values={0U} here. The DTE protocol's validate()
+	// runs during PARMW decoding and throws DTE_PROTOCOL_VALUE_OUT_OF_RANGE
+	// when the value is not in the list. The exception escapes the per-param
+	// try/catch in dte_handler.cpp's PARMW_REQ (decoder runs BEFORE the loop),
+	// kills the whole DTE command handler and breaks subsequent PARMR/PARMW.
+	// When a GUI reads the full config and writes it back unchanged, it sends
+	// SMP00 with its current value (which is 1 if autofallback engaged SAFE)
+	// — the read-modify-write round trip must not jam the DTE channel just
+	// because that slot is now 1.
+	//
+	// The "only accept 0 on PARMW" policy is enforced in dte_handler.cpp:117
+	// (PARMW_REQ), which rejects the slot cleanly via rejected_keys without
+	// throwing — non-zero writes are logged + reported, every other slot in
+	// the batch still applies.
+	//
+	// Runtime flag `g_smdsat_use_safe_timings` is re-synced from this param at
+	// the next `SmdSat::send()` call (lazy sync).
+	{ "SMD_DEGRADED_MODE", "SMP00", BaseEncoding::UINT, 0U, 1U, {}, true, true },
 	// [227] Cached SMD modulation (0=LDA2, 1=LDK, 2=VLDA4) — mirrors what's actually
 	// programmed in STM32WL flash. Written by SmdSat after the credentials-dirty path
 	// reads back the master RCONF. On boot, SmdSat loads this so the FIRST surface-burst
