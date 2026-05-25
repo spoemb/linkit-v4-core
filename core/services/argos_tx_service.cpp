@@ -1337,8 +1337,22 @@ void ArgosTxService::prepare_doppler_packet() {
 
 	m_prepared_doppler_packet = packet;
 	m_prepared_doppler_size_bits = size_bits;
+	// 2026-05-25 modulation fix (companion to argos_tx_service.cpp:225):
+	// non-adaptive path was hardcoded to LDA2. The prewarm send (line 1369)
+	// deliberately SKIPS ensure_modulation() to keep the surfacing first-TX
+	// latency minimal — meaning whatever mode lands here ships exactly as-is.
+	// With the hardcoded LDA2 + a non-LDA2 master RCONF (e.g. user-configured
+	// LDK), the first ping fired LDA2 while SmdSat held LDK → "TX mode 0 !=
+	// current modulation 1" WARN per surface (observed in v4.1.8-1 logs).
+	//
+	// Using resolve_non_adaptive_modulation() (which returns the cached
+	// modulation from m_kineis — already aligned with the saved master RCONF)
+	// lets the prewarm path ship in the *correct* modulation with zero extra
+	// latency, zero ensure_modulation() call, zero STM32 flash write. The
+	// SMD already persists the master modulation across reboots via
+	// write_credentials_from_config + save_radio_conf — nothing to add.
 	m_prepared_doppler_mode = argos_config.adaptive_modulation ?
-		KineisModulation::VLDA4 : KineisModulation::LDA2;
+		KineisModulation::VLDA4 : resolve_non_adaptive_modulation();
 	m_prepared_at_ms = PMU::get_timestamp_ms();
 }
 
