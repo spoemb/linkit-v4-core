@@ -1499,6 +1499,91 @@ void ArgosTxService::process_doppler_burst() {
 		return;
 	}
 
+	// Cached position branch — used only on ping #2+ (m_doppler_burst_count > 1)
+	// when no live CloudLocate raw or degraded PVT is available this surface.
+	// Sends the most-recent cached position between last GPS fix and last
+	// Fastloc/degraded PVT (RAM cache populated by gps_service).
+	//
+	// Ping #1 is intentionally skipped to preserve the §5 priority-3 fast
+	// first-TX path: the existing pre-warmed Doppler (lines 1324-1357) stays
+	// untouched. This is the prudent "Approach A" — no change to the surface
+	// critical-path latency, position is added starting at ping #2.
+	//
+	// Falls through to standard Doppler if cache is empty or modulation
+	// constraints prevent TX.
+	if (m_doppler_burst_count > 1) {
+		const GPSLogEntry& cached_gps = configuration_store->get_last_gps_entry();
+		const GPSLogEntry& cached_fl  = configuration_store->get_last_fastloc_entry();
+		bool gps_ok = (cached_gps.info.valid && cached_gps.info.event_type == GPSEventType::FIX);
+		bool fl_ok  = (cached_fl.info.valid  && cached_fl.info.event_type  == GPSEventType::FASTLOC);
+
+		const GPSLogEntry* pick = nullptr;
+		if (gps_ok && fl_ok) {
+			std::time_t t_gps = convert_epochtime(cached_gps.header.year, cached_gps.header.month,
+			                                     cached_gps.header.day,  cached_gps.header.hours,
+			                                     cached_gps.header.minutes, cached_gps.header.seconds);
+			std::time_t t_fl  = convert_epochtime(cached_fl.header.year, cached_fl.header.month,
+			                                     cached_fl.header.day,  cached_fl.header.hours,
+			                                     cached_fl.header.minutes, cached_fl.header.seconds);
+			pick = (t_fl > t_gps) ? &cached_fl : &cached_gps;
+		} else if (gps_ok) {
+			pick = &cached_gps;
+		} else if (fl_ok) {
+			pick = &cached_fl;
+		}
+
+		if (pick) {
+			GPSLogEntry entry = *pick;
+			entry.info.batt_voltage = service_get_voltage();  // freshen battery field
+			bool is_fastloc = (entry.info.event_type == GPSEventType::FASTLOC);
+
+			KineisPacket cached_packet = is_fastloc
+				? ArgosPacketBuilder::build_fastloc_packet(&entry, argos_config.is_lb)
+				: ArgosPacketBuilder::build_short_packet(&entry, argos_config.is_out_of_zone, argos_config.is_lb);
+			unsigned int cached_size_bits = is_fastloc
+				? ArgosPacketBuilder::FASTLOC_PACKET_BITS
+				: ArgosPacketBuilder::SHORT_PACKET_BITS;
+
+			// Modulation: adaptive forces LDA2 (universal for both 96-bit short
+			// and 192-bit fastloc). Non-adaptive trusts the master modulation;
+			// fall through to Doppler if the cached payload doesn't fit
+			// (e.g. VLDA4 master with 96-bit short_packet — short doesn't fit 24).
+			KineisModulation cached_mode = KineisModulation::LDA2;
+			bool can_send = true;
+			if (argos_config.adaptive_modulation) {
+				if (!ensure_modulation(cached_mode)) {
+					DEBUG_WARN("ArgosTxService::process_doppler_burst: cached-pos modulation switch failed, trying current");
+					cached_mode = m_kineis.get_current_modulation();
+					if (!size_fits_modulation(cached_size_bits, cached_mode)) {
+						DEBUG_WARN("ArgosTxService::process_doppler_burst: cached-pos %u bits doesn't fit fallback mod %d — falling through to Doppler",
+						           cached_size_bits, (int)cached_mode);
+						can_send = false;
+					}
+				}
+			} else {
+				cached_mode = resolve_non_adaptive_modulation();
+				if (!size_fits_modulation(cached_size_bits, cached_mode)) {
+					DEBUG_WARN("ArgosTxService::process_doppler_burst: cached-pos %u bits doesn't fit master mod %d (ARGOS_AD_MOD=0) — falling through to Doppler",
+					           cached_size_bits, (int)cached_mode);
+					can_send = false;
+				}
+			}
+
+			if (can_send) {
+				const char* kind = is_fastloc ? "CACHED_FASTLOC" : "CACHED_GPS";
+				DEBUG_INFO("ArgosTxService::process_doppler_burst: %s #%u lat=%lf lon=%lf mode=%s data=%s",
+				           kind, m_doppler_burst_count, entry.info.lat, entry.info.lon,
+				           argos_modulation_to_string((BaseArgosModulation)cached_mode),
+				           Binascii::hexlify(cached_packet).c_str());
+				m_last_tx_had_gps = true;
+				m_last_val_tx_type = is_fastloc ? "fastloc-cached" : "short-cached";
+				m_kineis.send(cached_mode, cached_packet, cached_size_bits);
+				return;
+			}
+			// else fall through to standard Doppler below
+		}
+	}
+
 	// Standard Doppler packet (first ping, or fastloc not available)
 	KineisPacket packet;
 

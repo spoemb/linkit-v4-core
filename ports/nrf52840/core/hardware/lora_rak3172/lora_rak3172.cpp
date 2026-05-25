@@ -375,8 +375,18 @@ bool LoRaDevice::send_AT(ATCmd cmd, const std::optional<std::string>& params, ui
         timeout_ms--;
     }
 
-    if (timeout_ms == 0)
-        DEBUG_WARN("LoRaDevice::send_AT: timeout (cmd=%d)", static_cast<int>(cmd));
+    if (timeout_ms == 0) {
+        // AT_SLEEP_NOW runs on a deliberately short, non-fatal timeout: the
+        // RAK3172 may already be in Stop2 or transition into it before
+        // emitting OK, and state_standby_enter proceeds with UART deinit
+        // either way (wake-on-RX brings it back). Demote to TRACE so we don't
+        // spam WARN on every standby cycle; keep WARN for any other command
+        // where a missing OK is a real protocol failure.
+        if (cmd == AT_SLEEP_NOW)
+            DEBUG_TRACE("LoRaDevice::send_AT: AT_SLEEP_NOW no-ack (expected — module entering Stop2)");
+        else
+            DEBUG_WARN("LoRaDevice::send_AT: timeout (cmd=%d)", static_cast<int>(cmd));
+    }
 
     return m_cmd_is_ok && !m_is_error;
 }

@@ -1741,7 +1741,13 @@ void M10QAsyncReceiver::state_stopreceive() {
 			break;
 		} else {
 			if (--m_retries == 0) {
-				DEBUG_ERROR("M10QAsyncReceiver: stop receive failed");
+				// FSM recovers cleanly: transition to poweroff which honors
+				// m_deep_idle_pending (reroutes to enterbackup → backupidle).
+				// Next power_on starts fresh with fail_count=0. Sporadic NACKs
+				// during NAV-message disable are expected when the M10Q is
+				// shuffling its own internal state; only escalate to ERROR if
+				// this turns into a chronic pattern (visible via repeated logs).
+				DEBUG_WARN("M10QAsyncReceiver: stop receive failed (proceeding to poweroff)");
 				STATE_CHANGE(stopreceive, poweroff);
 				break;
             } else if (m_op_state == OpState::ERROR) {

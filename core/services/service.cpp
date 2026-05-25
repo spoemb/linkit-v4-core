@@ -685,6 +685,20 @@ bool Service::service_is_battery_level_low() {
 void Service::reschedule(bool immediate) {
 	DEBUG_TRACE("Service::reschedule: service %s", m_name);
 	deschedule();
+	// Underwater short-circuit: re-arming here is wasted work and creates a
+	// log-spam loop. Sequence: notify_underwater_state(true) calls deschedule()
+	// then service_cancel() — and for services like GPSService, service_cancel()
+	// invokes service_complete() with shall_reschedule=true, which lands back
+	// here. The m_task_period lambda below already gates service_initiate() on
+	// m_is_underwater, so the task would be a no-op, BUT it still arms a fresh
+	// m_task_timeout that fires ~70 s later, runs service_cancel() + reschedule()
+	// again, and the cycle repeats every ~70 s until resurface. The fix is to
+	// skip arming entirely: notify_underwater_state(false) calls reschedule()
+	// through the normal path at resurface (after clearing m_is_underwater).
+	if (m_is_underwater) {
+		DEBUG_TRACE("Service::reschedule: service %s skipped (underwater)", m_name);
+		return;
+	}
 	if (is_started()) {
 		if (service_is_enabled()) {
 			unsigned int next_schedule = immediate ? 0 : service_next_schedule_in_ms();
