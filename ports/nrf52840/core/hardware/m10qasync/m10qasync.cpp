@@ -1357,7 +1357,15 @@ void M10QAsyncReceiver::state_enterbackup() {
                 send_pmreq_backup();
                 m_op_state = OpState::IDLE;
                 m_step++;
-                run_state_machine(100); // let the PMREQ propagate before verification
+                // 2026-05-25 Fix #6: propagate delay extended 100→500 ms. Field
+                // data showed M10Q routinely refusing PMREQ-backup on the first
+                // probe (3 attempts in <1 s all failed in 33 % of cycles).
+                // Successful cycles took 1-2 s of total settling, suggesting the
+                // M10Q needs >500 ms of stability to fully commit to backup mode
+                // before responding to UART. Giving the FIRST probe 500 ms head-
+                // start should land most cycles on attempt #1. Cost: +400 ms on
+                // the dive→backup path (non-critical, not surface→TX).
+                run_state_machine(500);
                 break;
             } else if (m_step == 3) {
                 // 2026-05-25 PMREQ-backup verification: send an invalid CFG-MSG
@@ -1417,11 +1425,27 @@ void M10QAsyncReceiver::state_enterbackup() {
                     VAL_GNSS("pmreq_verify_retry left=%u", (unsigned)m_pmreq_verify_retries);
                     m_step = 2;  // re-send PMREQ
                 } else {
+                    // 2026-05-25 Fix #8: rail-cycle fallback. If the M10Q
+                    // persistently refuses PMREQ-backup after all retries,
+                    // continuing to backupidle leaves the M10Q awake for the
+                    // entire GNP52 window — measured ~2 mA × 600 s = 0.33 mAh
+                    // per failure cycle. Cutting the rail instead loses BBR /
+                    // V_BCKP (next session cold-boots at 9600 with no warm
+                    // ephemeris) but costs only ~0.035 mAh per cold-start —
+                    // roughly a 10× saving per failure. The trade is worth it
+                    // because PMREQ refusals are rare-but-not-vanishing
+                    // (~33 % of cycles in 2026-05-25 bench data) and a
+                    // year-long sealed deployment cannot tolerate the cumulative
+                    // 2-mA leak. STATE_CHANGE follows the same shape as the
+                    // baud-sync failure bail at the bottom of this function.
                     DEBUG_ERROR("M10QAsyncReceiver: M10Q refusing PMREQ-backup after %u attempts — "
-                                "proceeding to backupidle (rail will draw ~2 mA this cycle instead of ~10 µA)",
+                                "cutting rail (true poweroff, BBR lost) instead of leaking ~2 mA for the GNP52 window",
                                 (unsigned)PMREQ_VERIFY_RETRIES);
-                    VAL_GNSS("pmreq_verify_giveup");
-                    m_step++;
+                    VAL_GNSS("pmreq_verify_giveup_rail_cycle");
+                    m_powering_off = true;
+                    m_num_power_on = 0;
+                    STATE_CHANGE(enterbackup, poweroff);
+                    return;  // exit state_enterbackup entirely; STATE_CHANGE has redirected the FSM
                 }
             } else {
                 m_step++;       // step 2/4 advance — no baud change to record

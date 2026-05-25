@@ -204,7 +204,27 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 			m_scheduled_mode = argos_config.adaptive_modulation ? KineisModulation::VLDA4 : resolve_non_adaptive_modulation();
 			return m_sched.schedule_legacy(argos_config, now);
 		} else if (argos_config.mode == BaseArgosMode::SURFACING_BURST) {
-			m_scheduled_mode = KineisModulation::LDA2;
+			// 2026-05-25 modulation fix: SURFACING_BURST was unconditionally
+			// hardcoded to LDA2, ignoring both `argos_config.adaptive_modulation`
+			// and `resolve_non_adaptive_modulation()` (which returns the user's
+			// configured ARGOS_MOD_DEFAULT, e.g. LDK).
+			//
+			// Symptom observed 2026-05-25: user configured LDK + adaptive=OFF.
+			// SMD STM32 flash correctly held LDK (write_credentials_from_config
+			// wrote + saved master RCONF, ARGOS_CACHED_MODULATION=1=LDK). But
+			// every TX hit "TX mode 0 != current modulation 1 — call
+			// switch_modulation() first" because m_scheduled_mode was LDA2.
+			// ensure_modulation() then overwrote the saved LDK RCONF with LDA2
+			// at runtime, defeating the user's config silently AND causing a
+			// per-TX flash write to the STM32 (wear + latency).
+			//
+			// Fix: match the pattern used by DUTY_CYCLE / LEGACY / PASS_PREDICTION
+			// further down. With adaptive=OFF, m_scheduled_mode now equals the
+			// saved RCONF modulation → ensure_modulation() is a no-op → no
+			// per-TX flash write → user's LDK config is honored AND persisted.
+			m_scheduled_mode = argos_config.adaptive_modulation
+				? KineisModulation::LDA2
+				: resolve_non_adaptive_modulation();
 
 			// Phase 1: Doppler burst with progressive intervals until GNSS fix
 			if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing) {
