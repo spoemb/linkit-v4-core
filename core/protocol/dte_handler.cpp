@@ -1947,12 +1947,14 @@ void DTEHandler::react(KineisEventTxComplete const& ) {
 	DEBUG_INFO("DTEHandler::react: KineisEventTxComplete");
 	if (m_doppler_cal_first_tx) {
 		// First SATDP TX succeeded — respond OK, then schedule periodic TX
+		LEDState::dispatch(SetLEDArgosTXComplete{});
 		m_doppler_cal_first_tx = false;
 		if (m_async_write)
 			m_async_write(DTEEncoder::encode(DTECommand::SATDP_RESP, (int)DTEError::OK));
 		schedule_doppler_cal_tx();
 	} else if (m_doppler_cal_active) {
 		// Periodic Doppler TX completed — schedule next one
+		LEDState::dispatch(SetLEDArgosTXComplete{});
 		schedule_doppler_cal_tx();
 	} else {
 		// Regular ARGOSTX/LORATX async response
@@ -1991,12 +1993,14 @@ void DTEHandler::react(KineisEventDeviceError const& ) {
 	DEBUG_WARN("DTEHandler::react: KineisEventDeviceError");
 	if (m_doppler_cal_first_tx) {
 		// First SATDP TX failed — respond error, abort calibration
+		LEDState::dispatch(SetLEDArgosTXComplete{});
 		m_doppler_cal_active = false;
 		m_doppler_cal_first_tx = false;
 		if (m_async_write)
 			m_async_write(DTEEncoder::encode(DTECommand::SATDP_RESP, (int)DTEError::INCORRECT_DATA));
 	} else if (m_doppler_cal_active) {
 		// Periodic Doppler TX failed — retry on next cycle
+		LEDState::dispatch(SetLEDArgosTXComplete{});
 		DEBUG_WARN("DTEHandler: SATDP periodic TX failed | will retry");
 		schedule_doppler_cal_tx();
 	} else {
@@ -2056,6 +2060,11 @@ std::string DTEHandler::SATDP_REQ(int error_code, std::vector<BaseType>& arg_lis
 	KineisPacket packet = ArgosPacketBuilder::build_doppler_packet(batt_mv, is_lb, size_bits);
 
 	DEBUG_INFO("DTEHandler::SATDP_REQ: sending first Doppler packet (%u bits)", size_bits);
+	// SATDP bypasses ArgosTxService → the operational state machine never sees a
+	// SERVICE_ACTIVE event for ARGOS_TX, so the LEDArgosTX (MAGENTA) dispatch in
+	// gentracker.cpp is skipped. Dispatch it here so the bench operator sees the
+	// visual cue on every Doppler-cal TX, same as a deployed Argos send.
+	LEDState::dispatch(SetLEDArgosTX{});
 	smd_sat_instance->send(KineisModulation::LDA2, packet, size_bits);
 
 	m_doppler_cal_active = true;
@@ -2085,6 +2094,7 @@ void DTEHandler::schedule_doppler_cal_tx() {
 			bool is_lb = battery_monitor ? battery_monitor->is_battery_low() : false;
 			KineisPacket packet = ArgosPacketBuilder::build_doppler_packet(batt_mv, is_lb, size_bits);
 			DEBUG_TRACE("DTEHandler: SATDP periodic TX (%u bits)", size_bits);
+			LEDState::dispatch(SetLEDArgosTX{});
 			smd_sat_instance->send(KineisModulation::LDA2, packet, size_bits);
 		},
 		"SATDPPeriodicTx",

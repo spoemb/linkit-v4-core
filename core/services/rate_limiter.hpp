@@ -25,10 +25,11 @@
 class RateLimiter {
 public:
 	// Hard upper bound on `RATE_LIMIT_MAX_TX`. Sets the noinit RAM footprint
-	// (32 × time_t = 256 bytes + CRC). Beyond this, the cap is rejected at
-	// DTE write time (BaseMap range). 32 covers realistic deployments — even
-	// the most aggressive surfacing burst pattern fits.
-	static constexpr unsigned int MAX_CAP = 32;
+	// (128 × time_t = 1024 bytes + CRC). Beyond this, the cap is rejected at
+	// DTE write time (BaseMap range). 128 covers wide-range deployments
+	// including multi-day rolling windows with dense surfacing patterns.
+	// head/count remain uint8_t (saturate at MAX_CAP, max 255 OK for 128).
+	static constexpr unsigned int MAX_CAP = 128;
 
 	// Re-read state from .noinit RAM. Call on boot, before first push/query.
 	// CRC mismatch (cold boot, RAM noise) zeros the ring.

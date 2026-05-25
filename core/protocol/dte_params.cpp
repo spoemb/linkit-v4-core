@@ -384,10 +384,10 @@ const BaseMap param_map[] = {
 	{ "GNSS_REUSE_FIX_MAX_AGE_S", "GNP50", BaseEncoding::UINT, 0U, 0xFFFFFFFFU, {}, true, true },
 	// [229..231] Rolling-window TX rate limiter (Plan 1 step 2).
 	// Disabled by default. RATE_LIMIT_MAX_TX is bounded by RateLimiter::MAX_CAP
-	// (32) to keep the noinit ring buffer at a fixed 256-byte footprint.
+	// (128) to keep the noinit ring buffer at a fixed 1024-byte footprint.
 	{ "RATE_LIMIT_EN",        "RLP01", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
 	{ "RATE_LIMIT_WINDOW_S",  "RLP02", BaseEncoding::UINT, 1U, 0xFFFFFFFFU, {}, true, true },
-	{ "RATE_LIMIT_MAX_TX",    "RLP03", BaseEncoding::UINT, 0U, 32U, {}, true, true },
+	{ "RATE_LIMIT_MAX_TX",    "RLP03", BaseEncoding::UINT, 0U, 128U, {}, true, true },
 	// [232..238] Hauled-vs-at-sea mode (Plan 1 step 3).
 	// Detection params (HMP00..02) and override params (HMP10..13). Disabled
 	// by default — HAULED_* substitutes mode/TR/gnss_en when engaged.
