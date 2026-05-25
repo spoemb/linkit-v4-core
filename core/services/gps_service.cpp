@@ -210,22 +210,26 @@ void GPSService::service_term() {
         m_device.exit_backup_charge_mode();
         m_backup_active = false;
     }
-    // R2 (deep-idle refactor): unconditional hard power-off — covers
-    // ConfigurationState entry, BatteryCriticalState/ErrorState/OffState
-    // transits, OTA, factory_reset.
+    // 2026-05-25 Fix #10: unconditional hard rail-cut via `power_off_immediate`.
     //
-    // 2026-05-24 cosmetic fix: if the device is currently in deep-idle
-    // (rail on, M10Q in PMREQ-backup, users=0), `power_off()` is a no-op
-    // and trips the "called with users=0" defensive WARN added in HIGH
-    // GNSS-AUDIT #2 follow-up. The rail still needs to be cut on teardown
-    // — use `poweroff_from_deep_idle()` which is the dedicated path for
-    // that state. For all other states (idle, active session, mid-
-    // transition) the legacy `power_off()` call still applies.
-    if (m_device.is_in_deep_idle()) {
-        m_device.poweroff_from_deep_idle();
-    } else {
-        m_device.power_off();
-    }
+    // Previous behaviour (poweroff_from_deep_idle / power_off branch) is a
+    // graceful cascade — fine when the M10Q is in a stable state, but fatal
+    // when called mid-boot (state=poweron/configure, UART transactions
+    // pending). A 2026-05-25 field log captured a 15-min hang because
+    // service_term fired during an M10Q cold-boot triggered by an Argos TX
+    // gate release just before a reed power-off gesture. ServiceManager::
+    // stopall waited synchronously on a service that never returned;
+    // OffState never entered; device stayed in System ON (no reed wake)
+    // until WDT reset.
+    //
+    // power_off_immediate() bypasses the cascade and rail-cuts directly.
+    // V_BCKP / BBR is lost — acknowledged trade-off (user spec: "BBR
+    // doesn't matter at power-down, we want to cut everything"). Next
+    // boot starts from a true power-on reset and the constructor path
+    // re-initialises all internal state cleanly. is_in_deep_idle() check
+    // is no longer needed because power_off_immediate is state-agnostic
+    // (it cancels FSM tasks and cuts rail regardless of current state).
+    m_device.power_off_immediate();
 #if defined(ARGOS_SMD) && (ARGOS_SMD == 1)
     m_defer_gnss_until_argos_first_tx = false;
 #endif

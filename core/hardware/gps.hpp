@@ -165,6 +165,21 @@ public:
     virtual void power_off() = 0;
     virtual void power_on(const GPSNavSettings& nav_settings) = 0;
 
+    /// 2026-05-25 Fix #10 — Hard shutdown, no graceful teardown.
+    /// Cancels all pending FSM tasks and cuts the rail immediately. Used by
+    /// service_term() on the OffState / ConfigurationState / Error /
+    /// BatteryCritical paths where:
+    ///  - Graceful power_off() can hang for >15 min if the receiver is mid-
+    ///    boot (UART transactions pending, FSM in poweron/configure with no
+    ///    response yet). The hang bricks the device from user perspective
+    ///    until WDT fires.
+    ///  - V_BCKP / BBR preservation does NOT matter because the device is
+    ///    about to soft-reset for System OFF (LinkIt) or cold-boot anyway.
+    ///    Next session does a cold-start GNSS acquisition — acceptable cost.
+    /// Default impl falls back to power_off() so non-M10 backends keep
+    /// compiling without behavioral change.
+    virtual void power_off_immediate() { power_off(); }
+
     // Backup-cell charge mode: rail powered, receiver in deep sleep (UBX-RXM-PMREQ backup).
     // Default no-op so non-M10 backends keep compiling. Caller is responsible for scheduling exit.
     //

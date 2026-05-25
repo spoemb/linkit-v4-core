@@ -54,6 +54,16 @@ void LoRaTxService::service_init() {
 
 void LoRaTxService::service_term() {
 	m_device.unsubscribe(*this);
+	// 2026-05-25 Fix #10c: mirror ArgosTxService and GPSService — cut LoRa
+	// rail unconditionally on service_term. Previously this method only
+	// unsubscribed the listener, leaving the RAK3172 powered (potentially
+	// mid-TX/standby) for the OffState path's PMU::powerdown delay window
+	// (~OFF_LED_PERIOD_MS). Worse, on ConfigurationState / Error transits
+	// the RAK could stay alive consuming SAT rail current with no service
+	// to manage it. power_off_immediate() cancels in-flight TX, calls
+	// power_off_enter (rail cut + UART deinit + pin park), so the next
+	// LoRaTxService init starts from a clean cold-boot.
+	m_device.power_off_immediate();
 }
 
 bool LoRaTxService::service_is_enabled() {

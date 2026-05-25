@@ -16,6 +16,7 @@ public:
 	~M10QAsyncReceiver();
 	void power_on(const GPSNavSettings& nav_settings) override;
 	void power_off() override;
+	void power_off_immediate() override;
 	bool enter_backup_charge_mode() override;
 	void exit_backup_charge_mode() override;
 	/// @brief 2026-05 deep-idle refactor: report whether the M10Q is in PMREQ-backup

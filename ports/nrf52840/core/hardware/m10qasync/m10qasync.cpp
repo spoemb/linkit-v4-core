@@ -439,6 +439,67 @@ void M10QAsyncReceiver::power_off() {
 #endif
 }
 
+/// 2026-05-25 Fix #10 — Hard shutdown bypassing the graceful FSM cascade.
+///
+/// Symptom that motivated this: a user-triggered reed power-off (transit to
+/// OffState) fired WHILE the M10Q was mid-boot (state=poweron/configure, UART
+/// boot transition pending after a fresh rail-up). OperationalState::exit →
+/// ServiceManager::stopall → GPSService::service_term → m_device.power_off()
+/// → check_for_power_off() → state_stopreceive → UBX commands waiting for
+/// ACKs from a half-booted M10Q that never replies properly → 15+ min hang
+/// before WDT rescues. During the hang the device is in System ON with full
+/// peripherals running and does NOT respond to the magnet — sealed-device UX
+/// disaster (looks bricked to the user).
+///
+/// This method skips the entire graceful cascade and goes straight to rail-
+/// cut. Trade-off acknowledged with user 2026-05-25: V_BCKP / BBR is lost
+/// (next session will cold-start GNSS at 9600 baud) but the device exits
+/// cleanly and the next boot starts from a known-good state.
+///
+/// Safety for "everything restarts cleanly next boot":
+///   - Hardware: `enter_shutdown()` cuts PWR_EN, asserts NRST low for 50 ms
+///     to fully discharge VDD caps, then releases NRST + EXTINT to high-Z.
+///     Next power_on() sees a true power-on reset on the M10Q.
+///   - Software state: PMU::powerdown() that follows this in the OffState
+///     path triggers a SoC soft-reset; all static/global objects are
+///     re-constructed at the next boot. We still reset the instance state
+///     here defensively in case a caller invokes this without subsequently
+///     soft-resetting (e.g. ConfigurationState entry, BatteryCriticalState).
+void M10QAsyncReceiver::power_off_immediate() {
+    DEBUG_INFO("M10QAsyncReceiver::power_off_immediate: hard rail-cut (skip graceful FSM)");
+    VAL_GNSS("power_off_immediate from_state=%d users=%u", (int)m_state, m_num_power_on);
+
+    // Cancel every pending scheduler-driven work item so no zombie task fires
+    // after the rail is dead (would touch a deinit'd UART → exception →
+    // ServiceManager::stopall catch → continue, but cleaner to pre-empt).
+    cancel_timeout();
+    system_scheduler->cancel_task(m_state_machine_handle);
+
+    // Rail-cut + RST/EXTINT release + 50 ms VDD discharge. This is the same
+    // sequence the legacy `state_poweroff()` chain ends at — we just skip
+    // the asynchronous nav-message disable / fetchdatabase steps that can
+    // block on a half-booted M10Q.
+    enter_shutdown();
+
+    // Reset instance state. After PMU::powerdown soft-reset these get
+    // re-initialized by the constructor anyway, but ConfigurationState entry
+    // and a few other paths re-use the same instance — they must see a clean
+    // baseline so the next power_on() takes the cold-boot path correctly.
+    m_state = State::idle;
+    m_num_power_on = 0;
+    m_op_state = OpState::IDLE;
+    m_step = 0;
+    m_powering_off = false;
+    m_deep_idle_pending = false;
+    m_enterbackup_warm = false;
+    m_consecutive_wake_failures = 0;
+    m_pmreq_verify_retries = 0;
+    m_backupidle_entered_ms = 0;
+    // m_gnss_info_valid intentionally left untouched — the cached baud
+    // hint helps the next session even after a cold rail-cut (BBR may have
+    // survived if the rail dropped before V_BCKP discharged).
+}
+
 void M10QAsyncReceiver::request_deep_idle_on_next_stop() {
     DEBUG_INFO("M10QAsyncReceiver::request_deep_idle_on_next_stop");
     VAL_GNSS("deep_idle_armed (next stop -> enterbackup)");
