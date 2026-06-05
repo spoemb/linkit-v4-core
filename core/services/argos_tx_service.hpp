@@ -59,6 +59,20 @@ private:
 	bool m_last_tx_had_gps = false;
 	bool m_cooldown_armed = false;
 
+	// DOPPLER burst-pattern state (2026-05). Independent from SURFACING_BURST
+	// state above. Counter of messages sent in the current DOPPLER sequence;
+	// reset to 0 when the sequence ends (count >= SURFACING_BURST_MAX_MSG).
+	// max_msg == 0 means unbounded sequence (progressive spacing keeps growing
+	// until capped at surfacing_burst_max_s — equivalent to a continuous TX
+	// with progressive period).
+	unsigned int m_doppler_seq_count = 0;
+	// Absolute RTC time (seconds) at which the inter-sequence pause ends.
+	// 0 = not in a pause. Used to protect the pause against rearming when an
+	// external event (GPS log, UW surfaced) fires reschedule before the pause
+	// has elapsed — without this guard, the pause would be silently reset
+	// and the next sequence would start immediately.
+	std::time_t m_doppler_pause_until_rtc = 0;
+
 	// Pre-deploy validation channel — populated by process_*_burst just before
 	// m_kineis.send() and consumed by the TxComplete handler to emit a
 	// [VAL-TX] line with type + spacing. Cheap unconditional storage (~16 B)

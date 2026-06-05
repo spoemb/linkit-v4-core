@@ -56,6 +56,17 @@ void ArgosTxService::service_init() {
 		DEBUG_WARN("ArgosTxService: SURFACING_BURST mode requires UNDERWATER_EN=1 — burst will not trigger without SWS");
 	}
 
+	// Position-less: LEGACY/DUTY_CYCLE/PASS_PREDICTION with GNSS_EN=0 — falls back
+	// to Doppler-only TX (no position on air unless REUSE_LAST has a cached fix).
+	if ((argos_config.mode == BaseArgosMode::LEGACY ||
+	     argos_config.mode == BaseArgosMode::DUTY_CYCLE ||
+	     argos_config.mode == BaseArgosMode::PASS_PREDICTION) &&
+	    !argos_config.gnss_en) {
+		DEBUG_WARN("ArgosTxService: %s with GNSS_EN=0 — TX will be Doppler-only without position",
+		           argos_config.mode == BaseArgosMode::LEGACY ? "LEGACY" :
+		           argos_config.mode == BaseArgosMode::DUTY_CYCLE ? "DUTY_CYCLE" : "PASS_PREDICTION");
+	}
+
 	DEBUG_TRACE("ArgosTxService::service_init DEBUG ARGOS ID %d", argos_config.argos_id);
 	m_sched.reset(argos_config.argos_id); // TODO verify if already set at this moment
 	m_depth_pile_manager.clear();
@@ -69,6 +80,8 @@ void ArgosTxService::service_init() {
 	m_first_gnss_tx_sent = false;
 	m_last_tx_had_gps = false;
 	m_cooldown_armed = false;
+	m_doppler_seq_count = 0;
+	m_doppler_pause_until_rtc = 0;
 	m_last_preconfig_mod = KineisModulation::LDA2;
 	m_modulation_preconfig.reset();
 	m_consecutive_device_errors = 0;
@@ -115,6 +128,8 @@ void ArgosTxService::service_term() {
 	m_first_gnss_tx_sent = false;
 	m_has_gnss_fix_since_surfacing = false;
 	m_cooldown_armed = false;
+	m_doppler_seq_count = 0;
+	m_doppler_pause_until_rtc = 0;
 	m_is_tx_pending = false;
 	// Defensive: clear pre-warm state so a hypothetical service_term-without-
 	// service_init sequence doesn't leak stale prep across the next session.
@@ -192,9 +207,19 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 		if (argos_config.mode == BaseArgosMode::OFF) {
 			return Service::SCHEDULE_DISABLED;
 		} else if (argos_config.mode == BaseArgosMode::DOPPLER) {
-			// FastLoc priority (2026-05): see explanation at the LEGACY/DUTY_CYCLE
-			// site. process_gnss_burst auto-selects the FastLoc packet builder
-			// when the latest pile entry is FASTLOC.
+			// DOPPLER burst pattern (2026-05): sequence of up to
+			// SURFACING_BURST_MAX_MSG messages with progressive spacing
+			// (surfacing_burst_init_s + (n-1)*step_s, capped at max_s). Between
+			// sequences: tx_interval_s pause (0 = next sequence chains
+			// immediately, effectively continuous progressive Doppler).
+			// Auto-triggered, works identically with UW=0 or UW=1 (the DOPPLER
+			// branch has no UW gate). Reuses surfacing_burst_* params and
+			// SURFACING_BURST_MAX_MSG — no new DTE params. The SURFACING_BURST
+			// branch below is untouched.
+			//
+			// FastLoc / GNSS auto-promotion preserved: a fresh fix (<60 s) in
+			// the depth pile turns this slot into a GNSS Argos packet via
+			// process_gnss_burst (caller routes by mode of the latest entry).
 			if (should_promote_doppler_to_gnss(60)) {
 				DEBUG_INFO("ArgosTxService::DOPPLER mode: fresh FastLoc/FIX — promoting to GNSS TX");
 				m_scheduled_task = [this]() { process_gnss_burst(); };
@@ -202,7 +227,55 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 				m_scheduled_task = [this]() { process_doppler_burst(); };
 			}
 			m_scheduled_mode = argos_config.adaptive_modulation ? KineisModulation::VLDA4 : resolve_non_adaptive_modulation();
-			return m_sched.schedule_legacy(argos_config, now);
+
+			// Inter-sequence pause guard. If a reschedule fires while we are
+			// supposed to be paused (e.g., UW surfaced event, GPS log update),
+			// honor the remaining pause instead of restarting the sequence.
+			if (m_doppler_pause_until_rtc != 0 && now < m_doppler_pause_until_rtc) {
+				unsigned int remaining_s = (unsigned int)(m_doppler_pause_until_rtc - now);
+				DEBUG_TRACE("ArgosTxService::DOPPLER: in pause, %u s remaining", remaining_s);
+				m_sched.schedule_at(m_doppler_pause_until_rtc);
+				return remaining_s * 1000;
+			}
+			m_doppler_pause_until_rtc = 0;
+
+			unsigned int max_msg = configuration_store->read_param<unsigned int>(ParamID::SURFACING_BURST_MAX_MSG);
+
+			// End of sequence. m_doppler_seq_count is post-incremented in
+			// service_initiate, so reaching max_msg here means the Nth msg
+			// already TX'd. Reset count and arm the inter-sequence pause.
+			if (max_msg > 0 && m_doppler_seq_count >= max_msg) {
+				unsigned int inter_s = argos_config.tx_interval_s;
+				DEBUG_INFO("ArgosTxService::DOPPLER: sequence end (%u/%u), %s",
+				           m_doppler_seq_count, max_msg,
+				           inter_s == 0 ? "chaining next sequence" : "pausing then next sequence");
+				m_doppler_seq_count = 0;
+				if (inter_s > 0) {
+					m_doppler_pause_until_rtc = now + (std::time_t)inter_s;
+					m_sched.schedule_at(m_doppler_pause_until_rtc);
+					return inter_s * 1000;
+				}
+				// inter_s == 0: chain straight into next sequence — fall
+				// through to the count==0 path below (which spacing-guards
+				// the first msg against being too close to the last TX).
+			}
+
+			// Within sequence. count == 0 = first msg, immediate (spacing-guarded).
+			if (m_doppler_seq_count == 0) {
+				DEBUG_TRACE("ArgosTxService::DOPPLER: msg #1 (immediate)");
+				unsigned int delay_ms = apply_spacing_guard(0, argos_config.surfacing_burst_init_s, now);
+				if (delay_ms == 0) m_sched.schedule_at(now);
+				return delay_ms;
+			}
+
+			// Subsequent msg: progressive interval capped at max_s.
+			unsigned int interval_s = argos_config.surfacing_burst_init_s +
+			    (m_doppler_seq_count - 1) * argos_config.surfacing_burst_step_s;
+			if (interval_s > argos_config.surfacing_burst_max_s)
+				interval_s = argos_config.surfacing_burst_max_s;
+			DEBUG_TRACE("ArgosTxService::DOPPLER: msg #%u in %u s", m_doppler_seq_count + 1, interval_s);
+			m_sched.schedule_at(now + (std::time_t)interval_s);
+			return interval_s * 1000;
 		} else if (argos_config.mode == BaseArgosMode::SURFACING_BURST) {
 			// 2026-05-25 modulation fix: SURFACING_BURST was unconditionally
 			// hardcoded to LDA2, ignoring both `argos_config.adaptive_modulation`
@@ -558,6 +631,17 @@ void ArgosTxService::service_initiate() {
 	// counter stays 0, which gates out CloudLocate/Fastloc payload substitution.
 	if (m_is_surfacing_burst && !m_has_gnss_fix_since_surfacing) {
 		m_doppler_burst_count++;
+	}
+
+	// DOPPLER burst counter (2026-05). Post-increment so process_doppler_burst
+	// sees the 1-based index of the current TX. Bounded by SURFACING_BURST_MAX_MSG
+	// in service_next_schedule_in_ms which resets to 0 at end of sequence.
+	{
+		ArgosConfig ac;
+		configuration_store->get_argos_configuration(ac);
+		if (ac.mode == BaseArgosMode::DOPPLER) {
+			m_doppler_seq_count++;
+		}
 	}
 
 	// Mark first GNSS TX as sent only when actually executing (not during scheduling).
