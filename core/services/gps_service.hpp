@@ -153,6 +153,45 @@ private:
 	// in react(GPSEventPVT) after first valid fix.
 	bool m_deep_idle_inhibit_first_session = false;
 
+	// Hard-cap timestamp for the WDT inhibit above. If a WDT reset arms the
+	// inhibit but no PVT/CloudLocateReady ever fires (M10Q hardware degraded,
+	// antenna issue, BBR loss), the inhibit would persist forever and disable
+	// deep-idle for the rest of the deployment. After 24 h the dispatch path
+	// force-clears the inhibit so V_BCKP can be recharged via the normal
+	// deep-idle window. Stamped by set_deep_idle_inhibit_first_session(true),
+	// reset by the same setter (with false) and by the two PVT/CloudLocate
+	// clear sites. 0 = inhibit not armed.
+	uint64_t m_inhibit_set_at_ms = 0;
+
+	// Stuck-M10Q recovery: count consecutive end-of-session paths that produce
+	// neither a PVT nor a CloudLocate raw measurement. After STUCK_THRESHOLD
+	// dead sessions, schedule a hard rail-cycle (power_off_immediate + 30 s
+	// + service_reschedule) to flush any latched M10Q hang state. The flag
+	// m_stuck_recovery_in_flight prevents double-arming while a recovery is
+	// already queued.
+	unsigned int m_consecutive_dead_sessions = 0;
+	bool m_stuck_recovery_in_flight = false;
+	Scheduler::TaskHandle m_stuck_recovery_arm_task;
+	Scheduler::TaskHandle m_stuck_recovery_done_task;
+	static constexpr unsigned int STUCK_THRESHOLD = 20;
+
+	// Safety net 3.5 — GPS Health WDT (no GPS event of any kind in N hours →
+	// soft reset). Catches the scenario where the GPS service silently dies
+	// while the scheduler is still alive (so the hardware WDT never fires).
+	// Re-armed by every GPS event (PVT, degraded, CloudLocate, NO_FIX).
+	// Threshold long (24h) to avoid false positives during legit long dives
+	// or zone-exclusion windows where GNSS is disabled.
+	Scheduler::TaskHandle m_health_wdt_task;
+	static constexpr unsigned int HEALTH_WDT_HOURS = 24;
+
+	// Safety net 3.6 — No real PVT in N days (CloudLocate doesn't count).
+	// Catches the scenario where M10Q produces raw measurements (CloudLocate)
+	// but never a real on-device PVT — typically when HACC/HDOP filters reject
+	// every fix, leaving the tag trapped in CloudLocate-only mode forever.
+	// 7-day threshold: any legit deployment should produce ≥1 real PVT/week.
+	Scheduler::TaskHandle m_no_pvt_wdt_task;
+	static constexpr unsigned int NO_PVT_WDT_DAYS = 7;
+
 	// LED dispatch hint — records which branch try_enter_deep_idle_or_poweroff
 	// took on its last invocation. Read by the no-fix react handlers to emit
 	// GNSS_OFF_DEEP_IDLE or GNSS_OFF_POWEROFF so the LED FSM can render the
@@ -165,6 +204,12 @@ private:
 
 	void backup_charge_stop_internal();
 	void schedule_backup_charge_retry(unsigned int attempt);
+	/// @brief Safety net 3.5 — (re-)arm the GPS-event health watchdog.
+	/// Called from service_init() and every GPS-event callback.
+	void arm_health_wdt();
+	/// @brief Safety net 3.6 — (re-)arm the no-real-PVT watchdog.
+	/// Called from service_init() and from gnss_data_callback() ONLY.
+	void arm_no_pvt_wdt();
 	/// @brief Dispatch end-of-session: enter deep-idle (with optional auto-off
 	/// timer) or fall back to immediate power_off, based on
 	/// GNSS_DEEP_IDLE_AFTER_OFF_S. Replaces the 7 raw `m_device.power_off()`
@@ -174,7 +219,11 @@ private:
 public:
 	/// @brief R4 robustness — set by main.cpp on boot if reset cause was WDT.
 	/// Disables deep-idle fast-path until first clean acquisition.
-	void set_deep_idle_inhibit_first_session(bool inhibit) { m_deep_idle_inhibit_first_session = inhibit; }
+	/// Also stamps m_inhibit_set_at_ms so the 24h hard-cap in
+	/// try_enter_deep_idle_or_poweroff() can force-clear the inhibit if no
+	/// PVT/CloudLocate ever arrives. Defined inline in cpp because
+	/// PMU::get_timestamp_ms() requires the pmu.hpp include.
+	void set_deep_idle_inhibit_first_session(bool inhibit);
 
 private:
 

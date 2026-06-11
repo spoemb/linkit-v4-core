@@ -18,7 +18,29 @@
 #include "etl/list.h"
 #include "etl/vector.h"
 
-static constexpr unsigned int MAX_NUM_TASKS = 64;  ///< Max concurrent pending tasks
+// Safety net 3.7 — Scheduler drop detector. If a schedule_now /
+// schedule_deferred call has to drop a task because the ETL queue is full,
+// increment a global counter. If too many drops accumulate inside a
+// rolling window, force a soft reset — losing a critical task (e.g. an
+// auto-poweroff timer) can leave the GPS rail on indefinitely and brick a
+// sealed turtle. Counters are static (one set of state for the whole
+// scheduler) to avoid bloating every Scheduler instance; CPPUTEST builds
+// skip the reset path so unit tests don't crash on intentional saturation.
+// Real PMU::reset is only called on the embedded target.
+
+// 2026-06 safety pass: doubled from 64 → 128 to give scheduler queue headroom
+// after observing field bricks correlated with scheduler near-saturation. ETL
+// containers are .bss-allocated; cost = ~3.5 KB extra RAM on a 256 KB SoC.
+// The added headroom is the cheap part — the real safety net is the drop
+// counter in schedule_now / schedule_deferred (safety net 3.7) that forces a
+// soft reset if drops persist.
+static constexpr unsigned int MAX_NUM_TASKS = 128;  ///< Max concurrent pending tasks
+
+// Safety net 3.7 — Scheduler drop counter. Incremented every time
+// schedule_now() or schedule_deferred() drops a task because the queue is
+// full. Read+reset by main loop to decide whether to force a soft reset.
+// `inline` (C++17) so the symbol lives in a single TU at link time.
+inline unsigned int g_scheduler_drop_count = 0;
 
 #ifndef INPLACE_FUNCTION_SIZE_SCHEDULER
 #define INPLACE_FUNCTION_SIZE_SCHEDULER 12
@@ -269,6 +291,7 @@ private:
 		if (m_timer_schedules.full()) {
 			DEBUG_ERROR("Scheduler: deferred queue FULL (%u/%u) — dropping '%s'",
 			            (unsigned)m_timer_schedules.size(), (unsigned)m_timer_schedules.max_size(), task.m_name);
+			g_scheduler_drop_count++;  // safety net 3.7: main loop will trigger soft reset on persistent drops
 			return;
 		}
 		// If this task was delayed then schedule a timer to start it
@@ -288,6 +311,7 @@ private:
 		if (m_tasks.full()) {
 			DEBUG_ERROR("Scheduler: task queue FULL (%u/%u) — dropping '%s'",
 			            (unsigned)m_tasks.size(), (unsigned)m_tasks.max_size(), task.m_name);
+			g_scheduler_drop_count++;  // safety net 3.7: main loop will trigger soft reset on persistent drops
 			return;
 		}
 		// Task is requested to be processed on next run()

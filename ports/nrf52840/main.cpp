@@ -193,6 +193,84 @@ BaseDebugMode g_debug_mode = BaseDebugMode::USB_CDC;
 /// @brief Guards _write() from outputting before debug peripheral is ready.
 static bool m_is_debug_init = false;
 
+// =====================================================================
+// Safety net 3.4 — Exception storm detector (2026-06)
+// =====================================================================
+// Defensive auto-recovery: if the main loop catches >EXC_STORM_THRESHOLD
+// exceptions inside EXC_STORM_WINDOW_MS, force a soft reset. The existing
+// catch chain already kicks the watchdog every iteration, so a service
+// that throws on every dispatch (e.g. a corrupted config-store read) would
+// otherwise loop forever, kicking the WDT and never letting the hardware
+// WDT firing recover the device. This is one of the failure modes that
+// turns sealed turtles into permanent bricks.
+//
+// Worst case: identical to current behaviour (no exceptions = never fires).
+// Best case: tag self-recovers via soft reset → cold boot → boot-fail
+// counter logic kicks in if persistent.
+static unsigned int s_exc_storm_count = 0;
+static uint64_t     s_exc_storm_window_start_ms = 0;
+static constexpr unsigned int EXC_STORM_THRESHOLD = 100;
+static constexpr uint64_t     EXC_STORM_WINDOW_MS = 60ULL * 1000ULL;  // 1 min
+
+static void gps_service_exception_storm_check() {
+	uint64_t now_ms = PMU::get_timestamp_ms();
+	if (s_exc_storm_window_start_ms == 0 ||
+	    now_ms - s_exc_storm_window_start_ms > EXC_STORM_WINDOW_MS) {
+		// Outside window: reset counter and start a new window.
+		s_exc_storm_window_start_ms = now_ms;
+		s_exc_storm_count = 0;
+	}
+	s_exc_storm_count++;
+	if (s_exc_storm_count >= EXC_STORM_THRESHOLD) {
+		DEBUG_ERROR("Exception storm: %u exceptions in <%llu ms — forcing soft reset",
+		            s_exc_storm_count, (unsigned long long)EXC_STORM_WINDOW_MS);
+		PMU::save_stack(PMULogType::ETL);
+		PMU::reset(false);
+	}
+}
+
+// =====================================================================
+// Safety net 3.7 — Scheduler queue drop detector (2026-06)
+// =====================================================================
+// `g_scheduler_drop_count` is incremented inside Scheduler::schedule_now /
+// schedule_deferred whenever the queue is full and a task is dropped. A
+// dropped task can be CRITICAL — e.g. the deep-idle auto-poweroff timer or
+// a safety-net watchdog — and a silent drop leads to the rail-on / brick
+// pattern observed in 2026-06 field deployments.
+//
+// Strategy: snapshot the counter every main loop iteration. If it grows
+// past SCHED_DROP_THRESHOLD inside SCHED_DROP_WINDOW_MS, force a soft
+// reset. The queue was already doubled to 128 in scheduler.hpp, so legit
+// load should never trip this — only a pathological storm does.
+//
+// Worst case (no drops): zero impact, just one comparison per iteration.
+// Best case (genuine drop storm): tag reboots cleanly before V_BCKP drains.
+static unsigned int s_sched_drop_last_observed = 0;
+static unsigned int s_sched_drop_in_window = 0;
+static uint64_t     s_sched_drop_window_start_ms = 0;
+static constexpr unsigned int SCHED_DROP_THRESHOLD = 10;
+static constexpr uint64_t     SCHED_DROP_WINDOW_MS = 60ULL * 1000ULL;  // 1 min
+
+static void scheduler_drop_storm_check() {
+	if (g_scheduler_drop_count == s_sched_drop_last_observed) return;  // no new drops
+	unsigned int delta = g_scheduler_drop_count - s_sched_drop_last_observed;
+	s_sched_drop_last_observed = g_scheduler_drop_count;
+
+	uint64_t now_ms = PMU::get_timestamp_ms();
+	if (s_sched_drop_window_start_ms == 0 ||
+	    now_ms - s_sched_drop_window_start_ms > SCHED_DROP_WINDOW_MS) {
+		s_sched_drop_window_start_ms = now_ms;
+		s_sched_drop_in_window = 0;
+	}
+	s_sched_drop_in_window += delta;
+	if (s_sched_drop_in_window >= SCHED_DROP_THRESHOLD) {
+		DEBUG_ERROR("Scheduler drop storm: %u drops in <%llu ms — forcing soft reset",
+		            s_sched_drop_in_window, (unsigned long long)SCHED_DROP_WINDOW_MS);
+		PMU::save_stack(PMULogType::ETL);
+		PMU::reset(false);
+	}
+}
+
 FSM_INITIAL_STATE(GenTracker, BootState)
 
 /// @brief Number of IS25 flash blocks reserved for OTA firmware images (last 1 MB).
@@ -1278,8 +1356,14 @@ int main()
 			// Safety watchdog kick — reduces dependency on scheduled task
 			PMU::kick_watchdog();
 
+			// Safety net 3.7 (2026-06): check scheduler drop counter and reset
+			// if persistent saturation pattern detected. Cheap — usually one
+			// integer comparison (no new drops) per loop iteration.
+			scheduler_drop_storm_check();
+
 			PMU::run();
 		} catch (ErrorCode e) {
+			gps_service_exception_storm_check();
 			ErrorEvent event;
 			event.error_code = e;
 			GenTracker::dispatch(event);
@@ -1291,6 +1375,7 @@ int main()
 			// FSM can react cleanly (and now, via the boot-fail counter,
 			// trigger factory_reset retry if these become persistent).
 			DEBUG_ERROR("main loop: unhandled std::exception: %s", ex.what());
+			gps_service_exception_storm_check();
 			ErrorEvent event;
 			event.error_code = ErrorCode::RESOURCE_NOT_AVAILABLE;
 			GenTracker::dispatch(event);
@@ -1298,6 +1383,7 @@ int main()
 			// Last-resort catch for SoftDevice asserts, mid-throw exceptions,
 			// or non-derived thrown types. Same rationale as above.
 			DEBUG_ERROR("main loop: unhandled unknown exception");
+			gps_service_exception_storm_check();
 			ErrorEvent event;
 			event.error_code = ErrorCode::RESOURCE_NOT_AVAILABLE;
 			GenTracker::dispatch(event);

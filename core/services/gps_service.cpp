@@ -71,6 +71,22 @@ void GPSService::service_init() {
     m_underwater = false;
     m_backup_exit_task = {};
     m_backup_retry_task = {};
+    // Safety-net 3.2: reset stuck-recovery state on init (idempotent across
+    // service restart cycles — Service framework calls init/term in pairs).
+    m_consecutive_dead_sessions = 0;
+    m_stuck_recovery_in_flight = false;
+    m_stuck_recovery_arm_task = {};
+    m_stuck_recovery_done_task = {};
+
+    // Safety-nets 3.5 + 3.6: arm health WDT (24h, any GPS event) and
+    // no-PVT WDT (7d, real PVT only). Both are re-armed by the relevant
+    // callbacks. Each fires PMU::reset(false) — defensive against the
+    // "tag alive but inert" scenarios that hardware WDT cannot catch
+    // (catch-loop kicks the WDT, scheduler still runs but service is dead).
+    m_health_wdt_task = {};
+    m_no_pvt_wdt_task = {};
+    arm_health_wdt();
+    arm_no_pvt_wdt();
     // 2026-05 deep-idle refactor: no more periodic backup-charge scheduler.
     // Recharge happens implicitly via the deep-idle-after-off window now.
 
@@ -112,28 +128,87 @@ void GPSService::service_init() {
 #define VAL_GNSS(fmt, ...) do {} while (0)
 #endif
 
+/// @brief R4 inhibit setter — stamp the arm time so the 24h hard-cap in
+/// try_enter_deep_idle_or_poweroff() can force-clear if no PVT/CloudLocate.
+void GPSService::set_deep_idle_inhibit_first_session(bool inhibit) {
+	m_deep_idle_inhibit_first_session = inhibit;
+	m_inhibit_set_at_ms = inhibit ? PMU::get_timestamp_ms() : 0;
+}
+
+/// @brief Safety net 3.5 — re-arm the GPS-event health watchdog.
+/// Fires after HEALTH_WDT_HOURS without ANY GPS event (PVT, degraded,
+/// CloudLocate, NO_FIX). Soft reset to recover the tag.
+void GPSService::arm_health_wdt() {
+	system_scheduler->cancel_task(m_health_wdt_task);
+	m_health_wdt_task = system_scheduler->post_task_prio([this]() {
+		(void)this;
+		DEBUG_ERROR("GPS Health WDT: no event in %u h — soft reset", HEALTH_WDT_HOURS);
+		PMU::save_stack(PMULogType::WDT);
+		PMU::reset(false);
+	}, "GPSHealthWDT", Scheduler::DEFAULT_PRIORITY,
+	   (uint64_t)HEALTH_WDT_HOURS * 3600ULL * (uint64_t)MS_PER_SEC);
+}
+
+/// @brief Safety net 3.6 — re-arm the no-real-PVT watchdog.
+/// Fires after NO_PVT_WDT_DAYS without a real PVT (CloudLocate / degraded
+/// don't count). Soft reset to recover from filter-trapped CloudLocate-only
+/// mode where m_is_first_fix_found stays false indefinitely.
+void GPSService::arm_no_pvt_wdt() {
+	system_scheduler->cancel_task(m_no_pvt_wdt_task);
+	m_no_pvt_wdt_task = system_scheduler->post_task_prio([this]() {
+		(void)this;
+		DEBUG_ERROR("GPS No-PVT WDT: no real PVT in %u days — soft reset",
+		            NO_PVT_WDT_DAYS);
+		PMU::save_stack(PMULogType::WDT);
+		PMU::reset(false);
+	}, "GPSNoPvtWDT", Scheduler::DEFAULT_PRIORITY,
+	   (uint64_t)NO_PVT_WDT_DAYS * 24ULL * 3600ULL * (uint64_t)MS_PER_SEC);
+}
+
 void GPSService::try_enter_deep_idle_or_poweroff() {
     if (m_deep_idle_inhibit_first_session) {
-        DEBUG_INFO("GPSService::try_enter_deep_idle_or_poweroff: WDT-reset inhibit — cold power_off");
-        VAL_GNSS("dispatch=wdt_inhibit_cold_off");
-        m_last_dispatch_was_deep_idle = false;
-        m_device.power_off();
-        // HIGH GNSS-AUDIT #2 fix: do NOT clear the inhibit here. This path
-        // fires on every end-of-session including pure timeouts (MaxNavSamples,
-        // MaxSatSamples, Error, service_cancel) where the M10Q may never have
-        // really responded — clearing the inhibit on a 0-satellite timeout
-        // would re-engage deep-idle on the next session without ever proving
-        // the cold path works (R4 robustness invariant violated).
-        //
-        // The inhibit is now cleared ONLY at the two sites that prove the
-        // M10Q is actually alive and the cold path succeeded:
-        //   - `react(GPSEventPVT)` — a valid PVT means cold power-on + UART +
-        //     nav engine all working.
-        //   - `react(GPSEventCloudLocateReady)` — raw measurement means UART +
-        //     nav up, even though no PVT.
-        // Both already clear the flag inline (see lines ~760 and ~840).
-        VAL_GNSS("dispatch=wdt_inhibit_pending_proof (no PVT yet)");
-        return;
+        // 24 h hard-cap (safety net 3.1): if the inhibit was armed by a WDT
+        // reset but no PVT and no CloudLocate ever fires (M10Q hardware
+        // degraded, antenna issue, BBR loss), the inhibit would persist for
+        // the rest of the deployment and deep-idle would be disabled forever
+        // — meaning V_BCKP drains and the M10Q can never warm-start again.
+        // Force-clearing the inhibit after 24 h lets deep-idle re-engage so
+        // V_BCKP gets recharged via the normal window. Worst case is identical
+        // to current behaviour (inhibit would still be active); best case is
+        // automatic recovery.
+        constexpr uint64_t INHIBIT_HARD_CAP_MS = 24ULL * 3600ULL * 1000ULL;
+        uint64_t now_ms = PMU::get_timestamp_ms();
+        // Defensive: if the setter was bypassed (legacy code path) the stamp
+        // may still be zero. Initialise on first observation.
+        if (m_inhibit_set_at_ms == 0) m_inhibit_set_at_ms = now_ms;
+        if (now_ms - m_inhibit_set_at_ms > INHIBIT_HARD_CAP_MS) {
+            DEBUG_WARN("GPSService: WDT inhibit > 24 h without proof — force-clearing");
+            VAL_GNSS("dispatch=wdt_inhibit_force_clear");
+            m_deep_idle_inhibit_first_session = false;
+            m_inhibit_set_at_ms = 0;
+            // Fall through to normal dispatch below — DO NOT return
+        } else {
+            DEBUG_INFO("GPSService::try_enter_deep_idle_or_poweroff: WDT-reset inhibit — cold power_off");
+            VAL_GNSS("dispatch=wdt_inhibit_cold_off");
+            m_last_dispatch_was_deep_idle = false;
+            m_device.power_off();
+            // HIGH GNSS-AUDIT #2 fix: do NOT clear the inhibit here. This path
+            // fires on every end-of-session including pure timeouts (MaxNavSamples,
+            // MaxSatSamples, Error, service_cancel) where the M10Q may never have
+            // really responded — clearing the inhibit on a 0-satellite timeout
+            // would re-engage deep-idle on the next session without ever proving
+            // the cold path works (R4 robustness invariant violated).
+            //
+            // The inhibit is now cleared ONLY at the two sites that prove the
+            // M10Q is actually alive and the cold path succeeded:
+            //   - `react(GPSEventPVT)` — a valid PVT means cold power-on + UART +
+            //     nav engine all working.
+            //   - `react(GPSEventCloudLocateReady)` — raw measurement means UART +
+            //     nav up, even though no PVT.
+            // Both already clear the flag inline (see lines ~760 and ~840).
+            VAL_GNSS("dispatch=wdt_inhibit_pending_proof (no PVT yet)");
+            return;
+        }
     }
 
     unsigned int deep_idle_s = configuration_store->read_param<unsigned int>(ParamID::GNSS_DEEP_IDLE_AFTER_OFF_S);
@@ -205,6 +280,19 @@ void GPSService::service_term() {
     system_scheduler->cancel_task(m_backup_exit_task);
     system_scheduler->cancel_task(m_backup_retry_task);
     system_scheduler->cancel_task(m_deep_idle_auto_off_task);
+    // Safety-net 3.2: cancel any in-flight stuck-recovery tasks. If the service
+    // is being torn down (OffState, ConfigurationState, OTA, BatteryCritical),
+    // a pending power_off_immediate or service_reschedule could conflict with
+    // the teardown chain. Idempotent — cancel on an invalid handle is a no-op.
+    system_scheduler->cancel_task(m_stuck_recovery_arm_task);
+    system_scheduler->cancel_task(m_stuck_recovery_done_task);
+    m_stuck_recovery_in_flight = false;
+    m_consecutive_dead_sessions = 0;
+    // Safety-nets 3.5 + 3.6: cancel the health/no-PVT watchdogs on teardown.
+    // Service framework re-creates the service from scratch on next init, so
+    // dangling reset timers would fire after the rebuild — wrong behavior.
+    system_scheduler->cancel_task(m_health_wdt_task);
+    system_scheduler->cancel_task(m_no_pvt_wdt_task);
     m_pending_backup_duration_s = 0;
     if (m_backup_active) {
         m_device.exit_backup_charge_mode();
@@ -658,6 +746,48 @@ GPSLogEntry GPSService::invalid_log_entry()
     DEBUG_INFO("GPSService::retry_counter: NO_FIX | ntry=%u/%s", m_cold_start_ntry,
                ntry_limit == 0 ? "unlimited" : std::to_string(ntry_limit).c_str());
 
+    // Safety-net 3.5: a NO_FIX path is still a GPS event — re-arm health WDT.
+    // NOT 3.6 — NO_FIX is the opposite of a real PVT, so we don't want to
+    // re-arm the no-PVT WDT (otherwise an infinitely-failing tag would never
+    // trigger the safety net 3.6 reset).
+    arm_health_wdt();
+
+    // Stuck-M10Q recovery (safety-net 3.2): count consecutive end-of-session
+    // paths that produce neither a PVT nor a CloudLocate. After STUCK_THRESHOLD
+    // dead sessions, arm a hard rail-cycle to flush any latched M10Q state.
+    // The counter is reset by the three success callbacks (gnss_data_callback,
+    // gnss_degraded_callback, gnss_cloudlocate_callback). Single-arm via
+    // m_stuck_recovery_in_flight so we don't queue multiple recoveries.
+    m_consecutive_dead_sessions++;
+    if (m_consecutive_dead_sessions >= STUCK_THRESHOLD && !m_stuck_recovery_in_flight) {
+        m_stuck_recovery_in_flight = true;
+        VAL_GNSS("dispatch=stuck_recovery_armed sessions=%u", m_consecutive_dead_sessions);
+        DEBUG_WARN("GPSService: %u consecutive dead sessions — scheduling hard rail-cycle",
+                   m_consecutive_dead_sessions);
+        // Fire after current invalidate completes (~1 s), then 30 s rail-down
+        // for a clean M10Q hardware reset before normal scheduling resumes.
+        m_stuck_recovery_arm_task = system_scheduler->post_task_prio([this]() {
+            // Guard: if a new acquisition is in flight when we'd yank the
+            // rail, skip this recovery cycle. The counter is NOT reset so the
+            // next dead session will re-arm naturally.
+            if (m_is_active) {
+                VAL_GNSS("dispatch=stuck_recovery_skipped_active");
+                m_stuck_recovery_in_flight = false;
+                return;
+            }
+            VAL_GNSS("dispatch=stuck_recovery_rail_down");
+            DEBUG_WARN("GPSService: stuck recovery — power_off_immediate, 30 s rail-down");
+            m_device.power_off_immediate();
+            m_stuck_recovery_done_task = system_scheduler->post_task_prio([this]() {
+                VAL_GNSS("dispatch=stuck_recovery_done");
+                DEBUG_INFO("GPSService: stuck recovery — rail-down complete, rescheduling");
+                m_stuck_recovery_in_flight = false;
+                m_consecutive_dead_sessions = 0;   // fresh chance after recovery
+                service_reschedule(false);
+            }, "GPSStuckRecoveryDone", Scheduler::DEFAULT_PRIORITY, 30 * MS_PER_SEC);
+        }, "GPSStuckRecoveryArmed", Scheduler::DEFAULT_PRIORITY, 1 * MS_PER_SEC);
+    }
+
     GPSLogEntry gps_entry{};
 
     gps_entry.header.log_type = LOG_GPS;
@@ -923,6 +1053,7 @@ void GPSService::react(const GPSEventPVT& e) {
     if (m_deep_idle_inhibit_first_session) {
         DEBUG_INFO("GPSService::react(GPSEventPVT): first clean fix — releasing deep-idle WDT inhibit");
         m_deep_idle_inhibit_first_session = false;
+        m_inhibit_set_at_ms = 0;   // safety-net 3.1: reset 24h hard-cap timer
     }
     try_enter_deep_idle_or_poweroff();   // 2026-05 deep-idle dispatch
     gnss_data_callback(e.data);
@@ -996,6 +1127,7 @@ void GPSService::react(const GPSEventCloudLocateReady& e) {
 		if (m_deep_idle_inhibit_first_session) {
 			DEBUG_INFO("GPSService::react(GPSEventCloudLocateReady): raw OK — releasing WDT inhibit");
 			m_deep_idle_inhibit_first_session = false;
+			m_inhibit_set_at_ms = 0;   // safety-net 3.1: reset 24h hard-cap timer
 		}
 
 		try_enter_deep_idle_or_poweroff();
@@ -1034,6 +1166,14 @@ void GPSService::gnss_data_callback(GNSSData data) {
     // Mark first fix flag
     m_gnss_data.data = data;
     m_is_first_fix_found = true;
+    // Safety-net 3.2: M10Q produced a PVT → reset stuck-recovery state.
+    m_consecutive_dead_sessions = 0;
+    m_stuck_recovery_in_flight = false;
+    system_scheduler->cancel_task(m_stuck_recovery_arm_task);
+    system_scheduler->cancel_task(m_stuck_recovery_done_task);
+    // Safety-nets 3.5 + 3.6: real PVT — re-arm BOTH watchdogs.
+    arm_health_wdt();
+    arm_no_pvt_wdt();
     m_num_gps_fixes++;
     task_process_gnss_data();
 }
@@ -1043,6 +1183,14 @@ void GPSService::gnss_data_callback(GNSSData data) {
 void GPSService::gnss_degraded_callback(GNSSData data) {
     m_gnss_data.data = data;
     // Don't set m_is_first_fix_found — degraded fix should not change cold start behavior
+    // Safety-net 3.2: M10Q produced a degraded PVT → reset stuck-recovery state.
+    m_consecutive_dead_sessions = 0;
+    m_stuck_recovery_in_flight = false;
+    system_scheduler->cancel_task(m_stuck_recovery_arm_task);
+    system_scheduler->cancel_task(m_stuck_recovery_done_task);
+    // Safety-net 3.5: GPS produced *some* event — re-arm health WDT.
+    // NOT 3.6 — degraded does not count as a real PVT for that watchdog.
+    arm_health_wdt();
     task_process_degraded_gnss_data();
 }
 
@@ -1051,6 +1199,14 @@ void GPSService::gnss_degraded_callback(GNSSData data) {
 void GPSService::gnss_cloudlocate_callback(GNSSRawMeasurement data) {
     m_raw_measurement = data;
     // Don't set m_is_first_fix_found — CloudLocate does not provide on-device position
+    // Safety-net 3.2: M10Q produced a raw measurement → reset stuck-recovery state.
+    m_consecutive_dead_sessions = 0;
+    m_stuck_recovery_in_flight = false;
+    system_scheduler->cancel_task(m_stuck_recovery_arm_task);
+    system_scheduler->cancel_task(m_stuck_recovery_done_task);
+    // Safety-net 3.5: GPS produced *some* event — re-arm health WDT.
+    // NOT 3.6 — CloudLocate does not count as a real PVT for that watchdog.
+    arm_health_wdt();
     task_process_cloudlocate_data();
 }
 

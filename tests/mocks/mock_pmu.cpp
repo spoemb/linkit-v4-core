@@ -33,6 +33,14 @@ void PMU::kick_watchdog() {
 void PMU::print_stack() {
 }
 
+void PMU::save_stack(PMULogType type) {
+	// No-op in host tests — real PMU logs the crash type to .noinit RAM
+	// for post-mortem retrieval; not useful when the test process is short-
+	// lived. Mock provided so safety-net code calling save_stack() before
+	// PMU::reset() links cleanly.
+	(void)type;
+}
+
 ResetCause PMU::reset_cause() {
 	return ResetCause::POWER_ON;
 }

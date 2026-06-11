@@ -624,9 +624,17 @@ void OperationalState::service_event_handler(ServiceEvent& e) {
 	// after the full cascade (up to 1-2 s perceived delay).
 	// Skipped in SWS test mode where the LED is owned by SWSAnalogService::detector_state
 	// (steady BLUE/GREEN) — overwriting it here would clobber the bench display.
+	// SWS test mode only exists when ENABLE_SWS_ANALOG is compiled in; on
+	// boards without it (e.g. RSPB) treat as "test not running" so dive/surface
+	// LEDs dispatch normally.
+#if ENABLE_SWS_ANALOG
+	const bool sws_test_running = SWSAnalogService::is_test_running();
+#else
+	const bool sws_test_running = false;
+#endif
 	if (e.event_source == ServiceIdentifier::UW_SENSOR &&
 	    e.event_type == ServiceEventType::SERVICE_LOG_UPDATED &&
-	    !SWSAnalogService::is_test_running()) {
+	    !sws_test_running) {
 		bool is_underwater = std::get<bool>(e.event_data);
 		if (is_underwater)
 			led_handle::dispatch<SetLEDDiveDetected>({});

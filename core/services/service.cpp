@@ -403,15 +403,25 @@ void ServiceManager::enter_cooldown_sleep() {
 	// Stop SWS (UW_SENSOR) to save power during cooldown — unless the user
 	// is actively running SWSTST,1 (bench/cable testing). Pausing SWS during
 	// test mode makes the LED freeze and confuses operator diagnostics.
+	// SWS test mode only exists when ENABLE_SWS_ANALOG is compiled in; on
+	// boards without it (e.g. RSPB) always proceed with the pause.
+#if ENABLE_SWS_ANALOG
 	if (!SWSAnalogService::is_test_running()) {
+#else
+	{
+#endif
 		for (auto& p : m_map) {
 			if (p.second.get_service_id() == ServiceIdentifier::UW_SENSOR) {
 				p.second.pause_for_cooldown();
 			}
 		}
+#if ENABLE_SWS_ANALOG
 	} else {
 		DEBUG_INFO("ServiceManager: SWS test mode active — skipping SWS pause for cooldown");
 	}
+#else
+	}
+#endif
 
 	// Program wake timer for remaining cooldown duration
 	if (rtc && rtc->is_set() && m_last_successful_cycle_time > 0) {
