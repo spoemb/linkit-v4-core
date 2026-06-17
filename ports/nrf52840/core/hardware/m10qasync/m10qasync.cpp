@@ -504,6 +504,13 @@ void M10QAsyncReceiver::power_off_immediate() {
     m_consecutive_wake_failures = 0;
     m_pmreq_verify_retries = 0;
     m_backupidle_entered_ms = 0;
+    // 2026-06 latch fix: clear the unrecoverable-error flag on a hard rail-cut
+    // so the next session starts clean. Otherwise a latched error (set on a
+    // receive/configure failure and never cleared on the warm backupidle->
+    // configure wake path) would force power-off every session and only ever
+    // recover via the 20-dead-session stuck-recovery — i.e. "GPS dies, never
+    // recovers" while the device (Doppler TX) stays alive.
+    m_unrecoverable_error = false;
     // m_gnss_info_valid intentionally left untouched — the cached baud
     // hint helps the next session even after a cold rail-cut (BBR may have
     // survived if the rail dropped before V_BCKP discharged).
@@ -1627,6 +1634,13 @@ void M10QAsyncReceiver::state_configure_enter() {
 	m_step = 0;
 	m_retries = DEFAULT_RETRIES;
 	m_op_state = OpState::IDLE;
+	// 2026-06 latch fix: clear any stale unrecoverable-error here too. The warm
+	// EXTINT-wake fast-path enters configure directly (backupidle -> configure),
+	// bypassing state_poweron_enter() which is the only other clear site — so a
+	// flag latched in a previous session would otherwise persist across every
+	// warm wake. A genuine configure failure re-sets it below (per-session), so
+	// clearing it on entry just gives each session a fresh attempt.
+	m_unrecoverable_error = false;
 }
 
 void M10QAsyncReceiver::state_configure() {
@@ -2227,6 +2241,13 @@ void M10QAsyncReceiver::state_sendofflinedatabase_enter() {
     try {
         LFSFile file(main_filesystem, "gps_config.dat", LFS_O_RDONLY);
         unsigned int file_sz = (unsigned int)file.size();
+        // 2026-06 latch fix: always re-scan the ANO file from the start for the
+        // current day. copy_mga_ano_to_buffer used m_ano_start_pos as a
+        // forward-only cursor that, once it hit a stale day (or a time jump),
+        // latched to file.size() (EOF) and returned 0 records FOREVER — ANO
+        // silently stopped applying and never recovered. The full re-scan is
+        // bounded (one pass of the offline file) and runs only on cold sessions.
+        m_ano_start_pos = 0;
         m_ubx_comms.copy_mga_ano_to_buffer(file, m_navigation_database, sizeof(m_navigation_database),
                                            rtc->gettime(),
                                            m_ano_database_len, m_expected_dbd_messages, m_ano_start_pos,

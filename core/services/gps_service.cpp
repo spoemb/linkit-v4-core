@@ -143,6 +143,15 @@ void GPSService::arm_health_wdt() {
 	m_health_wdt_task = system_scheduler->post_task_prio([this]() {
 		(void)this;
 		DEBUG_ERROR("GPS Health WDT: no event in %u h — soft reset", HEALTH_WDT_HOURS);
+		// 2026-06: snapshot the (free-running, crystal-accurate) RTC to flash
+		// right before the soft reset so the post-reset restore from
+		// LAST_KNOWN_RTC does NOT jump time backward by up to the 30-min
+		// periodic-flush gap. A backward RTC makes injected MGA-INI-TIME wrong
+		// and breaks AssistNow — a reset loop would march time backward and
+		// never recover. Persisting here bounds the loss to ~0.
+		if (rtc && rtc->is_set() && rtc->gettime() > 0)
+			configuration_store->write_param(ParamID::LAST_KNOWN_RTC,
+			                                 static_cast<unsigned int>(rtc->gettime()));
 		PMU::save_stack(PMULogType::WDT);
 		PMU::reset(false);
 	}, "GPSHealthWDT", Scheduler::DEFAULT_PRIORITY,
@@ -159,6 +168,11 @@ void GPSService::arm_no_pvt_wdt() {
 		(void)this;
 		DEBUG_ERROR("GPS No-PVT WDT: no real PVT in %u days — soft reset",
 		            NO_PVT_WDT_DAYS);
+		// 2026-06: persist the accurate RTC before reset (see Health WDT) so the
+		// restore doesn't rewind time and poison AssistNow after the reset.
+		if (rtc && rtc->is_set() && rtc->gettime() > 0)
+			configuration_store->write_param(ParamID::LAST_KNOWN_RTC,
+			                                 static_cast<unsigned int>(rtc->gettime()));
 		PMU::save_stack(PMULogType::WDT);
 		PMU::reset(false);
 	}, "GPSNoPvtWDT", Scheduler::DEFAULT_PRIORITY,
