@@ -32,6 +32,7 @@ struct GPSNavSettings {
     unsigned int     min_elev = 10;
     unsigned int     ano_stale_threshold_s = 25 * 24 * 3600;  // ANO staleness threshold in seconds (default: 25 days)
     bool             cloudlocate_enable = false;  // Enable MEAS message capture for CloudLocate
+    bool             cold_start = false;  // Force a true cold start: CFG-RST navBbrMask=0xFFFF (wipe ephemeris/almanac/pos/time/clock + aiding) at power-on, then re-inject time/pos + ANO. Default false = hot start (keep BBR).
 };
 
 struct GNSSData {
@@ -92,7 +93,8 @@ struct GNSSRawMeasurement {
     bool has_measc12;
     bool has_meas20;
     bool has_meas50;
-    GNSSRawMeasurement() : has_measc12(false), has_meas20(false), has_meas50(false) {
+    uint32_t capture_time;  // RTC epoch (s) at snapshot capture; 0 = unknown. Embedded in the CloudLocate packet so the cloud knows the measurement instant regardless of TX delay.
+    GNSSRawMeasurement() : has_measc12(false), has_meas20(false), has_meas50(false), capture_time(0) {
         std::memset(measc12, 0, sizeof(measc12));
         std::memset(meas20, 0, sizeof(meas20));
         std::memset(meas50, 0, sizeof(meas50));

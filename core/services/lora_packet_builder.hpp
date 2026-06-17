@@ -160,7 +160,9 @@ public:
 			bool is_low_battery, unsigned int& size_bits);
 
 	/// @brief Build CloudLocate raw GNSS measurement packet.
+	/// @param capture_rtc  RTC epoch (s) at snapshot capture. 0 = unknown → no time
+	///                     field (backward compatible — shorter legacy packet).
 	static KineisPacket build_cloudlocate_packet(const uint8_t* blob, unsigned int blob_size,
 			uint8_t format_id, bool is_low_battery, unsigned int battery_voltage,
-			unsigned int& size_bits);
+			unsigned int& size_bits, uint32_t capture_rtc = 0);
 };

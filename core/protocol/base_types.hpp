@@ -426,8 +426,18 @@ enum class ParamID {
 	// lat/lon (position computed in the cloud from the raw measurements
 	// uploaded via Argos). Off by default — operator must opt in.
 	GNSS_CLOUDLOCATE_ONLY                    = 241,
+	// === GNSS auto cold-start after N consecutive failed sessions (slot 242) ===
+	// uint: 0 = disabled (default — no behavior change / no regression). N > 0 =
+	// after N consecutive end-of-session paths with NO fix (no PVT and no
+	// CloudLocate, counted ACROSS surfaces via m_consecutive_dead_sessions), the
+	// next GNSS acquisition performs a TRUE cold start (CFG-RST navBbrMask=0xFFFF:
+	// wipe ephemeris/almanac/pos/time/clock + aiding) with the full cold-start
+	// timeout, then re-seeds from injected time/pos + ANO. Recovers a receiver
+	// trapped on stale/corrupt BBR (the "fixes stop after a couple of days"
+	// failure mode) without affecting healthy tags, which never reach N.
+	GNSS_COLD_START_AFTER_NTRY               = 242,
 	// === Sentinel (fixed regardless of #ifdef combinations) ===
-	__PARAM_SIZE                             = 242,
+	__PARAM_SIZE                             = 243,
 	__NULL_PARAM                             = 0xFFFF
 };
 

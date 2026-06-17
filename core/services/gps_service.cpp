@@ -618,8 +618,23 @@ void GPSService::service_initiate() {
 	nav_settings.num_consecutive_fixes = gnss_config.min_num_fixes;
 	nav_settings.sat_tracking = true;
 
-	// Adaptive timeout: use shorter timeout when assistance data is available
-	if (m_is_first_fix_found) {
+	// Force a true cold start (CFG-RST navBbrMask=0xFFFF) when requested — wipes
+	// any stale/corrupt BBR (ephemeris/almanac/pos/time/clock) before the M10Q
+	// re-seeds from injected time/pos + ANO (done later in the same configure
+	// sequence). One-shot: consume and clear here so the next acquisition goes
+	// back to a normal hot start unless re-requested.
+	bool force_cold = m_force_cold_start;
+	m_force_cold_start = false;
+	nav_settings.cold_start = force_cold;
+	if (force_cold)
+		DEBUG_INFO("GPSService::service_initiate: COLD START requested — BBR wipe + cold timeout");
+
+	// Adaptive timeout: use shorter timeout when assistance data is available.
+	// A forced cold start always uses the full cold-start budget — a wiped
+	// receiver needs the time to (re)download broadcast ephemeris.
+	if (force_cold) {
+		nav_settings.max_nav_samples = gnss_config.acquisition_timeout_cold_start;
+	} else if (m_is_first_fix_found) {
 		nav_settings.max_nav_samples = gnss_config.acquisition_timeout;
 	} else {
 		// Check if ANO data is available and fresh — if so, use warm timeout
@@ -633,7 +648,7 @@ void GPSService::service_initiate() {
 		}
 	}
 	// Cold start: enable all constellations (GPS+GAL+GLO+BDS) to maximize visible SVs
-	nav_settings.constellation_mask = m_is_first_fix_found ? gnss_config.constellation_mask : (gnss_config.constellation_mask | 0x0F);
+	nav_settings.constellation_mask = (m_is_first_fix_found && !force_cold) ? gnss_config.constellation_mask : (gnss_config.constellation_mask | 0x0F);
 	nav_settings.orbmaxerr = gnss_config.orbmaxerr;
 	nav_settings.min_cno = gnss_config.min_cno;
 	nav_settings.min_elev = gnss_config.min_elev;
@@ -759,6 +774,23 @@ GPSLogEntry GPSService::invalid_log_entry()
     // gnss_degraded_callback, gnss_cloudlocate_callback). Single-arm via
     // m_stuck_recovery_in_flight so we don't queue multiple recoveries.
     m_consecutive_dead_sessions++;
+
+    // Auto cold-start escalation (GNSS_COLD_START_AFTER_NTRY). When enabled
+    // (>0), every Nth consecutive dead session requests a TRUE cold start (BBR
+    // wipe) on the next acquisition — flushes stale/corrupt ephemeris/almanac
+    // that a plain rail-cycle (which preserves V_BCKP/BBR) would NOT clear.
+    // Fires well before the heavier STUCK_THRESHOLD rail-cycle and re-fires
+    // every N sessions while still stuck. Counter resets on any fix, so healthy
+    // tags never reach N — no regression when the param is left at 0 (default).
+    unsigned int cold_after_ntry = service_read_param<unsigned int>(ParamID::GNSS_COLD_START_AFTER_NTRY);
+    if (cold_after_ntry > 0 && (m_consecutive_dead_sessions % cold_after_ntry) == 0) {
+        m_force_cold_start = true;
+        DEBUG_WARN("GPSService: %u consecutive dead sessions >= NTRY %u — next acquisition COLD START (BBR wipe)",
+                   m_consecutive_dead_sessions, cold_after_ntry);
+        VAL_GNSS("dispatch=cold_start_after_ntry sessions=%u ntry=%u",
+                 m_consecutive_dead_sessions, cold_after_ntry);
+    }
+
     if (m_consecutive_dead_sessions >= STUCK_THRESHOLD && !m_stuck_recovery_in_flight) {
         m_stuck_recovery_in_flight = true;
         VAL_GNSS("dispatch=stuck_recovery_armed sessions=%u", m_consecutive_dead_sessions);
@@ -955,21 +987,28 @@ void GPSService::task_process_cloudlocate_data()
     std::memset(overlay, 0, 24);
 
     unsigned int cl_format = configuration_store->read_param<unsigned int>(ParamID::GNSS_CLOUDLOCATE_FORMAT);
+    // STRICT format policy (2026-06): store EXACTLY the operator-configured format.
+    // Format and Argos modulation are INDEPENDENT operator choices (you can run
+    // MEASC12 on LDA2 or MEAS20 on LDK if you want), so a silent cross-format
+    // substitution (the old MEAS20->MEASC12 fallback) would (a) put a format on
+    // air the operator didn't select and (b) silently re-introduce MEASC12's
+    // position-hint dependency. If the configured format wasn't produced by the
+    // receiver this session, store sentinel 0xFF — the TX path skips it instead
+    // of sending a mismatched or empty packet.
     if (cl_format == (unsigned int)BaseCloudLocateFormat::MEASC12 && m_raw_measurement.has_measc12) {
         overlay[0] = (uint8_t)BaseCloudLocateFormat::MEASC12;
         std::memcpy(&overlay[1], m_raw_measurement.measc12, 12);
         DEBUG_INFO("GPSService::task_process_cloudlocate_data: stored MEASC12 (12 bytes)");
-    } else if (m_raw_measurement.has_meas20) {
+    } else if (cl_format == (unsigned int)BaseCloudLocateFormat::MEAS20 && m_raw_measurement.has_meas20) {
         overlay[0] = (uint8_t)BaseCloudLocateFormat::MEAS20;
         std::memcpy(&overlay[1], m_raw_measurement.meas20, 20);
         DEBUG_INFO("GPSService::task_process_cloudlocate_data: stored MEAS20 (20 bytes)");
-    } else if (m_raw_measurement.has_measc12) {
-        // Fallback to MEASC12 if MEAS20 not available
-        overlay[0] = (uint8_t)BaseCloudLocateFormat::MEASC12;
-        std::memcpy(&overlay[1], m_raw_measurement.measc12, 12);
-        DEBUG_INFO("GPSService::task_process_cloudlocate_data: fallback to MEASC12");
     } else {
-        DEBUG_WARN("GPSService::task_process_cloudlocate_data: no raw measurement available");
+        overlay[0] = 0xFF;  // sentinel: configured format not produced this session
+        DEBUG_WARN("GPSService::task_process_cloudlocate_data: configured format %u UNAVAILABLE (have measc12=%u meas20=%u) — no CloudLocate TX",
+                   cl_format, (unsigned)m_raw_measurement.has_measc12, (unsigned)m_raw_measurement.has_meas20);
+        VAL_GNSS("cloudlocate_format_unavailable want=%u measc12=%u meas20=%u",
+                 cl_format, (unsigned)m_raw_measurement.has_measc12, (unsigned)m_raw_measurement.has_meas20);
     }
 
     ServiceEventData event_data = gps_entry;
@@ -1247,6 +1286,11 @@ void GPSService::notify_peer_event(ServiceEvent& e) {
 			if (service_read_param<bool>(ParamID::GNSS_TRIGGER_COLD_START_ON_SURFACED)) {
 				DEBUG_TRACE("GPSService: cold start required on surfaced");
 				m_is_first_fix_found = false;
+				// Request a REAL cold start: wipe the M10Q BBR (navBbrMask=0xFFFF)
+				// at the next power-on, not just the cold timeout/constellation
+				// path. Without this the receiver keeps stale ephemeris/almanac in
+				// BBR and never actually re-acquires from scratch.
+				m_force_cold_start = true;
 			}
 			// 2026-05 deep-idle refactor: the GNSS_BCKP_CHARGE_UW_ONLY abort
 			// branch was removed here. With deep-idle, the rail-on window is

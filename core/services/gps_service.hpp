@@ -107,6 +107,10 @@ protected:
 private:
 	GPSDevice&   m_device;
 	bool         m_is_first_fix_found = false;
+	/// @brief One-shot request for a true cold start (CFG-RST navBbrMask=0xFFFF).
+	/// Set by the GNP28 surface trigger (and any future periodic/stuck hook),
+	/// consumed and cleared in service_initiate when building GPSNavSettings.
+	bool         m_force_cold_start = false;
 	bool         m_is_first_schedule = true;
 	unsigned int m_cold_start_ntry = 0;  ///< Consecutive failed acquisitions (reset on fix or surface)
 	uint64_t     m_wakeup_time = 0;

@@ -556,7 +556,9 @@ void LoRaTxService::process_gps_burst() {
 			const uint8_t* blob = &overlay[1];
 			unsigned int blob_size = (format_id == (uint8_t)BaseCloudLocateFormat::MEASC12) ? 12 : 20;
 			packet = LoRaPacketBuilder::build_cloudlocate_packet(blob, blob_size, format_id,
-					argos_config.is_lb, v.back()->info.batt_voltage, size_bits);
+					argos_config.is_lb, v.back()->info.batt_voltage, size_bits,
+					(uint32_t)convert_epochtime(v.back()->header.year, v.back()->header.month, v.back()->header.day,
+					                            v.back()->header.hours, v.back()->header.minutes, v.back()->header.seconds));
 		// Fastloc entries: send as unified sensor packet (GPS + fastloc quality metadata)
 		} else if (v.back()->info.event_type == GPSEventType::FASTLOC) {
 			packet = LoRaPacketBuilder::build_sensor_packet(v.back(),
@@ -622,7 +624,9 @@ void LoRaTxService::process_sensor_burst() {
 			unsigned int blob_size = (format_id == (uint8_t)BaseCloudLocateFormat::MEASC12) ? 12 : 20;
 			unsigned int size_bits;
 			KineisPacket packet = LoRaPacketBuilder::build_cloudlocate_packet(blob, blob_size, format_id,
-					service_is_battery_level_low(), gps->info.batt_voltage, size_bits);
+					service_is_battery_level_low(), gps->info.batt_voltage, size_bits,
+					(uint32_t)convert_epochtime(gps->header.year, gps->header.month, gps->header.day,
+					                            gps->header.hours, gps->header.minutes, gps->header.seconds));
 			// Demoted to TRACE: per-TX payload dump (~50-300 ms LFS commit).
 			DEBUG_TRACE("LoRaTxService::process_sensor_burst: CloudLocate fmt=%u data=%s",
 					format_id, Binascii::hexlify(packet).c_str());
@@ -692,15 +696,20 @@ void LoRaTxService::process_status_burst() {
 		unsigned int blob_size = 0;
 		uint8_t format_id = 0;
 
-		// Select blob based on configured format (MEAS50 available live for LoRa)
+		// STRICT format policy (2026-06): use ONLY the operator-configured format
+		// (MEAS50 is available live on LoRa). No cross-format fallback — if the
+		// configured format wasn't produced, blob stays null and the CL TX is
+		// skipped, rather than silently emitting a different format.
 		if (cl_format == (unsigned int)BaseCloudLocateFormat::MEAS50 && raw.has_meas50) {
 			blob = raw.meas50; blob_size = 50; format_id = (uint8_t)BaseCloudLocateFormat::MEAS50;
 		} else if (cl_format == (unsigned int)BaseCloudLocateFormat::MEAS20 && raw.has_meas20) {
 			blob = raw.meas20; blob_size = 20; format_id = (uint8_t)BaseCloudLocateFormat::MEAS20;
-		} else if (raw.has_measc12) {
+		} else if (cl_format == (unsigned int)BaseCloudLocateFormat::MEASC12 && raw.has_measc12) {
 			blob = raw.measc12; blob_size = 12; format_id = (uint8_t)BaseCloudLocateFormat::MEASC12;
-		} else if (raw.has_meas20) {
-			blob = raw.meas20; blob_size = 20; format_id = (uint8_t)BaseCloudLocateFormat::MEAS20;
+		}
+		if (!blob) {
+			DEBUG_WARN("LoRaTxService::process_status_burst: configured CloudLocate format %u not available (measc12=%u meas20=%u meas50=%u) — skipping CL TX",
+			           cl_format, (unsigned)raw.has_measc12, (unsigned)raw.has_meas20, (unsigned)raw.has_meas50);
 		}
 
 		if (blob) {
@@ -708,7 +717,8 @@ void LoRaTxService::process_status_burst() {
 			// which forces DR ≥ 3 when MEAS50 is selected. MEAS20/MEASC12 fit any DR.
 			KineisPacket packet = LoRaPacketBuilder::build_cloudlocate_packet(
 				blob, blob_size, format_id,
-				service_is_battery_level_low(), service_get_voltage(), size_bits);
+				service_is_battery_level_low(), service_get_voltage(), size_bits,
+				raw.capture_time);
 			// Demoted to TRACE: per-ping payload dump (~50-300 ms LFS commit).
 			DEBUG_TRACE("LoRaTxService::process_status_burst: CLOUDLOCATE #%u fmt=%u sz=%u data=%s",
 			           m_status_burst_count, format_id, blob_size,

@@ -42,7 +42,16 @@ static constexpr unsigned int NAV_REPORT_WATCHDOG_MS        = 5000;  ///< Inter-
 static constexpr unsigned int RECEIVE_TIMEOUT_FLOOR_MS      = 10000; ///< Minimum initial receive timeout (cold start floor)
 static constexpr unsigned int RECEIVE_TIMEOUT_MARGIN_S      = 5;     ///< Margin added to max_nav_samples for initial receive timeout
 static constexpr unsigned int MAX_FRAMING_ERRORS_BOOT       = 10;    ///< Tolerance for NMEA→UBX framing errors during boot
-static constexpr unsigned int DBD_MAX_AGE_S                 = 12 * 3600; ///< Max age (12h) of persisted DBD navigation database
+// Max age of the persisted DBD navigation database before we refuse to reload
+// it on a cold power-on. Raised 12h -> 72h (2026-06): per u-blox MAX-M10S
+// Integration Manual the DBD carries almanac (valid WEEKS) and AssistNow
+// Autonomous predictions (valid ~3-6 days) in addition to broadcast ephemeris
+// (only ~4h). Capping at 12h threw away the still-valid almanac/autonomous data
+// on every >12h dive gap, forcing a cold reacquisition the receiver could not
+// complete in a short surface window. The receiver itself discards the stale
+// ephemeris portion on load, so restoring an aged DBD is safe and preserves the
+// long-lived data that makes warm starts possible across multi-day deployments.
+static constexpr unsigned int DBD_MAX_AGE_S                 = 72 * 3600; ///< Max age (72h) of persisted DBD navigation database
 
 // State machine helper macros
 #ifndef VALIDATION_LOG_ENABLE
@@ -1015,6 +1024,16 @@ void M10QAsyncReceiver::react(const UBXCommsEventNavReport& n) {
                            m_degraded_pvt.hAcc, m_degraded_pvt.fixType, m_degraded_pvt.numSV);
                 notify(GPSEventPVTDegraded(m_degraded_pvt));
             } else {
+                // Diagnostic for the "0 CloudLocate frames" symptom: session
+                // reached its sample budget with CloudLocate enabled but the
+                // receiver never produced a usable raw-measurement snapshot.
+                // Per u-blox docs this happens when fewer than the minimum
+                // satellites (~5) at sufficient C/N0 (~35 dB/Hz) were tracked
+                // in the surface window — the compact MEAS message stays empty.
+                if (m_nav_settings.cloudlocate_enable) {
+                    DEBUG_WARN("M10QAsyncReceiver: timeout, CloudLocate ENABLED but NO raw measurement captured (insufficient SVs/C-N0 in window) — 0 frames");
+                    VAL_GNSS("cloudlocate_no_capture timeout num_nav=%u", m_num_nav_samples);
+                }
                 notify<GPSEventMaxNavSamples>({});
             }
         }
@@ -1039,6 +1058,12 @@ void M10QAsyncReceiver::react(const UBXCommsEventRawMeasurement& meas) {
             m_raw_measurement.has_meas50 = true;
         }
         m_has_raw_measurement = m_raw_measurement.has_measc12 || m_raw_measurement.has_meas20 || m_raw_measurement.has_meas50;
+        // Stamp the capture instant (RTC epoch) so the CloudLocate packet can embed
+        // the measurement time — the cloud then knows WHEN it was taken regardless
+        // of any cache/TX delay. Updated on each snapshot so it reflects whichever
+        // measurement is ultimately transmitted.
+        if (m_has_raw_measurement && rtc && rtc->is_set())
+            m_raw_measurement.capture_time = (uint32_t)rtc->gettime();
 
         // One-shot: notify subscribers the FIRST time raw becomes available during
         // an active acquisition, so they can fire an early CloudLocate TX without
@@ -1072,7 +1097,10 @@ void M10QAsyncReceiver::react(const UBXCommsEventRawMeasurement& meas) {
                 DEBUG_TRACE("M10QAsyncReceiver: CloudLocate-ready task cancelled (raw reset between ISR and task)");
                 return;
             }
-            DEBUG_INFO("M10QAsyncReceiver: first raw measurement available — emitting GPSEventCloudLocateReady");
+            DEBUG_INFO("M10QAsyncReceiver: first raw measurement available — emitting GPSEventCloudLocateReady (measc12=%u meas20=%u meas50=%u)",
+                       (unsigned)raw_copy.has_measc12, (unsigned)raw_copy.has_meas20, (unsigned)raw_copy.has_meas50);
+            VAL_GNSS("cloudlocate_ready measc12=%u meas20=%u meas50=%u",
+                     (unsigned)raw_copy.has_measc12, (unsigned)raw_copy.has_meas20, (unsigned)raw_copy.has_meas50);
             notify(GPSEventCloudLocateReady(raw_copy));
         }, "M10QCloudLocateReady");
     }
@@ -1818,11 +1846,20 @@ void M10QAsyncReceiver::state_startreceive() {
 			break;
 		} else {
 			if (m_retries == 0 || --m_retries == 0) {
-				// CloudLocate steps (4-6): fallback to PVT-only instead of aborting
+				// CloudLocate format steps (4=MEASC12, 5=MEAS20, 6=MEAS50): a
+				// single format-enable failing must NOT disable the whole
+				// CloudLocate path. The three formats are independent; if e.g.
+				// MEAS50 NACKs on a given M10Q FW, MEASC12/MEAS20 can still
+				// produce snapshots. The previous code set cloudlocate_enable=
+				// false on ANY step failure, so one NACK silently killed ALL
+				// CloudLocate output (root cause of "0 CloudLocate frames" tags:
+				// MEASC12 enabled fine but a later format NACK disabled
+				// everything, and the emitted MEASC12 were then ignored).
+				// Now: skip just the failing format and continue to the next.
 				if (m_step >= 4 && m_step <= 6 && m_nav_settings.cloudlocate_enable) {
-					DEBUG_WARN("M10QAsyncReceiver::state_start_receive: CloudLocate step %u failed, falling back to PVT-only", m_step);
-					m_nav_settings.cloudlocate_enable = false;
-					m_step = 7;  // skip remaining CloudLocate steps
+					DEBUG_WARN("M10QAsyncReceiver::state_start_receive: CloudLocate format step %u enable FAILED — skipping this format, keeping others", m_step);
+					VAL_GNSS("cloudlocate_format_skip step=%u", m_step);
+					m_step++;  // skip ONLY this format, keep CloudLocate enabled
 					m_retries = DEFAULT_RETRIES;
 					m_op_state = OpState::IDLE;
 					continue;
@@ -2177,25 +2214,36 @@ void M10QAsyncReceiver::state_sendofflinedatabase_enter() {
 
     if (!m_nav_settings.assistnow_offline_enable) {
         DEBUG_TRACE("M10QAsyncReceiver: sendofflinedatabase: ANO not enabled");
+        VAL_GNSS("ano_skip reason=disabled");
         return;
     }
 
     if (!rtc->is_set()) {
         DEBUG_TRACE("M10QAsyncReceiver: sendofflinedatabase: time not yet set");
+        VAL_GNSS("ano_skip reason=no_rtc");  // ANO needs a valid date to pick the day's records
         return;
     }
 
     try {
         LFSFile file(main_filesystem, "gps_config.dat", LFS_O_RDONLY);
+        unsigned int file_sz = (unsigned int)file.size();
         m_ubx_comms.copy_mga_ano_to_buffer(file, m_navigation_database, sizeof(m_navigation_database),
                                            rtc->gettime(),
                                            m_ano_database_len, m_expected_dbd_messages, m_ano_start_pos,
                                            m_nav_settings.ano_stale_threshold_s);
         m_ubx_comms.start_dbd_filter();
-        DEBUG_TRACE("M10QAsyncReceiver::state_sendofflinedatabase: database len %u bytes",
-                    m_ano_database_len);
+        // Field-visible ANO diagnostic: how many MGA-ANO msgs/bytes were actually
+        // selected for TODAY from the offline file. 0 here = the 5-week file is
+        // present but has no record matching the current date within the stale
+        // window (wrong/old RTC, file doesn't cover today, or file truncated) →
+        // the receiver gets NO offline aiding this session despite ANO "enabled".
+        DEBUG_INFO("M10QAsyncReceiver::sendofflinedatabase: ANO file=%uB -> selected %u msgs / %u bytes for today (t=%u)",
+                   file_sz, m_expected_dbd_messages, m_ano_database_len, (unsigned)rtc->gettime());
+        VAL_GNSS("ano_sent file=%uB msgs=%u bytes=%u t=%u",
+                 file_sz, m_expected_dbd_messages, m_ano_database_len, (unsigned)rtc->gettime());
     } catch (...) {
         DEBUG_ERROR("M10QAsyncReceiver::state_sendofflinedatabase: error opening MGA ANO file");
+        VAL_GNSS("ano_skip reason=file_error");
         m_op_state = OpState::ERROR;
     }
 }
@@ -2328,10 +2376,22 @@ void M10QAsyncReceiver::save_config() {
 }
 
 void M10QAsyncReceiver::soft_reset() {
-    DEBUG_TRACE("M10QAsyncReceiver::soft_reset: GPS CFG-RST->");
+    // navBbrMask selects what survives the GNSS-only software reset:
+    //   0x0000 = hot start  (keep ephemeris+almanac+pos+time+clock+aiding)
+    //   0xFFFF = cold start (wipe everything in BBR)
+    // A cold start is requested via GPSNavSettings.cold_start. It is issued
+    // here, BEFORE supply_time_assistance (step 13), supply_position_assistance
+    // (step 14) and the offline-database (ANO) send in the same configure
+    // sequence — so the receiver is wiped clean and immediately re-seeded with
+    // fresh time + position + ANO. RESETMODE_SOFTWARE_RESET_GNSS_ONLY keeps the
+    // UART/port config, so no baud re-sync is needed.
+    const uint16_t bbr_mask = m_nav_settings.cold_start ? 0xFFFF : 0x0000;
+    DEBUG_TRACE("M10QAsyncReceiver::soft_reset: GPS CFG-RST-> navBbrMask=0x%04X (%s)",
+                bbr_mask, m_nav_settings.cold_start ? "COLD" : "hot");
+    VAL_GNSS("soft_reset navBbrMask=0x%04X cold=%u", bbr_mask, (unsigned)m_nav_settings.cold_start);
     CFG::RST::MSG_RST cfg_msg_cfg_rst =
     {
-        .navBbrMask = 0x0000,
+        .navBbrMask = bbr_mask,
         .resetMode = CFG::RST::RESETMODE_SOFTWARE_RESET_GNSS_ONLY,
         //.resetMode = CFG::RST::RESETMODE_HARDWARE_RESET_IMMEDIATE,
         .reserved1 = 0,

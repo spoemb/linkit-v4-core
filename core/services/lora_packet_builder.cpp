@@ -387,12 +387,17 @@ KineisPacket LoRaPacketBuilder::build_status_packet(unsigned int battery_voltage
 
 KineisPacket LoRaPacketBuilder::build_cloudlocate_packet(const uint8_t* blob, unsigned int blob_size,
 		uint8_t format_id, bool is_low_battery, unsigned int battery_voltage,
-		unsigned int& size_bits) {
+		unsigned int& size_bits, uint32_t capture_rtc) {
 
 	DEBUG_TRACE("LoRaPacketBuilder::build_cloudlocate_packet: format=%u blob_size=%u", format_id, blob_size);
 
 	// type(3) + format(2) + flags(4) + voltage(7) + blob(blob_size*8)
+	// Optional trailing capture-time field: flag(1) + seconds-of-day(17). LoRa is
+	// length-delimited, so legacy (time-less) packets are simply shorter and the
+	// decoder reads the time only if extra bits remain — backward compatible.
 	size_bits = BITS_PKT_TYPE + BITS_CL_FORMAT + BITS_FLAGS + BITS_VOLTAGE + (blob_size * 8);
+	unsigned int time_bits = (capture_rtc != 0) ? 18U : 0U;  // 1 flag + 17 seconds-of-day
+	size_bits += time_bits;
 	unsigned int packet_bytes = (size_bits + 7) / 8;
 	KineisPacket packet;
 	packet.assign(packet_bytes, 0);
@@ -418,8 +423,16 @@ KineisPacket LoRaPacketBuilder::build_cloudlocate_packet(const uint8_t* blob, un
 		PACK_BITS((unsigned int)blob[i], packet, base_pos, 8);
 	}
 
-	DEBUG_INFO("LoRaPacketBuilder::build_cloudlocate_packet: format=%u blob_size=%u data=%s sz=%u bits",
-			format_id, blob_size, Binascii::hexlify(packet).c_str(), size_bits);
+	// Optional capture-time: flag(1) + seconds-of-day(17). LoRa has room for all
+	// formats (incl. MEAS50). The cloud combines the day (from elsewhere) with
+	// seconds-of-day to get the exact measurement instant.
+	if (capture_rtc != 0) {
+		PACK_BITS(1U, packet, base_pos, 1);
+		PACK_BITS((unsigned int)(capture_rtc % 86400U), packet, base_pos, 17);
+	}
+
+	DEBUG_INFO("LoRaPacketBuilder::build_cloudlocate_packet: format=%u blob_size=%u t_present=%u data=%s sz=%u bits",
+			format_id, blob_size, (unsigned)(capture_rtc != 0), Binascii::hexlify(packet).c_str(), size_bits);
 
 	return packet;
 }

@@ -249,7 +249,8 @@ unsigned int ArgosPacketBuilder::cloudlocate_packet_bits(uint8_t format_id) {
 }
 
 KineisPacket ArgosPacketBuilder::build_cloudlocate_packet(const uint8_t* blob, unsigned int blob_size,
-		uint8_t format_id, unsigned int battery_voltage, bool is_low_battery) {
+		uint8_t format_id, unsigned int battery_voltage, bool is_low_battery,
+		uint32_t capture_rtc, uint32_t now_rtc) {
 
 	DEBUG_TRACE("ArgosPacketBuilder::build_cloudlocate_packet: format=%u blob_size=%u", format_id, blob_size);
 	unsigned int total_bits = cloudlocate_packet_bits(format_id);
@@ -275,14 +276,34 @@ KineisPacket ArgosPacketBuilder::build_cloudlocate_packet(const uint8_t* blob, u
 	PACK_BITS(batt, packet, base_pos, 7);
 	PACK_BITS(is_low_battery ? 1U : 0U, packet, base_pos, 1);
 
+	// Optional capture-time field (2026-06). BACKWARD COMPATIBLE: only packed when
+	// capture_rtc != 0; legacy frames leave this region zero so the 1-bit "time
+	// present" flag reads 0 and old/new decoders treat them as time-less.
+	//   MEASC12/LDK : flag(1) + seconds-of-day(17)  — full HH:MM:SS, fits the 19 free bits.
+	//   MEAS20/LDA2 : flag(1) + age(10, capture→TX s) — fits the 11 bits before CRC8.
+	// The cloud reconstructs the absolute instant: date comes from the Argos
+	// Doppler pass; seconds-of-day (MEASC12) or (reception_time − age) (MEAS20)
+	// gives the precise time-of-measurement, removing the cache/TX-delay error.
+	if (capture_rtc != 0) {
+		PACK_BITS(1U, packet, base_pos, CLOUDLOCATE_TIME_FLAG_BITS);  // time present
+		if (format_id == (uint8_t)BaseCloudLocateFormat::MEAS20) {
+			unsigned int age = (now_rtc > capture_rtc) ? (now_rtc - capture_rtc) : 0U;
+			if (age > ((1U << CLOUDLOCATE_AGE_BITS) - 1U)) age = (1U << CLOUDLOCATE_AGE_BITS) - 1U;
+			PACK_BITS(age, packet, base_pos, CLOUDLOCATE_AGE_BITS);
+		} else {
+			unsigned int sod = (unsigned int)(capture_rtc % 86400U);
+			PACK_BITS(sod, packet, base_pos, CLOUDLOCATE_SOD_BITS);
+		}
+	}
+
 	// Remaining bits are zero-padded (already zeroed by assign).
 	// LDA2 (MEAS20) requires firmware-embedded CRC8 at byte 23; LDK (MEASC12) does not.
 	if (format_id == (uint8_t)BaseCloudLocateFormat::MEAS20) {
 		apply_lda2_crc8(packet);
 	}
 
-	DEBUG_INFO("CL_PKT: fmt=%u sz=%u batt=%u data=%s",
-	           format_id, blob_size, battery_voltage, Binascii::hexlify(packet).c_str());
+	DEBUG_INFO("CL_PKT: fmt=%u sz=%u batt=%u t_present=%u data=%s",
+	           format_id, blob_size, battery_voltage, (unsigned)(capture_rtc != 0), Binascii::hexlify(packet).c_str());
 
 	return packet;
 }

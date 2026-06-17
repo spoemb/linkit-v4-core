@@ -56,6 +56,14 @@ public:
 	static constexpr unsigned int CLOUDLOCATE_MEASC12_BYTES    = 16;
 	static constexpr unsigned int CLOUDLOCATE_MEAS20_BITS      = LDA2_FRAME_BITS;
 	static constexpr unsigned int CLOUDLOCATE_MEAS20_BYTES     = LDA2_FRAME_BYTES;
+	// Optional capture-time field (2026-06) packed into the previously zero
+	// padding, gated by a 1-bit "time present" flag. BACKWARD COMPATIBLE: legacy
+	// frames zero-pad that region, so flag=0 means "no time" → old frames decode
+	// unchanged. MEASC12/LDK has room for full seconds-of-day (17b); MEAS20/LDA2
+	// only fits a 10-bit age (capture→TX seconds, ~17 min) before the CRC8.
+	static constexpr unsigned int CLOUDLOCATE_TIME_FLAG_BITS   = 1;
+	static constexpr unsigned int CLOUDLOCATE_SOD_BITS         = 17;  // seconds-of-day 0..86399 (MEASC12 + LoRa)
+	static constexpr unsigned int CLOUDLOCATE_AGE_BITS         = 10;  // capture→TX age 0..1023 s (MEAS20/LDA2)
 
 	// Sensor packet (Type 1, LDA2). Always emitted as a full 24-byte LDA2 frame so the
 	// CRC sits at byte 23. Adaptive LDK fallback for tiny sensor packets is therefore
@@ -139,8 +147,12 @@ public:
 	static KineisPacket build_fastloc_packet(GPSLogEntry* v, bool is_low_battery);
 
 	/// @brief Build CloudLocate raw measurement packet.
+	/// @param capture_rtc  RTC epoch (s) when the snapshot was captured. 0 = unknown
+	///                     → no time field emitted (legacy layout, flag=0).
+	/// @param now_rtc      RTC epoch (s) at TX time (used to compute MEAS20 age).
 	static KineisPacket build_cloudlocate_packet(const uint8_t* blob, unsigned int blob_size,
-			uint8_t format_id, unsigned int battery_voltage, bool is_low_battery);
+			uint8_t format_id, unsigned int battery_voltage, bool is_low_battery,
+			uint32_t capture_rtc = 0, uint32_t now_rtc = 0);
 
 	/// @brief Get CloudLocate packet size in bits for a given format.
 	static unsigned int cloudlocate_packet_bits(uint8_t format_id);

@@ -1049,11 +1049,24 @@ void ArgosTxService::process_sensor_burst() {
 		if (gps->info.event_type == GPSEventType::CLOUDLOCATE) {
 			const uint8_t* overlay = reinterpret_cast<const uint8_t*>(&gps->info.lon);
 			uint8_t format_id = overlay[0];
+			// STRICT format guard (2026-06): skip CloudLocate TX when the stored
+			// format is the 0xFF sentinel (configured format not produced this
+			// session) or otherwise invalid — never transmit a mismatched/empty
+			// CloudLocate packet.
+			if (format_id != (uint8_t)BaseCloudLocateFormat::MEASC12 &&
+			    format_id != (uint8_t)BaseCloudLocateFormat::MEAS20) {
+				DEBUG_WARN("ArgosTxService::process_sensor_burst: CloudLocate format 0x%02X unavailable/invalid — skipping TX", format_id);
+				service_complete();
+				return;
+			}
 			const uint8_t* blob = &overlay[1];
 			unsigned int blob_size = (format_id == (uint8_t)BaseCloudLocateFormat::MEASC12) ? 12 : 20;
 
+			uint32_t cl_capture = (uint32_t)convert_epochtime(gps->header.year, gps->header.month, gps->header.day,
+			                                                  gps->header.hours, gps->header.minutes, gps->header.seconds);
 			KineisPacket packet = ArgosPacketBuilder::build_cloudlocate_packet(
-				blob, blob_size, format_id, gps->info.batt_voltage, argos_config.is_lb);
+				blob, blob_size, format_id, gps->info.batt_voltage, argos_config.is_lb,
+				cl_capture, (uint32_t)service_current_time());
 			size_bits = ArgosPacketBuilder::cloudlocate_packet_bits(format_id);
 
 			// Modulation policy:
@@ -1230,10 +1243,21 @@ void ArgosTxService::process_gnss_burst() {
 		if (v.back()->info.event_type == GPSEventType::CLOUDLOCATE) {
 			const uint8_t* overlay = reinterpret_cast<const uint8_t*>(&v.back()->info.lon);
 			uint8_t format_id = overlay[0];
+			// STRICT format guard (2026-06): skip CloudLocate TX on 0xFF sentinel
+			// (configured format not produced) or any invalid format byte.
+			if (format_id != (uint8_t)BaseCloudLocateFormat::MEASC12 &&
+			    format_id != (uint8_t)BaseCloudLocateFormat::MEAS20) {
+				DEBUG_WARN("ArgosTxService::process_gnss_burst: CloudLocate format 0x%02X unavailable/invalid — skipping TX", format_id);
+				service_complete();
+				return;
+			}
 			const uint8_t* blob = &overlay[1];
 			unsigned int blob_size = (format_id == (uint8_t)BaseCloudLocateFormat::MEASC12) ? 12 : 20;
+			uint32_t cl_capture = (uint32_t)convert_epochtime(v.back()->header.year, v.back()->header.month, v.back()->header.day,
+			                                                  v.back()->header.hours, v.back()->header.minutes, v.back()->header.seconds);
 			packet = ArgosPacketBuilder::build_cloudlocate_packet(blob, blob_size, format_id,
-			                                                      v.back()->info.batt_voltage, argos_config.is_lb);
+			                                                      v.back()->info.batt_voltage, argos_config.is_lb,
+			                                                      cl_capture, (uint32_t)service_current_time());
 			size_bits = ArgosPacketBuilder::cloudlocate_packet_bits(format_id);
 			// Modulation policy: see process_sensor_burst for full rationale.
 			//   adaptive=ON  → pick optimal mod from format, switch SMD.
@@ -1503,16 +1527,22 @@ void ArgosTxService::process_doppler_burst() {
 		GNSSRawMeasurement raw = gps_device->get_raw_measurement();
 		unsigned int cl_format = configuration_store->read_param<unsigned int>(ParamID::GNSS_CLOUDLOCATE_FORMAT);
 
-		// Select best available blob: prefer configured format, fallback to MEAS20 then MEASC12
+		// STRICT format policy (2026-06): use ONLY the operator-configured format.
+		// No cross-format fallback — if the configured format wasn't produced this
+		// session, blob stays null and the CloudLocate TX is skipped (see `if (blob)`
+		// below) rather than silently emitting a different format the operator did
+		// not select. Format is independent of the Argos modulation.
 		const uint8_t* blob = nullptr;
 		unsigned int blob_size = 0;
 		uint8_t format_id = 0;
 		if (cl_format == (unsigned int)BaseCloudLocateFormat::MEASC12 && raw.has_measc12) {
 			blob = raw.measc12; blob_size = 12; format_id = (uint8_t)BaseCloudLocateFormat::MEASC12;
-		} else if (raw.has_meas20) {
+		} else if (cl_format == (unsigned int)BaseCloudLocateFormat::MEAS20 && raw.has_meas20) {
 			blob = raw.meas20; blob_size = 20; format_id = (uint8_t)BaseCloudLocateFormat::MEAS20;
-		} else if (raw.has_measc12) {
-			blob = raw.measc12; blob_size = 12; format_id = (uint8_t)BaseCloudLocateFormat::MEASC12;
+		}
+		if (!blob) {
+			DEBUG_WARN("ArgosTxService::process_doppler_burst: configured CloudLocate format %u not available (measc12=%u meas20=%u) — skipping CL TX",
+			           cl_format, (unsigned)raw.has_measc12, (unsigned)raw.has_meas20);
 		}
 
 		if (blob) {
@@ -1521,7 +1551,8 @@ void ArgosTxService::process_doppler_burst() {
 			DEBUG_TRACE("TX_RAW: CL fmt=%u sz=%u batt=%umV blob=%s",
 			            format_id, blob_size, (unsigned)service_get_voltage(), Binascii::hexlify(std::string((const char*)blob, blob_size)).c_str());
 			KineisPacket packet = ArgosPacketBuilder::build_cloudlocate_packet(blob, blob_size, format_id,
-			                                                                   service_get_voltage(), argos_config.is_lb);
+			                                                                   service_get_voltage(), argos_config.is_lb,
+			                                                                   raw.capture_time, (uint32_t)service_current_time());
 			size_bits = ArgosPacketBuilder::cloudlocate_packet_bits(format_id);
 
 			// Modulation policy: see process_sensor_burst for full rationale.

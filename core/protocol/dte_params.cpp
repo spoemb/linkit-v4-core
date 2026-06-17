@@ -439,6 +439,9 @@ const BaseMap param_map[] = {
 	// measurement arrives, no waiting for full PVT. Only meaningful when
 	// GNSS_FASTLOC_MODE=CLOUDLOCATE. Off by default.
 	{ "GNSS_CLOUDLOCATE_ONLY",      "GNP53", BaseEncoding::BOOLEAN, 0, 0, {}, true, true },
+	// [242] After N consecutive GNSS sessions with no fix, force a true cold
+	// start (BBR wipe) on the next acquisition. 0 = disabled (default).
+	{ "GNSS_COLD_START_AFTER_NTRY", "GNP54", BaseEncoding::UINT, 0U, 255U, {}, true, true },
 };
 
 const size_t param_map_size = sizeof(param_map) / sizeof(param_map[0]);
