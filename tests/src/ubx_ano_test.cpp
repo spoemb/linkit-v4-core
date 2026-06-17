@@ -54,7 +54,7 @@ TEST_GROUP(UBXANO)
 	}
 
 	void teardown() {
-		delete fake_rtc;
+		delete fake_rtc; rtc = nullptr;
 	}
 };
 

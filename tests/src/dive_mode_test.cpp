@@ -5,18 +5,21 @@
 #include "fake_config_store.hpp"
 #include "fake_timer.hpp"
 #include "fake_switch.hpp"
+#include "fake_rtc.hpp"
 #include "scheduler.hpp"
 
 
 extern Timer *system_timer;
 extern ConfigurationStore *configuration_store;
 extern Scheduler *system_scheduler;
+extern RTC *rtc;
 
 
 TEST_GROUP(DiveMode)
 {
 	FakeConfigurationStore *fake_config_store;
 	FakeTimer *fake_timer;
+	FakeRTC *fake_rtc;
 	FakeSwitch fake_switch;
 
 	void setup() {
@@ -25,6 +28,12 @@ TEST_GROUP(DiveMode)
 		fake_config_store = new FakeConfigurationStore;
 		configuration_store = fake_config_store;
 		system_scheduler = new Scheduler(system_timer);
+		// Own the global rtc: notify_peer_event() dereferences `rtc`. Without this
+		// DiveMode inherits a DANGLING `rtc` left by an earlier test that deleted
+		// its FakeRTC without nulling the global → SIGSEGV. (Firmware guards with
+		// `if (rtc && ...)`; this is purely test global-state hygiene.)
+		fake_rtc = new FakeRTC;
+		rtc = fake_rtc;
 		configuration_store->init();
 		system_timer->start();
 		fake_switch.resume();
@@ -34,6 +43,8 @@ TEST_GROUP(DiveMode)
 		delete system_scheduler;
 		delete fake_timer;
 		delete fake_config_store;
+		delete fake_rtc;
+		rtc = nullptr;   // never leave a dangling global for the next test
 	}
 
 	void notify_underwater_state(bool state) {

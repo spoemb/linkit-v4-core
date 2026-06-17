@@ -473,6 +473,7 @@ TEST(ArgosTxService, TimeSyncBurstPosFix)
 
 	mock_kineis->notify(KineisEventTxComplete({}));
 
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
 	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	serv.stop();
 
@@ -522,6 +523,7 @@ TEST(ArgosTxService, TimeSyncBurstNoPosFix)
 
 	mock_kineis->notify(KineisEventTxComplete({}));
 
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
 	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	serv.stop();
 
@@ -1027,6 +1029,7 @@ TEST(ArgosTxService, LastTxIsUpdated)
 	std::time_t last_tx = fake_config_store->read_param<std::time_t>(ParamID::LAST_TX);
 	CHECK_EQUAL(1652105502U, (unsigned int)last_tx);
 
+	mock().expectOneCall("power_off_immediate").onObject(mock_kineis);
 	mock().expectOneCall("stop_send").onObject(mock_kineis);
 	serv.stop();
 }

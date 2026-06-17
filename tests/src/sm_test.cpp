@@ -103,7 +103,7 @@ TEST_GROUP(Sm)
 	}
 
 	void teardown() {
-		delete main_filesystem;
+		delete main_filesystem; main_filesystem = nullptr;
 		delete location_scheduler;
 		delete system_scheduler;
 		delete comms_scheduler;
@@ -472,20 +472,24 @@ TEST(Sm, CheckGNSSWithFixLedTransitions)
 	CHECK_EQUAL((int)RGBLedColor::CYAN, (int)status_led->get_state());
 	CHECK_TRUE(status_led->is_flashing());
 
-	// Notify GNSS logged
+	// Notify GNSS logged (valid fix). 2026-05 LED refactor: SERVICE_LOG_UPDATED
+	// only latches fix validity — the LED stays CYAN (still acquiring). The
+	// GREEN/RED indicator is rendered later by the end-of-session GNSS_OFF_* event.
 	GPSLogEntry log;
 	log.info.valid = 1;
 	e.event_type = ServiceEventType::SERVICE_LOG_UPDATED;
 	e.event_data = log;
 	ServiceManager::inject_event(e);
-	CHECK_EQUAL((int)RGBLedColor::GREEN, (int)status_led->get_state());
-	CHECK_FALSE(status_led->is_flashing());
+	CHECK_EQUAL((int)RGBLedColor::CYAN, (int)status_led->get_state());
+	CHECK_TRUE(status_led->is_flashing());
 
-	// Notify GNSS inactive
-	e.event_type = ServiceEventType::SERVICE_INACTIVE;
+	// End of session (full power-off): fix → GREEN fast-blink for ~500 ms.
+	e.event_type = ServiceEventType::GNSS_OFF_POWEROFF;
 	ServiceManager::inject_event(e);
+	CHECK_EQUAL((int)RGBLedColor::GREEN, (int)status_led->get_state());
+	CHECK_TRUE(status_led->is_flashing());
 
-	// LED should now turn off
+	// After the ~500 ms indicator window, the LED returns off.
 	fake_timer->set_counter(9000);
 	CHECK_EQUAL((int)RGBLedColor::BLACK, (int)status_led->get_state());
 	CHECK_FALSE(status_led->is_flashing());
@@ -523,20 +527,24 @@ TEST(Sm, CheckGNSSWithoutFixLedTransitions)
 	CHECK_EQUAL((int)RGBLedColor::CYAN, (int)status_led->get_state());
 	CHECK_TRUE(status_led->is_flashing());
 
-	// Notify GNSS logged
+	// Notify GNSS logged (no fix). 2026-05 LED refactor: SERVICE_LOG_UPDATED only
+	// latches fix validity — the LED stays CYAN (still acquiring). The GREEN/RED
+	// indicator is rendered later by the end-of-session GNSS_OFF_* event.
 	GPSLogEntry log;
 	log.info.valid = 0;
 	e.event_type = ServiceEventType::SERVICE_LOG_UPDATED;
 	e.event_data = log;
 	ServiceManager::inject_event(e);
-	CHECK_EQUAL((int)RGBLedColor::RED, (int)status_led->get_state());
-	CHECK_FALSE(status_led->is_flashing());
+	CHECK_EQUAL((int)RGBLedColor::CYAN, (int)status_led->get_state());
+	CHECK_TRUE(status_led->is_flashing());
 
-	// Notify GNSS inactive
-	e.event_type = ServiceEventType::SERVICE_INACTIVE;
+	// End of session (full power-off): no fix → RED fast-blink for ~500 ms.
+	e.event_type = ServiceEventType::GNSS_OFF_POWEROFF;
 	ServiceManager::inject_event(e);
+	CHECK_EQUAL((int)RGBLedColor::RED, (int)status_led->get_state());
+	CHECK_TRUE(status_led->is_flashing());
 
-	// LED should now turn off
+	// After the ~500 ms indicator window, the LED returns off.
 	fake_timer->set_counter(9000);
 	CHECK_EQUAL((int)RGBLedColor::BLACK, (int)status_led->get_state());
 	CHECK_FALSE(status_led->is_flashing());

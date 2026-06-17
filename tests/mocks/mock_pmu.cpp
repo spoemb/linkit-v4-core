@@ -2,6 +2,15 @@
 
 #include <chrono>
 #include "CppUTestExt/MockSupport.h"
+#include "timer.hpp"
+
+// In the test build, PMU's millisecond timestamp tracks the (controllable)
+// system timer so simulated time advances deterministically with the test's
+// FakeTimer — no real sleeps needed for time-based logic (SWS dive timeout,
+// calibration interval, heartbeats). Under LinuxTimer the counter advances in
+// real milliseconds, so behaviour is unchanged. Falls back to wall-clock only
+// before any timer is wired up.
+extern Timer *system_timer;
 
 
 void PMU::reset(bool dfu_mode) {
@@ -58,6 +67,8 @@ uint32_t PMU::device_identifier() {
 }
 
 uint64_t PMU::get_timestamp_ms() {
+	if (system_timer)
+		return system_timer->get_counter();
 	static auto start = std::chrono::steady_clock::now();
 	auto now = std::chrono::steady_clock::now();
 	return std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();

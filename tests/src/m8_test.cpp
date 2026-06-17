@@ -91,7 +91,7 @@ TEST_GROUP(M8)
         delete logger;
         delete fake_config;
         delete fake_timer;
-        delete fake_rtc;
+        delete fake_rtc; rtc = nullptr;
     }
 
     void expect_power_on() {

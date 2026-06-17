@@ -36,7 +36,7 @@ TEST_GROUP(CDTMock)
 
 	void teardown() {
 		ram_filesystem->umount();
-		delete ram_filesystem;
+		delete ram_filesystem; main_filesystem = nullptr;
 		delete ram_flash;
 	}
 

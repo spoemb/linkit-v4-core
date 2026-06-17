@@ -56,7 +56,7 @@ TEST_GROUP(GPSService)
 	void teardown() {
 		delete system_scheduler;
 		delete fake_timer;
-		delete fake_rtc;
+		delete fake_rtc; rtc = nullptr;
 		delete fake_config_store;
 		delete fake_battery_mon;
 		delete mock_m10q;

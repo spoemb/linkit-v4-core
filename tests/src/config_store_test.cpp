@@ -43,7 +43,7 @@ TEST_GROUP(ConfigStore)
 		delete store;
 		store = nullptr;
 		ram_filesystem->umount();
-		delete ram_filesystem;
+		delete ram_filesystem; main_filesystem = nullptr;
 		delete ram_flash;
 		delete fake_battery_monitor;
 	}

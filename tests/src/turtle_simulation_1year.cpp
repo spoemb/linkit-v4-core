@@ -789,7 +789,7 @@ TEST_GROUP(TurtleSimulation1Year)
         delete logger;
         delete fake_config;
         delete fake_timer;
-        delete fake_rtc;
+        delete fake_rtc; rtc = nullptr;
     }
 
     void simulate_timestep(uint32_t total_time, uint32_t step_seconds) {

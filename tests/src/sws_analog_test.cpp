@@ -9,6 +9,7 @@
 #include "nrfx_saadc.h"
 #include "fake_config_store.hpp"
 #include "linux_timer.hpp"
+#include "fake_timer.hpp"
 #include "filesystem.hpp"
 #include "calibration.hpp"
 
@@ -19,13 +20,14 @@ extern Scheduler *system_scheduler;
 TEST_GROUP(SWSAnalog)
 {
     FakeConfigurationStore *fake_config_store;
-    LinuxTimer *linux_timer;
+    FakeTimer *fake_timer;
 
     void setup() {
         fake_config_store = new FakeConfigurationStore;
         configuration_store = fake_config_store;
-        linux_timer = new LinuxTimer;
-        system_timer = linux_timer;
+        fake_timer = new FakeTimer;
+        system_timer = fake_timer;
+        fake_timer->start();
         system_scheduler = new Scheduler(system_timer);
         configuration_store->init();
 
@@ -65,7 +67,7 @@ TEST_GROUP(SWSAnalog)
 
     void teardown() {
         delete system_scheduler;
-        delete linux_timer;
+        delete fake_timer;
         delete fake_config_store;
         mock().clear();
     }
@@ -73,13 +75,16 @@ TEST_GROUP(SWSAnalog)
     // Helper: run one scheduler cycle (one service_initiate call)
     // Time-based guard: max 2s real time to prevent infinite hang
     void run_one_sample() {
-        auto start = std::chrono::steady_clock::now();
-        while (!system_scheduler->run()) {
-            auto elapsed = std::chrono::steady_clock::now() - start;
-            if (elapsed > std::chrono::seconds(2)) {
-                FAIL("run_one_sample: scheduler hung (2s timeout)");
-            }
+        // Advance SIMULATED time (FakeTimer) until the scheduler fires the next
+        // task — semantically identical to the old real-clock busy-wait, but
+        // instant instead of ~1 real second per sample. 1 ms steps guarantee we
+        // stop at the first due task (one sample per call), matching the original
+        // `while(!run())` contract. Bounded to fail fast on a genuine stall.
+        for (unsigned int elapsed_ms = 0; elapsed_ms < 600000; elapsed_ms++) {
+            if (system_scheduler->run()) return;
+            fake_timer->increment_counter(1);
         }
+        FAIL("run_one_sample: no scheduled task fired within 600 s simulated time");
     }
 
     // Helper: run a few samples at the calibration air value to pass
@@ -369,17 +374,17 @@ TEST(SWSAnalog, MaxDiveTimeSafety)
     CHECK_TRUE(switch_state);
 
     // Timeout 1: wait > dive_time then sample. Recalibrates water, state UW.
-    std::this_thread::sleep_for(std::chrono::seconds(13));
+    fake_timer->increment_counter(13 * 1000);
     for (unsigned int i = 0; i < 3; i++) run_one_sample();
     CHECK_TRUE_TEXT(switch_state, "Timeout 1/3: should stay underwater (recalib only)");
 
     // Timeout 2: same.
-    std::this_thread::sleep_for(std::chrono::seconds(13));
+    fake_timer->increment_counter(13 * 1000);
     for (unsigned int i = 0; i < 3; i++) run_one_sample();
     CHECK_TRUE_TEXT(switch_state, "Timeout 2/3: should stay underwater (recalib only)");
 
     // Timeout 3: escalation — force surface, reset peak/spike-rejects (B6).
-    std::this_thread::sleep_for(std::chrono::seconds(13));
+    fake_timer->increment_counter(13 * 1000);
     for (unsigned int i = 0; i < 3; i++) run_one_sample();
     CHECK_FALSE_TEXT(switch_state, "Timeout 3/3: should force surface (escalation)");
 
@@ -980,11 +985,11 @@ TEST(SWSAnalog, CRC_Persistence_UpwardAdaptation)
 
         // Surface with higher air value to trigger upward adaptation
         SAADC::set_adc_value(200);
-        std::this_thread::sleep_for(std::chrono::seconds(2));
+        fake_timer->increment_counter(2 * 1000);
         for (int i = 0; i < 5; i++) run_one_sample();
 
         // Need >10s at surface for adaptation to kick in
-        std::this_thread::sleep_for(std::chrono::seconds(11));
+        fake_timer->increment_counter(11 * 1000);
         for (int i = 0; i < 15; i++) run_one_sample();
 
         s.stop();
@@ -1411,15 +1416,16 @@ extern FileSystem *main_filesystem;
 TEST_GROUP(SWSAnalogFlash)
 {
     FakeConfigurationStore *fake_config_store;
-    LinuxTimer *linux_timer;
+    FakeTimer *fake_timer;
     LFSFileSystem *ram_filesystem;
     RamFlash *ram_flash;
 
     void setup() {
         fake_config_store = new FakeConfigurationStore;
         configuration_store = fake_config_store;
-        linux_timer = new LinuxTimer;
-        system_timer = linux_timer;
+        fake_timer = new FakeTimer;
+        system_timer = fake_timer;
+        fake_timer->start();
         system_scheduler = new Scheduler(system_timer);
         configuration_store->init();
 
@@ -1461,19 +1467,22 @@ TEST_GROUP(SWSAnalogFlash)
         delete ram_filesystem;
         delete ram_flash;
         delete system_scheduler;
-        delete linux_timer;
+        delete fake_timer;
         delete fake_config_store;
         mock().clear();
     }
 
     void run_one_sample() {
-        auto start = std::chrono::steady_clock::now();
-        while (!system_scheduler->run()) {
-            auto elapsed = std::chrono::steady_clock::now() - start;
-            if (elapsed > std::chrono::seconds(2)) {
-                FAIL("run_one_sample: scheduler hung (2s timeout)");
-            }
+        // Advance SIMULATED time (FakeTimer) until the scheduler fires the next
+        // task — semantically identical to the old real-clock busy-wait, but
+        // instant instead of ~1 real second per sample. 1 ms steps guarantee we
+        // stop at the first due task (one sample per call), matching the original
+        // `while(!run())` contract. Bounded to fail fast on a genuine stall.
+        for (unsigned int elapsed_ms = 0; elapsed_ms < 600000; elapsed_ms++) {
+            if (system_scheduler->run()) return;
+            fake_timer->increment_counter(1);
         }
+        FAIL("run_one_sample: no scheduled task fired within 600 s simulated time");
     }
 
     void warmup_air_samples(int count = 3) {
@@ -1567,7 +1576,7 @@ TEST(SWSAnalogFlash, ContinuousCoherence_WaterAdapts)
     uint16_t water_before = status_before.threshold_water;
 
     // Wait > 2s for m_time_in_current_state to exceed continuous coherence guard
-    std::this_thread::sleep_for(std::chrono::seconds(3));
+    fake_timer->increment_counter(3 * 1000);
 
     // Environment change: suddenly in ocean, raw=5000 >> water*2 (~1200)
     SAADC::set_adc_value(5000);
@@ -1618,9 +1627,9 @@ TEST(SWSAnalogFlash, AirBaselineFloor_PreventsCollapse)
     SAADC::set_adc_value(30);
 
     // Wait for surface adapt time (>10s)
-    std::this_thread::sleep_for(std::chrono::seconds(3));
+    fake_timer->increment_counter(3 * 1000);
     for (int i = 0; i < 10; i++) run_one_sample();
-    std::this_thread::sleep_for(std::chrono::seconds(11));
+    fake_timer->increment_counter(11 * 1000);
     for (int i = 0; i < 20; i++) run_one_sample();
 
     // Repeat cycles: dive and surface at very low values
@@ -1629,9 +1638,9 @@ TEST(SWSAnalogFlash, AirBaselineFloor_PreventsCollapse)
         for (int i = 0; i < 10; i++) run_one_sample();
 
         SAADC::set_adc_value(5);  // Below AIR_BASELINE_FLOOR
-        std::this_thread::sleep_for(std::chrono::seconds(3));
+        fake_timer->increment_counter(3 * 1000);
         for (int i = 0; i < 5; i++) run_one_sample();
-        std::this_thread::sleep_for(std::chrono::seconds(11));
+        fake_timer->increment_counter(11 * 1000);
         for (int i = 0; i < 20; i++) run_one_sample();
     }
 
@@ -1780,7 +1789,7 @@ TEST(SWSAnalogFlash, GuidedCalibration_FullCycle)
     }
 
     // Wait for service stop (guided calib COMPLETION_PAUSE then stops)
-    std::this_thread::sleep_for(std::chrono::seconds(4));
+    fake_timer->increment_counter(4 * 1000);
 
     // Should be done now — check via notify callback (most reliable)
     CHECK_TEXT(calib_result.status == 1 || calib_result.status == 2,
@@ -1849,7 +1858,7 @@ TEST(SWSAnalogFlash, DownwardAdapt_BlockedByHighContrast)
     SAADC::set_adc_value(50);
 
     // Wait for surface adapt time (>10s)
-    std::this_thread::sleep_for(std::chrono::seconds(12));
+    fake_timer->increment_counter(12 * 1000);
     for (int i = 0; i < 20; i++) run_one_sample();
 
     uint16_t air_after = SWSAnalogService::get_status().threshold_air;
@@ -1946,7 +1955,7 @@ TEST(SWSAnalogFlash, QA1_TurtleDeploymentFullSequence)
         "QA1: Water baseline doit être >= air après immersion");
 
     // 5. Premier retour surface — L-override doit trigger
-    std::this_thread::sleep_for(std::chrono::seconds(2));  // Ensure min UW time for L-override
+    fake_timer->increment_counter(2 * 1000);  // Ensure min UW time for L-override
     for (int i = 0; i < 2; i++) run_one_sample();  // Tick time tracking
 
     unsigned int callbacks_before = callbacks;
@@ -1970,7 +1979,7 @@ TEST(SWSAnalogFlash, QA1_TurtleDeploymentFullSequence)
     // 6. Re-immersion rapide après lockout
     //    Attendre que le lockout expire (default 30s ou min_surface_time)
     //    With UW_MIN_SURFACE_TIME=3, lockout = 3s for test speed
-    std::this_thread::sleep_for(std::chrono::seconds(4));
+    fake_timer->increment_counter(4 * 1000);
     for (int i = 0; i < 3; i++) run_one_sample();  // Tick time
 
     SAADC::set_adc_value(12000);
@@ -1986,7 +1995,7 @@ TEST(SWSAnalogFlash, QA1_TurtleDeploymentFullSequence)
     for (int cycle = 0; cycle < 10; cycle++) {
         // Underwater
         SAADC::set_adc_value(12000);
-        std::this_thread::sleep_for(std::chrono::seconds(2));
+        fake_timer->increment_counter(2 * 1000);
         for (int i = 0; i < 5; i++) run_one_sample();
 
         if (!switch_state) {
@@ -1997,11 +2006,11 @@ TEST(SWSAnalogFlash, QA1_TurtleDeploymentFullSequence)
         // Surface
         callbacks_before = callbacks;
         SAADC::set_adc_value(150);
-        std::this_thread::sleep_for(std::chrono::seconds(2));
+        fake_timer->increment_counter(2 * 1000);
         for (int i = 0; i < 5; i++) run_one_sample();
 
         // Wait lockout
-        std::this_thread::sleep_for(std::chrono::seconds(4));
+        fake_timer->increment_counter(4 * 1000);
         for (int i = 0; i < 3; i++) run_one_sample();
     }
 
@@ -2064,7 +2073,7 @@ TEST(SWSAnalogFlash, QA2_LockoutDefaultConfig)
 
     // Dive
     SAADC::set_adc_value(3000);
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    fake_timer->increment_counter(2 * 1000);
     for (int i = 0; i < 10; i++) run_one_sample();
     CHECK_TRUE_TEXT(switch_state, "QA2: must detect underwater");
 
@@ -2187,7 +2196,7 @@ TEST(SWSAnalogFlash, QA3B_SpikeRejectionWithEstablishedPeak)
     for (int i = 0; i < 5; i++) run_one_sample();
 
     // Surface detection must still work
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    fake_timer->increment_counter(2 * 1000);
     for (int i = 0; i < 2; i++) run_one_sample();
     SAADC::set_adc_value(200);
     for (int i = 0; i < 5; i++) run_one_sample();
@@ -2308,7 +2317,7 @@ TEST(SWSAnalogFlash, QA5_SplashWaveOnSurface)
     CHECK_FALSE_TEXT(switch_state, "QA5: Doit détecter surface");
 
     // Wait for lockout to expire
-    std::this_thread::sleep_for(std::chrono::seconds(4));
+    fake_timer->increment_counter(4 * 1000);
     for (int i = 0; i < 3; i++) run_one_sample();
 
     // Inject splash: 2 high readings then back to air
@@ -2378,7 +2387,7 @@ TEST(SWSAnalogFlash, QA6_BiofoulingProgressiveLongTerm)
     for (int i = 0; i < 10; i++) run_one_sample();
 
     // Wait lockout
-    std::this_thread::sleep_for(std::chrono::seconds(4));
+    fake_timer->increment_counter(4 * 1000);
     for (int i = 0; i < 3; i++) run_one_sample();
 
     // Stages de biofouling avec contrast décroissant (14-bit ADC values)
@@ -2405,7 +2414,7 @@ TEST(SWSAnalogFlash, QA6_BiofoulingProgressiveLongTerm)
         for (int cycle = 0; cycle < stage.cycles; cycle++) {
             // --- DIVE ---
             SAADC::set_adc_value(stage.water);
-            std::this_thread::sleep_for(std::chrono::seconds(2));
+            fake_timer->increment_counter(2 * 1000);
             for (int i = 0; i < 10; i++) run_one_sample();
 
             if (switch_state) total_underwater_detected++;
@@ -2413,7 +2422,7 @@ TEST(SWSAnalogFlash, QA6_BiofoulingProgressiveLongTerm)
             // --- SURFACE ---
             unsigned int callbacks_before = callbacks;
             SAADC::set_adc_value(stage.air);
-            std::this_thread::sleep_for(std::chrono::seconds(2));
+            fake_timer->increment_counter(2 * 1000);
             for (int i = 0; i < 10; i++) {
                 run_one_sample();
                 if (callbacks > callbacks_before && !switch_state) break;
@@ -2422,7 +2431,7 @@ TEST(SWSAnalogFlash, QA6_BiofoulingProgressiveLongTerm)
             if (!switch_state) total_surface_detected++;
 
             // Wait lockout
-            std::this_thread::sleep_for(std::chrono::seconds(4));
+            fake_timer->increment_counter(4 * 1000);
             for (int i = 0; i < 3; i++) run_one_sample();
         }
     }
@@ -2583,11 +2592,11 @@ TEST(SWSAnalogFlash, QA8_PeriodicAirRecalib_RespectsFloor)
     // Surface, but provide near-floor (60) readings — above floor so they
     // accumulate in surface_readings, but well below where air should sit.
     SAADC::set_adc_value(60);
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    fake_timer->increment_counter(2 * 1000);
     for (int i = 0; i < 10; i++) run_one_sample();
 
     // Sleep past calib_interval so should_recalibrate() returns true
-    std::this_thread::sleep_for(std::chrono::seconds(4));
+    fake_timer->increment_counter(4 * 1000);
 
     // Drive several more surface samples to trigger the periodic Air recalib
     for (int i = 0; i < 15; i++) run_one_sample();
@@ -2633,9 +2642,9 @@ TEST(SWSAnalogFlash, QA9_SurfaceBuffer_RejectsSubFloor)
     // Surface with readings BELOW floor (dry-electrode condition).
     // These must NOT pollute the surface_readings buffer.
     SAADC::set_adc_value(5);
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    fake_timer->increment_counter(2 * 1000);
     for (int i = 0; i < 10; i++) run_one_sample();
-    std::this_thread::sleep_for(std::chrono::seconds(4));
+    fake_timer->increment_counter(4 * 1000);
     for (int i = 0; i < 20; i++) run_one_sample();
 
     auto status = SWSAnalogService::get_status();
@@ -2681,7 +2690,7 @@ TEST(SWSAnalogFlash, QA10_NoSpuriousRecovery_HealthyAir)
     // Stay at surface for a long time with healthy air readings (200).
     // The recovery mechanism must NOT fire — air >= floor.
     SAADC::set_adc_value(200);
-    std::this_thread::sleep_for(std::chrono::seconds(3));
+    fake_timer->increment_counter(3 * 1000);
     for (int i = 0; i < 30; i++) run_one_sample();
 
     auto status = SWSAnalogService::get_status();
@@ -2721,9 +2730,9 @@ TEST(SWSAnalogFlash, QA11_AntiSpike_RecoversAfterStalePeak)
 
     // Surface — but DON'T let peak decay aggressively (B5 fix prevents this).
     SAADC::set_adc_value(200);
-    std::this_thread::sleep_for(std::chrono::seconds(3));
+    fake_timer->increment_counter(3 * 1000);
     for (int i = 0; i < 5; i++) run_one_sample();
-    std::this_thread::sleep_for(std::chrono::seconds(11));
+    fake_timer->increment_counter(11 * 1000);
     for (int i = 0; i < 10; i++) run_one_sample();
     CHECK_FALSE(switch_state);
 
@@ -2774,13 +2783,13 @@ TEST(SWSAnalogFlash, QA12_DiveTimeoutEscalation_AllowsNextDive)
 
     // Trigger 3 consecutive timeouts (escalation forces surface on the 3rd)
     for (int t = 0; t < 3; t++) {
-        std::this_thread::sleep_for(std::chrono::seconds(4));
+        fake_timer->increment_counter(4 * 1000);
         for (int i = 0; i < 4; i++) run_one_sample();
     }
     CHECK_FALSE_TEXT(switch_state, "QA12: 3rd timeout must force surface");
 
     // Wait out the lockout (30s default) — use small min_surface_time for test
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    fake_timer->increment_counter(2 * 1000);
 
     // Re-dive immediately with strong water signal — must be detected after lockout.
     // Sleep through lockout via repeated sampling at surface ADC.
@@ -2788,7 +2797,7 @@ TEST(SWSAnalogFlash, QA12_DiveTimeoutEscalation_AllowsNextDive)
     for (int i = 0; i < 5; i++) run_one_sample();
 
     // Long enough to clear lockout (default SURFACE_LOCKOUT_DURATION_SEC=30)
-    std::this_thread::sleep_for(std::chrono::seconds(31));
+    fake_timer->increment_counter(31 * 1000);
     for (int i = 0; i < 3; i++) run_one_sample();
 
     SAADC::set_adc_value(10000);
@@ -2843,7 +2852,7 @@ TEST(SWSAnalogFlash, QA13_InvalidAdcRejectedNoStateCorruption)
 
     // Recovery: valid readings resume → detection works
     SAADC::set_adc_value(200);
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    fake_timer->increment_counter(2 * 1000);
     for (int i = 0; i < 8; i++) run_one_sample();
     CHECK_FALSE_TEXT(switch_state, "QA13: must detect surface after invalid samples");
 
@@ -2880,11 +2889,11 @@ TEST(SWSAnalogFlash, QA14_StuckElectrodeAtZeroPreservesFloor)
     // Now set ADC to 0 (stuck/disconnected electrode) for a long stretch
     // including multiple periodic recalibration intervals.
     SAADC::set_adc_value(0);
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    fake_timer->increment_counter(2 * 1000);
     for (int i = 0; i < 30; i++) run_one_sample();
-    std::this_thread::sleep_for(std::chrono::seconds(4));
+    fake_timer->increment_counter(4 * 1000);
     for (int i = 0; i < 30; i++) run_one_sample();
-    std::this_thread::sleep_for(std::chrono::seconds(4));
+    fake_timer->increment_counter(4 * 1000);
     for (int i = 0; i < 30; i++) run_one_sample();
 
     auto status = SWSAnalogService::get_status();
@@ -2931,13 +2940,13 @@ TEST(SWSAnalogFlash, QA15_FullDiveTimeoutCascade)
 
     // Wait long enough for 3 timeouts to fire (3 × 3s + margin = 12s)
     // After timeout 3 → escalation forces surface
-    std::this_thread::sleep_for(std::chrono::seconds(4));
+    fake_timer->increment_counter(4 * 1000);
     for (int i = 0; i < 4; i++) run_one_sample();
 
-    std::this_thread::sleep_for(std::chrono::seconds(4));
+    fake_timer->increment_counter(4 * 1000);
     for (int i = 0; i < 4; i++) run_one_sample();
 
-    std::this_thread::sleep_for(std::chrono::seconds(4));
+    fake_timer->increment_counter(4 * 1000);
     for (int i = 0; i < 4; i++) run_one_sample();
 
     // After 3 timeouts (12s+ underwater), escalation must have forced surface
@@ -3064,7 +3073,7 @@ TEST(SWSAnalogFlash, QA18_GradualBiofoulingAdaptation)
 
     // Surface
     SAADC::set_adc_value(200);
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    fake_timer->increment_counter(2 * 1000);
     for (int i = 0; i < 5; i++) run_one_sample();
     CHECK_FALSE(switch_state);
 
@@ -3080,7 +3089,7 @@ TEST(SWSAnalogFlash, QA18_GradualBiofoulingAdaptation)
         if (!switch_state && fail_at == 0) fail_at = cycle;
 
         SAADC::set_adc_value(200);
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        fake_timer->increment_counter(1 * 1000);
         for (int i = 0; i < 4; i++) run_one_sample();
     }
 
@@ -3137,7 +3146,7 @@ TEST(SWSAnalogFlash, QA19_CrcIntegrityRepeatedCalibration)
 
     // Surface and run another batch — exercises L-override CRC writes too
     SAADC::set_adc_value(200);
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    fake_timer->increment_counter(2 * 1000);
     for (int i = 0; i < 30; i++) run_one_sample();
 
     auto status_surf = SWSAnalogService::get_status();
@@ -3232,7 +3241,7 @@ TEST(SWSAnalog, TestModeAutoStop)
     CHECK_TRUE(SWSAnalogService::is_test_running());
 
     // Wait > timeout. The next detector_state() must auto-clear m_test_mode.
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    fake_timer->increment_counter(30);
     run_one_sample();
 
     CHECK_FALSE_TEXT(SWSAnalogService::is_test_running(),
@@ -3260,7 +3269,7 @@ TEST(SWSAnalog, TestModeAutoStopDisabled)
     SWSAnalogService::start_test_mode();
     CHECK_TRUE(SWSAnalogService::is_test_running());
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    fake_timer->increment_counter(30);
     run_one_sample();
 
     CHECK_TRUE_TEXT(SWSAnalogService::is_test_running(),
@@ -3290,7 +3299,7 @@ TEST(SWSAnalog, TestModeAutoStopSkippedDuringGuidedCalib)
     SWSAnalogService::start_guided_calibration();
     CHECK_TRUE(SWSAnalogService::is_test_running());
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    fake_timer->increment_counter(30);
     run_one_sample();
 
     // Test mode must NOT have been auto-stopped — guided calib still in progress
