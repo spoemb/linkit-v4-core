@@ -542,6 +542,33 @@ void GPSService::service_initiate() {
 	system_scheduler->cancel_task(m_deep_idle_auto_off_task);
 	m_deep_idle_started_at_ms = 0;   // R5: leaving deep-idle (entering acquisition)
 
+	// Per-session GNSS diagnostic (2026-06) — one consolidated field-visible line
+	// to root-cause the "fixes die after ~2 days" issue without device access.
+	//   - rtc_set / rtc : injected time validity & value. ANO/AssistNow are useless
+	//     with a wrong time; comparing rtc vs real elapsed across sessions reveals a
+	//     drifting / non-syncing host clock (hypothesis H1).
+	//   - batt_mv / lb  : low-battery mode switches GNSS to LB_* params and can
+	//     throttle/disable acquisition around day 2 (hypothesis H3).
+	//   - anow / ano    : AssistNow Online / Offline enabled? cross-check with the
+	//     `ano_sent msgs=..` line from the M10Q driver to confirm ANO is applied.
+	//   - first_fix / ntry / dead : a rising dead-session count = receiver stuck on
+	//     stale assistance (H2), the trigger for GNSS_COLD_START_AFTER_NTRY.
+	{
+		bool rtc_set = (rtc && rtc->is_set());
+		unsigned int rtc_now = rtc_set ? (unsigned int)rtc->gettime() : 0;
+		service_update_battery();
+		unsigned int batt_mv = service_get_voltage();
+		bool lb = service_is_battery_level_low();
+		bool anow = configuration_store->read_param<bool>(ParamID::GNSS_ASSISTNOW_EN);
+		bool ano  = configuration_store->read_param<bool>(ParamID::GNSS_ASSISTNOW_OFFLINE_EN);
+		DEBUG_INFO("GPSService: SESSION_DIAG rtc_set=%u rtc=%u batt_mv=%u lb=%u anow=%u ano=%u first_fix=%u ntry=%u dead=%u",
+		           (unsigned)rtc_set, rtc_now, batt_mv, (unsigned)lb, (unsigned)anow, (unsigned)ano,
+		           (unsigned)m_is_first_fix_found, m_cold_start_ntry, m_consecutive_dead_sessions);
+		VAL_GNSS("session_diag rtc_set=%u rtc=%u batt_mv=%u lb=%u anow=%u ano=%u first_fix=%u ntry=%u dead=%u",
+		         (unsigned)rtc_set, rtc_now, batt_mv, (unsigned)lb, (unsigned)anow, (unsigned)ano,
+		         (unsigned)m_is_first_fix_found, m_cold_start_ntry, m_consecutive_dead_sessions);
+	}
+
 	// FIX 2026-05-23 (audit finding cross #2): re-check rate-limit at the
 	// service_initiate entry. service_next_schedule_in_ms gates rate-limited
 	// sessions, but when the framework's reschedule task fires (Service::
