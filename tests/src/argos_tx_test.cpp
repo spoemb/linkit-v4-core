@@ -922,6 +922,129 @@ TEST(ArgosTxService, LegacyTxServiceDepthPile1)
 	}
 }
 
+// Regression (2026-06-17): on a KIM2 whose master RCONF is LDK (128-bit budget),
+// a non-adaptive LEGACY *multi-fix* GNSS burst used to build a 192-bit LONG packet
+// that KIM2 send() drops silently (no event → 30 s timeout stall, every cycle).
+// The service must keep the LDK master modulation but cap the burst to a single
+// fix so it ships a 96-bit SHORT packet that fits. (User policy: keep master mod,
+// limit the number of fixes.)
+TEST(ArgosTxService, LegacyNonAdaptiveLdkMasterCapsToSingleFix)
+{
+	double frequency = 900.22;
+	BaseArgosMode mode = BaseArgosMode::LEGACY;
+	BaseArgosPower power = BaseArgosPower::POWER_1000_MW;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_4;
+	unsigned int argos_hexid = 0x01234567U;
+	unsigned int lb_threshold = 0U;
+	bool lb_en = false;
+	unsigned int tr_nom = 10;
+	bool time_sync_en = false;
+
+	fake_config_store->write_param(ParamID::ARGOS_DEPTH_PILE, depth_pile);
+	fake_config_store->write_param(ParamID::ARGOS_FREQ, frequency);
+	fake_config_store->write_param(ParamID::ARGOS_MODE, mode);
+	fake_config_store->write_param(ParamID::ARGOS_HEXID, argos_hexid);
+	fake_config_store->write_param(ParamID::LB_EN, lb_en);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
+	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
+	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
+	fake_config_store->write_param(ParamID::ARGOS_ADAPTIVE_MODULATION, false);
+
+	// Emulate KIM2 state_init() aligning the device to its LDK master RCONF.
+	mock_kineis->test_set_current_modulation(KineisModulation::LDK);
+
+	ArgosTxService serv(*mock_kineis);
+
+	std::time_t t = 1652105502000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	serv.start();
+
+	inject_gps_location(1, 11.8768, -33.8232, t);
+	inject_gps_location(1, 11.8768, -33.8232, t);
+	inject_gps_location(1, 11.8768, -33.8232, t);
+	inject_gps_location(1, 11.8768, -33.8232, t);
+	system_scheduler->run();
+
+	for (unsigned int i = 0; i < 3; i++) {
+		// Capped to a single fix → 96-bit SHORT packet, still in the LDK master mod.
+		// (Pre-fix this was send(LDK, 192) → silent KIM2 drop.)
+		mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDK).
+				withUnsignedIntParameter("size_bits", 96);
+
+		t += serv.get_last_schedule();
+		fake_rtc->settime(t/1000);
+		fake_timer->set_counter(t);
+		system_scheduler->run();
+
+		mock_kineis->notify(KineisEventTxComplete({}));
+	}
+}
+
+// Regression (2026-06-17): a non-adaptive master accidentally left on VLDA4
+// (24-bit budget) can't hold even a single 96-bit GNSS fix. Instead of a silent
+// KIM2 oversize drop, the service must fall back to LDA2 (when its RCONF is
+// provisioned) and ship the fix there. (User policy: on overflow → LDA2.)
+TEST(ArgosTxService, LegacyNonAdaptiveVlda4MasterFallsBackToLda2)
+{
+	const std::string lda2_rconf = "00112233445566778899aabbccddeeff"; // 32 hex chars
+
+	double frequency = 900.22;
+	BaseArgosMode mode = BaseArgosMode::LEGACY;
+	BaseArgosPower power = BaseArgosPower::POWER_1000_MW;
+	BaseDepthPile depth_pile = BaseDepthPile::DEPTH_PILE_1;
+	unsigned int argos_hexid = 0x01234567U;
+	unsigned int lb_threshold = 0U;
+	bool lb_en = false;
+	unsigned int tr_nom = 10;
+	bool time_sync_en = false;
+
+	fake_config_store->write_param(ParamID::ARGOS_DEPTH_PILE, depth_pile);
+	fake_config_store->write_param(ParamID::ARGOS_FREQ, frequency);
+	fake_config_store->write_param(ParamID::ARGOS_MODE, mode);
+	fake_config_store->write_param(ParamID::ARGOS_HEXID, argos_hexid);
+	fake_config_store->write_param(ParamID::LB_EN, lb_en);
+	fake_config_store->write_param(ParamID::LB_THRESHOLD, lb_threshold);
+	fake_config_store->write_param(ParamID::ARGOS_POWER, power);
+	fake_config_store->write_param(ParamID::TR_NOM, tr_nom);
+	fake_config_store->write_param(ParamID::ARGOS_TIME_SYNC_BURST_EN, time_sync_en);
+	fake_config_store->write_param(ParamID::ARGOS_ADAPTIVE_MODULATION, false);
+	fake_config_store->write_param(ParamID::ARGOS_RADIOCONF_LDA2, lda2_rconf);
+
+	// Emulate KIM2 state_init() aligning the device to a (mis-set) VLDA4 master.
+	mock_kineis->test_set_current_modulation(KineisModulation::VLDA4);
+
+	ArgosTxService serv(*mock_kineis);
+
+	std::time_t t = 1652105502000;
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+
+	mock().expectOneCall("set_tcxo_warmup_time").onObject(mock_kineis).withUnsignedIntParameter("time", 5);
+	serv.start();
+
+	inject_gps_location(1, 11.8768, -33.8232, t);
+	inject_gps_location(1, 11.8768, -33.8232, t);
+	system_scheduler->run();
+
+	// First TX: 96-bit fix doesn't fit VLDA4 → fall back to LDA2 (switch), send there.
+	mock().expectOneCall("switch_modulation").onObject(mock_kineis)
+			.withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2)
+			.withStringParameter("rconf", lda2_rconf.c_str());
+	mock().expectOneCall("send").onObject(mock_kineis).withUnsignedIntParameter("mode", (unsigned int)KineisModulation::LDA2).
+			withUnsignedIntParameter("size_bits", 96);
+
+	t += serv.get_last_schedule();
+	fake_rtc->settime(t/1000);
+	fake_timer->set_counter(t);
+	system_scheduler->run();
+
+	mock_kineis->notify(KineisEventTxComplete({}));
+}
+
 TEST(ArgosTxService, UnderwaterFor24HoursBeforeTx)
 {
 	double frequency = 900.22;

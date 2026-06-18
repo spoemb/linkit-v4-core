@@ -75,6 +75,30 @@ extern Scheduler *system_scheduler;
 extern ConfigurationStore *configuration_store;
 
 // ============================================================================
+// ARGOS_CACHED_MODULATION mapping
+// The param uses the SmdArgosModulation convention (0=LDA2, 1=LDK, 2=VLDA4),
+// documented in config_store.hpp and shared with SmdSat. KineisModulation uses
+// a DIFFERENT order (LDK=0, LDA2=1, VLDA4=2), so we map explicitly — never cast.
+// ============================================================================
+static unsigned int kineis_mod_to_cached(KineisModulation m) {
+    switch (m) {
+        case KineisModulation::LDK:   return 1;
+        case KineisModulation::VLDA4: return 2;
+        case KineisModulation::LDA2:
+        default:                      return 0;
+    }
+}
+
+static KineisModulation cached_to_kineis_mod(unsigned int v) {
+    switch (v) {
+        case 1:  return KineisModulation::LDK;
+        case 2:  return KineisModulation::VLDA4;
+        case 0:
+        default: return KineisModulation::LDA2;
+    }
+}
+
+// ============================================================================
 // Constructor / Destructor
 // ============================================================================
 
@@ -84,11 +108,19 @@ KIM2Device::KIM2Device()
     m_packet_buffer.clear();
     m_state = KIM2ManagerState::power_off;
     m_tx_mode = KineisModulation::LDA2;
-    // Default to LDA2 — the canonical Argos modulation and what the service
-    // assumes when adaptive modulation is OFF. The actual modulation is
-    // re-discovered from AT+RCONF=? readback during state_init, so this only
-    // matters for the very first scheduling cycle on a cold boot.
+    // Load the last-known modulation from config instead of blindly defaulting
+    // to LDA2. On a non-adaptive unit whose master RCONF encodes LDK/VLDA4, the
+    // LDA2 default made the FIRST scheduling cycle after a cold boot build a
+    // wrong-modulation packet — the service reads get_current_modulation()
+    // BEFORE the module is powered/queried, so it would size the frame for LDA2
+    // while the radio is LDK (12-byte frame on a 16-byte-fixed LDK radio →
+    // +ERROR=5, one aborted TX per boot). state_init still re-confirms from
+    // AT+RCONF=? and re-persists. Mirrors SmdSat's ARGOS_CACHED_MODULATION load.
     m_current_rconf_mode = KineisModulation::LDA2;
+    if (configuration_store) {
+        m_current_rconf_mode = cached_to_kineis_mod(
+            configuration_store->read_param<unsigned int>(ParamID::ARGOS_CACHED_MODULATION));
+    }
     m_timeout = {};
     m_stopping = false;
     m_cmd_is_ok = false;
@@ -214,6 +246,11 @@ void KIM2Device::send(const KineisModulation mode, const KineisPacket& user_payl
             {
                 DEBUG_ERROR("KIM2Device::send: LDK payload too long: %d bits (max %d)",
                     payload_length, LDK_MAX_LENGTH_BITS);
+                // Signal the caller instead of dropping silently — otherwise the
+                // service waits out its 30 s TX timeout with no event. The
+                // ArgosTxService size guards should make this unreachable, but a
+                // DeviceError lets any future caller reschedule with backoff.
+                notify(KineisEventDeviceError({}));
                 return;
             }
             stuffing_bits = LDK_MAX_LENGTH_BITS - payload_length;
@@ -224,6 +261,7 @@ void KIM2Device::send(const KineisModulation mode, const KineisPacket& user_payl
             {
                 DEBUG_ERROR("KIM2Device::send: LDA2 payload too long: %d bits (max %d)",
                     payload_length, LDA2_MAX_LENGTH_BITS);
+                notify(KineisEventDeviceError({}));
                 return;
             }
             modulo = payload_length % 32;
@@ -235,6 +273,7 @@ void KIM2Device::send(const KineisModulation mode, const KineisPacket& user_payl
             {
                 DEBUG_ERROR("KIM2Device::send: VLDA4 payload too long: %d bits (max %d)",
                     payload_length, VLDA4_MAX_LENGTH_BITS);
+                notify(KineisEventDeviceError({}));
                 return;
             }
             stuffing_bits = VLDA4_MAX_LENGTH_BITS - payload_length;
@@ -343,8 +382,24 @@ bool KIM2Device::switch_modulation(KineisModulation mode, const std::string& rco
 
     // Write RCONF + read back, enforcing the VLDA4-at-27dBm rule. On rejection
     // m_vlda4_allowed is cleared and we bail out before KMAC is reloaded.
-    if (!write_and_validate_rconf(rconf_hex, mode)) {
+    KIM2::RConfDecoded sw_decoded;
+    if (!write_and_validate_rconf(rconf_hex, mode, &sw_decoded)) {
         DEBUG_ERROR("KIM2Device::%s: RCONF rejected (mode=%d)", __func__, static_cast<int>(mode));
+        return false;
+    }
+
+    // Trust the module's read-back modulation, not the requested tag. A
+    // mislabeled RCONF (e.g. an LDK config stored in the LDA2 slot) would leave
+    // the radio on a different modulation than we cache, so the next send()
+    // would zero-pad the frame to the WRONG length (only LDA2 is variable; LDK
+    // and VLDA4 are fixed) → AT+TX rejected with +ERROR=5 (BAD_LEN). Refuse the
+    // switch and cache the actual modulation so the caller can react/fall back.
+    std::optional<KineisModulation> sw_actual = mod_from_name(sw_decoded.modulation);
+    if (sw_actual.has_value() && sw_actual.value() != mode) {
+        DEBUG_ERROR("KIM2Device::%s: RCONF for mode %d physically encodes %s (mode %d) — refusing switch (check provisioning)",
+            __func__, static_cast<int>(mode), sw_decoded.modulation.c_str(), static_cast<int>(sw_actual.value()));
+        m_current_rconf_mode = sw_actual.value();
+        cache_current_modulation();
         return false;
     }
 
@@ -355,12 +410,20 @@ bool KIM2Device::switch_modulation(KineisModulation mode, const std::string& rco
     PMU::delay_ms(KIM2_DELAY_AFTER_KMAC_MS);
 
     m_current_rconf_mode = mode;
+    cache_current_modulation();
     DEBUG_INFO("KIM2Device::%s: modulation switched OK", __func__);
     return true;
 }
 
 KineisModulation KIM2Device::get_current_modulation() const {
     return m_current_rconf_mode;
+}
+
+void KIM2Device::cache_current_modulation() {
+    if (configuration_store) {
+        configuration_store->write_param(ParamID::ARGOS_CACHED_MODULATION,
+                                         kineis_mod_to_cached(m_current_rconf_mode));
+    }
 }
 
 // ============================================================================
@@ -446,6 +509,24 @@ void KIM2Device::read_credentials(unsigned int *dec_id, unsigned int *address,
             DEBUG_WARN("KIM2Device::read_credentials: VLDA4 at %d dBm (required %d) — gating VLDA4 off",
                        decoded.rf_level_dbm, KIM2_VLDA4_REQUIRED_DBM);
             m_vlda4_allowed = false;
+        }
+
+        // Align the cached modulation from this live read-back. We don't write
+        // credentials on KIM2 (ID/ADDR are burned in, RCONF is re-applied each
+        // power-on), so SATVF is the natural place to seed the cache: running it
+        // at provisioning/verification persists the module's ACTUAL modulation
+        // into ARGOS_CACHED_MODULATION (and the in-RAM tag), so the next cold
+        // boot starts on the right modulation with no aborted first TX. Mirrors
+        // state_init's re-tag. Skip a VLDA4 that was just gated off — caching a
+        // non-compliant modulation would only force a fallback next boot.
+        std::optional<KineisModulation> actual = mod_from_name(decoded.modulation);
+        if (decoded.valid && actual.has_value() &&
+            actual.value() != m_current_rconf_mode &&
+            !(actual.value() == KineisModulation::VLDA4 && !m_vlda4_allowed)) {
+            DEBUG_INFO("KIM2Device::read_credentials: aligning cached modulation to %s (was %d)",
+                       decoded.modulation.c_str(), static_cast<int>(m_current_rconf_mode));
+            m_current_rconf_mode = actual.value();
+            cache_current_modulation();
         }
     } else {
         DEBUG_WARN("KIM2Device::read_credentials: AT+RCONF=? failed");
@@ -800,6 +881,10 @@ void KIM2Device::state_init()
     if (!adaptive) {
         configuration_store->write_param(ParamID::ARGOS_RADIOCONF, rconf);
     }
+    // Persist the confirmed modulation so the next cold boot starts on the right
+    // one (no LDA2-default first-cycle desync). m_current_rconf_mode here is the
+    // value validated above (master readback re-tag, fallback, or default-LDK).
+    cache_current_modulation();
 
     KIM2_STATE_CHANGE(init, idle);
 }
@@ -931,8 +1016,33 @@ void KIM2Device::state_transmit_enter()
         }
         // Write + read back + enforce VLDA4-at-27dBm. If this trips on VLDA4,
         // m_vlda4_allowed is cleared so future switches are refused upstream.
-        if (!write_and_validate_rconf(rconf, m_tx_mode)) {
+        KIM2::RConfDecoded realign_decoded;
+        if (!write_and_validate_rconf(rconf, m_tx_mode, &realign_decoded)) {
             DEBUG_ERROR("KIM2Device::state_transmit_enter: RCONF rejected — aborting TX");
+            m_tx_buffer.clear();
+            KIM2_STATE_CHANGE(transmit, error);
+            return;
+        }
+
+        // The payload in m_tx_buffer was zero-padded for m_tx_mode in send():
+        // LDK/VLDA4 to their FIXED lengths, LDA2 to the next 32-bit step (the
+        // only variable-size modulation). If the RCONF for m_tx_mode physically
+        // encodes a DIFFERENT modulation (mislabeled per-mod RCONF, or a
+        // non-adaptive master that decodes to another mod), the radio is now on
+        // that other modulation and our frame length no longer matches — the
+        // module rejects AT+TX with +ERROR=5 (BAD_LEN), e.g. a 12-byte LDA2
+        // frame on an LDK radio (LDK length is fixed at 16 B). Trust the
+        // read-back: cache the ACTUAL modulation and abort this TX so the
+        // service rebuilds a correctly-framed packet next cycle (it reads the
+        // truth via get_current_modulation()), instead of TXing a bad-length
+        // frame and latching on repeated +ERROR=5.
+        std::optional<KineisModulation> realign_actual = mod_from_name(realign_decoded.modulation);
+        if (realign_actual.has_value() && realign_actual.value() != m_tx_mode) {
+            DEBUG_ERROR("KIM2Device::state_transmit_enter: RCONF for mode %u physically encodes %s (mode %d) — aborting TX (check RCONF provisioning), caching actual modulation",
+                static_cast<unsigned int>(m_tx_mode), realign_decoded.modulation.c_str(),
+                static_cast<int>(realign_actual.value()));
+            m_current_rconf_mode = realign_actual.value();
+            cache_current_modulation();
             m_tx_buffer.clear();
             KIM2_STATE_CHANGE(transmit, error);
             return;
@@ -946,6 +1056,7 @@ void KIM2Device::state_transmit_enter()
         }
         PMU::delay_ms(KIM2_DELAY_AFTER_KMAC_MS);
         m_current_rconf_mode = m_tx_mode;
+        cache_current_modulation();
         DEBUG_INFO("KIM2Device::state_transmit_enter: RCONF realigned to mode %u",
             static_cast<unsigned int>(m_tx_mode));
     }

@@ -1235,7 +1235,22 @@ void ArgosTxService::process_gnss_burst() {
 	ArgosConfig argos_config;
 	configuration_store->get_argos_configuration(argos_config);
 	unsigned int size_bits;
-	std::vector<GPSLogEntry*> v = m_depth_pile_manager.retrieve_gps((unsigned int)argos_config.depth_pile);
+	// Non-adaptive (legacy): the master RCONF modulation is fixed for this TX.
+	// If it can't hold a multi-fix LONG packet (e.g. LDK = 128b < LDA2's 192b),
+	// cap the burst to a single fix at retrieve time so we build a SHORT packet
+	// that fits — rather than handing send() an oversize payload that KIM2 drops
+	// silently (DEBUG_ERROR + bare return, no event → 30 s timeout stall, repeats
+	// every cycle on an LDK master). Capping at retrieve (not after build) avoids
+	// wasting a burst_counter redundancy slot on fixes we wouldn't transmit.
+	// User policy 2026-06-17: keep the master modulation, limit the fix count;
+	// LDA2 fallback (below) only kicks in when even a single fix doesn't fit.
+	std::vector<GPSLogEntry*> v;
+	if (!argos_config.adaptive_modulation &&
+	    !size_fits_modulation(ArgosPacketBuilder::LONG_PACKET_BITS, m_scheduled_mode)) {
+		v = m_depth_pile_manager.retrieve_gps((unsigned int)argos_config.depth_pile, 1);
+	} else {
+		v = m_depth_pile_manager.retrieve_gps((unsigned int)argos_config.depth_pile);
+	}
 	if (v.size()) {
 		KineisPacket packet;
 
@@ -1334,6 +1349,28 @@ void ArgosTxService::process_gnss_burst() {
 					return;
 				}
 			}
+		} else {
+			// Non-adaptive: m_scheduled_mode is the master RCONF modulation. The
+			// retrieve above already capped the burst to a single fix when the
+			// master modulation can't hold a LONG packet, so the common LDK case
+			// now ships a 96-bit SHORT packet that fits. If the built packet STILL
+			// doesn't fit (e.g. master is VLDA4 = 24b — even a single 96-bit fix
+			// overflows), fall back to LDA2 when it's provisioned; otherwise skip
+			// this TX cleanly rather than letting KIM2 send() drop it silently.
+			// User policy 2026-06-17: keep master modulation; on overflow → LDA2.
+			if (!size_fits_modulation(size_bits, m_scheduled_mode)) {
+				if (size_fits_modulation(size_bits, KineisModulation::LDA2) &&
+				    ensure_modulation(KineisModulation::LDA2)) {
+					DEBUG_WARN("ArgosTxService::process_gnss_burst: %u bits don't fit master mod %d — falling back to LDA2",
+					           size_bits, (int)m_scheduled_mode);
+					m_scheduled_mode = KineisModulation::LDA2;
+				} else {
+					DEBUG_ERROR("ArgosTxService::process_gnss_burst: %u bits fit no provisioned modulation — skipping TX",
+					            size_bits);
+					service_complete();
+					return;
+				}
+			}
 		}
 
 		// Demoted to TRACE: per-TX payload dump.
@@ -1397,6 +1434,24 @@ void ArgosTxService::process_gnss_burst_from_cached() {
 			if (!size_fits_modulation(size_bits, m_scheduled_mode)) {
 				DEBUG_ERROR("ArgosTxService::process_gnss_burst_from_cached: packet %u bits doesn't fit fallback mod %d — skipping TX",
 				            size_bits, (int)m_scheduled_mode);
+				service_complete();
+				return;
+			}
+		}
+	} else {
+		// Non-adaptive: keep the master RCONF modulation. REUSE_LAST is always a
+		// single fix (96 bits), which fits LDK/LDA2; only a VLDA4 master (24b)
+		// can't hold it — fall back to LDA2 if provisioned, else skip cleanly
+		// instead of a silent KIM2 oversize drop. User policy 2026-06-17.
+		if (!size_fits_modulation(size_bits, m_scheduled_mode)) {
+			if (size_fits_modulation(size_bits, KineisModulation::LDA2) &&
+			    ensure_modulation(KineisModulation::LDA2)) {
+				DEBUG_WARN("ArgosTxService::process_gnss_burst_from_cached: %u bits don't fit master mod %d — falling back to LDA2",
+				           size_bits, (int)m_scheduled_mode);
+				m_scheduled_mode = KineisModulation::LDA2;
+			} else {
+				DEBUG_ERROR("ArgosTxService::process_gnss_burst_from_cached: %u bits fit no provisioned modulation — skipping TX",
+				            size_bits);
 				service_complete();
 				return;
 			}

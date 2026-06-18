@@ -197,5 +197,12 @@ private:
 	///        modulation actually encoded in the master RCONF, which we can't
 	///        decode locally (encrypted hex).
 	static std::optional<KineisModulation> mod_from_name(const std::string& name);
+
+	/// @brief Persist m_current_rconf_mode to ParamID::ARGOS_CACHED_MODULATION so
+	///        the next cold boot loads the real modulation instead of defaulting
+	///        to LDA2 (which made the first scheduling cycle build a wrong-mod
+	///        packet on an LDK/VLDA4 master). Mirrors SmdSat's cached-modulation
+	///        persistence. No-op if configuration_store is unavailable.
+	void cache_current_modulation();
 	/// @}
 };

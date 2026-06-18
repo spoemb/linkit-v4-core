@@ -62,6 +62,12 @@ public:
 		return m_current_mod;
 	}
 
+	// Test helper: emulate the non-adaptive "current" modulation that the real
+	// KIM2 state_init() reads back from the master RCONF (AT+RCONF=?). Lets a
+	// legacy/non-adaptive test pin the device to LDK/VLDA4 without driving the
+	// switch_modulation() mock-call path.
+	void test_set_current_modulation(KineisModulation mode) { m_current_mod = mode; }
+
 	void set_lpm_mode(uint8_t lpm_bitmap) override {
 		(void)lpm_bitmap;  // LPM is SMD-specific, not verified in generic TX tests
 	}
