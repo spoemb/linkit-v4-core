@@ -263,6 +263,7 @@ target_sources(${PROJECT_NAME} PRIVATE
     "src/pressure_sensor_test.cpp"
     "src/calibration_test.cpp"
     "src/argos_tx_test.cpp"
+    "src/kim2_modulation_test.cpp"
     "src/lora_packet_builder_test.cpp"
     "src/dive_mode_test.cpp"
     "src/m8_test.cpp"

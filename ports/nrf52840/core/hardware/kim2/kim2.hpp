@@ -190,13 +190,9 @@ private:
 	                              KineisModulation expected_mode,
 	                              KIM2::RConfDecoded* out_decoded = nullptr);
 
-	/// @brief Map a modulation name string ("LDK"/"LDA2"/"VLDA4") returned by
-	///        AT+RCONF=? to the KineisModulation enum. Returns std::nullopt for
-	///        unrecognized strings (LDA2L/HDA4/UNKNOWN — not in our enum).
-	///        Used in non-adaptive mode to align m_current_rconf_mode with the
-	///        modulation actually encoded in the master RCONF, which we can't
-	///        decode locally (encrypted hex).
-	static std::optional<KineisModulation> mod_from_name(const std::string& name);
+	/// @note The modulation-name decode + read-back validation moved to the pure,
+	///       host-testable KIM2::mod_from_name / KIM2::verify_modulation in
+	///       kim2_modulation.hpp.
 
 	/// @brief Persist m_current_rconf_mode to ParamID::ARGOS_CACHED_MODULATION so
 	///        the next cold boot loads the real modulation instead of defaulting

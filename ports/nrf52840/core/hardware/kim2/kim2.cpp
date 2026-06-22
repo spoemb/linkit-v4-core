@@ -5,6 +5,7 @@
 
 #include "kim2.hpp"
 #include "kim2_comm.hpp"
+#include "kim2_modulation.hpp"
 #include "bsp.hpp"
 #include "gpio.hpp"
 #include "pmu.hpp"
@@ -394,11 +395,11 @@ bool KIM2Device::switch_modulation(KineisModulation mode, const std::string& rco
     // would zero-pad the frame to the WRONG length (only LDA2 is variable; LDK
     // and VLDA4 are fixed) → AT+TX rejected with +ERROR=5 (BAD_LEN). Refuse the
     // switch and cache the actual modulation so the caller can react/fall back.
-    std::optional<KineisModulation> sw_actual = mod_from_name(sw_decoded.modulation);
-    if (sw_actual.has_value() && sw_actual.value() != mode) {
+    KIM2::ModulationVerdict sw_v = KIM2::verify_modulation(mode, sw_decoded.modulation);
+    if (sw_v.mismatch) {
         DEBUG_ERROR("KIM2Device::%s: RCONF for mode %d physically encodes %s (mode %d) — refusing switch (check provisioning)",
-            __func__, static_cast<int>(mode), sw_decoded.modulation.c_str(), static_cast<int>(sw_actual.value()));
-        m_current_rconf_mode = sw_actual.value();
+            __func__, static_cast<int>(mode), sw_decoded.modulation.c_str(), static_cast<int>(sw_v.actual));
+        m_current_rconf_mode = sw_v.actual;
         cache_current_modulation();
         return false;
     }
@@ -519,7 +520,7 @@ void KIM2Device::read_credentials(unsigned int *dec_id, unsigned int *address,
         // boot starts on the right modulation with no aborted first TX. Mirrors
         // state_init's re-tag. Skip a VLDA4 that was just gated off — caching a
         // non-compliant modulation would only force a fallback next boot.
-        std::optional<KineisModulation> actual = mod_from_name(decoded.modulation);
+        std::optional<KineisModulation> actual = KIM2::mod_from_name(decoded.modulation);
         if (decoded.valid && actual.has_value() &&
             actual.value() != m_current_rconf_mode &&
             !(actual.value() == KineisModulation::VLDA4 && !m_vlda4_allowed)) {
@@ -862,7 +863,7 @@ void KIM2Device::state_init()
     // at the correct size. Client bug otherwise: master encodes LDK but the
     // service hardcodes LDA2 → AT+TX 24 B to LDK module → +ERROR=5.
     if (!adaptive && init_decoded.valid) {
-        auto actual = mod_from_name(init_decoded.modulation);
+        auto actual = KIM2::mod_from_name(init_decoded.modulation);
         if (actual.has_value() && actual.value() != m_current_rconf_mode) {
             DEBUG_INFO("KIM2Device::state_init: non-adaptive master RCONF encodes %s (was tracking %d) — aligning",
                        init_decoded.modulation.c_str(), static_cast<int>(m_current_rconf_mode));
@@ -1036,12 +1037,12 @@ void KIM2Device::state_transmit_enter()
         // service rebuilds a correctly-framed packet next cycle (it reads the
         // truth via get_current_modulation()), instead of TXing a bad-length
         // frame and latching on repeated +ERROR=5.
-        std::optional<KineisModulation> realign_actual = mod_from_name(realign_decoded.modulation);
-        if (realign_actual.has_value() && realign_actual.value() != m_tx_mode) {
+        KIM2::ModulationVerdict realign_v = KIM2::verify_modulation(m_tx_mode, realign_decoded.modulation);
+        if (realign_v.mismatch) {
             DEBUG_ERROR("KIM2Device::state_transmit_enter: RCONF for mode %u physically encodes %s (mode %d) — aborting TX (check RCONF provisioning), caching actual modulation",
                 static_cast<unsigned int>(m_tx_mode), realign_decoded.modulation.c_str(),
-                static_cast<int>(realign_actual.value()));
-            m_current_rconf_mode = realign_actual.value();
+                static_cast<int>(realign_v.actual));
+            m_current_rconf_mode = realign_v.actual;
             cache_current_modulation();
             m_tx_buffer.clear();
             KIM2_STATE_CHANGE(transmit, error);
@@ -1144,15 +1145,8 @@ void KIM2Device::state_error_exit()
 // Internal helpers
 // ============================================================================
 
-std::optional<KineisModulation> KIM2Device::mod_from_name(const std::string& name)
-{
-    if (name == "LDK")   return KineisModulation::LDK;
-    if (name == "LDA2")  return KineisModulation::LDA2;
-    if (name == "VLDA4") return KineisModulation::VLDA4;
-    // LDA2L / HDA4 / UNKNOWN are not in KineisModulation — caller keeps the
-    // previous value rather than guessing.
-    return std::nullopt;
-}
+// mod_from_name() moved to the pure, host-testable KIM2::mod_from_name in
+// kim2_modulation.hpp (alongside KIM2::verify_modulation).
 
 std::string KIM2Device::load_rconf_for_mode(KineisModulation mode)
 {
