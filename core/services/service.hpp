@@ -178,6 +178,12 @@ private:
 public:
 	static unsigned int add(Service& s);
 	static void remove(Service& s);
+	/// @brief Clear ALL static state (registered services, id counter, cooldown
+	///        and cycle bookkeeping). TEST-ONLY: production never resets the
+	///        ServiceManager. Lets a unit-test fixture guarantee a clean global
+	///        between tests so a leftover registration or deferred continuation
+	///        from a prior test cannot bleed into the next one.
+	static void reset();
 	static void startall(std::function<void(ServiceEvent&)> data_notification_callback = nullptr);
 	static void stopall();
 	static void notify_underwater_state(bool state);

@@ -36,6 +36,12 @@ TEST_GROUP(ArgosTxService)
 	unsigned int txco_warmup = 5U;
 
 	void setup() {
+		// Start every test from a clean global ServiceManager. Its static state
+		// (registered services, id counter, cooldown/cycle bookkeeping) otherwise
+		// persists across tests in the same process; a leftover registration or
+		// deferred-TX continuation from a prior test could fire into this test's
+		// scheduler->run() and trip a spurious mock failure (flaky full-suite).
+		ServiceManager::reset();
 		fake_battery_monitor = new FakeBatteryMonitor;
 		battery_monitor = fake_battery_monitor;
 		mock_kineis = new MockKineisDevice;

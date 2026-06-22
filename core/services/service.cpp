@@ -65,6 +65,17 @@ void ServiceManager::remove(Service& s) {
 	m_map.erase(s.get_unique_id());
 }
 
+/// @brief TEST-ONLY: wipe all ServiceManager static state back to construction
+/// defaults. See declaration. Not called from production code.
+void ServiceManager::reset() {
+	m_map.clear();
+	m_unique_identifier = 0;
+	m_data_notification_callback = nullptr;
+	m_last_successful_cycle_time = 0;
+	m_passive_surfacing_count = 0;
+	m_cooldown_wake_task = Scheduler::TaskHandle{};
+}
+
 
 /// @brief Start all registered services (called on FSM transition to Operational).
 /// @param data_notification_callback  Global event callback for FSM.
