@@ -93,6 +93,18 @@ public:
 	virtual void read_spimac_state(uint8_t *spi_state, uint8_t *mac_state) = 0;
 
 	// ========================================================================
+	// Argos MAC message counter (MC) — OPTIONAL.
+	// Default = unsupported (returns false) so a module firmware without the
+	// command degrades gracefully (the SMD keeps auto-managing its own MC; the
+	// nRF simply does not hold MC across repeats). Override in the transport
+	// (SPI = SMDSAT_CMD_READ_MC/WRITE_MC; AT = "AT+MC").
+	// Contract: *mc / mc is the 9-bit (0-511) counter the NEXT transmission
+	// will use; set_message_counter sets that next MC.
+	// ========================================================================
+	virtual bool read_message_counter(uint16_t *mc) { (void)mc; return false; }
+	virtual bool set_message_counter(uint16_t mc)   { (void)mc; return false; }
+
+	// ========================================================================
 	// Version / firmware info
 	// ========================================================================
 	virtual void read_version(uint8_t *version) = 0;

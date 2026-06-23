@@ -770,7 +770,9 @@ void SmdSat::state_load_kmac() {
 	} else if (mac_st == MAC_ERROR && !m_rconf_recovery_attempted) {
 		// Recovery: MAC_ERROR means RCONF in STM32 flash is corrupted or missing.
 		// Force-write the master RCONF, save to flash, then re-attempt KMAC load.
-		m_rconf_recovery_attempted = true;
+		// NOTE: the "attempted" latch is set only AFTER a successful write (below),
+		// not here — otherwise a throw mid-recovery would permanently disable the
+		// retry and leave the SMD stuck in error→cooldown on a recoverable glitch.
 		DEBUG_WARN("SmdSat::%s: MAC_ERROR — attempting RCONF recovery", __func__);
 		if (configuration_store) {
 			std::string radioconf = configuration_store->read_param<std::string>(ParamID::ARGOS_RADIOCONF);
@@ -787,6 +789,7 @@ void SmdSat::state_load_kmac() {
 					m_needs_explicit_kmac_load = true;  // Force KMAC reload after recovery
 					is_kmac_profil_loaded = false;
 					m_state_counter = 10;  // Reset poll counter for MAC_OK after recovery
+					m_rconf_recovery_attempted = true;  // mark done only on success
 					DEBUG_INFO("SmdSat::%s: RCONF recovery written — retrying KMAC", __func__);
 					m_next_delay = SMDSAT_DELAY_STATE_TICK_MS;
 					return;  // Re-enter state_load_kmac on next tick
@@ -947,6 +950,53 @@ void SmdSat::state_transmit_pending_exit() {
 	        m_next_delay, m_is_first_tx, effective_warmup);
 }
 
+// Keep every retransmission of one logical message on the same Argos MAC message
+// counter (MC). The SMD auto-increments MC after each TX, so without this each
+// repeat of the same payload would carry a different MC. Policy (ALL modes —
+// LEGACY / pass-prediction / duty-cycle / doppler / surface-doppler — because
+// this is the single choke point for every SMD TX):
+//   - NEW message (payload differs from the previous TX): do NOT touch the MC.
+//     No SPI op is issued, so the first-TX timing is preserved (critical for
+//     surface-doppler). The message goes out with the SMD's natural MC.
+//   - REPEAT (identical payload): decrement MC by 1 (mod 512) so this copy is
+//     transmitted with the same counter as the previous identical copy. Every
+//     repeat lands back on that first MC.
+// Optional / graceful: if the module firmware lacks the MC command, the read or
+// write returns false, we latch "unsupported" and leave the SMD to auto-manage
+// its MC — nothing else changes.
+void SmdSat::apply_message_counter_hold()
+{
+	if (m_mc_support == McSupport::NO)
+		return;  // module lacks the MC command — leave the SMD's MC auto-managed
+
+	const bool is_repeat = !m_mc_last_payload.empty() &&
+	                       (m_tx_buffer == m_mc_last_payload);
+
+	if (!is_repeat) {
+		// New message — leave the MC untouched (no SPI op → first-TX timing
+		// preserved). Just remember the payload to detect future repeats.
+		m_mc_last_payload = m_tx_buffer;
+		return;
+	}
+
+	// Repeat of the same message — decrement the MC by 1 (mod 512) so this copy
+	// reuses the counter of the previous identical transmission.
+	uint16_t cur = 0;
+	if (!m_cmd.read_message_counter(&cur)) {
+		DEBUG_INFO("SmdSat::%s: read MC unsupported — MC hold disabled (SMD auto-manages MC)", __func__);
+		m_mc_support = McSupport::NO;
+		return;
+	}
+	uint16_t dec = (cur == 0) ? 511 : static_cast<uint16_t>(cur - 1);
+	if (m_cmd.set_message_counter(dec)) {
+		m_mc_support = McSupport::YES;
+		DEBUG_TRACE("SmdSat::%s: repeat — MC %u -> %u (held)", __func__, cur, dec);
+	} else {
+		DEBUG_INFO("SmdSat::%s: set MC unsupported — MC hold disabled", __func__);
+		m_mc_support = McSupport::NO;
+	}
+}
+
 void SmdSat::state_transmit_pending() {
 	if (m_tx_buffer.size()) {
 		TXTRACE("state_transmit_pending: calling initiate_tx (%u bytes)",
@@ -956,6 +1006,8 @@ void SmdSat::state_transmit_pending() {
 		GPIOPins::release_to_highz(SMD_VPA_PIN);
 		DEBUG_TRACE("SmdSat::%s: VPA released for TX", __func__);
 #endif
+		// Keep every repeat of the same message on one Argos MC (RSPB).
+		apply_message_counter_hold();
 		if (!m_cmd.initiate_tx(m_tx_buffer)) {
 			DEBUG_ERROR("SmdSat::%s: initiate_tx failed, aborting TX", __func__);
 			m_tx_buffer.clear();

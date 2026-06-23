@@ -148,6 +148,18 @@ private:
 	// New firmware version (cached after DFU)
 	std::string m_new_firmware_version;
 
+	// ── Argos MAC message counter (MC) hold across message repetitions (RSPB) ──
+	// Keep every retransmission of the SAME message on one MC. Policy: leave MC
+	// untouched on a NEW message (no SPI op → first-TX timing preserved, critical
+	// for surface-doppler); on a REPEAT (identical payload) decrement MC by 1 so
+	// the copy reuses the previous identical TX's counter. The tri-state latch
+	// avoids re-probing a module firmware that lacks the command (graceful
+	// degradation — MC then left auto-managed by the SMD).
+	enum class McSupport : uint8_t { UNKNOWN, YES, NO };
+	McSupport    m_mc_support = McSupport::UNKNOWN;
+	KineisPacket m_mc_last_payload;     // payload of the previous TX (repeat detection)
+	void apply_message_counter_hold();  // called before initiate_tx in state_transmit_pending
+
 	void power_off();
 	void power_on();
 	void power_on_blocking();  // Synchronous boot: power + reset + SPI init + wait for ping + VPA release

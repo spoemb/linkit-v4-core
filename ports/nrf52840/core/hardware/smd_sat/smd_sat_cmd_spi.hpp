@@ -78,6 +78,11 @@ public:
 	void get_status(uint8_t *status) override;
 	void read_spimac_state(uint8_t *spi_state, uint8_t *mac_state) override;
 
+	// Argos MAC message counter (MC) — SMDSAT_CMD_READ_MC / WRITE_MC.
+	// Return false if the module firmware lacks the command (INVALID_CMD).
+	bool read_message_counter(uint16_t *mc) override;
+	bool set_message_counter(uint16_t mc) override;
+
 	// Version / firmware info
 	void read_version(uint8_t *version) override;
 	void print_firmware_version() override;

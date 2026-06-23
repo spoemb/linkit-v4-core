@@ -375,7 +375,15 @@ typedef enum {
     SMDSAT_CMD_WRITE_TCXO_REQ        = 0x29,
     SMDSAT_CMD_WRITE_TCXO            = 0x2A,
 	SMDSAT_CMD_READ_RCONF_RAW        = 0x2B,  // Raw radio config (16 bytes from flash)
-	SMDSAT_SPICMD_MAX_COUNT          = 0x2C,
+	// Argos MAC message counter (MC), 9-bit (0-511). OPTIONAL — must match the
+	// opcodes added on the SMD (STM32WL) side. If the module firmware does not
+	// implement them it returns INVALID_CMD and the nRF degrades gracefully
+	// (MC hold disabled, SMD keeps auto-managing its own MC).
+	SMDSAT_CMD_READ_MC               = 0x2C,  // Read MC -> 2 bytes little-endian
+	SMDSAT_CMD_WRITE_MC_REQ          = 0x2D,  // 2-phase set MC: REQ
+	SMDSAT_CMD_WRITE_MC              = 0x2E,  // 2-phase set MC: DATA (2 bytes LE)
+	SMDSAT_CMD_READ_KCFG             = 0x2F,  // Read Kineis stack config bitmap (uint32 LE, read-only)
+	SMDSAT_SPICMD_MAX_COUNT          = 0x30,
 
 	// ========================================================================
 	// DFU Bootloader Commands (0x30-0x3F)

@@ -399,6 +399,14 @@ bool SmdSatCmdSpi::send_command_auto(uint8_t command, const uint8_t *tx_data, ui
     // Protocol A+ only (no legacy fallback)
     SpiAplusResponse response;
 
+    // Give each top-level command its own one-shot INVALID_CMD resync budget.
+    // Without this, a command that already consumed the resync (and failed)
+    // leaves the latch set, so the NEXT command in a cascade can no longer
+    // resync on its first INVALID_CMD — a cross-command desync trap. The
+    // within-call single-reset guarantee is preserved (the latch is re-set
+    // inside the loop after the first reset).
+    m_seq_reset_attempted = false;
+
     for (uint8_t retry = 0; retry < SMDSAT_SPI_MAX_RETRIES; retry++) {
         if (send_command_aplus(command, tx_data, tx_len, &response)) {
             // Copy response data if requested
@@ -464,6 +472,40 @@ bool SmdSatCmdSpi::send_command_2phase(uint8_t req_cmd, uint8_t write_cmd,
         return false;
     }
 
+    return true;
+}
+
+// Argos MAC message counter (MC) — 9-bit (0-511), little-endian over SPI.
+// Returns false (graceful) if the module firmware does not implement the
+// command: send_command_auto() returns false on INVALID_CMD after one resync.
+bool SmdSatCmdSpi::read_message_counter(uint16_t *mc)
+{
+    if (mc == nullptr) return false;
+    uint8_t rx[4] = {0};
+    uint16_t rx_len = sizeof(rx);
+    if (!send_command_auto(SMDSAT_CMD_READ_MC, nullptr, 0, rx, &rx_len)) {
+        DEBUG_TRACE("SmdSatCmdSpi::%s: READ_MC unsupported/failed", __func__);
+        return false;
+    }
+    if (rx_len < 2) {
+        DEBUG_TRACE("SmdSatCmdSpi::%s: READ_MC short response (%u)", __func__, rx_len);
+        return false;
+    }
+    *mc = static_cast<uint16_t>(rx[0] | (rx[1] << 8)) & 0x01FF;  // 9-bit
+    DEBUG_TRACE("SmdSatCmdSpi::%s: MC=%u", __func__, *mc);
+    return true;
+}
+
+bool SmdSatCmdSpi::set_message_counter(uint16_t mc)
+{
+    uint16_t v = mc & 0x01FF;  // clamp to 9-bit
+    uint8_t data[2] = { static_cast<uint8_t>(v & 0xFF),
+                        static_cast<uint8_t>((v >> 8) & 0xFF) };
+    if (!send_command_2phase(SMDSAT_CMD_WRITE_MC_REQ, SMDSAT_CMD_WRITE_MC, data, sizeof(data))) {
+        DEBUG_TRACE("SmdSatCmdSpi::%s: WRITE_MC unsupported/failed", __func__);
+        return false;
+    }
+    DEBUG_TRACE("SmdSatCmdSpi::%s: MC set to %u", __func__, v);
     return true;
 }
 
