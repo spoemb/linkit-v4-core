@@ -207,7 +207,25 @@ bool NrfI2C::recover_bus(uint8_t bus) {
 		PMU::delay_ms(5);
 	}
 
-	return full_bus_reset(bus);
+	if (full_bus_reset(bus)) return true;
+
+#ifdef SENSORS_PWR_PIN
+	// Last resort for the sensor bus: power-cycle VSENSORS (force-resets every
+	// VSENSORS sensor, lines driven low during the off-window so the always-on
+	// pull-ups can't back-power them), then bit-bang + reinit. Devices on VBAT
+	// (the STC3117 gauge) are not reset by this; if one holds SCL low only a full
+	// board power cycle clears it — we then return false and the caller degrades.
+	if (bus == ONBOARD_I2C_BUS) {
+		DEBUG_WARN("I2C bus %u: escalating to VSENSORS power-cycle", bus);
+		GPIOPins::power_cycle_sensors();
+		if (clock_stretch_recovery(bus) && reinit_bus(bus)) {
+			DEBUG_INFO("I2C bus %u recovered after VSENSORS power-cycle", bus);
+			return true;
+		}
+	}
+#endif
+
+	return false;
 }
 
 
@@ -228,11 +246,31 @@ void NrfI2C::init(void) {
 
 		if (is_bus_stuck(i)) {
 			DEBUG_WARN("I2C bus %u stuck at init | attempting recovery", i);
-			if (!clock_stretch_recovery(i)) {
-				DEBUG_ERROR("I2C bus %u recovery failed | skipping", i);
+			bool freed = clock_stretch_recovery(i);
+#ifdef SENSORS_PWR_PIN
+			// Clock-stretch alone can't free a slave holding SCL low, nor a wedged
+			// VSENSORS sensor. Escalate to a VSENSORS power-cycle: it force-resets
+			// every sensor on VSENSORS (driving SCL/SDA low during the off-window so
+			// the always-on bus pull-ups can't back-power them), then we re-clock
+			// the bus. The STC3117 is on VBAT so it is NOT reset here — but with the
+			// other sensors quiesced the bit-bang has its best chance to clock an
+			// SDA-stuck gauge free.
+			if (!freed && i == ONBOARD_I2C_BUS) {
+				DEBUG_WARN("I2C bus %u clock-stretch failed | power-cycling VSENSORS", i);
+				GPIOPins::power_cycle_sensors();
+				freed = clock_stretch_recovery(i);
+			}
+#endif
+			if (!freed) {
+				// Unrecoverable (e.g. STC3117 on VBAT holding SCL low — only a full
+				// board power cycle clears that). Disable the bus and boot degraded
+				// rather than freezing: consumers fast-fail and the gauge falls back
+				// to its conservative defaults.
+				DEBUG_ERROR("I2C bus %u recovery failed | booting degraded (bus disabled)", i);
 				m_is_enabled[i] = false;
 				continue;
 			}
+			DEBUG_INFO("I2C bus %u freed by recovery", i);
 		}
 
 		m_transfer_done[i] = false;

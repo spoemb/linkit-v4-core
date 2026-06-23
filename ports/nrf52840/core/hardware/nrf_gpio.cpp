@@ -174,6 +174,53 @@ void GPIOPins::reconnect_sensor_pins()
 #endif
 }
 
+void GPIOPins::power_cycle_sensors()
+{
+#ifdef SENSORS_PWR_PIN
+	// Time the rail is held off — long enough to drain the VSENSORS decoupling
+	// caps below the sensors' POR threshold so a wedged slave is forced to reset.
+	static constexpr uint32_t SENSORS_PWR_CYCLE_OFF_MS = 200;
+
+	// Only meaningful when the rail is actually powered: a powered slave can wedge
+	// the bus; an unpowered one cannot. Use the physical OUT latch, NOT the
+	// refcount — init() (and the boot probe) run from acquire_sensors_pwr() before
+	// the count is incremented, yet the rail is already driven high there.
+	if (nrf_gpio_pin_out_read(BSP::GPIO_Inits[SENSORS_PWR_PIN].pin_number) == 0) {
+		DEBUG_WARN("GPIOPins::power_cycle_sensors: VSENSORS off | nothing to cycle");
+		return;
+	}
+
+	DEBUG_WARN("GPIOPins::power_cycle_sensors: cycling VSENSORS to release a wedged I2C slave");
+	disconnect_sensor_pins();                 // release nRF's I2C/INT pin config + INT lines
+
+#ifdef ONBOARD_I2C_BUS
+	// The I2C pull-ups likely sit on an always-on rail (DCDC3V3). If so, merely
+	// cutting VSENSORS leaves SCL/SDA pulled to 3V3, which back-powers the VSENSORS
+	// sensors through their ESD diodes — they never fully reset. Drive BOTH lines
+	// LOW for the off-window to bleed that parasitic path so the sensors see a true
+	// power-down. Harmless if the pull-ups are instead on VSENSORS (lines are dead
+	// anyway). I2C is open-drain, so driving low is benign for the VBAT STC3117 too.
+	const uint32_t scl = BSP::I2C_Inits[ONBOARD_I2C_BUS].twim_config.scl;
+	const uint32_t sda = BSP::I2C_Inits[ONBOARD_I2C_BUS].twim_config.sda;
+	nrf_gpio_cfg_output(scl); nrf_gpio_pin_clear(scl);
+	nrf_gpio_cfg_output(sda); nrf_gpio_pin_clear(sda);
+#endif
+
+	clear(SENSORS_PWR_PIN);                    // cut the rail
+	nrf_delay_ms(SENSORS_PWR_CYCLE_OFF_MS);    // drain caps → POR the VSENSORS sensors
+
+#ifdef ONBOARD_I2C_BUS
+	// Release SCL/SDA before power returns so the pull-ups bring them up cleanly.
+	nrf_gpio_cfg_default(scl);
+	nrf_gpio_cfg_default(sda);
+#endif
+
+	set(SENSORS_PWR_PIN);                      // restore
+	nrf_delay_ms(50);                          // power-up stabilization (matches acquire)
+	reconnect_sensor_pins();                   // INT pins back; I2C pins reinit by caller
+#endif
+}
+
 void GPIOPins::acquire_sensors_pwr()
 {
 #ifdef SENSORS_PWR_PIN

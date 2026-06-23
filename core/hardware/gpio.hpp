@@ -37,6 +37,14 @@ public:
 	static void release_sensors_pwr();   ///< Decrement refcount, power off if reaches 0
 	static bool get_sensors_pwr_state();
 	static uint8_t get_sensors_pwr_refcount();
+
+	/// @brief Force a VSENSORS off→on power-cycle to release a wedged I2C slave,
+	/// WITHOUT changing the reference count (the rail ends powered). Used by the
+	/// I2C bus-recovery path. No-op if the rail is currently off. Resets every
+	/// sensor on VSENSORS (driving SCL/SDA low during the off-window so the
+	/// always-on bus pull-ups can't back-power them); it does NOT reset devices on
+	/// VBAT (e.g. the STC3117 gauge — only a full board power cycle clears those).
+	static void power_cycle_sensors();
 	/// @}
 
 	/**
