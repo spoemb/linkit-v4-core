@@ -127,6 +127,16 @@ double Thermistor::convert_temp(float adc)
 	double tempC = tempK - 273.15;
 
 	tempC = tempC + m_offset_temp;
+
+	// Reject physically implausible results. A clamped v≈3.3 V (ADC glitch /
+	// disconnected divider) degenerates the Beta math to ≈ -273 °C, and other
+	// glitches can produce wild values that would feed mortality/logging. A bird
+	// tracker realistically sees ≈ -50..+80 °C, so treat anything outside
+	// [-55, 125] °C as a bad reading → read() converts NAN into a skipped sample.
+	if (tempC < -55.0 || tempC > 125.0) {
+		DEBUG_ERROR("Thermistor: implausible temp %.1f C (v=%.3f) — rejecting", tempC, v);
+		return NAN;
+	}
 	return tempC;
 }
 

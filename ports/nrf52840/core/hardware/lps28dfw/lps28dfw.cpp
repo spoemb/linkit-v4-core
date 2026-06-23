@@ -94,8 +94,13 @@ void LPS28DFW::read(double& temperature, double& pressure)
 		}
 	} while (!status.drdy_pres && --retries > 0);
 
-	if (retries == 0)
-		DEBUG_WARN("LPS28DFW::read: DRDY timeout (%u ms)", DRDY_TIMEOUT_MS);
+	if (retries == 0) {
+		// DRDY never asserted within the budget — reading now returns a stale /
+		// garbage sample. Skip it (consistent with the other error paths here)
+		// so the sensor service drops this sample instead of logging nonsense.
+		DEBUG_WARN("LPS28DFW::read: DRDY timeout (%u ms) — skipping stale sample", DRDY_TIMEOUT_MS);
+		throw ErrorCode::I2C_COMMS_ERROR;
+	}
 
 	lps28dfw_data_t data;
 	if (lps28dfw_data_get(&m_ctx, &m_mode, &data) != 0) {
