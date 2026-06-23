@@ -1441,9 +1441,93 @@ int GasGauge_Start(GasGauge_DataTypeDef *GG)
 	Reset_FSM_GG();
 
 	GG->Initialized = 1; //fully initialized
-	
+
 	return(res);    /* return -1 if I2C error or STC311x not present */
 }
+
+
+/*******************************************************************************
+* Function Name  : GasGauge_ResumeOrStart
+* Description    : Mixed-mode wake helper. On a host (nRF) that is power-cycled
+*                  every duty cycle while the STC3117 stays powered on vBAT, the
+*                  gauge keeps coulomb-counting through the sleep. A normal
+*                  GasGauge_Start() would RestoreFromRam() and overwrite the live
+*                  SOC with the stale pre-sleep value, discarding the sleep
+*                  accumulation (incl. solar charge). This re-attaches the driver
+*                  config to a still-running gauge WITHOUT touching its SOC, and
+*                  falls back to a full GasGauge_Start() if the gauge actually
+*                  lost power (POR/BATFAIL), GG_RUN is clear, or its RAM is
+*                  invalid. Caller must have populated GG via GasGauge_DefaultInit().
+* Input          : pointer to GasGauge_DataTypeDef structure
+* Return         : 0 if resumed live, GasGauge_Start() result otherwise, <0 on error
+*******************************************************************************/
+int GasGauge_ResumeOrStart(GasGauge_DataTypeDef *GG)
+{
+	int i, sw;
+
+	/* Reads device ID + REG_MODE/REG_CTRL; <0 if STC311x absent or I2C error */
+	sw = STC311x_GetStatusWord16();
+	if (sw < 0) return(sw);
+
+	STC311x_ReadRamData(GG_Ram.db);
+
+	if ( ((sw & M_RUN_MSK) != 0) &&                 /* GG_RUN still set            */
+	     ((sw & M_RST_ERR_MSK) == 0) &&             /* no POR/BATFAIL since run    */
+	     (GG_Ram.reg.TestWord == RAM_TESTWORD) &&   /* RAM backup signature ok     */
+	     (calcCRC8(GG_Ram.db, RAM_SIZE) == 0) )     /* RAM backup CRC ok           */
+	{
+		/* Gauge is alive and counting on vBAT: load config into BattData but do
+		 * NOT call STC311x_Startup()/RestoreFromRam() — keep the live REG_SOC. */
+		GG->Initialized = 0;
+
+		BattData.Cnom   = GG->Cnom;
+		BattData.Rsense = GG->Rsense;
+		BattData.Rint   = GG->Rint;
+		BattData.Vmode  = GG->Vmode;
+		BattData.CC_cnf = GG->CC_cnf;
+		BattData.VM_cnf = GG->VM_cnf;
+		BattData.Alm_SOC  = GG->Alm_SOC;
+		BattData.Alm_Vbat = GG->Alm_Vbat;
+		BattData.RelaxThreshold = GG->RelaxCurrent;
+		BattData.BattOnline = 1;
+
+		if (BattData.Rsense == 0) BattData.Rsense = 10;
+		BattData.CurrentFactor = 24084 / BattData.Rsense;
+#ifdef STC3117
+		BattData.CRateFactor = 36 * BattData.Cnom;
+#endif
+		if (BattData.CC_cnf == 0) BattData.CC_cnf = 395;
+		if (BattData.VM_cnf == 0) BattData.VM_cnf = 321;
+
+		for (i = 0; i < NTEMP; i++)
+			BattData.CapacityDerating[i] = GG->CapDerating[i];
+
+		for (i = 0; i < OCVTAB_SIZE; i++)
+		{
+#ifdef STC3115
+			BattData.OCVOffset[i] = GG->OCVOffset[i];
+#endif
+#ifdef STC3117
+			BattData.OcvValue[i]    = GG->OcvValue[i];
+			BattData.SoctabValue[i] = GG->SoctabValue[i];
+#endif
+		}
+
+		for (i = 0; i < NTEMP; i++)
+			BattData.VM_TempTable[i] = DefVMTempTable[i];
+
+		BattData.Ropt  = 0;
+		BattData.Nropt = 0;
+
+		Reset_FSM_GG();
+		GG->Initialized = 1;
+		return(0);   /* resumed live, SOC preserved */
+	}
+
+	/* Not safely resumable (cold boot, power loss, or invalid RAM) → full start. */
+	return GasGauge_Start(GG);
+}
+
 
 
 

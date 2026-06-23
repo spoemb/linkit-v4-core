@@ -53,12 +53,23 @@
 
 
 /* Define the default battery OCV curve to be used for initialization:  */
-#define DEFAULT_BATTERY_4V20_MAX      //Default OCV curve for a 4.20V max battery
-//#define DEFAULT_BATTERY_4V35_MAX      //Default OCV curve for a 4.35V max battery
-//#define CUSTOM_BATTERY_OCV          //OCV curve determined from battery manufacturer data, or battery characterization statistics.
+//#define DEFAULT_BATTERY_4V20_MAX    //ST generic OCV curve for a 4.20V max battery
+//#define DEFAULT_BATTERY_4V35_MAX    //ST generic OCV curve for a 4.35V max battery
+#define CUSTOM_BATTERY_OCV            //RSPB cell: Renata ICP402050 (402050, 3.7V 420mAh LiPo) — curve in stc3117_gasgauge.cpp
 
-//#define MONITORING_MODE   MIXED_MODE  /* 0=mixed mode (voltage + coulomb counter) - higher power */
-#define MONITORING_MODE   VLTG_MODE  /* 1=Voltage mode only - lower power for long deployments */
+/* Monitoring mode — selected at build time via STC3117_MIXED_MODE (see ports/nrf52840/CMakeLists.txt).
+ *   STC3117_MIXED_MODE=0 -> VLTG_MODE  : voltage-only (OCV table), ~3uA standby, lowest power [default]
+ *   STC3117_MIXED_MODE=1 -> MIXED_MODE : coulomb counter + OCV; gauge must run continuously (~70uA)
+ * NOTE: in MIXED_MODE the driver keeps the gauge running (does not call GasGauge_Stop) so the coulomb
+ * counter integrates current across the TPL5111 sleep on vBAT — see stc3117_gasgauge.cpp. */
+#ifndef STC3117_MIXED_MODE
+#define STC3117_MIXED_MODE 0
+#endif
+#if STC3117_MIXED_MODE
+#define MONITORING_MODE   MIXED_MODE
+#else
+#define MONITORING_MODE   VLTG_MODE
+#endif
 
 //TODO adapt max buffer length to STC3117
 #define STC3117_MAX_BUFFER_LEN (257)

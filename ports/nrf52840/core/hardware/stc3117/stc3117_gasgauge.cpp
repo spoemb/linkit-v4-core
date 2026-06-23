@@ -94,8 +94,17 @@ int GaugeBatteryMonitor::init() {
     // Config init
     GasGauge_DefaultInit(&STC3117_GG_struct);
 
-    // Start the gas gauge
+    // Start the gas gauge.
+#if STC3117_MIXED_MODE
+    // Mixed mode: the gauge runs continuously on vBAT and keeps coulomb-counting
+    // through the host (nRF) power-cut. Resume it WITHOUT restoring the stale RAM
+    // SOC so the sleep accumulation (incl. solar charge) is preserved. Falls back
+    // to a full start if the gauge actually lost power (safe if vBAT assumption
+    // ever fails).
+    status = GasGauge_ResumeOrStart(&STC3117_GG_struct);
+#else
     status = GasGauge_Start(&STC3117_GG_struct);
+#endif
     if (status != 0 && status != -2) {
         DEBUG_ERROR("STC3117: Start failed (status=%d)", status);
         m_is_init = false;
@@ -200,23 +209,46 @@ int GaugeBatteryMonitor::check_i2c_device() {
     return status;
 }
 
-// Voltage-based SOC estimate using 4V20_MAX LiPo OCV curve (420mAh 3.7V)
-// Used as sanity check when STC3117 reports implausible SOC after power cycle
+// ─────────────────────────────────────────────────────────────────────────
+// RSPB battery cell — Renata ICP402050 (402050, 3.7 V 420 mAh LiPo)
+//
+// SINGLE SOURCE OF TRUTH for the OCV curve. Both consumers derive from these
+// two arrays so they can never drift:
+//   - the STC3117 chip OCV table  (GasGauge_DefaultInit, CUSTOM_BATTERY_OCV)
+//   - the voltage-based sanity estimate (estimate_soc_from_voltage below)
+// Rested-OCV deduced from a standard 4.2 V LiCoO2 shape anchored to this cell's
+// endpoints (datasheet ICP402050PR rev V02: 4.2 V charge / 3.0 V cutoff @0.2C;
+// the datasheet has no discharge graph). Refine ICP402050_OCV_MV[] with measured
+// rested-OCV points if you characterize the cell. Cell params (capacity, Rint,
+// Rsense, voltages) live in stc311x_BatteryInfo.h.
+// ─────────────────────────────────────────────────────────────────────────
+static constexpr unsigned int ICP402050_OCV_POINTS = 16;
+static const uint16_t ICP402050_OCV_MV[ICP402050_OCV_POINTS]  = {
+    3300, 3440, 3510, 3560, 3600, 3630, 3655, 3675,
+    3700, 3740, 3800, 3835, 3875, 3955, 4060, 4180,
+};
+static const uint8_t  ICP402050_OCV_SOC[ICP402050_OCV_POINTS] = {
+    0,    3,    6,    10,   15,   20,   25,   30,
+    40,   50,   60,   65,   70,   80,   90,   100,
+};
+
+// STC3117 OCV register LSB = 0.55 mV → reg = round(mV / 0.55) = round(mV * 100 / 55).
+static inline uint16_t stc3117_mv_to_ocv_reg(uint16_t mv) {
+    return static_cast<uint16_t>((static_cast<uint32_t>(mv) * 100u + 27u) / 55u);
+}
+
+// Voltage-based SOC estimate from the single-source ICP402050 OCV curve above.
+// Used as a sanity check when the STC3117 reports an implausible SOC after a
+// power cycle. Tracks the CUSTOM_BATTERY_OCV profile (the RSPB default).
 static uint8_t estimate_soc_from_voltage(uint16_t mv) {
-    // OCV table: voltage (mV) → SOC (%) for typical 4.2V LiPo
-    static const struct { uint16_t mv; uint8_t soc; } ocv[] = {
-        {3300,  0}, {3541,  3}, {3618,  6}, {3658, 10},
-        {3695, 15}, {3721, 20}, {3747, 25}, {3761, 30},
-        {3778, 40}, {3802, 50}, {3863, 60}, {3899, 65},
-        {3929, 70}, {3991, 80}, {4076, 90}, {4176,100},
-    };
-    if (mv <= ocv[0].mv) return 0;
-    if (mv >= ocv[15].mv) return 100;
-    for (int i = 1; i < 16; i++) {
-        if (mv <= ocv[i].mv) {
-            uint32_t range_mv = ocv[i].mv - ocv[i-1].mv;
-            uint32_t range_soc = ocv[i].soc - ocv[i-1].soc;
-            return ocv[i-1].soc + static_cast<uint8_t>((mv - ocv[i-1].mv) * range_soc / range_mv);
+    if (mv <= ICP402050_OCV_MV[0]) return 0;
+    if (mv >= ICP402050_OCV_MV[ICP402050_OCV_POINTS - 1]) return 100;
+    for (unsigned int i = 1; i < ICP402050_OCV_POINTS; i++) {
+        if (mv <= ICP402050_OCV_MV[i]) {
+            uint32_t range_mv  = ICP402050_OCV_MV[i] - ICP402050_OCV_MV[i - 1];
+            uint32_t range_soc = ICP402050_OCV_SOC[i] - ICP402050_OCV_SOC[i - 1];
+            return ICP402050_OCV_SOC[i - 1] +
+                   static_cast<uint8_t>((mv - ICP402050_OCV_MV[i - 1]) * range_soc / range_mv);
         }
     }
     return 100;
@@ -234,8 +266,11 @@ void GaugeBatteryMonitor::internal_update() {
     // Acquire VSENSORS for I2C bus stability (other sensors on same bus)
     SensorsPowerGuard power_guard;
 
-    // Power-optimized: init → read → shutdown cycle.
-    // STC3117 runs at ~70uA vs ~3uA standby — must minimize run time for long deployment.
+    // Mode-aware run strategy (STC3117_MIXED_MODE, build-time):
+    //  - Voltage mode (default): init → read → shutdown. STC3117 runs at ~70uA vs ~3uA
+    //    standby, so we minimize run time for long deployment.
+    //  - Mixed mode: the gauge must run continuously so the coulomb counter integrates
+    //    current across the TPL5111 sleep on vBAT — we init → read but DO NOT shut down.
 
     // 1. Initialize gauge (wake from standby)
     int status = this->init();
@@ -273,12 +308,17 @@ void GaugeBatteryMonitor::internal_update() {
     }
     else {
         DEBUG_ERROR("STC3117: Read error (status=%d)", status);
-        this->shutdown();
+#if !STC3117_MIXED_MODE
+        this->shutdown();  // voltage mode only — keep running in mixed mode
+#endif
         return;
     }
 
-    // 3. Shutdown immediately for power saving
+    // 3. Shutdown for power saving — voltage mode only.
+    //    In mixed mode, leave GG_RUN=1 so the coulomb counter keeps integrating on vBAT.
+#if !STC3117_MIXED_MODE
     this->shutdown();
+#endif
 
     // Update cache timestamp
     last_read_time = system_timer->get_counter();
@@ -387,6 +427,18 @@ static void GasGauge_DefaultInit(GasGauge_DataTypeDef * GG_struct)
     GG_struct->OcvValue[13] = 0x1D09;
     GG_struct->OcvValue[14] = 0x1DCF;
     GG_struct->OcvValue[15] = 0x1EA2;
+#endif
+
+#ifdef CUSTOM_BATTERY_OCV
+    // Renata ICP402050 — chip OCV table generated from the single-source
+    // ICP402050_OCV_MV[] curve (see top of file); no hand-maintained hex, and it
+    // can never drift from estimate_soc_from_voltage(). LSB = 0.55 mV.
+    static_assert(ICP402050_OCV_POINTS ==
+                  sizeof(GG_struct->OcvValue) / sizeof(GG_struct->OcvValue[0]),
+                  "ICP402050 OCV table size must match GasGauge OcvValue[]");
+    for (unsigned int i = 0; i < ICP402050_OCV_POINTS; i++) {
+        GG_struct->OcvValue[i] = stc3117_mv_to_ocv_reg(ICP402050_OCV_MV[i]);
+    }
 #endif
 
     // Capacity derating by temperature

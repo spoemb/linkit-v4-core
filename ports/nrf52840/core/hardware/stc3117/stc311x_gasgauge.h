@@ -87,6 +87,11 @@ typedef struct  {
 
 int GasGauge_Task(GasGauge_DataTypeDef *GG);
 int GasGauge_Start(GasGauge_DataTypeDef *GG);
+/* Mixed-mode wake: re-attach a gauge still running on vBAT WITHOUT clobbering its
+ * live SOC (preserves coulomb accumulation across host sleep, incl. solar charge);
+ * falls back to GasGauge_Start() if the gauge lost power / RAM invalid. Caller must
+ * populate GG via GasGauge_DefaultInit() first. */
+int GasGauge_ResumeOrStart(GasGauge_DataTypeDef *GG);
 void GasGauge_Reset(void)  ;
 int GasGauge_Stop(void);
 
