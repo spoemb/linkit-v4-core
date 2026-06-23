@@ -331,12 +331,22 @@ bool NrfI2C::wait_for_transfer(uint8_t bus, uint32_t timeout_ms) {
 	}
 
 	uint64_t start_time = system_timer->get_counter();
-	uint64_t next_wdt_kick = 500;
+
+	// Iteration backstop, INDEPENDENT of the timer counter. system_timer may not
+	// be running yet during early boot (on RSPB the only start() lives in the
+	// LinkIt-only PSEUDO_POWER_OFF path), so get_counter() can be frozen and the
+	// elapsed-based timeout below would NEVER fire — a non-responsive slave (e.g. a
+	// wedged STC3117 on VBAT, which a VSENSORS power-cycle cannot reset) would then
+	// hang the boot forever. Each loop is ~50 us, so also bound by (timeout_ms*20)
+	// iterations + margin, and kick the WDT on iteration count (works frozen too).
+	const uint32_t max_iters = timeout_ms * 20u + 1000u;
+	uint32_t iters = 0;
 
 	while (!m_transfer_done[bus]) {
 		uint64_t elapsed = system_timer->get_counter() - start_time;
-		if (elapsed >= timeout_ms) {
-			DEBUG_WARN("I2C bus %u transfer timeout (%u ms)", bus, timeout_ms);
+		if (elapsed >= timeout_ms || ++iters >= max_iters) {
+			DEBUG_WARN("I2C bus %u transfer timeout (%u ms, iters=%u)",
+			           bus, timeout_ms, (unsigned)iters);
 			m_stats[bus].timeouts++;
 
 			// Force stop and clear TWIM events
@@ -348,9 +358,9 @@ bool NrfI2C::wait_for_transfer(uint8_t bus, uint32_t timeout_ms) {
 			return false;
 		}
 
-		if (elapsed >= next_wdt_kick) {
+		// Kick the WDT on iteration count so it works even if the timer is frozen.
+		if ((iters & 0x3FFu) == 0u) {
 			PMU::kick_watchdog();
-			next_wdt_kick = elapsed + 500;
 		}
 
 		nrf_delay_us(50);
