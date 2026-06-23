@@ -434,14 +434,17 @@ void BootState::entry() {
 	// Start reed switch monitoring and dispatch events to state machine
 	reed_switch->start([](ReedSwitchGesture s) { ReedSwitchEvent e; e.state = s; dispatch(e); });
 
-	// If magnet is already present at boot, NrfSwitch::resume() reads the state
-	// but does NOT fire a callback (only state CHANGES trigger callbacks).
-	// Manually dispatch an ENGAGE event so the FSM knows the magnet is present.
+	// If the magnet is already present at boot, NrfSwitch::resume() syncs the
+	// debounced state to the live pin but deliberately suppresses the initial
+	// state-change callback (only state CHANGES fire one). Route through the
+	// gesture engine so it does what a real ENGAGE edge would: deliver ENGAGE
+	// *and* arm the SHORT_HOLD/LONG_HOLD timers. The previous direct
+	// dispatch(ENGAGE) only set the FSM/LED state and left the timers unarmed —
+	// an operator holding the magnet across boot could not enter config /
+	// power-off without first removing and re-applying it to "wake" the gesture.
 	if (reed_switch->is_engaged()) {
-		DEBUG_INFO("BootState: Magnet already present at boot | dispatching ENGAGE");
-		ReedSwitchEvent e;
-		e.state = ReedSwitchGesture::ENGAGE;
-		dispatch(e);
+		DEBUG_INFO("BootState: Magnet already present at boot | priming engage gesture");
+		reed_switch->prime_if_engaged();
 	}
 
 	try {

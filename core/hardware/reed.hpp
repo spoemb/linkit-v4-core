@@ -42,4 +42,21 @@ public:
 	void start(std::function<void(ReedSwitchGesture)> func);
 	void stop();
 	bool is_engaged() { return m_switch.get_state(); }
+
+	/// @brief Prime the gesture engine when the magnet is ALREADY engaged at the
+	/// moment of start() — typically present at boot.
+	///
+	/// NrfSwitch::resume() syncs the debounced state to the live pin but
+	/// deliberately suppresses the initial state-change callback (only state
+	/// CHANGES fire one). A magnet held continuously across boot therefore never
+	/// runs switch_state_handler(), so ENGAGE is not delivered through the gesture
+	/// path AND the SHORT_HOLD/LONG_HOLD timers are never armed — making the
+	/// config / power-off gestures impossible until the operator removes and
+	/// re-applies the magnet. Call this right after start() so an at-boot magnet
+	/// behaves identically to a runtime engage: ENGAGE is dispatched and the hold
+	/// timers are armed. No-op if the switch is not currently engaged.
+	void prime_if_engaged() {
+		if (m_switch.get_state())
+			switch_state_handler(true);
+	}
 };

@@ -295,6 +295,76 @@ TEST(Sm, CheckTransitionToConfigurationState)
 	CHECK_EQUAL((int)RGBLedColor::BLUE, (int)status_led->get_state());
 }
 
+TEST(Sm, MagnetPresentAtBootArmsHoldGesture)
+{
+	// Regression: a magnet held continuously across boot must arm the
+	// SHORT_HOLD/LONG_HOLD gesture timers, otherwise config / power-off cannot
+	// be requested without first removing and re-applying the magnet.
+	// prime_if_engaged() (used by BootState when the magnet is present at boot)
+	// runs the full engage path; the old direct dispatch(ENGAGE) armed nothing.
+	mock().disable();
+
+	int engage = 0, short_hold = 0, long_hold = 0, release = 0;
+	dummy_switch->set_state(true);  // magnet present at boot
+	fake_reed_switch->start([&](ReedSwitchGesture g) {
+		switch (g) {
+		case ReedSwitchGesture::ENGAGE:     engage++; break;
+		case ReedSwitchGesture::SHORT_HOLD: short_hold++; break;
+		case ReedSwitchGesture::LONG_HOLD:  long_hold++; break;
+		case ReedSwitchGesture::RELEASE:    release++; break;
+		default: break;
+		}
+	});
+
+	// ENGAGE is delivered immediately; the hold timers are now armed.
+	fake_reed_switch->prime_if_engaged();
+	system_scheduler->run();
+	CHECK_EQUAL(1, engage);
+	CHECK_EQUAL(0, short_hold);
+	CHECK_EQUAL(0, long_hold);
+
+	// SHORT_HOLD fires at 3 s — proof the hold timer was armed by prime.
+	fake_timer->set_counter(3000);
+	system_scheduler->run();
+	CHECK_EQUAL(1, short_hold);
+	CHECK_EQUAL(0, long_hold);
+
+	// LONG_HOLD fires at 6 s.
+	fake_timer->set_counter(6000);
+	system_scheduler->run();
+	CHECK_EQUAL(1, long_hold);
+
+	(void)release;
+}
+
+TEST(Sm, MagnetPresentAtBootCanEnterConfigViaArmedGesture)
+{
+	// End-to-end: magnet present at boot → BootState primes the gesture → holding
+	// to SHORT_HOLD then release + re-engage enters config, WITHOUT the operator
+	// first removing and re-applying the magnet. Fails with the old direct
+	// dispatch(ENGAGE) in BootState (no hold timer armed → SHORT_HOLD never fires
+	// → confirmation never becomes ENTER_CONFIG → stays out of config).
+	mock().disable();
+
+	dummy_switch->set_state(true);  // magnet present at boot
+	fsm_handle::start();
+	fake_timer->set_counter(1000);
+	system_scheduler->run();        // BootState → PreOperationalState (Operational transit at 6 s)
+	CHECK_TRUE(fsm_handle::is_in_state<PreOperationalState>());
+
+	mock().enable();
+	mock().expectOneCall("set_device_name").onObject(mock_ble_service).withParameter("name", "LinkIt V4 0");
+	mock().expectOneCall("start").onObject(mock_ble_service).ignoreOtherParameters();
+
+	// Armed SHORT_HOLD fires at 3 s (still PreOp); release + re-engage confirms.
+	fake_timer->set_counter(3000);
+	system_scheduler->run();
+	fake_reed_switch->invoke_gesture(ReedSwitchGesture::RELEASE);
+	fake_reed_switch->invoke_gesture(ReedSwitchGesture::ENGAGE);
+	system_scheduler->run();
+	CHECK_TRUE(fsm_handle::is_in_state<ConfigurationState>());
+}
+
 TEST(Sm, CheckTransitionToOffState)
 {
 	mock().disable();
