@@ -22,12 +22,25 @@ int is25_flash_init(void)
 	nrfx_qspi_config_t qspi_config = {
             .xip_offset = 0, // Address offset in the external memory for Execute in Place operation
             {
+                // QSPI pin map MUST match the board's bsp.cpp QSPI_Inits, otherwise
+                // the bootloader cannot read the IS25 and a staged OTA image is never
+                // applied (the app boots the OLD firmware after a "successful" upload).
+                // RSPB v1.0 swaps SCK and IO3 relative to LinkIt V4.
+#if defined(BOARD_RSPB_V1)
+                .sck_pin = NRF_GPIO_PIN_MAP(1,  0),
+                .csn_pin = NRF_GPIO_PIN_MAP(0, 24),
+                .io0_pin = NRF_GPIO_PIN_MAP(0, 21),
+                .io1_pin = NRF_GPIO_PIN_MAP(0, 23),
+                .io2_pin = NRF_GPIO_PIN_MAP(0, 22),
+                .io3_pin = NRF_GPIO_PIN_MAP(0, 19),
+#else // LinkIt V4 (BOARD_LINKIT_V4) and default
                 .sck_pin = NRF_GPIO_PIN_MAP(0, 19),
                 .csn_pin = NRF_GPIO_PIN_MAP(0, 24),
                 .io0_pin = NRF_GPIO_PIN_MAP(0, 21),
                 .io1_pin = NRF_GPIO_PIN_MAP(0, 23),
                 .io2_pin = NRF_GPIO_PIN_MAP(0, 22),
                 .io3_pin = NRF_GPIO_PIN_MAP(1,  0),
+#endif
             },
             {
                 .readoc = NRF_QSPI_READOC_READ4IO, // Number of data lines and opcode used for reading
