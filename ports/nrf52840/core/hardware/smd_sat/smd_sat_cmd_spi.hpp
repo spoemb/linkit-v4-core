@@ -13,6 +13,8 @@ struct SpiAplusResponse {
     uint8_t data[SPI_PROTOCOL_APLUS_MAX_DATA_LEN];
     uint16_t data_len;
     bool valid;
+    uint8_t raw_status;   // real STATUS byte from the frame, preserved even when CRC fails
+    bool crc_error;       // true when the frame was structurally valid but the CRC8 mismatched
 };
 
 // Protocol mode enumeration
