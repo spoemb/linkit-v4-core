@@ -105,6 +105,11 @@ TEST_GROUP(Sm)
 	void teardown() {
 		delete main_filesystem; main_filesystem = nullptr;
 		delete location_scheduler;
+		// ~ReedSwitch::stop() calls system_scheduler->cancel_task() and m_switch.stop(),
+		// so the reed switch must be torn down while BOTH the scheduler and dummy_switch
+		// are still alive — destroy it first to avoid a use-after-free (SIGSEGV in
+		// Scheduler::cancel_task walking the freed scheduler's task list).
+		delete fake_reed_switch;
 		delete system_scheduler;
 		delete comms_scheduler;
 		delete mock_config_store;
@@ -112,7 +117,6 @@ TEST_GROUP(Sm)
 		delete mock_ota_file_updater;
 		delete fake_battery_monitor;
 		delete fake_status_led;
-		delete fake_reed_switch;
 		delete dummy_switch;
 		delete fake_saltwater_switch;
 		delete fake_timer;
