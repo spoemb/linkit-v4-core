@@ -487,15 +487,24 @@ void PMU::reduce_power_rails() {
 	GPIOPins::clear(POWER_CONTROL_PIN);
 #endif
 
-	// LinkIt V4: Switch VSYS to 1.8V during deep idle to reduce nRF52840 core
+	// LinkIt V4: Switch VSYS to 2.3V during deep idle to reduce nRF52840 core
 	// and DCDC quiescent current. Only safe when all peripherals are powered off
 	// (GPS, SMD, sensors all use separate power rails at 3.3V and are not affected).
 	// The nRF52840 DCDC operates down to 1.8V with full functionality (CPU, RAM, BLE, RTC).
 #if defined(VSYS_SEL) && !defined(BOARD_RSPB)
-	// Only switch to 1.8V if LED is off — LED forward voltage (~3V) requires 3.3V rail
+	// Only switch to 2.3V if LED is off — LED forward voltage (~3V) requires 3.3V rail
 	if (!GPIOPins::get_sensors_pwr_state() &&
 	    status_led && status_led->get_state() == RGBLedColor::BLACK && !status_led->is_flashing()) {
-		GPIOPins::clear(VSYS_SEL);  // Switch to 1.8V
+		// Lower the POF brownout threshold BELOW the idle rail BEFORE dropping VSYS:
+		// POFCON is armed at 2.7V, but the idle rail is 2.3V, so at 2.7V the comparator
+		// would assert POFWARN continuously in deep idle (CPU wakes / cooldown-save churn,
+		// and pre-fix a HardFault via the NULL nrf_drv_power handler). restore_power_rails()
+		// raises it back to 2.7V once VSYS is back at 3.3V (where brownout-under-load matters).
+#ifdef SOFTDEVICE_PRESENT
+		if (nrf_sdh_is_enabled())
+			sd_power_pof_threshold_set(NRF_POWER_THRESHOLD_V20);  // 2.0 V (< 2.3 V idle rail)
+#endif
+		GPIOPins::clear(VSYS_SEL);  // Switch to 2.3V
 	}
 #endif
 }
@@ -506,7 +515,13 @@ void PMU::restore_power_rails() {
 	// Must settle before SPI/I2C/UART transactions with 3.3V peripherals.
 #if defined(VSYS_SEL) && !defined(BOARD_RSPB)
 	GPIOPins::set(VSYS_SEL);  // Switch to 3.3V
-	PMU::delay_ms(2);  // Allow VSYS rail to stabilize from 1.8V → 3.3V
+	PMU::delay_ms(2);  // Allow VSYS rail to stabilize from 2.3V → 3.3V
+	// Rail is back at 3.3V: restore the full 2.7V POF brownout threshold
+	// (lowered to 2.0V in reduce_power_rails for the 2.3V idle rail).
+#ifdef SOFTDEVICE_PRESENT
+	if (nrf_sdh_is_enabled())
+		sd_power_pof_threshold_set(NRF_POWER_THRESHOLD_V27);  // back to 2.7 V
+#endif
 #endif
 
 	// RSPB: restore board power rail before any peripheral access

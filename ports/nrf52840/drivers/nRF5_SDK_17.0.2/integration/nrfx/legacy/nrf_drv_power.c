@@ -324,9 +324,19 @@ static void nrf_drv_power_sdh_soc_evt_handler(uint32_t evt_id, void * p_context)
     if (evt_id == NRF_EVT_POWER_FAILURE_WARNING)
     {
         nrfx_power_pofwarn_event_handler_t pofwarn_handler = nrfx_power_pof_handler_get();
-        /* Cannot be null if event is enabled */
+        /* LinkIt local patch: POF is enabled via sd_power_pof_enable() in
+         * PMU::initialise() without registering an nrfx-level POF handler, so
+         * this can legitimately be NULL. Upstream only ASSERT()s it (compiled
+         * out in release) then calls it unconditionally -> `blx NULL` ->
+         * HardFault on the supply transient when USB is unplugged while GNSS
+         * draws current (POFCON V27 trips). Null-check it exactly like the USB
+         * handler path below. The real POF work (cooldown/RTC save) is done by
+         * our own SoC observer, pof_soc_evt_handler() in nrf_pmu.cpp. */
         ASSERT(pofwarn_handler != NULL);
-        pofwarn_handler();
+        if (pofwarn_handler != NULL)
+        {
+            pofwarn_handler();
+        }
     }
 
 #if NRF_POWER_HAS_USBREG
