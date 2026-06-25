@@ -438,7 +438,13 @@ unsigned int ArgosTxService::service_next_schedule_in_ms() {
 				return Service::SCHEDULE_DISABLED;
 			}
 			if (m_is_first_tx && argos_config.time_sync_burst_en) {
-				m_scheduled_mode = KineisModulation::LDA2;
+				// Modulation provisionnelle, comme LEGACY/DUTY_CYCLE plus bas :
+				// adaptive -> LDA2 (process_time_sync_burst rebascule en LDK selon
+				// la taille), non-adaptive -> RCONF maître. Avant 2026-06-25 c'était
+				// LDA2 forcé inconditionnellement (cf. point utilisateur).
+				m_scheduled_mode = argos_config.adaptive_modulation
+					? KineisModulation::LDA2
+					: resolve_non_adaptive_modulation();
 				m_scheduled_task = [this]() { process_time_sync_burst(); };
 				m_sched.schedule_at(now);
 				return 0;
@@ -1021,9 +1027,44 @@ void ArgosTxService::process_time_sync_burst() {
 		KineisPacket packet = ArgosPacketBuilder::build_gnss_packet(v, argos_config.is_out_of_zone, argos_config.is_lb,
 				argos_config.delta_time_loc,
 				size_bits);
-		// Ensure modulation matches (time_sync always uses LDA2)
+		// Modulation : même politique adaptative + taille-de-payload que
+		// process_gnss_burst (2026-06-25). Avant, LDA2 était forcé
+		// inconditionnellement, ce qui sur-provisionnait le paquet time-sync
+		// (toujours un seul fix latest = 96 bits) et ignorait le RCONF maître en
+		// non-adaptatif. Le fix gnss_burst (adaptive sélection + garde
+		// size_fits_modulation + fallback non-adaptatif, cf. process_gnss_burst)
+		// évite de remettre à KIM2 une trame de mauvaise longueur (+ERROR=5) ou un
+		// drop oversize silencieux. Device-agnostique (sûr aussi côté SMD).
 		if (argos_config.adaptive_modulation) {
-			ensure_modulation(m_scheduled_mode);
+			m_scheduled_mode = (size_bits <= 128) ? KineisModulation::LDK : KineisModulation::LDA2;
+			if (!ensure_modulation(m_scheduled_mode)) {
+				DEBUG_WARN("ArgosTxService::process_time_sync_burst: modulation switch failed, using current");
+				m_scheduled_mode = m_kineis.get_current_modulation();
+				if (!size_fits_modulation(size_bits, m_scheduled_mode)) {
+					DEBUG_ERROR("ArgosTxService::process_time_sync_burst: payload %u bits doesn't fit fallback mod %d — skipping TX",
+					            size_bits, (int)m_scheduled_mode);
+					service_complete();
+					return;
+				}
+			}
+		} else {
+			// Non-adaptatif : on garde la modulation du RCONF maître (fixée au
+			// scheduling via resolve_non_adaptive_modulation()). Si elle ne tient
+			// pas le paquet (ex. maître VLDA4 = 24 b), repli sur LDA2 si provisionné,
+			// sinon skip propre plutôt qu'un drop oversize silencieux de KIM2.
+			if (!size_fits_modulation(size_bits, m_scheduled_mode)) {
+				if (size_fits_modulation(size_bits, KineisModulation::LDA2) &&
+				    ensure_modulation(KineisModulation::LDA2)) {
+					DEBUG_WARN("ArgosTxService::process_time_sync_burst: %u bits don't fit master mod %d — falling back to LDA2",
+					           size_bits, (int)m_scheduled_mode);
+					m_scheduled_mode = KineisModulation::LDA2;
+				} else {
+					DEBUG_ERROR("ArgosTxService::process_time_sync_burst: %u bits fit no provisioned modulation — skipping TX",
+					            size_bits);
+					service_complete();
+					return;
+				}
+			}
 		}
 		// Demoted to TRACE: per-TX payload dump.
 		DEBUG_TRACE("ArgosTxService::process_time_sync_burst: mode=%s data=%s sz=%u", argos_modulation_to_string((BaseArgosModulation)m_scheduled_mode), Binascii::hexlify(packet).c_str(), size_bits);
@@ -1045,6 +1086,15 @@ void ArgosTxService::process_sensor_burst() {
 	unsigned int size_bits;
 	GPSLogEntry *gps = m_depth_pile_manager.retrieve_gps_single((unsigned int)argos_config.depth_pile);
 	if (gps != nullptr) {
+		// LAST_KNOWN age cap (ARP37): the sensor packet embeds the cached GPS
+		// position, so honor the same freshness bound as process_gnss_burst — skip
+		// the whole TX if the last known position is older than the cap.
+		if (last_known_position_too_old(*gps, argos_config)) {
+			DEBUG_INFO("ArgosTxService::process_sensor_burst: LAST_KNOWN — last position older than %u s, skipping TX",
+			           argos_config.last_known_max_age_s);
+			service_complete();
+			return;
+		}
 		// If GPS entry is a CloudLocate, send CloudLocate packet (extract blob from overlay)
 		if (gps->info.event_type == GPSEventType::CLOUDLOCATE) {
 			const uint8_t* overlay = reinterpret_cast<const uint8_t*>(&gps->info.lon);
@@ -1252,6 +1302,23 @@ void ArgosTxService::process_gnss_burst() {
 		v = m_depth_pile_manager.retrieve_gps((unsigned int)argos_config.depth_pile);
 	}
 	if (v.size()) {
+		// LAST_KNOWN age cap (ARP37): re-send the last known position only while it
+		// is fresher than ARGOS_LAST_KNOWN_MAX_AGE_S; drop staler entries. If none
+		// remain -> no TX (degrades to NO_TX for that cycle). The helper scopes this
+		// to LEGACY/DUTY_CYCLE/PASS_PREDICTION (SURFACING_BURST keeps its cascade);
+		// NO_TX never gets here with stale data (bounded burst_counter) and EMPTY_POS
+		// keeps the legacy behavior. Mirrored in process_sensor_burst.
+		if (argos_config.tx_no_fix_policy == BaseTxNoFixPolicy::LAST_KNOWN) {
+			v.erase(std::remove_if(v.begin(), v.end(), [&](GPSLogEntry* e) {
+				return last_known_position_too_old(*e, argos_config);
+			}), v.end());
+			if (v.empty()) {
+				DEBUG_INFO("ArgosTxService::process_gnss_burst: LAST_KNOWN — last position older than %u s, skipping TX",
+				           argos_config.last_known_max_age_s);
+				service_complete();
+				return;
+			}
+		}
 		KineisPacket packet;
 
 		// Check if the latest entry is a CloudLocate
@@ -2083,6 +2150,17 @@ unsigned int ArgosTxService::compute_gps_log_age_seconds(const GPSLogEntry &entr
 	// rather than reporting age=0 which would falsely qualify as "fresh".
 	if (now < entry_time) return UINT_MAX;
 	return (unsigned int)(now - entry_time);
+}
+
+bool ArgosTxService::last_known_position_too_old(const GPSLogEntry &e, const ArgosConfig &cfg) {
+	if (cfg.tx_no_fix_policy != BaseTxNoFixPolicy::LAST_KNOWN) return false;
+	if (cfg.last_known_max_age_s == 0) return false;
+	// Scope to the modes the no-fix policy governs; SURFACING_BURST keeps its own
+	// progressive cascade and must not have its (usually fresh) fixes age-dropped.
+	if (cfg.mode != BaseArgosMode::LEGACY &&
+	    cfg.mode != BaseArgosMode::DUTY_CYCLE &&
+	    cfg.mode != BaseArgosMode::PASS_PREDICTION) return false;
+	return compute_gps_log_age_seconds(e, service_current_time()) > cfg.last_known_max_age_s;
 }
 
 unsigned int ArgosTxService::apply_spacing_guard(unsigned int proposed_delay_ms,

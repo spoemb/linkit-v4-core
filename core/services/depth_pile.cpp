@@ -38,12 +38,29 @@ void DepthPileManager::notify_peer_event(ServiceEvent& e) {
 			// Argos behavior so the timestamp still serves as an "alive"
 			// heartbeat — avoids going silent when GPS is weak.
 			unsigned int fastloc_mode = configuration_store->read_param<unsigned int>(ParamID::GNSS_FASTLOC_MODE);
-			BaseArgosMode  argos_mode  = configuration_store->read_param<BaseArgosMode>(ParamID::ARGOS_MODE);
+			// Use the EFFECTIVE Argos mode + no-fix policy from the per-regime cascade
+			// (resolves LB / OUT_OF_ZONE / HAULED overrides), matching what
+			// update_depth_pile and ArgosTxService act on — NOT the raw ARGOS_MODE slot
+			// (the NORMAL-regime value), which would mis-gate when per-regime modes differ.
+			ArgosConfig cfg;
+			configuration_store->get_argos_configuration(cfg);
 			if (fastloc_mode != (unsigned int)BaseFastlocMode::OFF &&
-			    argos_mode   == BaseArgosMode::SURFACING_BURST) {
+			    cfg.mode == BaseArgosMode::SURFACING_BURST) {
 				DEBUG_INFO("DepthPileManager::notify_peer_event: skip NO_FIX (fastloc GNP45=%u + SURFACING_BURST)",
 				           fastloc_mode);
 				return;  // Do NOT cache, do NOT mark ready — fastloc will handle fallback
+			}
+			// No-fix TX policy (ARP36): in LEGACY/DUTY_CYCLE/PASS_PREDICTION only
+			// EMPTY_POS keeps the 0xFF "alive" heartbeat. NO_TX and LAST_KNOWN do
+			// NOT cache the NO_FIX entry — NO_TX simply stays silent, LAST_KNOWN
+			// re-uses the last real fix instead (see ArgosTxService scheduling).
+			if (cfg.tx_no_fix_policy != BaseTxNoFixPolicy::EMPTY_POS &&
+			    (cfg.mode == BaseArgosMode::LEGACY ||
+			     cfg.mode == BaseArgosMode::DUTY_CYCLE ||
+			     cfg.mode == BaseArgosMode::PASS_PREDICTION)) {
+				DEBUG_INFO("DepthPileManager::notify_peer_event: skip NO_FIX (no-fix policy=%u, mode=%u)",
+				           (unsigned int)cfg.tx_no_fix_policy, (unsigned int)cfg.mode);
+				return;  // NO_TX / LAST_KNOWN: do not cache the 0xFF heartbeat
 			}
 			DEBUG_WARN("DepthPileManager::notify_peer_event: GNSS cache set (no fix, position invalid)");
 		} else {
@@ -185,8 +202,15 @@ void DepthPileManager::update_depth_pile() {
 		unsigned int burst_counter;
 		if (argos_config.mode == BaseArgosMode::DUTY_CYCLE ||
 			argos_config.mode == BaseArgosMode::LEGACY) {
-			// Legacy/Duty: unlimited retransmissions (depth pile manages history)
-			burst_counter = UINT_MAX;
+			if (argos_config.tx_no_fix_policy == BaseTxNoFixPolicy::NO_TX) {
+				// NO_TX: bound retransmission to NTRY_PER_MESSAGE (0 -> 1) so each
+				// fix is sent N times then goes inert — no infinite replay of old
+				// positions. (EMPTY_POS / LAST_KNOWN keep the UINT_MAX behavior.)
+				burst_counter = (argos_config.ntry_per_message == 0) ? 1 : argos_config.ntry_per_message;
+			} else {
+				// Legacy/Duty: unlimited retransmissions (depth pile manages history)
+				burst_counter = UINT_MAX;
+			}
 		} else if (argos_config.ntry_per_message == 0) {
 			// Surfacing burst / Pass prediction: 0 means send once per fix
 			burst_counter = 1;

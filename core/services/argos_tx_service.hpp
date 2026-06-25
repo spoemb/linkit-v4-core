@@ -138,6 +138,13 @@ private:
 	// Currently NOT called — wiring lands with the HAULED consumer (Plan 1 step 3).
 	bool read_cached_last_fix(GPSLogEntry &out);
 
+	// LAST_KNOWN age cap (ARP37): true if entry @p e must be dropped because the
+	// no-fix policy is LAST_KNOWN, the cap is enabled, the effective mode is one of
+	// LEGACY/DUTY_CYCLE/PASS_PREDICTION (SURFACING_BURST keeps its own cascade), and
+	// the entry is older than ARGOS_LAST_KNOWN_MAX_AGE_S. Shared by process_gnss_burst
+	// and process_sensor_burst so both honor the freshness bound.
+	bool last_known_position_too_old(const GPSLogEntry &e, const ArgosConfig &cfg);
+
 	// Adaptive modulation: switch RCONF if needed before TX
 	bool ensure_modulation(KineisModulation target);
 	std::string get_rconf_for_modulation(KineisModulation mode);

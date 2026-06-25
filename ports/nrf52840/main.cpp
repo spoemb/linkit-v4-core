@@ -1304,7 +1304,7 @@ int main()
 				if (remaining <= IDLE_POWER_SAVE_THRESHOLD_MS) {
 					PMU::restore_power_rails();
 					power_rails_reduced = false;
-					DEBUG_TRACE("IDLE_POWER_SAVE: exit (%llu ms remaining)", remaining);
+					// DEBUG_TRACE("IDLE_POWER_SAVE: exit (%llu ms remaining)", remaining);  // log retiré : trop verbeux (pollue même en Verbose)
 // #if VALIDATION_LOG_ENABLE
 // 					uint64_t now_ms = PMU::get_timestamp_ms();
 // 					uint64_t this_reduce_ms = (s_val_last_enter_reduce_ms > 0 &&
@@ -1323,7 +1323,7 @@ int main()
 			// Reduce power rails when no tasks are due for a while
 			uint64_t idle_ms = system_scheduler->ms_until_next_task();
 			if (idle_ms > IDLE_POWER_SAVE_THRESHOLD_MS && !power_rails_reduced) {
-				DEBUG_TRACE("IDLE_POWER_SAVE: enter (%llu ms idle)", idle_ms);
+				// DEBUG_TRACE("IDLE_POWER_SAVE: enter (%llu ms idle)", idle_ms);  // log retiré : trop verbeux (pollue même en Verbose)
 				power_rails_reduced = true;
 				PMU::reduce_power_rails();
 // #if VALIDATION_LOG_ENABLE

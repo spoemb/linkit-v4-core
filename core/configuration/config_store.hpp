@@ -84,6 +84,11 @@ struct ArgosConfig {
 	// the HAULED branch of get_argos_configuration; all other branches keep
 	// FRESH so existing GNSS paths are byte-identical to pre-Plan-1 code.
 	BaseGnssStrategy gnss_strategy;
+	// Argos TX policy when a cycle has no fresh fix (ARP36) + max-age cap for the
+	// LAST_KNOWN mode (ARP37). Single global read. Distinct from HAULED_GNSS_STRAT
+	// (HMP13), which governs hauled GPS acquisition strategy. See BaseTxNoFixPolicy.
+	BaseTxNoFixPolicy tx_no_fix_policy;
+	unsigned int last_known_max_age_s;
 	unsigned int argos_rx_aop_update_period;
 	std::time_t last_aop_update;
 	bool        cert_tx_enable;
@@ -342,8 +347,8 @@ protected:
 		/* [220] AXL_FIFO_ENABLE */ (bool)false,       // false=single sample, true=FIFO batch averaging
 		/* [221] AXL_FIFO_SAMPLE_COUNT */ 50U,         // 1-170 samples per batch
 		/* [222] LED_HRS24_RTC_CUTOFF */ static_cast<std::time_t>(0U),  // 0=unset, auto-set by GPSService at first valid fix to (now+24h)
-		/* [223] _RESERVED_223 */ 0U,                  // Was GNSS_BCKP_CHARGE_INT — deprecated 2026-05, slot reserved for flash compat
-		/* [224] _RESERVED_224 */ 0U,                  // Was GNSS_BCKP_CHARGE_DUR — deprecated 2026-05, slot reserved for flash compat
+		/* [223] ARGOS_TX_NO_FIX_POLICY */ 0U,         // 0=NO_TX (default) / 1=LAST_KNOWN / 2=EMPTY_POS (reclaimed from GNSS_BCKP_CHARGE_INT)
+		/* [224] ARGOS_LAST_KNOWN_MAX_AGE_S */ 86400U, // 24h: max age of last-known fix for LAST_KNOWN (reclaimed from GNSS_BCKP_CHARGE_DUR)
 		/* [225] _RESERVED_225 */ (bool)false,         // Was GNSS_BCKP_CHARGE_UW_ONLY — deprecated 2026-05, slot reserved for flash compat
 		/* [226] SMD_DEGRADED_MODE */ 0U,              // 0 = FAST timings (default); 1 = SAFE (set by SmdSat::degraded_mode_engage)
 		/* [227] ARGOS_CACHED_MODULATION */ 0U,        // 0 = LDA2 (default), 1 = LDK, 2 = VLDA4 (mirrors SmdArgosModulation enum)
@@ -867,6 +872,12 @@ public:
 		// behavior for every non-HAULED path. Only the HAULED override branch
 		// (below) sets it to REUSE_LAST / OFF when the user requests.
 		argos_config.gnss_strategy = BaseGnssStrategy::FRESH;
+		// No-fix TX policy is a single GLOBAL param (read once, applies to the
+		// LB / OUT_OF_ZONE / NORMAL cascade and hauled-promoted modes). Separate
+		// knob from HAULED_GNSS_STRAT (HMP13).
+		argos_config.tx_no_fix_policy = static_cast<BaseTxNoFixPolicy>(
+			read_param<unsigned int>(ParamID::ARGOS_TX_NO_FIX_POLICY));
+		argos_config.last_known_max_age_s = read_param<unsigned int>(ParamID::ARGOS_LAST_KNOWN_MAX_AGE_S);
 
 		// Predict whether HAULED override will engage. Used to gate
 		// "NORMAL/OUT_OF_ZONE mode detected" logs in the cascade so they
