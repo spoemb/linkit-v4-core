@@ -202,6 +202,21 @@ void PMU::reset(bool /*dfu_mode*/) {
 	sd_nvic_SystemReset();
 }
 
+/// @brief Set GPREGRET2 bit0 (OTA-applied flag) in an SD-safe way.
+void PMU::set_firmware_updated_flag() {
+#ifdef SOFTDEVICE_PRESENT
+	if (nrf_sdh_is_enabled()) {
+		// POWER is SD-protected while the SoftDevice is enabled — a direct
+		// NRF_POWER->GPREGRET2 write faults (HardFault -> "app: Fatal error").
+		// Go through the SoftDevice API instead.
+		sd_power_gpregret_clr(1, 0xFF);
+		sd_power_gpregret_set(1, 0x01);
+		return;
+	}
+#endif
+	NRF_POWER->GPREGRET2 = 0x01;
+}
+
 // Pre-deploy validation channel — see hauled_mode_service.cpp header comment.
 // Marks terminal sleep (powerdown / System OFF). Default off (zero overhead).
 #ifndef VALIDATION_LOG_ENABLE

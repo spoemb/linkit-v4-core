@@ -12,7 +12,6 @@
 // LED feedback for DFU progress
 #include "rgb_led.hpp"
 #include "ledsm.hpp"
-#include "nrf_power.h"
 extern RGBLed *status_led;
 using led_handle = LEDState;
 
@@ -253,8 +252,11 @@ void OTAFlashFileUpdater::apply_file_update() {
 		DEBUG_INFO("OTAFlashFileUpdater::apply_file_update: resetting device to apply firmware update");
 		// Signal OTA success with green LED before reset
 		led_handle::dispatch<SetLEDOTASuccess>({});
-		// Set GPREGRET2 flag so app knows firmware was updated after reboot
-		NRF_POWER->GPREGRET2 = 0x01;
+		// Record (SD-safe) that fw was updated so the next boot can detect it.
+		// A direct NRF_POWER->GPREGRET2 write here faults: the SoftDevice (BLE) is
+		// active during OTA and owns the POWER peripheral. This flag does NOT drive
+		// the bootloader's apply (that reads the QSPI staged image) — only the app.
+		PMU::set_firmware_updated_flag();
 		// Delay to show green LED and allow BLE status notification
 		PMU::delay_ms(1500);
 		PMU::reset(false);

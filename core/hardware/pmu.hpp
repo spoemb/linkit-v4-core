@@ -61,6 +61,15 @@ public:
 	static uint64_t get_timestamp_ms();
 	static bool was_firmware_updated();
 
+	/// @brief Record (in GPREGRET2, surviving the imminent reset) that an OTA
+	/// firmware update was applied, so the next boot can detect it. MUST be used
+	/// instead of a direct NRF_POWER->GPREGRET2 write: while the SoftDevice is
+	/// enabled (BLE active during OTA) the POWER peripheral is SD-protected and a
+	/// direct write faults ("app: Fatal error"). Routes through sd_power_gpregret
+	/// when the SD is up. Does NOT affect the bootloader's apply decision (that is
+	/// driven by the QSPI staged-image header), only the app's post-boot flag.
+	static void set_firmware_updated_flag();
+
 	/// @brief Read the MCU die temperature in °C (whole degrees, sign-preserving).
 	/// Falls back to a sentinel safe value (25 °C) when the temperature
 	/// source is unavailable, so callers don't need to handle missing data.

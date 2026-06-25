@@ -1038,15 +1038,36 @@ void SmdSat::state_transmitting_enter() {
 
 void SmdSat::state_transmitting_exit() {
 	// First TX done: restore configured TCXO warmup on STM32 for subsequent TX
-	// in this session. RAM register, lost on power cycle.
+	// in THIS session (RAM register, lost on power cycle). This does NOT touch the
+	// fast first-TX path (state_load_kmac forces warmup=0 when the TCXO is already
+	// warm) — it only makes sure every *subsequent* in-session TX gets the real
+	// warmup, so the carrier doesn't drift off-frequency and lose the Argos pass.
+	//
+	// The STM32WL is not ready for a fresh SPI command in the few ms right after
+	// MAC_TX_DONE: the field log showed REQ 0x29 → "IDLE pattern, no response
+	// ready" on all 3 instant auto-retries, leaving the warmup stuck at 0 for the
+	// rest of the burst. Give it a settle window and a few spaced attempts so the
+	// restore actually lands.
 	if (m_is_first_tx && m_tcxo_warmup_time > 0) {
-		try {
-			m_cmd.write_tcxo_warmup(m_tcxo_warmup_time * 1000);
-			DEBUG_TRACE("SmdSat::%s: restored TCXO warmup: %u s", __func__, m_tcxo_warmup_time);
-		} catch (...) {
-			DEBUG_WARN("SmdSat::%s: failed to restore TCXO warmup", __func__);
+		static constexpr uint8_t  TCXO_RESTORE_ATTEMPTS  = 3;
+		static constexpr uint32_t TCXO_RESTORE_SETTLE_MS = 50;  // STM32WL post-TX settle
+		bool restored = false;
+		for (uint8_t attempt = 0; attempt < TCXO_RESTORE_ATTEMPTS && !restored; attempt++) {
+			nrf_delay_ms(TCXO_RESTORE_SETTLE_MS);
+			try {
+				m_cmd.write_tcxo_warmup(m_tcxo_warmup_time * 1000);
+				DEBUG_TRACE("SmdSat::%s: restored TCXO warmup: %u s (attempt %u)",
+				            __func__, m_tcxo_warmup_time, attempt + 1);
+				restored = true;
+			} catch (...) {
+				DEBUG_WARN("SmdSat::%s: TCXO warmup restore attempt %u/%u failed",
+				           __func__, attempt + 1, TCXO_RESTORE_ATTEMPTS);
+			}
 		}
 	}
+	// Clear unconditionally: the first TX of every session is re-armed by
+	// state_starting() (m_is_first_tx=true on each power_on), so this never
+	// affects the fast first-TX path — it only governs in-session subsequent TX.
 	m_is_first_tx = false;
 	// Drive VPA LOW after TX — PA regulator no longer needed
 #ifdef SMD_VPA_PIN

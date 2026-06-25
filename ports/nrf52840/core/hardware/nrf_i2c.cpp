@@ -118,9 +118,15 @@ bool NrfI2C::clock_stretch_recovery(uint8_t bus) {
 	bitbang_stop(scl, sda);
 	PMU::delay_us(10);
 
+	// Recovery only succeeds if BOTH lines are released. Checking SDA alone gives a
+	// false "recovered" when a slave holds SCL low (e.g. a wedged STC3117 on VBAT,
+	// which a VSENSORS power-cycle cannot reset) — the bus then immediately stalls
+	// the TWIM (100 ms timeout) on every transfer. Verifying SCL too lets the caller
+	// recognise an unrecoverable bus and degrade fast instead of retry-storming.
 	nrf_gpio_cfg_input(sda, NRF_GPIO_PIN_PULLUP);
+	nrf_gpio_cfg_input(scl, NRF_GPIO_PIN_PULLUP);
 	PMU::delay_us(10);
-	return (nrf_gpio_pin_read(sda) == 1);
+	return (nrf_gpio_pin_read(sda) == 1) && (nrf_gpio_pin_read(scl) == 1);
 }
 
 bool NrfI2C::reinit_bus(uint8_t bus) {

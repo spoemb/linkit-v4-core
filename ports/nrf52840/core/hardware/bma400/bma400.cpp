@@ -119,6 +119,13 @@ void BMA400LL::init()
 // ═══════════════════════════════════════════════════════
 
 /// @brief Bosch C driver I2C write callback.
+/// @note MUST be non-throwing: this is invoked from the Bosch C library
+///       (bma400_init/soft_reset/…), so a C++ exception thrown here would have
+///       to unwind through C frames that carry no unwind tables → the unwinder
+///       gives up and calls std::terminate (prints "ErrorCode" then resets),
+///       bypassing the caller's try/catch and reboot-looping the board on a
+///       wedged/degraded bus. Use the non-throwing *_safe API and report the
+///       failure to the C library as a normal error code instead.
 int8_t BMA400LL::i2c_write(uint8_t reg_addr, const uint8_t *reg_data, uint32_t length, void *intf_ptr)
 {
 	BMA400LL *dev = device_lookup(*static_cast<uint8_t *>(intf_ptr));
@@ -131,18 +138,23 @@ int8_t BMA400LL::i2c_write(uint8_t reg_addr, const uint8_t *reg_data, uint32_t l
 	buffer[0] = reg_addr;
 	memcpy(&buffer[1], reg_data, length);
 
-	NrfI2C::write(dev->m_bus, dev->m_addr, buffer, length + 1, false);
+	if (!NrfI2C::write_safe(dev->m_bus, dev->m_addr, buffer, length + 1, false))
+		return BMA400_E_COM_FAIL;
 	return BMA400_OK;
 }
 
 /// @brief Bosch C driver I2C read callback.
+/// @note Non-throwing for the same reason as i2c_write() above — never let an
+///       exception cross back into the Bosch C library.
 int8_t BMA400LL::i2c_read(uint8_t reg_addr, uint8_t *reg_data, uint32_t length, void *intf_ptr)
 {
 	BMA400LL *dev = device_lookup(*static_cast<uint8_t *>(intf_ptr));
 	if (!dev) return BMA400_E_NULL_PTR;
 
-	NrfI2C::write(dev->m_bus, dev->m_addr, &reg_addr, 1, true);
-	NrfI2C::read(dev->m_bus, dev->m_addr, reg_data, length);
+	if (!NrfI2C::write_safe(dev->m_bus, dev->m_addr, &reg_addr, 1, true))
+		return BMA400_E_COM_FAIL;
+	if (!NrfI2C::read_safe(dev->m_bus, dev->m_addr, reg_data, length))
+		return BMA400_E_COM_FAIL;
 	return BMA400_OK;
 }
 
