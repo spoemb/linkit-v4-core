@@ -51,6 +51,18 @@ void ArgosTxService::service_init() {
 	uint8_t lpm = static_cast<uint8_t>(configuration_store->read_param<unsigned int>(ParamID::SMD_LPM_MODE));
 	m_kineis.set_lpm_mode(lpm);
 
+#if !defined(ARGOS_SMD) || (ARGOS_SMD != 1)
+	// KIM2 ONLY (not compiled for SMD): seed the modulation cache from the live
+	// radio at startup so the FIRST non-adaptive TX is sized for the master
+	// RCONF's true modulation — even on a fresh / stale-cache module (avoids the
+	// aborted first TX). NON-ADAPTIVE only: in adaptive mode the service drives
+	// the modulation per cycle via switch_modulation(), so the cache is not used
+	// for frame sizing and must not be force-seeded here.
+	if (!argos_config.adaptive_modulation) {
+		m_kineis.resync_rconf_cache();
+	}
+#endif
+
 	// Warn if SURFACING_BURST mode is configured without underwater detection
 	if (argos_config.mode == BaseArgosMode::SURFACING_BURST && !argos_config.underwater_en) {
 		DEBUG_WARN("ArgosTxService: SURFACING_BURST mode requires UNDERWATER_EN=1 — burst will not trigger without SWS");
@@ -1925,12 +1937,23 @@ void ArgosTxService::process_doppler_burst() {
 /// @brief TX started event — notify service manager that TX is in progress.
 void ArgosTxService::react(KineisEventTxStarted const&) {
 	DEBUG_TRACE("ArgosTxService::react: KineisEventTxStarted");
+#if !defined(ARGOS_SMD) || (ARGOS_SMD != 1)
+	// KIM2 only: surface the burst type + modulation + running session TX count
+	// so the operator can see WHAT is being sent and HOW MANY this session.
+	DEBUG_INFO("ArgosTxService: TX START — type=%s mode=%d session_tx#=%u",
+	           m_last_val_tx_type, static_cast<int>(m_scheduled_mode), m_session_tx_count + 1);
+#endif
 	service_active();
 }
 
 /// @brief TX complete event — update counters, manage surfacing burst, complete service.
 void ArgosTxService::react(KineisEventTxComplete const&) {
 	DEBUG_TRACE("ArgosTxService::react: KineisEventTxComplete");
+#if !defined(ARGOS_SMD) || (ARGOS_SMD != 1)
+	// KIM2 only: clear, visible confirmation that the Argos message went out.
+	DEBUG_INFO("ArgosTxService: TX SUCCESS — type=%s mode=%d session_tx#=%u",
+	           m_last_val_tx_type, static_cast<int>(m_scheduled_mode), m_session_tx_count + 1);
+#endif
 	m_is_tx_pending = false;
 	m_consecutive_device_errors = 0;
 
@@ -2096,6 +2119,12 @@ void ArgosTxService::react(KineisEventDeviceError const&) {
 	m_consecutive_device_errors++;
 	DEBUG_WARN("ArgosTxService::react: KineisEventDeviceError (consecutive=%u/%u)",
 	           m_consecutive_device_errors, DEVICE_ERROR_MAX_CONSECUTIVE);
+#if !defined(ARGOS_SMD) || (ARGOS_SMD != 1)
+	// KIM2 only: surface the burst type + modulation on a TX failure.
+	DEBUG_WARN("ArgosTxService: TX FAILED — type=%s mode=%d (consecutive=%u/%u, will backoff/retry)",
+	           m_last_val_tx_type, static_cast<int>(m_scheduled_mode),
+	           m_consecutive_device_errors, DEVICE_ERROR_MAX_CONSECUTIVE);
+#endif
 
 	// Restore TCXO warmup if it was skipped
 	if (m_tcxo_skip_on_next_tx) {

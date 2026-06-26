@@ -104,6 +104,10 @@ std::string DTEHandler::PARMW_REQ(int error_code, std::vector<ParamValue>& param
 		return DTEEncoder::encode(DTECommand::PARMW_RESP, error_code);
 	}
 
+#if !defined(ARGOS_SMD) || (ARGOS_SMD != 1)
+	bool rconf_edited = false;  // KIM2 only: re-seed modulation cache if a RCONF param changes
+#endif
+
 	for (unsigned int i = 0; i < param_values.size(); i++) {
 		if (param_map[(int)param_values[i].param].is_writable) {
 			// SMP00 (SMD_DEGRADED_MODE): writable via DTE for manual clear
@@ -127,13 +131,35 @@ std::string DTEHandler::PARMW_REQ(int error_code, std::vector<ParamValue>& param
 				}
 			}
 			configuration_store->write_param(param_values[i].param, param_values[i].value);
+#if !defined(ARGOS_SMD) || (ARGOS_SMD != 1)
+			if (param_values[i].param == ParamID::ARGOS_RADIOCONF ||
+			    param_values[i].param == ParamID::ARGOS_RADIOCONF_LDK ||
+			    param_values[i].param == ParamID::ARGOS_RADIOCONF_LDA2 ||
+			    param_values[i].param == ParamID::ARGOS_RADIOCONF_VLDA4) {
+				rconf_edited = true;
+			}
+#endif
 		} else {
 			DEBUG_WARN("DTEHandler::PARMW_REQ: not writing read-only attribute %s", param_map[(int)param_values[i].param].name.c_str());
 			rejected_keys.push_back(param_map[(int)param_values[i].param].key);
 		}
 	}
 
-	// Save all the parameters
+#if !defined(ARGOS_SMD) || (ARGOS_SMD != 1)
+	// KIM2 ONLY (not compiled for SMD): a RCONF edit changes the radio's
+	// modulation. Our firmware can't decode the raw (encrypted) ARGOS_RADIOCONF
+	// hex by itself — only the KIM module can — so we program the new RCONF to
+	// the module and read it back (AT+RCONF=?, which returns the decoded
+	// freq/power/modulation) to learn the modulation, then re-seed the cache.
+	// The FIRST TX after the edit is then sized for the right modulation.
+	// MUST run BEFORE save_params() so the re-seeded ARGOS_CACHED_MODULATION is
+	// flushed to flash and survives the next reboot.
+	if (rconf_edited && kineis_device_instance) {
+		kineis_device_instance->resync_rconf_cache();
+	}
+#endif
+
+	// Save all the parameters (incl. the re-seeded modulation cache above)
 	configuration_store->save_params();
 
 	// Notify configuration updated action
@@ -869,8 +895,20 @@ std::string DTEHandler::SATVF_REQ(int error_code, std::vector<BaseType>& arg_lis
 			forced = 1;
 		}
 #else
-		// KIM2 has no host-side credential write path — force is a no-op
-		(void)force;
+		// KIM2: ID/ADDR are burned in (cannot be written), but force=1 still
+		// re-programs the configured master RCONF and re-seeds the modulation
+		// cache (the unforced read above only sees the module's power-on RCONF,
+		// not the configured master). Lets an operator force a sync after editing
+		// the RCONF without rebooting.
+		if (force == 1 && kineis_device_instance) {
+			DEBUG_INFO("SATVF(KIM2): force=1 — re-programming RCONF + re-seeding modulation cache");
+			kineis_device_instance->resync_rconf_cache();
+			configuration_store->save_params();  // persist the re-seeded modulation cache across reboot
+			hw_id = 0; hw_addr = 0; hw_seckey.clear(); hw_rconf.clear();
+			kineis_device_instance->read_credentials(&hw_id, &hw_addr, &hw_seckey, &hw_rconf);
+			match = (hw_id == cfg_id && hw_addr == cfg_addr);
+			forced = 1;
+		}
 #endif
 
 		DEBUG_INFO("SATVF: hw_id=%u cfg_id=%u hw_addr=0x%08X cfg_addr=0x%08X match=%d forced=%u",

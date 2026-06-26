@@ -147,6 +147,11 @@ private:
 	///        (diagnostic use — not the encrypted hex written via AT+RCONF=).
 	void read_credentials(unsigned int *dec_id, unsigned int *address,
 	                      std::string *seckey, std::string *radioconf) override;
+	/// @brief Program the configured RCONF, read it back, and re-seed the
+	/// modulation cache (ARGOS_CACHED_MODULATION). Synchronous power-cycle if the
+	/// module is off. Called on a master-RCONF PARMW edit / force-SATVF so the
+	/// first TX is sized for the right modulation (no aborted first cycle).
+	bool resync_rconf_cache() override;
 	/// @}
 
 	/// @name Internal helpers

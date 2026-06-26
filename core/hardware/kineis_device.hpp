@@ -87,6 +87,11 @@ public:
 	                              std::string *seckey, std::string *radioconf) {
 		(void)dec_id; (void)address; (void)seckey; (void)radioconf;
 	}
+	/// @brief Program the configured RCONF, read it back, and re-seed the
+	/// modulation cache so the next TX is sized for the radio's true modulation.
+	/// Called after a master-RCONF edit (PARMW) or force-SATVF. Default no-op:
+	/// SMD re-pushes via its own credentials-dirty flow; only KIM2 needs this.
+	virtual bool resync_rconf_cache() { return false; }
 	// Switch radio modulation at runtime: write RCONF, save to flash, reload KMAC.
 	// rconf_hex: 32-char hex string for the target modulation's radio configuration.
 	// Returns true on success.

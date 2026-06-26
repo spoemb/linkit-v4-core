@@ -541,6 +541,75 @@ void KIM2Device::read_credentials(unsigned int *dec_id, unsigned int *address,
     }
 }
 
+/// @brief Program the configured RCONF, read it back, and re-seed the modulation
+/// cache. Best-effort synchronous power-cycle if the module is off.
+///
+/// Unlike read_credentials() which only READS the module's power-on RCONF (a
+/// hardware default, not necessarily the configured master), this WRITES the
+/// configured master/per-mode RCONF first, then reads it back — so the cache
+/// reflects the modulation a TX session will actually program. Fixes the
+/// wrong-modulation first TX after a fresh config / RCONF edit. RCONF lives in
+/// the module's RAM and is lost on the trailing power-off; only the persistent
+/// cache (ARGOS_CACHED_MODULATION) is the goal here.
+bool KIM2Device::resync_rconf_cache()
+{
+    if (m_bridge_active) {
+        DEBUG_WARN("KIM2Device::resync_rconf_cache: bridge active — skipped");
+        return false;
+    }
+
+    const bool was_off = (m_state == KIM2ManagerState::power_off);
+    if (was_off) {
+        cancel_timeout();
+        system_scheduler->cancel_task(m_task);
+        GPIOPins::set(SAT_PWR_EN);
+        GPIOPins::set(SAT_EXTWAKEUP);
+        m_kim2_comm.init();
+        m_kim2_comm.subscribe(*this);
+        PMU::delay_ms(KIM2_DELAY_POWER_ON_MS);
+        if (!send_AT(AT_PING)) {
+            DEBUG_WARN("KIM2Device::resync_rconf_cache: ping failed — module not responding");
+            m_kim2_comm.unsubscribe(*this);
+            m_kim2_comm.deinit();
+            GPIOPins::clear(SAT_EXTWAKEUP);
+            GPIOPins::clear(SAT_PWR_EN);
+            return false;
+        }
+    }
+
+    bool ok = false;
+    std::string rconf = load_rconf_for_mode(m_current_rconf_mode);
+    if (rconf.size() == 32) {
+        KIM2::RConfDecoded decoded;
+        if (write_and_validate_rconf(rconf, m_current_rconf_mode, &decoded) && decoded.valid) {
+            std::optional<KineisModulation> actual = KIM2::mod_from_name(decoded.modulation);
+            if (actual.has_value() &&
+                !(actual.value() == KineisModulation::VLDA4 && !m_vlda4_allowed)) {
+                if (actual.value() != m_current_rconf_mode)
+                    DEBUG_INFO("KIM2Device::resync_rconf_cache: cache %d -> %d (%s)",
+                               static_cast<int>(m_current_rconf_mode),
+                               static_cast<int>(actual.value()), decoded.modulation.c_str());
+                m_current_rconf_mode = actual.value();
+                cache_current_modulation();
+                ok = true;
+            }
+        } else {
+            DEBUG_WARN("KIM2Device::resync_rconf_cache: RCONF program/verify failed");
+        }
+    } else {
+        DEBUG_WARN("KIM2Device::resync_rconf_cache: no RCONF configured (len=%u)",
+                   static_cast<unsigned>(rconf.size()));
+    }
+
+    if (was_off) {
+        m_kim2_comm.unsubscribe(*this);
+        m_kim2_comm.deinit();
+        GPIOPins::clear(SAT_EXTWAKEUP);
+        GPIOPins::clear(SAT_PWR_EN);
+    }
+    return ok;
+}
+
 // ============================================================================
 // KIM2Comm event handlers (ISR context)
 // ============================================================================
@@ -559,7 +628,15 @@ void KIM2Device::react(const KIM2CommEventRespError&) {
 
 void KIM2Device::react(const KIM2CommEventUartError& err) {
     system_scheduler->post_task_prio([this, err]() {
-        DEBUG_INFO("KIM2CommEventUartError: type=%02x", err.error_type);
+        // 0x04 = UART framing error. At KIM power-on the module's TX line/baud
+        // settles and produces a one-shot framing glitch on our RX; the AT comm
+        // recovers immediately (the next RCONF read / AT+TX succeed), so it is a
+        // benign boot-transition artifact — annotate it so it doesn't read as a
+        // fault (mirrors the GNSS "boot transition, expected" wording).
+        if (err.error_type == 0x04)
+            DEBUG_INFO("KIM2CommEventUartError: type=04 (boot transition, expected)");
+        else
+            DEBUG_INFO("KIM2CommEventUartError: type=%02x", err.error_type);
     }, "Debug");
 }
 
@@ -1064,10 +1141,11 @@ void KIM2Device::state_transmit_enter()
 
     m_tx_done = false;
     m_is_error = false;
-    DEBUG_INFO("KIM2Device::state_transmit_enter: AT+TX=%s (hex_len=%u bytes=%u)",
-        m_tx_buffer.c_str(),
-        static_cast<unsigned>(m_tx_buffer.size()),
-        static_cast<unsigned>(m_tx_buffer.size() / 2));
+    DEBUG_INFO("KIM2Device::state_transmit_enter: TX START — RCONF=[%s] mode=%d, payload=%u bytes (AT+TX=%s)",
+        m_kim2_comm.m_rconf_info.c_str(),
+        static_cast<int>(m_tx_mode),
+        static_cast<unsigned>(m_tx_buffer.size() / 2),
+        m_tx_buffer.c_str());
     send_AT(AT_TX, m_tx_buffer, KIM2_TX_ACK_TIMEOUT_MS);
     notify(KineisEventTxStarted({}));
     initiate_timeout(KIM2_TX_TIMEOUT_MS);
@@ -1088,6 +1166,8 @@ void KIM2Device::state_transmit()
         if (m_tx_buffer.size()) {
             m_tx_buffer.clear();
             if (m_kim2_comm.m_tx_status == 0) {
+                DEBUG_INFO("KIM2Device::state_transmit: TX EMITTED OK — Argos message sent (mode=%d, RCONF=[%s])",
+                    static_cast<int>(m_tx_mode), m_kim2_comm.m_rconf_info.c_str());
                 notify(KineisEventTxComplete({}));
             } else {
                 DEBUG_WARN("KIM2Device::state_transmit: TX failed status=%d", m_kim2_comm.m_tx_status);
