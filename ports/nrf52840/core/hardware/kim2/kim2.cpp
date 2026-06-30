@@ -715,6 +715,11 @@ void KIM2Device::start_device()
 
     m_stopping = false;
     KIM2_STATE_CHANGE(power_off, power_on);
+    // Schedule the module boot-settle (was a blocking 500 ms PMU::delay_ms in
+    // state_power_on_enter) instead of freezing the scheduler. The macro above
+    // reposts state_power_on() at 100 ms; override it to KIM2_DELAY_POWER_ON_MS
+    // so the first AT+PING only fires once the module has finished booting.
+    run_state_machine(KIM2_DELAY_POWER_ON_MS);
 }
 
 /// @brief Immediate power off — cancel tasks, uninit UART, cut GPIO power.
@@ -801,14 +806,15 @@ void KIM2Device::state_power_off_exit()
 // State: power_on
 // ============================================================================
 
-/// @brief Power on: enable SAT_PWR_EN + EXTWAKEUP, init UART, wait 500 ms.
+/// @brief Power on: enable SAT_PWR_EN + EXTWAKEUP, init UART. The module
+///        boot-settle (KIM2_DELAY_POWER_ON_MS) is SCHEDULED by start_device
+///        (run_state_machine), not busy-waited, so the scheduler stays free.
 void KIM2Device::state_power_on_enter()
 {
     GPIOPins::set(SAT_PWR_EN);
     GPIOPins::set(SAT_EXTWAKEUP);
     m_kim2_comm.init();
     m_kim2_comm.subscribe(*this);
-    PMU::delay_ms(KIM2_DELAY_POWER_ON_MS);
 }
 
 void KIM2Device::state_power_on()
@@ -954,7 +960,8 @@ void KIM2Device::state_init()
         KIM2_STATE_CHANGE(init, error);
         return;
     }
-    PMU::delay_ms(KIM2_DELAY_AFTER_KMAC_MS);
+    // KMAC settle (KIM2_DELAY_AFTER_KMAC_MS) is scheduled after the transition to
+    // idle (see run_state_machine at the end) instead of blocking the scheduler here.
     DEBUG_TRACE("KIM2Device::state_init RCONF set and KMAC=1 activated");
     if (!adaptive) {
         configuration_store->write_param(ParamID::ARGOS_RADIOCONF, rconf);
@@ -965,6 +972,10 @@ void KIM2Device::state_init()
     cache_current_modulation();
 
     KIM2_STATE_CHANGE(init, idle);
+    // Give the MAC layer KIM2_DELAY_AFTER_KMAC_MS to re-initialize before idle's
+    // first tick can launch an AT+TX (sending too early → +ERROR=5 BAD_LEN). The
+    // macro above reposts at 100 ms; override to the 200 ms KMAC settle.
+    run_state_machine(KIM2_DELAY_AFTER_KMAC_MS);
 }
 
 void KIM2Device::state_init_exit()
@@ -1139,18 +1150,32 @@ void KIM2Device::state_transmit_enter()
             static_cast<unsigned int>(m_tx_mode));
     }
 
-    m_tx_done = false;
-    m_is_error = false;
+    m_tx_done    = false;
+    m_is_error   = false;
+    m_cmd_is_ok  = false;   // phase-1 +OK ACK flag (reset like send_AT would)
     DEBUG_INFO("KIM2Device::state_transmit_enter: TX START — RCONF=[%s] mode=%d, payload=%u bytes (AT+TX=%s)",
         m_kim2_comm.m_rconf_info.c_str(),
         static_cast<int>(m_tx_mode),
         static_cast<unsigned>(m_tx_buffer.size() / 2),
         m_tx_buffer.c_str());
-    send_AT(AT_TX, m_tx_buffer, KIM2_TX_ACK_TIMEOUT_MS);
+
+    // Fire AT+TX NON-BLOCKING, then poll the two AT+TX responses in state_transmit()
+    // instead of busy-waiting up to 5 s for the +OK (which froze the scheduler):
+    //   phase AWAIT_ACK : +OK   = command accepted by the module (NOT yet emitted),
+    //   phase AWAIT_TX  : +TX=  = async emission verdict (success/failure).
+    if (!m_kim2_comm.send(AT_TX, m_tx_buffer)) {
+        DEBUG_ERROR("KIM2Device::state_transmit_enter: AT+TX send rejected (UART busy) — aborting TX");
+        m_tx_buffer.clear();
+        KIM2_STATE_CHANGE(transmit, error);
+        return;
+    }
+    m_tx_phase           = TxPhase::AWAIT_ACK;
+    m_tx_ack_deadline_ms = PMU::get_timestamp_ms() + KIM2_TX_ACK_TIMEOUT_MS;  // 5 s, preserved
+
     notify(KineisEventTxStarted({}));
     initiate_timeout(KIM2_TX_TIMEOUT_MS);
 
-    // Poll counter for TX completion
+    // Poll counter for TX completion (60 s backstop, unchanged)
     m_tx_poll_counter = KIM2_TX_TIMEOUT_MS / KIM2_DELAY_POLL_MS;
 }
 
@@ -1159,6 +1184,41 @@ void KIM2Device::state_transmit()
 {
     m_kim2_comm.process_rx();  // Drain ISR buffer for async TX events
 
+    // ---- Phase 1: await the +OK ACK for AT+TX (replaces the old 5 s busy-wait) ----
+    // +OK only means the module ACCEPTED the command — not that the message was
+    // emitted. The emission verdict arrives later as +TX= (phase 2 below).
+    if (m_tx_phase == TxPhase::AWAIT_ACK)
+    {
+        if (m_is_error)
+        {
+            // +ERROR= to the AT+TX itself (e.g. +ERROR=5 BAD_LEN) — fail fast.
+            DEBUG_ERROR("KIM2Device::state_transmit: AT+TX rejected (+ERROR)");
+            m_tx_buffer.clear();
+            KIM2_STATE_CHANGE(transmit, error);
+            return;
+        }
+        if (m_cmd_is_ok)
+        {
+            // Command accepted → now wait for the async emission completion.
+            m_tx_phase = TxPhase::AWAIT_TX;
+            // fall through into phase-2 polling this same tick
+        }
+        else if (PMU::get_timestamp_ms() >= m_tx_ack_deadline_ms)
+        {
+            DEBUG_WARN("KIM2Device::state_transmit: AT+TX +OK ACK timeout (%u ms)",
+                static_cast<unsigned>(KIM2_TX_ACK_TIMEOUT_MS));
+            m_tx_buffer.clear();
+            KIM2_STATE_CHANGE(transmit, error);
+            return;
+        }
+        else
+        {
+            run_state_machine(KIM2_DELAY_POLL_MS);  // keep waiting for +OK, scheduler free
+            return;
+        }
+    }
+
+    // ---- Phase 2: await +TX=<status> emission completion (existing logic) ----
     if(m_tx_done)
     {
         m_tx_done = false;

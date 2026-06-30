@@ -104,6 +104,15 @@ private:
 	KineisModulation m_current_rconf_mode;   ///< Last RCONF modulation written
 	std::atomic<bool> m_tx_done;             ///< Set by ISR on +TX= response
 	unsigned int m_tx_poll_counter;          ///< Remaining TX poll ticks before timeout
+
+	/// @brief Two-phase async AT+TX progress (replaces the old 5 s busy-wait for +OK).
+	///        AWAIT_ACK: AT+TX sent, state_transmit() polls for the +OK ACK
+	///        (m_cmd_is_ok), bounded by m_tx_ack_deadline_ms (KIM2_TX_ACK_TIMEOUT_MS).
+	///        AWAIT_TX : +OK seen (command accepted, NOT yet emitted), polling for
+	///        +TX=<status> (m_tx_done), bounded by the existing 60 s initiate_timeout.
+	enum class TxPhase { AWAIT_ACK, AWAIT_TX };
+	TxPhase  m_tx_phase = TxPhase::AWAIT_ACK;  ///< Current AT+TX poll phase
+	uint64_t m_tx_ack_deadline_ms = 0;         ///< Wall-clock deadline (ms) for the +OK ACK
 	/// @}
 
 	/// @name State machine
