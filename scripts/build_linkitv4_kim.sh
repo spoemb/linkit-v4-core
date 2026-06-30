@@ -142,13 +142,20 @@ BATTERY_CHEMISTRY=${BATTERY_CHEMISTRY:-BATT_CHEM_NCR18650_3100_3400}
 # GNSS backup (BBR) battery present? Consumed as `#if GNSS_HAS_BACKUP_BATTERY` in C,
 # so it MUST be numeric 0/1 — ON/OFF would BOTH evaluate to 0. 0 = no backup battery.
 GNSS_HAS_BACKUP_BATTERY=${GNSS_HAS_BACKUP_BATTERY:-0}
+# SWS analog underwater-detector service. LinkIt has the SWS ADC channel, so the
+# service is compiled in by default (CMake default = 1 on LINKIT). MUST be numeric
+# 0/1 (consumed as `#if ENABLE_SWS_ANALOG` in C — ON/OFF would both evaluate to 0).
+# Runtime detection is still gated by UNDERWATER_EN (UNP01); this flag only controls
+# whether the service is compiled/instantiated at all.
+ENABLE_SWS_ANALOG=${ENABLE_SWS_ANALOG:-1}
 
 echo "  CAM_ENABLE=${CAM_ENABLE}  BUZZER_ENABLE=${BUZZER_ENABLE}"
 echo "  BATTERY_CHEMISTRY=${BATTERY_CHEMISTRY}"
 echo "  GNSS_HAS_BACKUP_BATTERY=${GNSS_HAS_BACKUP_BATTERY}"
+echo "  ENABLE_SWS_ANALOG=${ENABLE_SWS_ANALOG}"
 echo "  METRIC_LATENCY=${METRICS}  VALIDATION=${VALIDATION}"
 
-cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=3 -DBOARD=LINKIT -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DCAM_ENABLE=${CAM_ENABLE} -DBUZZER_ENABLE=${BUZZER_ENABLE} -DGNSS_HAS_BACKUP_BATTERY=${GNSS_HAS_BACKUP_BATTERY} -DBATTERY_CHEMISTRY=${BATTERY_CHEMISTRY} -DMETRIC_LATENCY_LOG_ENABLE=$([ "$METRICS" = "ON" ] && echo 1 || echo 0) -DVALIDATION_LOG_ENABLE=$([ "$VALIDATION" = "ON" ] && echo 1 || echo 0) ../..
+cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake -DDEBUG_LEVEL=3 -DBOARD=LINKIT -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DCAM_ENABLE=${CAM_ENABLE} -DBUZZER_ENABLE=${BUZZER_ENABLE} -DGNSS_HAS_BACKUP_BATTERY=${GNSS_HAS_BACKUP_BATTERY} -DBATTERY_CHEMISTRY=${BATTERY_CHEMISTRY} -DENABLE_SWS_ANALOG=${ENABLE_SWS_ANALOG} -DMETRIC_LATENCY_LOG_ENABLE=$([ "$METRICS" = "ON" ] && echo 1 || echo 0) -DVALIDATION_LOG_ENABLE=$([ "$VALIDATION" = "ON" ] && echo 1 || echo 0) ../..
 make -j 20
 nrfutil settings generate --family NRF52840 --application LinkIt_board.hex --application-version 0 --bootloader-version 1 --bl-settings-version 2 --app-boot-validation VALIDATE_ECDSA_P256_SHA256 --sd-boot-validation VALIDATE_ECDSA_P256_SHA256 --softdevice ../../drivers/nRF5_SDK_17.0.2/components/softdevice/s140/hex/s140_nrf52_7.2.0_softdevice.hex --key-file ../../nrfutil_pkg_key.pem settings.hex
 mergehex -m ../../bootloader/secure_bootloader/linkitv4_v1.0/armgcc/_build/cls_bootloader_v1_linkit_merged.hex LinkIt_board.hex -o m1.hex
