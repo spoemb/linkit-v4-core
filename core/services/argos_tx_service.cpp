@@ -749,6 +749,27 @@ void ArgosTxService::notify_peer_event(ServiceEvent& e) {
 	{
 		GPSLogEntry& entry = std::get<GPSLogEntry>(e.event_data);
 
+		// Terrestrial equivalent of the surface-event reset (see UW_SENSOR
+		// branch below). A new GPS session is a fresh TX opportunity, so clear
+		// the 3-strike device-error suspension here. Without this, a land
+		// tracker (RSPB) that never dives has only TWO ways to clear
+		// m_consecutive_device_errors: a successful TX (impossible while the
+		// radio is wedged) or a full reboot. A *transient* KIM2/SMD fault — e.g.
+		// a battery brown-out at module power-on — would therefore suspend TX
+		// PERMANENTLY until someone power-cycles the device. Re-arming once per
+		// GPS session lets the next session retry; cost is bounded to
+		// ≤ DEVICE_ERROR_MAX_CONSECUTIVE power-on attempts per session, which is
+		// negligible next to the GPS fix that just ran. Harmless for underwater
+		// units (their GPS sessions only occur at surface, already reset above).
+		// Field case 2026-06-30: a KIM2 AT+PING brown-out at ~01:00 left an RSPB
+		// unit TX-suspended for 6.5 h until a manual reboot, despite the battery
+		// recovering within the hour.
+		if (m_consecutive_device_errors > 0) {
+			DEBUG_INFO("ArgosTxService: clearing %u-error suspension on new GPS session — fresh TX opportunity",
+			           m_consecutive_device_errors);
+			m_consecutive_device_errors = 0;
+		}
+
 		// Update last known location (real fix only — fastloc is too inaccurate for scheduling)
 		if (entry.info.valid && entry.info.event_type != GPSEventType::FASTLOC) {
 			DEBUG_TRACE("ArgosTxService::notify_peer_event: updated GPS location");
@@ -2149,9 +2170,13 @@ void ArgosTxService::react(KineisEventDeviceError const&) {
 
 	if (service_cancel()) {
 		if (m_consecutive_device_errors >= DEVICE_ERROR_MAX_CONSECUTIVE) {
-			// Max errors reached — stop rescheduling to save battery.
-			// TX will resume at next boot/session (service_init resets counter).
-			DEBUG_ERROR("ArgosTxService: %u consecutive device errors — suspending TX for this session",
+			// Max errors reached — stop rescheduling to save battery. The
+			// counter is re-armed (TX resumes) on: a new GPS session
+			// (notify_peer_event GNSS branch), a surface event (UW branch),
+			// a successful TX, or a reboot (service_init). The GPS-session
+			// re-arm is what lets a land tracker recover from a transient
+			// fault without a manual power-cycle.
+			DEBUG_ERROR("ArgosTxService: %u consecutive device errors — suspending TX until next GPS session",
 			            m_consecutive_device_errors);
 			service_complete(nullptr, nullptr, false);  // no reschedule
 		} else {
