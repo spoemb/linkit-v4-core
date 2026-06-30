@@ -278,6 +278,20 @@ public:
 		return earliest;
 	}
 
+	/// @name Occupancy instrumentation (high-water diagnostics)
+	/// @{
+	/// @brief Current immediate-queue (m_tasks) occupancy.
+	unsigned int tasks_size() { InterruptLock lock; return m_tasks.size(); }
+	/// @brief Peak immediate-queue occupancy since boot.
+	unsigned int tasks_high_water() const { return m_tasks_high_water; }
+	/// @brief Current deferred-queue (m_timer_schedules) occupancy.
+	unsigned int deferred_size() { InterruptLock lock; return m_timer_schedules.size(); }
+	/// @brief Peak deferred-queue occupancy since boot.
+	unsigned int deferred_high_water() const { return m_timer_high_water; }
+	/// @brief Capacity shared by both scheduler queues.
+	static constexpr unsigned int capacity() { return MAX_NUM_TASKS; }
+	/// @}
+
 private:
 
 	struct DeferredEntry {
@@ -304,6 +318,8 @@ private:
 		}, t_sched);
 
 		m_timer_schedules.push_back({id, handle, t_sched});
+		if (m_timer_schedules.size() > m_timer_high_water)
+			m_timer_high_water = m_timer_schedules.size();
 	}
 
 	void schedule_now(Task task) {
@@ -324,6 +340,8 @@ private:
 			iter++;
 		}
 		m_tasks.insert(iter, task);
+		if (m_tasks.size() > m_tasks_high_water)
+			m_tasks_high_water = m_tasks.size();
 	}
 
 	void timer_callback_handler(unsigned int task_id, Task task) {
@@ -345,4 +363,6 @@ private:
 	etl::vector<DeferredEntry, MAX_NUM_TASKS> m_timer_schedules;
 	Timer *m_timer;
 	unsigned int m_unique_id;
+	unsigned int m_tasks_high_water = 0;   ///< Peak immediate-queue occupancy since boot
+	unsigned int m_timer_high_water = 0;   ///< Peak deferred-queue occupancy since boot
 };

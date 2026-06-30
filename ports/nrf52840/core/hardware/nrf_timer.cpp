@@ -89,6 +89,10 @@ static etl::list<Schedule, MAX_NUM_TIMERS> g_schedules;
 /// @brief Monotonic ID counter — wraps at UINT_MAX, skips 0 (reserved for invalid handle).
 static unsigned int g_unique_id;
 
+/// @brief Peak g_schedules occupancy observed since boot (high-water mark).
+/// Updated on every insert under InterruptLock; read by NrfTimer::schedules_*.
+static volatile unsigned int g_schedules_high_water;
+
 
 // ═══════════════════════════════════════════════════════
 //  RTC ISR — overflow tracking + schedule dispatch
@@ -206,6 +210,10 @@ Timer::TimerHandle NrfTimer::add_schedule(
 		g_schedules.insert(iter, schedule);
 		handle = g_unique_id;
 
+		// High-water mark for occupancy diagnostics (see MemoryMonitorService).
+		if (g_schedules.size() > g_schedules_high_water)
+			g_schedules_high_water = g_schedules.size();
+
 		g_unique_id++;
 		if (g_unique_id == 0) g_unique_id = 1;  // Skip 0 (collision with invalid handle)
 	}
@@ -240,4 +248,20 @@ void NrfTimer::start()
 void NrfTimer::stop()
 {
 	drv_rtc_stop(&BSP::RTC_Inits[RTC_TIMER].rtc);
+}
+
+unsigned int NrfTimer::schedules_size() const
+{
+	InterruptLock lock;
+	return g_schedules.size();
+}
+
+unsigned int NrfTimer::schedules_high_water() const
+{
+	return g_schedules_high_water;
+}
+
+unsigned int NrfTimer::schedules_capacity() const
+{
+	return MAX_NUM_TIMERS;
 }

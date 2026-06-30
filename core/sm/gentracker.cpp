@@ -101,7 +101,7 @@ void GenTracker::cancel_confirmation()
 	m_awaiting_re_engage = false;
 }
 
-/// @brief Reed switch gesture handler — confirmation pattern: hold 3s/6s, release, re-engage within 2s.
+/// @brief Reed switch gesture handler — confirmation pattern: hold 3s/6s, release, re-engage within 3s.
 /// @param event  Gesture type (ENGAGE, SHORT_HOLD, LONG_HOLD, RELEASE).
 void GenTracker::react(ReedSwitchEvent const &event)
 {
@@ -121,13 +121,13 @@ void GenTracker::react(ReedSwitchEvent const &event)
 	}
 
 	// Reed switch event handling with confirmation gesture:
-	// ENGAGE -- engaged LED state (or confirm pending action if re-engaged within 2s)
-	// RELEASE -- disengage LED state (or start 2s confirmation window)
+	// ENGAGE -- engaged LED state (or confirm pending action if re-engaged within 3s)
+	// RELEASE -- disengage LED state (or start 3s confirmation window)
 	// SHORT_HOLD (3s) -- rapid blink, awaiting release+re-engage to confirm
 	// LONG_HOLD (6s) -- rapid blink, awaiting release+re-engage to confirm power off
 	if (event.state == ReedSwitchGesture::ENGAGE) {
 		if (m_awaiting_re_engage && m_confirmation_pending != ConfirmationPending::NONE) {
-			// User re-engaged within 2s confirmation window — action confirmed
+			// User re-engaged within 3s confirmation window — action confirmed
 			system_scheduler->cancel_task(m_confirmation_timeout_task);
 			auto pending = m_confirmation_pending;
 			m_confirmation_pending = ConfirmationPending::NONE;
@@ -149,10 +149,17 @@ void GenTracker::react(ReedSwitchEvent const &event)
 		buzz_handle::dispatch<SetBuzzMagnetEngaged>({});
 	} else if (event.state == ReedSwitchGesture::RELEASE) {
 		if (m_confirmation_pending != ConfirmationPending::NONE) {
-			// Magnet released during confirmation — start 2s re-engage window
+			// Magnet released during confirmation — start 3s re-engage window
 			m_awaiting_re_engage = true;
 			led_handle::dispatch<SetLEDMagnetDisengaged>({});
-			// Cancel any previous timeout before posting a new one
+			// Cancel any previous timeout before posting a new one.
+			// Intentionally left at DEFAULT_PRIORITY (lower than the elevated
+			// REED_GESTURE_PRIORITY used for the gesture callbacks in reed.cpp):
+			// if a valid re-engage ENGAGE and this timeout are both queued in the
+			// same run() batch (e.g. after a blocking op spanning the window), the
+			// higher-priority ENGAGE is processed first and confirms the action,
+			// cancelling this timeout — so a busy device no longer drops a valid
+			// confirmation.
 			system_scheduler->cancel_task(m_confirmation_timeout_task);
 			m_confirmation_timeout_task = system_scheduler->post_task_prio([this](){
 				DEBUG_INFO("Reed confirmation timeout");

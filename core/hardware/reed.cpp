@@ -10,6 +10,23 @@
 
 extern Scheduler *system_scheduler;
 
+// Reed gesture tasks run at an elevated scheduler priority (lower number =
+// higher priority; 0 = watchdog, 7 = DEFAULT for everything else). Rationale:
+// gesture detection and confirmation are time-sensitive and user-facing, but
+// were posted at DEFAULT priority — so when the main loop is congested with
+// service tasks (or has just returned from a long blocking op such as a KIM2
+// AT busy-wait or a GNSS transaction), the ENGAGE/RELEASE/SHORT_HOLD/LONG_HOLD
+// callbacks were processed LATE. Late feedback makes the operator overshoot the
+// 3 s window into the 6 s (POWEROFF) window, and a valid re-engage can be
+// out-queued by the confirmation-timeout task. Priority 2 keeps these ahead of
+// routine service tasks (but below the watchdog) so feedback is prompt and a
+// queued re-engage ENGAGE outranks the DEFAULT-priority confirmation timeout
+// (see GenTracker::react(ReedSwitchEvent), RELEASE branch) within a run() batch.
+// NOTE: this changes only the *processing order* once run() executes — the hold
+// timers still FIRE at exactly 3 s/6 s (hardware-timer driven), so gesture
+// semantics are unchanged.
+static constexpr unsigned int REED_GESTURE_PRIORITY = 2;
+
 ReedSwitch::ReedSwitch(
 		Switch &sw,
 		unsigned int short_hold_period_ms,
@@ -43,7 +60,7 @@ void ReedSwitch::switch_state_handler(bool state) {
 		if (m_user_callback) {
 			system_scheduler->post_task_prio([this]() {
 				m_user_callback(ReedSwitchGesture::ENGAGE);
-			}, "ReedSwitchUserCallback");
+			}, "ReedSwitchUserCallback", REED_GESTURE_PRIORITY);
 		}
 
 		// Start hold timers
@@ -51,17 +68,17 @@ void ReedSwitch::switch_state_handler(bool state) {
 			if (m_user_callback) {
 				system_scheduler->post_task_prio([this]() {
 					m_user_callback(ReedSwitchGesture::SHORT_HOLD);
-				}, "ReedSwitchUserCallback");
+				}, "ReedSwitchUserCallback", REED_GESTURE_PRIORITY);
 			}
 
 			m_task = system_scheduler->post_task_prio([this]() {
 				if (m_user_callback) {
 					system_scheduler->post_task_prio([this]() {
 						m_user_callback(ReedSwitchGesture::LONG_HOLD);
-					}, "ReedSwitchUserCallback");
+					}, "ReedSwitchUserCallback", REED_GESTURE_PRIORITY);
 				}
-			}, "ShortHoldEventHandler", Scheduler::DEFAULT_PRIORITY, m_short_hold_period_ms);
-		}, "LongHoldEventHandler", Scheduler::DEFAULT_PRIORITY, m_long_hold_period_ms - m_short_hold_period_ms);
+			}, "ShortHoldEventHandler", REED_GESTURE_PRIORITY, m_short_hold_period_ms);
+		}, "LongHoldEventHandler", REED_GESTURE_PRIORITY, m_long_hold_period_ms - m_short_hold_period_ms);
 
 	} else {
 
@@ -72,7 +89,7 @@ void ReedSwitch::switch_state_handler(bool state) {
 		if (m_user_callback) {
 			system_scheduler->post_task_prio([this]() {
 				m_user_callback(ReedSwitchGesture::RELEASE);
-			}, "ReedSwitchUserCallback");
+			}, "ReedSwitchUserCallback", REED_GESTURE_PRIORITY);
 		}
 	}
 }

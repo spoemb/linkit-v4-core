@@ -49,6 +49,11 @@ public:
 	/// @brief Stop the RTC counter (schedules remain pending until uninit).
 	void stop() override;
 
+	/// @brief Current / peak / max pending-schedule occupancy (g_schedules).
+	unsigned int schedules_size() const override;
+	unsigned int schedules_high_water() const override;
+	unsigned int schedules_capacity() const override;
+
 private:
 	uint64_t m_start_ticks = 0;  ///< Tick count at start() — subtracted in get_counter()
 	NrfTimer() = default;

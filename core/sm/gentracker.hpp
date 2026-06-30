@@ -42,7 +42,12 @@ protected:
 	static inline ConfirmationPending m_confirmation_pending = ConfirmationPending::NONE;
 	static inline bool m_awaiting_re_engage = false;
 	static inline Scheduler::TaskHandle m_confirmation_timeout_task;
-	static constexpr unsigned int CONFIRMATION_TIMEOUT_MS = 2000;
+	// Re-engage window after RELEASE. Bumped 2000→3000 ms (2026-06) to give the
+	// operator margin when the device is busy/sluggish (the gesture pipeline is
+	// scheduler-driven; see reed.cpp REED_GESTURE_PRIORITY). Strictly more
+	// lenient — never rejects a re-engage that the old 2 s window accepted — and
+	// well within PreOperationalState's 20 s stuck-reed escape.
+	static constexpr unsigned int CONFIRMATION_TIMEOUT_MS = 3000;
 	void cancel_confirmation();
 };
 
