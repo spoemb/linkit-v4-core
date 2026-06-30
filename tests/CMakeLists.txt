@@ -69,7 +69,14 @@ target_compile_definitions(CppUTestExt PUBLIC CPPUTEST_MEM_LEAK_DETECTION_DISABL
 find_package(Threads)
 add_executable(${PROJECT_NAME})
 
-# Create symlink to test data directory in build directory
+# Symlink the test data directory into the build dir so tests can read "data/..."
+# relative to their CWD. Remove any pre-existing data link/dir FIRST: file(CREATE_LINK)
+# does NOT overwrite an existing link, so a stale one from an older config — notably
+# the former RELATIVE "data" target, which resolved circularly to build/data itself and
+# exposed 0 files — would persist and make every file-backed test silently read empty
+# data (e.g. PASPW/AOP tests failing with MISSING_ARGUMENT). REMOVE_RECURSE on a symlink
+# deletes only the link, never the source directory it points to.
+file(REMOVE_RECURSE "${CMAKE_CURRENT_BINARY_DIR}/data")
 file(CREATE_LINK "${CMAKE_CURRENT_SOURCE_DIR}/data" "${CMAKE_CURRENT_BINARY_DIR}/data" SYMBOLIC)
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
