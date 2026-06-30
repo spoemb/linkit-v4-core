@@ -10,6 +10,7 @@
 #include "debug.hpp"
 #include "pmu.hpp"
 #include "binascii.hpp"
+#include "error.hpp"   // ErrorCode (RESOURCE_NOT_AVAILABLE) thrown by the credential commands
 
 #include "nrf_delay.h"
 
@@ -28,6 +29,7 @@ SmdSatCmdAt::SmdSatCmdAt(unsigned int uart_instance)
 	, m_resp_data_ready(false)
 	, m_tx_complete(false)
 	, m_tx_status(0xFFFF)
+	, m_tx_in_progress(false)
 	, m_dfu_mode(false)
 {
 }
@@ -84,7 +86,15 @@ void SmdSatCmdAt::parse_response(const std::string& line)
 	// +ERROR=<code>
 	if (line.compare(0, 7, "+ERROR=") == 0) {
 		m_resp_error = true;
-		m_resp_ok = true; // Unblock the wait loop
+		m_resp_ok = true; // Unblock the (synchronous) wait loop
+		// If an async AT+TX is in flight, surface the rejection as a FAILED TX
+		// completion so the state machine's is_tx_finished()/is_tx_successful()
+		// poll fails fast, instead of waiting out the full TX timeout budget.
+		if (m_tx_in_progress) {
+			m_tx_status = 0xFFFF;   // non-zero → is_tx_successful() == false
+			m_tx_complete = true;
+			m_tx_in_progress = false;
+		}
 		DEBUG_WARN("SmdSatCmdAt: %s", line.c_str());
 		return;
 	}
@@ -125,6 +135,7 @@ void SmdSatCmdAt::parse_response(const std::string& line)
 			}
 		}
 		m_tx_complete = true;
+		m_tx_in_progress = false;   // TX resolved (completion received)
 		// Also set resp_ok since AT+TX waits for MAC acceptance
 		m_resp_ok = true;
 		return;
@@ -495,9 +506,20 @@ bool SmdSatCmdAt::initiate_tx(const KineisPacket& payload)
 
 	m_tx_complete = false;
 	m_tx_status = 0xFFFF;
+	m_resp_error = false;
+	m_resp_ok = false;
+	m_tx_in_progress = true;   // arm +ERROR / +TX= async surfacing
 
-	// AT+TX=<hex_data> — async response via +TX=<status>,<data>
-	return send_at("AT+TX=" + hex, 5000);
+	// Fire AT+TX NON-BLOCKING (was a 5 s busy-wait via send_at, which froze the
+	// cooperative scheduler). The +OK (MAC acceptance) and the async
+	// +TX=<status> completion are surfaced through is_tx_finished()/
+	// is_tx_successful(), polled by the shared state machine — same contract as
+	// the SPI backend, same async UART transport principle as KIM2.
+	if (!send_string("AT+TX=" + hex + "\r\n")) {
+		m_tx_in_progress = false;
+		return false;
+	}
+	return true;
 }
 
 bool SmdSatCmdAt::is_tx_finished()

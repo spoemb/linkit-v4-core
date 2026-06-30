@@ -115,6 +115,7 @@ private:
 	// TX async state
 	volatile bool m_tx_complete;     // +TX= response received
 	volatile uint16_t m_tx_status;   // TX error code from +TX= response
+	volatile bool m_tx_in_progress;  // AT+TX fired, awaiting +OK/+ERROR/+TX= (async, non-blocking)
 
 	// DFU state
 	bool m_dfu_mode;
