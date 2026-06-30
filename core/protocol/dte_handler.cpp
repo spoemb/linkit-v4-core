@@ -1031,8 +1031,46 @@ std::string DTEHandler::ARGOSTX_REQ(int error_code, std::vector<BaseType>& arg_l
 		// which will send the async response via react() callbacks
 		return {};
 #else
-		DEBUG_WARN("DTEHandler::ARGOSTX_REQ: No satellite device available");
-		return DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::INCORRECT_DATA);
+		// KIM2 (and any generic KineisDevice). Mirrors the SMD branch above via the
+		// generic interface — the validated SMD #if branch is untouched. LoRa builds
+		// don't set kineis_device_instance (they use LORATX_REQ), so this stays a
+		// clean "no device" there.
+		if (!kineis_device_instance) {
+			DEBUG_WARN("DTEHandler::ARGOSTX_REQ: No satellite device available");
+			return DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::INCORRECT_DATA);
+		}
+
+		// Subscribe for the async TX result and keep the module powered long enough
+		// to transmit (released again on KineisEventPowerOff — see react()).
+		if (!m_sat_device_active) {
+			kineis_device_instance->subscribe(*this);
+			kineis_device_instance->set_idle_timeout(30000);
+			m_sat_device_active = true;
+		}
+
+		if (custom_rconf) {
+			// Custom test RCONF supplied — program it for the requested modulation.
+			// KIM2 RCONF is RAM-resident and re-applied from config at the next
+			// power-on, so this does not persist past the session (no restore needed).
+			if (rconf.length() != 32) {
+				DEBUG_WARN("DTEHandler::ARGOSTX_REQ: invalid radioconf length %u",
+					static_cast<unsigned>(rconf.length()));
+				return DTEEncoder::encode(DTECommand::ARGOSTX_RESP, (int)DTEError::INCORRECT_DATA);
+			}
+			kineis_device_instance->switch_modulation(modulation, rconf);
+		}
+		// Stored case: no switch — KIM2's state machine applies its configured
+		// (master / per-mode) RCONF in state_init and realigns in state_transmit_enter;
+		// a modulation that doesn't match the configured RCONF fails cleanly (logged +
+		// async DeviceError), which is the correct feedback for a test command.
+
+		kineis_device_instance->set_tcxo_warmup_time(tcxo_time);
+		KineisPacket packet(num_bytes, 0xFF);
+		kineis_device_instance->send(modulation, packet, 8 * num_bytes);
+
+		// No immediate response — KineisEventTxComplete / DeviceError send the async
+		// ARGOSTX_RESP via the react() callbacks below.
+		return {};
 #endif
 	} catch (...) {
 		error_code = (int)DTEError::INCORRECT_DATA;
@@ -2064,6 +2102,15 @@ void DTEHandler::react(KineisEventPowerOff const& ) {
 		m_sat_device_active = false;
 		smd_sat_instance->set_idle_timeout(3000);
 		smd_sat_instance->unsubscribe(*this);
+	}
+#else
+	// KIM2 (generic KineisDevice): release the ARGOSTX_REQ subscription once the
+	// module powers down, so DTEHandler stops reacting to ArgosTxService's normal
+	// TX events (which would otherwise emit spurious ARGOSTX_RESP).
+	if (m_sat_device_active && !m_doppler_cal_active && kineis_device_instance) {
+		m_sat_device_active = false;
+		kineis_device_instance->set_idle_timeout(3000);
+		kineis_device_instance->unsubscribe(*this);
 	}
 #endif
 }
