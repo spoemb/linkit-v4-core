@@ -524,11 +524,18 @@ bool SmdSatCmdAt::initiate_tx(const KineisPacket& payload)
 
 bool SmdSatCmdAt::is_tx_finished()
 {
+	// C2 fix: initiate_tx() fires AT+TX non-blocking and the +TX=<status> completion
+	// arrives asynchronously — it is parsed ONLY by process_rx(). The state machine
+	// polls this accessor without otherwise running a send_at* (the only other
+	// process_rx caller), so drain here or the completion is never parsed and every
+	// TX times out.
+	NrfUartAsync::process_rx();
 	return m_tx_complete;
 }
 
 bool SmdSatCmdAt::is_tx_in_progress()
 {
+	NrfUartAsync::process_rx();   // parse any pending async +TX= completion first
 	return !m_tx_complete;
 }
 
@@ -544,14 +551,18 @@ void SmdSatCmdAt::get_status(uint8_t *status)
 
 void SmdSatCmdAt::read_spimac_state(uint8_t *spi_state, uint8_t *mac_state)
 {
-	// No AT equivalent for SPI/MAC state
+	// No real AT MAC-state register — synthesize it. C1 fix: report TX_IN_PROGRESS
+	// ONLY while a TX is actually in flight; once a TX completed report its verdict;
+	// OTHERWISE (idle / no TX pending — e.g. during state_load_kmac at boot) report
+	// MAC_OK so the mac_ready gate can pass (mirrors get_kmac_status()). The old code
+	// returned MAC_TX_IN_PROGRESS whenever !m_tx_complete, which at boot (no TX ever
+	// done) made load_kmac's gate permanently unreachable -> KMAC never loaded, TX
+	// never started, per-session dead-end into cooldown.
 	if (spi_state) *spi_state = 0;
 	if (mac_state) {
-		if (m_tx_complete) {
-			*mac_state = (m_tx_status == 0) ? MAC_TX_DONE : MAC_TX_TIMEOUT;
-		} else {
-			*mac_state = MAC_TX_IN_PROGRESS;
-		}
+		if (m_tx_in_progress)   *mac_state = MAC_TX_IN_PROGRESS;
+		else if (m_tx_complete) *mac_state = (m_tx_status == 0) ? MAC_TX_DONE : MAC_TX_TIMEOUT;
+		else                    *mac_state = MAC_OK;   // idle / ready
 	}
 }
 

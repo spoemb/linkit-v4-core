@@ -516,6 +516,30 @@ void OffState::exit() {
 }
 
 /// @brief PreOp entry — verify config valid, mount QSPI, start watchdog, transition to Operational.
+void PreOperationalState::preop_transit_tick() {
+	// Self-reposting stuck-reed escape tick (H2). Re-posts ITSELF on every fire so
+	// m_preop_stuck_reed_ticks actually advances and the PREOP_STUCK_REED_MAX_MS
+	// force-transit is re-evaluated each tick. Same logic as the initial arming in
+	// entry(); the previous inline re-arm posted a stripped lambda that neither
+	// advanced the counter nor re-armed -> the 20 s escape never fired.
+	if (m_confirmation_pending != ConfirmationPending::NONE) {
+		m_preop_stuck_reed_ticks++;
+		if (m_preop_stuck_reed_ticks * TRANSIT_PERIOD_MS >= PREOP_STUCK_REED_MAX_MS) {
+			DEBUG_WARN("PreOperationalState: reed appears stuck (%u ms in confirmation) — forcing Operational transit",
+			           m_preop_stuck_reed_ticks * TRANSIT_PERIOD_MS);
+			m_confirmation_pending = ConfirmationPending::NONE;
+			m_preop_stuck_reed_ticks = 0;
+			transit<OperationalState>();
+			return;
+		}
+		m_preop_state_task = system_scheduler->post_task_prio([this](){ preop_transit_tick(); },
+			"GenTrackerPreOpRetransitOperationalState", Scheduler::DEFAULT_PRIORITY, TRANSIT_PERIOD_MS);
+		return;
+	}
+	m_preop_stuck_reed_ticks = 0;
+	transit<OperationalState>();
+}
+
 void PreOperationalState::entry() {
 	DEBUG_INFO("entry: PreOperationalState");
 	if (configuration_store->is_valid()) {
@@ -557,12 +581,13 @@ void PreOperationalState::entry() {
 					transit<OperationalState>();
 					return;
 				}
-				// Re-arm the task instead of returning without rescheduling.
-				m_preop_state_task = system_scheduler->post_task_prio([this](){
-					if (m_confirmation_pending == ConfirmationPending::NONE) {
-						transit<OperationalState>();
-					}
-				}, "GenTrackerPreOpRetransitOperationalState", Scheduler::DEFAULT_PRIORITY, TRANSIT_PERIOD_MS);
+				// H2 fix: re-arm with the SELF-REPOSTING tick, which re-increments
+				// m_preop_stuck_reed_ticks and re-checks the 20 s force-transit on
+				// every fire. The old re-arm posted a stripped lambda that never
+				// advanced the counter nor re-armed, so the stuck-reed escape never
+				// fired and the device wedged in PreOperationalState.
+				m_preop_state_task = system_scheduler->post_task_prio([this](){ preop_transit_tick(); },
+					"GenTrackerPreOpRetransitOperationalState", Scheduler::DEFAULT_PRIORITY, TRANSIT_PERIOD_MS);
 				return;
 			}
 			m_preop_stuck_reed_ticks = 0;

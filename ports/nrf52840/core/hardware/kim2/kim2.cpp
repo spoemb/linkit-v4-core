@@ -282,6 +282,9 @@ void KIM2Device::send(const KineisModulation mode, const KineisPacket& user_payl
 
         default:
             DEBUG_ERROR("KIM2Device::send: Unknown modulation type");
+            // L1: notify like the sized branches above so the service reschedules
+            // with backoff instead of silently waiting out its 30 s TX timeout.
+            notify(KineisEventDeviceError({}));
             return;
     }
     DEBUG_TRACE("KIM2Device::send: adding %u stuffing bits for alignment", stuffing_bits);

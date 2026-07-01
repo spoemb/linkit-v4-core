@@ -1046,11 +1046,21 @@ void LoRaTxService::schedule_burst_prewarm() {
 }
 
 void LoRaTxService::react(KineisEventDeviceError const&) {
+	// H3 fix: only count/act on a DeviceError from an IN-FLIGHT TX. service_cancel()
+	// returns whether a TX was pending (and clears the flag). A DeviceError raised
+	// during a warm-up/join with no TX pending must NOT ratchet
+	// m_consecutive_device_errors — otherwise repeated warm-up failures across dives
+	// climb to DEVICE_ERROR_MAX_CONSECUTIVE and service_initiate permanently suspends
+	// the service without ever attempting a TX (the counter only resets on a
+	// successful TxComplete or service_init).
+	if (!service_cancel()) {
+		DEBUG_TRACE("LoRaTxService::react: KineisEventDeviceError (no TX pending — not counted)");
+		return;
+	}
 	m_consecutive_device_errors++;
 	DEBUG_WARN("LoRaTxService::react: KineisEventDeviceError (consecutive=%u/%u)",
 	           m_consecutive_device_errors, DEVICE_ERROR_MAX_CONSECUTIVE);
-
-	if (service_cancel()) {
+	{
 		if (m_consecutive_device_errors >= DEVICE_ERROR_MAX_CONSECUTIVE) {
 			DEBUG_ERROR("LoRaTxService: %u consecutive device errors — suspending TX for this session",
 			            m_consecutive_device_errors);

@@ -642,9 +642,20 @@ static void init_power_on_check(NrfSwitch& nrf_reed_switch)
 		});
 
 		GPIOPins::clear(VSYS_SEL);
+		// H1 fix: bound the wait. If the 3 s magnet-hold is never completed (magnet
+		// released early, or reed chatter that keeps cancelling the timer), don't spin
+		// forever feeding the WDT — give up and power down, mirroring the RSPB #else
+		// branch's give-up semantics. 30 s is well beyond a deliberate 3 s hold and
+		// still allows a few retry attempts.
+		uint64_t power_on_deadline = system_timer->get_counter() + 30000;
 		while (!power_on_ready) {
 			PMU::kick_watchdog();
 			PMU::run();
+			if (system_timer->get_counter() >= power_on_deadline) {
+				DEBUG_TRACE("Power-on reed gesture not completed within 30s — powering down");
+				PMU::powerdown();
+				break;  // defensive: if powerdown() returns, stop spinning
+			}
 		}
 
 		GPIOPins::set(VSYS_SEL);

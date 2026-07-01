@@ -91,6 +91,11 @@ private:
 	unsigned int m_preop_stuck_reed_ticks = 0;
 	static constexpr unsigned int PREOP_STUCK_REED_MAX_MS = 20000;  // 20 s
 
+	/// @brief Self-reposting transit tick — advances the stuck-reed escape counter
+	///        and re-checks the 20 s force-transit on EVERY fire, then transits to
+	///        Operational (confirmation cleared, or escape elapsed) or re-arms itself.
+	void preop_transit_tick();
+
 public:
 	void entry() override;
 	void exit() override;
