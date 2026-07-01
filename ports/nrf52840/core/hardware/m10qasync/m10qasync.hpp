@@ -100,6 +100,11 @@ private:
 	char m_gnss_hw_version[10];
 	uint8_t m_gnss_unique_id[5];
 	bool m_gnss_info_valid;
+	/// @brief Consecutive fast-path (BBR-validation) failures at power-on. After
+	/// FASTPATH_MAX_ATTEMPTS the code concludes the BBR did not retain state
+	/// (dead/uncharged coin cell) and falls back to a full cold configure at 9600
+	/// — see state_configure(). Reset on fast-path success / after the fallback.
+	unsigned int m_fastpath_attempts = 0;
 
 	// ISR-to-scheduler data buffers (replaces static locals to avoid data races)
 	UBXCommsEventNavReport m_pending_nav;

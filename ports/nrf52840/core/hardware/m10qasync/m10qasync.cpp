@@ -1678,6 +1678,7 @@ void M10QAsyncReceiver::state_configure() {
 					            m_consecutive_wake_failures);
 					m_consecutive_wake_failures = 0;
 				}
+				m_fastpath_attempts = 0;  // fast path validated → reset failure counter
 				m_step = 10; // Skip to continuous mode + nav settings
 				m_op_state = OpState::IDLE;
 				continue;
@@ -1770,9 +1771,24 @@ void M10QAsyncReceiver::state_configure() {
 			break;
 		} else {
 #if GNSS_HAS_BACKUP_BATTERY
-			// Fast path validation failed — BBR was lost, fall back to full configure
+			// Fast path (BBR validation) failed. Retry a few times in case it was a
+			// transient sync glitch; after FASTPATH_MAX_ATTEMPTS conclude the BBR did
+			// NOT retain state (dead/uncharged coin cell) and fall back to a full cold
+			// configure. Clearing m_gnss_info_valid is what BREAKS the retry loop
+			// (step 0 no longer re-enters the fast path at line ~1657) AND drops the
+			// initial sync back to DEFAULT_BAUDRATE (9600) — see the baud selection
+			// that keys off m_gnss_info_valid.
 			if (m_step >= 100) {
-				DEBUG_WARN("M10QAsyncReceiver: fast path failed, BBR lost — full configure");
+				constexpr unsigned int FASTPATH_MAX_ATTEMPTS = 3;
+				if (++m_fastpath_attempts >= FASTPATH_MAX_ATTEMPTS) {
+					DEBUG_WARN("M10QAsyncReceiver: fast path failed %u/%u — BBR not retained, full configure at 9600",
+					           m_fastpath_attempts, FASTPATH_MAX_ATTEMPTS);
+					m_gnss_info_valid = false;   // no valid BBR state → full cold configure @ 9600
+					m_fastpath_attempts = 0;
+				} else {
+					DEBUG_WARN("M10QAsyncReceiver: fast path failed (attempt %u/%u) — retry",
+					           m_fastpath_attempts, FASTPATH_MAX_ATTEMPTS);
+				}
 				m_step = 0;
 				m_retries = DEFAULT_RETRIES;
 				m_op_state = OpState::IDLE;
