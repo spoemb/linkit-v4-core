@@ -627,16 +627,21 @@ void KIM2Device::react(const KIM2CommEventRespError&) {
 }
 
 void KIM2Device::react(const KIM2CommEventUartError& err) {
-    system_scheduler->post_task_prio([this, err]() {
-        // 0x04 = UART framing error. At KIM power-on the module's TX line/baud
-        // settles and produces a one-shot framing glitch on our RX; the AT comm
-        // recovers immediately (the next RCONF read / AT+TX succeed), so it is a
-        // benign boot-transition artifact — annotate it so it doesn't read as a
-        // fault (mirrors the GNSS "boot transition, expected" wording).
-        if (err.error_type == 0x04)
-            DEBUG_INFO("KIM2CommEventUartError: type=04 (boot transition, expected)");
+    // Snapshot the state at error time (ISR context) — the deferred log task below
+    // may run after the state machine has advanced past the boot window.
+    KIM2ManagerState st = m_state;
+    system_scheduler->post_task_prio([err, st]() {
+        // 0x04 = UART framing error. During the power-on/init window the KIM TX
+        // line/baud settles and produces a one-shot framing glitch on our RX; the
+        // AT comm recovers immediately (next RCONF read / AT+TX succeed). That case
+        // is benign, so log it at TRACE — hidden at the normal DEBUG_LEVEL=3 (shown
+        // only at level 4), so it no longer perturbs the user. A UART error OUTSIDE
+        // the boot window is unexpected and stays visible at WARN.
+        bool boot_window = (st == power_on || st == init);
+        if (err.error_type == 0x04 && boot_window)
+            DEBUG_TRACE("KIM2CommEventUartError: type=04 (boot transition, expected)");
         else
-            DEBUG_INFO("KIM2CommEventUartError: type=%02x", err.error_type);
+            DEBUG_WARN("KIM2CommEventUartError: type=%02x (state=%d)", err.error_type, static_cast<int>(st));
     }, "Debug");
 }
 
