@@ -150,6 +150,11 @@ STC3117_MIXED_MODE=${STC3117_MIXED_MODE:-0}
 SMDSAT_USE_SAFE_TIMINGS=${SMDSAT_USE_SAFE_TIMINGS:-OFF}
 SMDSAT_AUTOFALLBACK=${SMDSAT_AUTOFALLBACK:-ON}
 
+# TEST ONLY: power the SMD at boot and park the nRF (no Argos TX / no I2C recovery)
+# so the STM32WL can be flashed without the board resetting. Default OFF — set
+# SMD_FLASH_HOLD=ON for a one-off flashing build, then rebuild OFF for normal use.
+SMD_FLASH_HOLD=${SMD_FLASH_HOLD:-OFF}
+
 
 echo "Building RSPB with configuration:"
 echo "  ARGOS_SMD=${ARGOS_SMD}"
@@ -161,7 +166,13 @@ echo "  STC3117_MIXED_MODE=${STC3117_MIXED_MODE}"
 echo "  GNSS_HAS_BACKUP_BATTERY=${GNSS_HAS_BACKUP_BATTERY}"
 echo "  SMDSAT_USE_SAFE_TIMINGS=${SMDSAT_USE_SAFE_TIMINGS}"
 echo "  SMDSAT_AUTOFALLBACK=${SMDSAT_AUTOFALLBACK}"
+echo "  SMD_FLASH_HOLD=${SMD_FLASH_HOLD}"
 echo ""
+if [ "${SMD_FLASH_HOLD}" = "ON" ]; then
+    echo "  *** WARNING: SMD_FLASH_HOLD build — nRF parks at boot, SMD held powered."
+    echo "  ***          For flashing the STM32WL ONLY. Not a normal firmware. ***"
+    echo ""
+fi
 
 cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
       -DDEBUG_LEVEL=4 \
@@ -176,6 +187,7 @@ cmake -DCMAKE_TOOLCHAIN_FILE=../../toolchain_arm_gcc_nrf52.cmake \
       -DGNSS_HAS_BACKUP_BATTERY=${GNSS_HAS_BACKUP_BATTERY} \
       -DSMDSAT_USE_SAFE_TIMINGS=${SMDSAT_USE_SAFE_TIMINGS} \
       -DSMDSAT_AUTOFALLBACK=${SMDSAT_AUTOFALLBACK} \
+      -DSMD_FLASH_HOLD=${SMD_FLASH_HOLD} \
       -DMETRIC_LATENCY_LOG_ENABLE=$([ "$METRICS" = "ON" ] && echo 1 || echo 0) \
       -DVALIDATION_LOG_ENABLE=$([ "$VALIDATION" = "ON" ] && echo 1 || echo 0) \
       ../..

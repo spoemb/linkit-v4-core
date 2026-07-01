@@ -509,6 +509,34 @@ static InitContext init_peripherals()
 	static NrfRGBLed nrf_status_led("STATUS", BSP::GPIO::GPIO_LED_RED, BSP::GPIO::GPIO_LED_GREEN, BSP::GPIO::GPIO_LED_BLUE, RGBLedColor::WHITE);
 	status_led = &nrf_status_led;
 
+#ifdef SMD_FLASH_HOLD
+	// ───────────────── TEST MODE: hold the SMD powered for flashing ─────────────────
+	// Powers the STM32WL (SAT_PWR_EN high) with the PA regulator OFF (VPA driven low)
+	// and releases SAT_RESET to high-Z so an external SWD probe fully owns the STM32WL
+	// reset line. The nRF then PARKS here forever (feeding the watchdog) and does
+	// NOTHING else — no Argos TX, no I2C recovery, no power cycling — so the supply
+	// never sees the TX current spikes that trip the board reset supervisor and reboot
+	// the nRF ("Hard Reset" / RESETPIN). Result: a stable, low-current SMD rail you can
+	// flash without the board resetting.
+	//
+	// Enable with -DSMD_FLASH_HOLD=1 (RSPB build). REMOVE for normal operation.
+	DEBUG_WARN("SMD_FLASH_HOLD: powering SMD + parking — flash the STM32WL now (MAGENTA LED)");
+#ifdef SMD_VPA_PIN
+	GPIOPins::drive_low(SMD_VPA_PIN);        // PA regulator OFF — no TX current spikes
+#endif
+#ifdef SAT_RESET
+	GPIOPins::release_to_highz(SAT_RESET);   // high-Z: SWD probe controls STM32WL reset
+#endif
+	GPIOPins::set(SAT_PWR_EN);               // STM32WL VDD ON, held indefinitely
+	status_led->set(RGBLedColor::MAGENTA);   // visual marker: flash-hold mode active
+	for (;;) {
+#ifndef DEBUG_NO_WATCHDOG
+		PMU::kick_watchdog();
+#endif
+		PMU::delay_ms(200);
+	}
+#endif // SMD_FLASH_HOLD
+
 	DEBUG_TRACE("Reed switch...");
 	static NrfSwitch nrf_reed_switch(BSP::GPIO::GPIO_REED_SW, REED_SWITCH_DEBOUNCE_TIME_MS, REED_SWITCH_ACTIVE_STATE);
 
